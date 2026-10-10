@@ -31,3 +31,15 @@ export function previewActions(p) {
 
 /** What the card says about how long the preview lives: the agent's own server ends with the chat; one Vyre looks after keeps running. @param {string} mode @param {string} state */
 export const lifeWord = (mode, state) => (state === "live" || state === "starting") ? (mode === "session" ? "Ends with this chat" : "Keeps running") : "";
+
+/** Whether the card offers Publish: a preview of a folder of files (the folder is the site), not a server an agent runs, and not while it is still starting. @param {{ source?: string, state?: string }} b */
+export const canPublish = (b) => b.source === "files" && b.state !== "starting";
+
+/** The site's name from the card's title: lower case letters, digits and dashes, at most 40, never empty. @param {string} title */
+export const siteNameOf = (title) => String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "site";
+
+/** The address a published site answers at: its first domain, else its own address. @param {{ url?: string | null, domains?: { host: string }[] } | null | undefined} d */
+export const addressOf = (d) => (d ? (d.domains && d.domains[0] ? d.domains[0].host : d.url || "") : "");
+
+/** What publish.quick tells the person beyond the plan: until the public door is on, the address works on their own devices only (the box says the same words). @param {{ public?: boolean }} r */
+export const publishWords = (r) => ({ later: r && r.public === false ? "Public once the public door is on. Until then the address works on your own devices only." : "" });
