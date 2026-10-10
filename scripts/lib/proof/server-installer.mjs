@@ -71,6 +71,11 @@ export async function startInstallerServer(o) {
     const fwd = `const net=require("net");net.createServer(c=>{const u=net.connect(${Number(dirPort)},${JSON.stringify(dirHost)});c.on("error",()=>u.destroy());u.on("error",()=>c.destroy());c.pipe(u);u.pipe(c);}).listen(${Number(dirPort)},"127.0.0.1");`;
     const f = sh(`docker exec -d -u vyre vyre-vyre-1 node -e '${fwd}'`);
     fs.appendFileSync(logFile, `\ndirectory forwarder: ${f.status} ${String(f.stdout || f.stderr).trim()}\n`);
+    // can the box reach the stand-in relay it was told about? (a refused connection here is the "app never finds / cannot pair the server" of the install proofs)
+    const relayUrl = new URL(o.relayForServer.replace(/^ws/, "http"));
+    const probe = sh(`docker exec -u vyre vyre-vyre-1 node -e 'const c=require("net").connect(${Number(relayUrl.port)},${JSON.stringify(relayUrl.hostname)},()=>{console.log("relay reachable");c.destroy()});c.on("error",e=>{console.log("relay NOT reachable: "+e.code);process.exitCode=1});setTimeout(()=>process.exit(),4000)'`);
+    fs.appendFileSync(logFile, `\nrelay probe from the box (${relayUrl.host}): ${String(probe.stdout).trim()}\n`);
+    if (/NOT reachable/.test(String(probe.stdout))) console.error(`installer server: the box cannot reach the relay stand-in at ${relayUrl.host} (${String(probe.stdout).trim()})`);
   }
   const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const printed = m ? m[1] : "";
