@@ -7,6 +7,7 @@
  "apps/app/screens/install/real.test.js": 13,
  "apps/app/screens/memory/logic.test.js": 5,
  "apps/app/screens/onboarding/onboarding.test.js": 9,
+ "apps/app/screens/runner/lease-model.test.js": 2,
  "apps/app/screens/settings/logic.test.js": 7,
  "apps/app/screens/settings/my-cloud.test.js": 8,
  "apps/app/screens/shell/spaces.test.js": 5,

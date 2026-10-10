@@ -12,7 +12,7 @@ when: You are about to write or change a Flow and need the exact keys, an exampl
 
 # Flows cheat sheet
 
-A Flow is a trigger and steps. Write it in the lines form (tools_call flows.code with format lines; tools_call flows.patch edits it). Names a step makes are read as `steps.<id>`; the trigger as `trigger`; a failure path reads `error`; a check reads `output`.
+A Flow is a trigger and steps. Write it in the lines form (flows.code format lines; flows.patch edits it). Names a step makes are read as `steps.<id>`; the trigger as `trigger`; a failure path reads `error`; a check reads `output`.
 
 ## Shape
 ```
@@ -113,6 +113,6 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 
 ## Limits
 - 200 steps a Flow, 6 levels of nesting, repeat at most 1000, a Code step's source at most 64 KB. Step ids: lowercase letters, digits, underscores, starting with a letter.
-- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; tools_call flows.propose checks it and runs its test cases first.
+- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; flows.propose checks it and runs its test cases first.
 
 <!-- agent:cheatsheet:end -->

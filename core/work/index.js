@@ -149,9 +149,6 @@ export default {
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"], description: "One of each per person, the same chat as the session rolls over. The Engineer is for an owner or an admin" } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
     ctx.tool("work.chat.pinned", { description: "Whether a chat is a person's pinned assistant or Engineer chat: { kind: \"assistant\" | \"engineer\" | null }. For vyred, which lets only the pinned assistant chat run with the assistant's authority.", internal: true, callers: ["module"],
       input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { if (!ctx.store || !ctx.store.db) throw unavailable(); return { kind: persistentOf().kindOf(String(i.person), String(i.chat)) }; } });
-    // A chat's name for the home's list of what runs on a person's computer (core/runner lent-home titleOf, through the daemon): any chat id, no person chain, at most 120 characters. Only the daemon's own modules ask.
-    ctx.tool("work.chat.title", { description: "A chat's name, at most 120 characters: { title }. For the daemon, which names a lent chat on its computer's list.", internal: true, callers: ["module"],
-      input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i) => { const rec = await hubOf().chatRecord(String(i.chat)); return { title: rec && rec.data && rec.data.title ? String(rec.data.title).slice(0, 120) : "" }; } });
     // Share to project (R031-41): a share is one `file-share` record by someone in the chat. The kernel does the rest: it opens that one file to the project's members and, for an encrypted chat, wraps the file's key into the project's ring (and rotates it when the last share goes).
     // The files a chat made or received, by name, with which are shared to its project. The chat's folders are sealed: the names come from the chat's own index, for the people in the chat only.
     // One timeline per record and project, and a chat's link to a record (core/work/timeline.js; R031-41, R031-46)
@@ -651,28 +648,7 @@ export default {
           const made = createRing(id, holders);
           ring = made.doc; keys = made.keys;
         }
-        const open = () => k0.chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(id ? { id } : {}), ...(ring ? { ring } : {}) });
-        let made;
-        try {
-          try { made = await open(); }
-          catch (e) {
-            // A built-in agent (the Engineer) that no run has made an actor of the Space yet is registered, then the chat starts: a person's first Engineer chat is not refused.
-            if (!/belongs to the Space/.test(String(e && /** @type {any} */ (e).message)) || !Array.isArray(input.agents) || !input.agents.length || typeof ctx.agentActor !== "function") throw e;
-            // only a built-in agent (agents.list says builtin) is registered this way: a name a caller makes up is not made an actor of the Space
-            const known = await ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
-            for (const a of input.agents) {
-              if (!known.some((/** @type {any} */ x) => x && x.name === String(a) && x.builtin === true)) throw e;
-              await ctx.agentActor(String(a));
-            }
-            made = await open();
-          }
-        } catch (e) {
-          // The same chat asked for again (a client that retried a call whose answer was lost, or one that waited for the store to come up): the id the caller chose is theirs already, and the answer is the chat as it is.
-          const again = input.id && /chat id is new/.test(String(e && /** @type {any} */ (e).message)) ? (() => { try { return k0.chats.read(chain, String(input.id)); } catch { return null; } })() : null;
-          if (!again) { if (keys) keys.lock(); throw e; }
-          made = { id: String(input.id), people: again.people || [], assistants: again.assistants || [] };
-          keys = null;
-        }
+        let made; try { made = await k0.chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(id ? { id } : {}), ...(ring ? { ring } : {}) }); } catch (e) { if (keys) keys.lock(); throw e; }
         if (keys) k0.chats.keys.adopt(chain, keys);
         const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };

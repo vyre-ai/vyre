@@ -3991,6 +3991,20 @@
     }
    }
   },
+  "computers-lately": {
+   "title": "Your computers, lately",
+   "screens": {
+    "full": {
+     "component": "computers-lately"
+    },
+    "compact": {
+     "component": "computers-lately"
+    },
+    "glance": {
+     "component": "computers-lately"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

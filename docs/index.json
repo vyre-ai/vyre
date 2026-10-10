@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1618,"event":533,"config":299,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1617,"event":533,"config":299,"env":282,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1898,7 +1898,7 @@
     {"kind":"event","name":"thread.moved","definedIn":"core/link/module.json","page":"reference/events.md#link","module":"link","mentions":[]},
     {"kind":"event","name":"thread.operator","definedIn":"core/previews/index.js","page":"reference/events.md#previews","module":"previews","mentions":[]},
     {"kind":"event","name":"thread.picked","definedIn":"core/projects/projects.js","page":"reference/events.md#projects","module":"projects","mentions":[{"page":"design/iq-everywhere.md","line":188,"anchor":"project-graphs-a-session-that-joins-a-project-later"}]},
-    {"kind":"event","name":"thread.placing","definedIn":"core/switchboard/module.json","page":"reference/events.md#threads","module":"threads","mentions":[]},
+    {"kind":"event","name":"thread.placing","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[]},
     {"kind":"event","name":"thread.plan","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[]},
     {"kind":"event","name":"thread.preview","definedIn":"core/previews/index.js","page":"reference/events.md#previews","module":"previews","mentions":[]},
     {"kind":"event","name":"thread.provider","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[]},
@@ -3075,7 +3075,6 @@
     {"kind":"tool","name":"work.chat.pinned","definedIn":"core/work/index.js","page":"reference/tools.md#workchatpinned","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.rename","definedIn":"core/work/index.js","page":"reference/tools.md#workchatrename","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.span","definedIn":"core/work/index.js","page":"reference/tools.md#workchatspan","module":"work","mentions":[]},
-    {"kind":"tool","name":"work.chat.title","definedIn":"core/work/index.js","page":"reference/tools.md#workchattitle","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.upgrade-move","definedIn":"core/work/index.js","page":"reference/tools.md#workchatupgrade-move","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.upgrade-plan","definedIn":"core/work/index.js","page":"reference/tools.md#workchatupgrade-plan","module":"work","mentions":[]},
     {"kind":"tool","name":"work.file.list","definedIn":"core/work/index.js","page":"reference/tools.md#workfilelist","module":"work","mentions":[]},

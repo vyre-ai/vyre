@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf } from "../../lib/lent-placement.js";
+import { lentSpawnFor } from "../../lib/lent-placement.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
@@ -241,6 +241,7 @@ export function projectRules(tool, suggestions) {
     .filter(r => r && r.toolName).map(r => ({ toolName: String(r.toolName), ...(r.ruleContent ? { ruleContent: String(r.ruleContent) } : {}) }));
   return [{ type: "addRules", rules: rules.length ? rules : [{ toolName: tool }], behavior: "allow", destination: "localSettings" }];
 }
+
 
 /** The permission modes an answer may hand back (safePermissions). Never bypassPermissions (ADR 0030, "Security"). */
 export const MODES = ["default", "acceptEdits", "plan"];
@@ -992,7 +993,7 @@ export class Switchboard {
     o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
     at("sandbox self-test");
-    o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o), lentSpawn: await lentOf(this, id, rec) };
+    o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o), lentSpawn: await this.lentFor(id, rec) };
     at("skill library");
     o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o) };
     at("spawn");
@@ -1164,6 +1165,30 @@ export class Switchboard {
     this.ksCur.delete(id);
     // vyred is stopping (a restart for an update is graceful): the open turn is NOT forgotten, so the next start reopens it for its person or says it could not. The daemon revokes the tokens at its own stop.
     if (k && !this.closing) await k.end().catch(() => {});
+  }
+
+  /**
+   * The lent spawn for this session when its chat runs on the person's own computer (contracts/lent-spawn.md), else undefined. The chat's own placement decides, from the home's book: only a row that says `mac` lends the process;
+   * a new chat has no row and runs on the box. Where nothing could start there the process starts here as it would have (core/sessions/lent-spawn.js).
+   * @param {string} id @param {any} rec
+   */
+  async lentFor(id, rec) {
+    if (!this.deps.lentFor || (rec && rec.provider && rec.provider !== "claude")) return undefined;
+    let spawn;
+    try { spawn = await this.deps.lentFor({ thread: id, chat: this.chatOf(id), native: this.nativeOf(id), title: rec && rec.name ? String(rec.name) : null, fresh: !(Number(rec && rec.turns) > 0), asker: this.turnAsker.get(id) || null }); } catch { return undefined; }
+    if (!spawn) return undefined;
+    // What the chat says while its process starts on the computer: `thread.placing { state: "starting" | "up" | "fallback", computer?, reason? }`. The words are the app's (design); a fallback means nothing ran there and the box runs it.
+    return (/** @type {string} */ command, /** @type {string[]} */ args, /** @type {any} */ env, /** @type {any} */ cwd, /** @type {any} */ o) => {
+      const proc = spawn(command, args, env, cwd, o);
+      const say = (/** @type {string} */ state, /** @type {any} */ extra = {}) => { try { this.emit("thread.placing", { thread: id, state, ...extra }, id, rec && rec.project); } catch { /* a notice, never a stop */ } };
+      const computer = () => (proc && proc.lent && proc.lent.computer ? { computer: String(proc.lent.computer) } : {});
+      if (proc && typeof proc.on === "function") {
+        say("starting", computer());
+        proc.on("spawn", () => say("up", computer()));
+        proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable") say("fallback", { ...computer(), reason: "unavailable" }); });
+      }
+      return proc;
+    };
   }
 
   /** The confined spawner for this session (deps.sandbox: { sandbox, platform, home, vyreHome, probes, temp, binFor }), or null when sandboxing is not on. Throws one plain reason when the check fails. */
@@ -1425,7 +1450,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
@@ -2122,13 +2147,13 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await this.lentFor(id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
-  onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
+  onExit(id, st, code, signal, stderr) {
+    this.flush(id, st);
     if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
-    if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
@@ -3729,6 +3754,7 @@ export async function spendCheck(ctx, caller, provider) {
 }
 const spendDown = { day: "" };
 
+
 /** The person a call is from, for the author a sent message records: the verified peer, else the owner's own surface. */
 export const authorOf = (/** @type {any} */ peer) => { const raw = peer && (peer.login || peer.stableId || peer.node); return raw ? `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}` : "person:owner"; };
 
@@ -3813,7 +3839,8 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      // A chat placed on the person's own computer runs its agent process there (the home's placement book says where; contracts/lent-spawn.md). Null where this daemon is not the Space's home.
+      lentFor: (/** @type {{ thread: string, chat: string | null, native: string, title?: string | null, fresh?: boolean, asker?: string | null }} */ q) => lentSpawnFor(ctx.kernel, q),
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".

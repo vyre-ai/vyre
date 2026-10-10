@@ -12,6 +12,7 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { leaseRows } from "../screens/runner/lease-model.js";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { SitesList } from "../screens/sites/SitesList";
@@ -99,6 +100,15 @@ function Sample({ name }: { name: string }) {
       { id: "x", pinned: "" as const, title: "Intake hand-off (not yours)", project: "General", people: ["sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "", asks: 0, unread: 0, open: false },
     ];
     return <ChatsList rows={rows} now={now} places={{ places: [{ chat: "demo", computer: "Dana's MacBook", online: true }] }} onOpen={() => {}} />;
+  }
+  if (name === "computers-lately") {
+    const now = 1_700_000_000_000;
+    const rows = leaseRows([
+      { type: "lease.borrowed", seq: 3, time: now - 60_000, data: { device: "d1", limit: "provider" } },
+      { type: "lease.issued", seq: 2, time: now - 120_000, data: { device: "d1", limit: "provider" } },
+      { type: "lease.refused", seq: 1, time: now - 3_600_000, data: { device: "d2", why: "no_lend" } },
+    ], (id) => ({ d1: "Dana's MacBook", d2: "Studio Mac" }[id] ?? ""), now);
+    return <BlockScreen screen={{ v: 2, id: "cl", layout: { block: "l" }, blocks: { l: { type: "list", content: { rows } } } } as never} handlers={{}} />;
   }
   if (name === "runner-chip") {
     return (
