@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../../core/daemon/index.js";
-import { fromAsks, fromHeld, fromVault, fromAttention, fromStuckTasks, fromHealth, fromEvals, ITEM_KINDS } from "../../core/approvals/items.js";
+import { fromAsks, fromHeld, fromVault, fromAttention, fromStuckTasks, fromHealth, fromEvals, fromSigning, ITEM_KINDS } from "../../core/approvals/items.js";
 import { tempHome, present, asOwner } from "../helpers.js";
 import { owners as O, cards as C, pendingCard, itemsAnswer, itemPresence, kinds, shapeDiff } from "./approvals.fixtures.js";
 
@@ -25,6 +25,7 @@ test("approvals v1: every owner's row becomes the card the fixtures show, and th
   assert.deepEqual(fromStuckTasks([O.stuck])[0], C.task);
   assert.deepEqual(fromHealth(O.health)[0], C.health);
   assert.deepEqual(fromEvals([O.eval])[0], C.eval);
+  assert.deepEqual(fromSigning([O.signing])[0], C.signing);
   for (const c of Object.values(C)) assert.ok(kinds.includes(c.kind), c.id);
 });
 
