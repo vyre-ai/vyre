@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { opts } from "./space-helper-rig.js";
 import { BUILDKIT } from "../core/builder/container.js";
-import { DEP, REQUEST, read, ready } from "./space-helper-pub-rig.js";
+import { DEP, SPC, REQUEST, read, ready } from "./space-helper-pub-rig.js";
 
 test("pub-build: the folder is taken, judged, built by an unprivileged rootless BuildKit with the context read-only, and recorded; the answer is the image id", opts, async t => {
   const r = await ready(t);
@@ -17,7 +17,7 @@ test("pub-build: the folder is taken, judged, built by an unprivileged rootless 
   assert.ok(id, st.message);
   assert.ok(!fs.existsSync(path.join(r.servers, DEP)), "the daemon's folder was taken by rename and is gone");
   assert.equal(fs.statSync(r.rec()).mode & 0o777, 0o600, "root's record is root's alone");
-  assert.equal(read(r.rec()).trim(), `northwind vyre-pub/northwind:${DEP.slice(4)} ${id[1]} 8080 512 0.5 256 / 200+404 60 3 -`);
+  assert.equal(read(r.rec()).trim(), `northwind vyre-pub/northwind:${DEP.slice(4)} ${id[1]} 8080 512 0.5 256 / 200+404 60 3 - ${SPC}`);
   // the build: the pinned image, the context and the output the only mounts, nothing privileged, only the two capabilities a user namespace needs
   const b = read(path.join(r.F, "pub-builds")).trim();
   assert.ok(b.includes(BUILDKIT));
