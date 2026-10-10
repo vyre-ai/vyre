@@ -23,7 +23,7 @@ test("a person world boots with the chosen name and the person can make a call t
 });
 
 test("the Run on this computer switch works against a person world: one yes lends, off stops", { timeout: 240_000 }, async t => {
-  const pw = await personWorld({ name: "runpw", kind: "daemon" });
+  const pw = await personWorld({ name: "runpw", kind: "local" });
   t.after(() => pw.close());
   const src = runnerSource(/** @type {any} */ (async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     try { return { data: await pw.call(tool, input) }; } catch (e) { return { error: { code: /** @type {any} */ (e).code || "failed", message: String(/** @type {Error} */ (e).message) } }; }

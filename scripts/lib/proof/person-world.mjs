@@ -18,9 +18,10 @@ import { createRun } from "./run.mjs";
 import { bringUp } from "../../journeys/lib/world.mjs";
 
 /**
- * @param {{ name?: string, kind?: "daemon" | "box", store?: "plain" | "records", out?: string, run?: ReturnType<typeof createRun> }} [o]
+ * @param {{ name?: string, kind?: "daemon" | "box" | "local", store?: "plain" | "records", out?: string, run?: ReturnType<typeof createRun> }} [o]
  */
 export async function personWorld(o = {}) {
+  if (o.kind === "local") return localWorld(o);
   const kind = o.kind || "daemon";
   const out = o.out || fs.mkdtempSync(path.join(os.tmpdir(), "person-world-"));
   const run = o.run || createRun({ out });
@@ -50,4 +51,47 @@ async function enrolStandIn(w) {
   await w.call("spaces.identity.entry.add", { kind: "device", publicKey: Buffer.from(spki, "base64").toString("base64url"), label: "stand-in owner key" });
   const begun = await w.call("spaces.presence.begin", { key_id: sg.enrolment.key_id, spki });
   await w.call("spaces.presence.recover", { key_id: sg.enrolment.key_id, spki, signer: "software", token: begun.token });
+}
+
+/**
+ * `local`: ONE real vyred in this process that is the person's own computer (what the Mac runs): a Vyre name made on it (spaces.identity.create), a home Space on this computer, a development sealing
+ * process that took the owner's stand-in key, and the person's session. This is the world for what the local app does on its own daemon, such as the "Run on this computer" switch. No server, no relay.
+ * @param {{ name?: string, out?: string }} o
+ */
+async function localWorld(o) {
+  const { start } = await import("../../../core/daemon/index.js");
+  const { startSealer } = await import("../../../kernel/seal/client.js");
+  const seal = await import("../../../kernel/seal/testing.js");
+  const { startStandins } = await import("./standins.mjs");
+  const out = o.out || fs.mkdtempSync(path.join(os.tmpdir(), "person-world-"));
+  const root = path.join(out, ".vyre");
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const ins = await startStandins({ out });
+  const name = o.name || `local${Math.random().toString(36).slice(2, 7)}`;
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", name, transcripts: [], vault: { keystore: "file" }, network: { name, directory: ins.names }, names: { directory: ins.names }, relay: { enabled: false, url: ins.relay }, modules: { disable: ["names", "onboard"] }, store: "sqlite" }));
+  const saved = { VYRE_HOME: process.env.VYRE_HOME, VYRE_STORE: process.env.VYRE_STORE, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE };
+  process.env.VYRE_HOME = root; process.env.VYRE_STORE = "sqlite"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  const sealer = startSealer({ dir: path.join(out, "seal"), timeoutMs: 8000, dev: true, unattested: true });
+  const presence = { required: () => false, verify: async () => ({ ok: true, method: "test" }), capsulePin: () => null, challenge: async () => ({ error: { code: "bad_input", message: "presence is not checked here" } }) };
+  const d = await start({ presence, root, log: () => {}, kernel: true, kernelSealer: sealer });
+  const restore = () => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };
+  const owner = () => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-person", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+    const r = await d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(owner(), {})).token });
+    if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code });
+    return r.data;
+  };
+  const made = await call("spaces.identity.create", { name });
+  const personId = String((made && (made.id || made.identity || d.kernel.id.owner)) || d.kernel.id.owner);
+  const ownerSigner = seal.signer(d.kernel.id.owner);
+  await seal.enrolDevice(sealer, ownerSigner);
+  await call("spaces.create", { name: "home", home: { kind: "this-computer", confirmed: true } }).catch(() => null);
+  return {
+    world: null, run: null, out, kind: "local", person: name, personId, server: d, daemon: d, ownerSigner,
+    call,
+    /** The proof header for an act the daemon asked to be confirmed. @param {{ op: string, space: string, fields: Record<string, any> }} sign */
+    yesFor: async sign => Buffer.from(JSON.stringify(ownerSigner.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: d.kernel.id.owner, space: sign.space } }] }, sign.op, sign.fields))).toString("base64url"),
+    operator: call, mac: null,
+    close: async () => { try { await d.stop(); } finally { restore(); await sealer.close().catch(() => {}); await ins.stop().catch(() => {}); } },
+  };
 }
