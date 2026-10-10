@@ -239,7 +239,7 @@ else {
     async outageShort() {
       const l = await lend("outs");
       proxy.cut(); log("network cut");
-      await until("the sessions to freeze", () => { const a = sandboxOf(path.join(agentHome, "agent.js")); return a.length > 0 && a.every(p => stateOf(p.pid) === "T"); }, 15_000).then(() => check(true, "the agent froze after two missed beats"), () => { check(false, "the agent froze after two missed beats"); log("   processes:", JSON.stringify(sandboxOf(path.join(agentHome, "agent.js")).map(p => [p.pid, stateOf(p.pid), p.args.slice(0, 50)]))); });
+      await until("the sessions to freeze", () => { const a = sandboxOf(path.join(agentHome, "agent.js")); return a.length > 0 && a.every(p => stateOf(p.pid) === "T"); }, 15_000).then(() => check(true, "the agent froze after two missed beats"), () => { check(false, "the agent froze after two missed beats"); log("   processes:", JSON.stringify(sandboxOf(path.join(agentHome, "agent.js")).map(p => [p.pid, stateOf(p.pid), p.args.slice(0, 220)]))); });
       await sleep(600); proxy.heal(); log("network back");
       await until("the sessions to run again", () => { const a = sandboxOf(path.join(agentHome, "agent.js")); return a.length > 0 && a.every(p => stateOf(p.pid) !== "T"); }, 15_000).then(() => check(true, "the agent ran again"), () => check(false, "the agent ran again"));
       const row = await ctl({ cmd: "book", session: l.sess });
