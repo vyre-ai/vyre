@@ -1,5 +1,6 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+import { runnerFixtures as F, REASONS, STATES } from "../../../../test/contracts/runner.fixtures.js";
 import assert from "node:assert/strict";
 import { chipOf, fresher, pickPlacement, movedLine, pickSettings, parseLimit, switchNote, pickHere, hereLine, whyNotLine, DEFAULT_SETTINGS } from "./runner-model.js";
 
@@ -61,4 +62,30 @@ test("runner: a placement keeps to what the box said, with the state, the offer 
   assert.deepEqual(pickPlacement({ where: "mac", state: "weird", offer: "other" }), { where: "mac", reason: null, since: null });
   assert.equal(pickPlacement({ where: "moon" }), null);
   assert.equal(pickPlacement(null), null);
+});
+
+// contracts/runner.md v1: the consumer built against the producer's fixtures (which the producer's own test checks against the real tools).
+test("runner: every placement, call and event the contract fixtures hold draws the right chip, line and list", () => {
+  const chips = Object.fromEntries(Object.entries(F.placements).map(([k, v]) => [k, chipOf(pickPlacement(v))]));
+  assert.deepEqual([chips.onTheComputer?.label, chips.onTheComputer?.moveTo], ["On Office Mac", "server"]);
+  assert.deepEqual([chips.handingOver?.label, chips.handingOver?.moveTo], ["Moving", null]);
+  assert.deepEqual([chips.movedByCondition?.label, chips.movedByCondition?.moveTo, chips.movedByCondition?.why], ["On the server", "mac", "lid closed"]);
+  assert.deepEqual([chips.offeredBack?.label, chips.offeredBack?.moveTo], ["Bring back to this Mac?", "mac"]);
+  assert.deepEqual([chips.theServersOwn?.label, chips.theServersOwn?.why], ["On the server", ""]);
+  assert.equal(pickPlacement(F.placements.movedByCondition)?.epoch, 2);
+  // a pinned session offers no move (pinned is read only in v1)
+  const pinned = chipOf(pickPlacement({ ...F.placements.theServersOwn, pinned: true, pin: "server" }));
+  assert.deepEqual([pinned?.label, pinned?.moveTo, pinned?.why], ["On the server", null, "it is kept on the server"]);
+  assert.deepEqual(pickPlacement({ ...F.placements.onTheComputer, pinned: true, pin: "mac" }), { where: "mac", computer: "Office Mac", reason: null, since: 1_760_000_000_000, state: "here", pinned: true, pin: "mac", epoch: 1 });
+  // every reason code in the contract has words, and every state is one the chip knows
+  for (const r of REASONS) assert.ok(movedLine({ to: "server", reason: r }).length > "Moved to the server.".length, `${r} has words`);
+  for (const st of STATES) assert.ok(chipOf({ where: "mac", state: /** @type {any} */ (st) }), `${st} draws a chip`);
+  // the event line
+  assert.equal(movedLine(F.events["thread.moved"]), "Moved to the server: lid closed.");
+  // the list reads the box's own line and accessory, so Settings and the Lumen list say the same
+  const here = pickHere(F.calls.here.output);
+  assert.deepEqual(here, [{ thread: F.calls.here.output.sessions[0].thread, title: "A session", computer: "Office Mac", state: "running", cpuPercent: 12, memoryMb: 340, line: "Running, 12% processor, 340 MB", cpu: "12%" }]);
+  assert.deepEqual(hereLine(here[0]), { title: "A session", sub: "Running, 12% processor, 340 MB" });
+  assert.deepEqual(pickSettings(F.calls.settings.output), F.defaults);
+  assert.deepEqual([F.limits.cpuPercent, F.limits.memoryMb], [[10, 100], [512, 65536]]);
 });
