@@ -31,8 +31,8 @@ test("a small PNG is its own preview and a damaged one has none", () => {
   const small = png(40, 20);
   assert.ok(small.length <= SMALL_BYTES);
   assert.equal(thumbOf(small, "image/png")?.bytes, small);
-  assert.equal(thumbOf(new Uint8Array([1, 2, 3, 4]), "image/png"), null);
-  assert.equal(thumbOf(small.slice(0, 60), "image/png"), null);
+  assert.equal(thumbOf(new Uint8Array(SMALL_BYTES + 1), "image/png"), null, "a PNG that does not decode and is not small has none");
+  assert.equal(thumbOf(png(1200, 600).slice(0, 60).fill(7, 10), "image/png")?.bytes.length, 60, "a damaged small one goes whole");
 });
 
 test("another image type is its own preview only when small", () => {
