@@ -10,6 +10,7 @@
 // marked cache of "the spaces I am in" for drawing the screen offline, and never reads it for a decision.
 
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 
 /** What a kernel refusal says to a person, by its code. */
 const WORDS = Object.freeze({
@@ -137,11 +138,11 @@ export async function actingPerson(K, meta, home) {
 
 /**
  * The person a Space LIST is for: the first person on the call's chain, whatever hops follow (a person's assistant or an automation asks for that person). A call with no person on its chain is the
- * owner's own only when it came over this box's local terminal (`cli` or `local`); any other caller without a chain gets nothing. Not `callerPerson`: the one-hop rule there is deliberate for acts.
+ * owner's own only when it came over one of this box's own surfaces (the terminal, the deck, the capsule: lib/person-surfaces.js); any other caller without a chain gets nothing. Not `callerPerson`: the one-hop rule there is deliberate for acts.
  * @param {any} K @param {any} meta @returns {Promise<string | null>}
  */
 export async function listCaller(K, meta) {
   const p = await firstPerson(K, meta);
   if (p) return p;
-  return meta && /^(cli|local)$/.test(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
+  return meta && PERSON_SURFACES.includes(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
 }
