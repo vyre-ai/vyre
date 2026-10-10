@@ -277,7 +277,7 @@ export function createGateway(cfg) {
     /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
     serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
-    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
+    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i), listModels: (/** @type {any} */ i) => cfg.door.listModels(i) }) } : {}),
     records,
     migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
