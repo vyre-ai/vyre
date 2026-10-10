@@ -21,9 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
-        # requests run both versions.
-        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+        # Team branches run Node 22 only, the version box/Dockerfile ships (test/node-runtime.test.js keeps the two in step); stage, main and pull requests run 22 and 24. A work branch that
+        # tested only the newer Node left the shipped runtime untested until main.
+        node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[22]' || '[22, 24]') }}
         # Five shards (node --test-shard) so a run is about a fifth of the suite per job; the eval and the perf gate run on shard 1 only.
         shard: [1, 2, 3, 4, 5]
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
@@ -65,14 +65,14 @@ jobs:
           VYRE_TEST_SHARD: ${{ matrix.shard }}/5
           VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && '2' || '' }}
           VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
-      - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 24 }}
+      - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 22 }}
         # This shard's counts, to record into test/test-counts.json (node scripts/test-counts.mjs update <file>).
         uses: actions/upload-artifact@v4
         with:
           name: test-counts-run-${{ matrix.shard }}
           path: ${{ runner.temp }}/test-counts-run.json
           if-no-files-found: ignore
-      - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 && matrix.shard == 1 }}
+      - if: ${{ github.event_name == 'pull_request' && matrix.node == 22 && matrix.shard == 1 }}
         # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
         run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
       - if: ${{ matrix.shard == 1 }}
