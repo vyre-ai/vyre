@@ -54,7 +54,7 @@ export async function forgetRelayKey(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY, ONLY_HERE);
 }
 
-export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
+export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software"; signer?: "secure_enclave" | "strongbox" } | undefined> {
   try {
     // The biometric-bound key, so every presence proof over the relay needs a fingerprint or face
     // (e2e: the pairing's presence key is vyre.human).
@@ -66,7 +66,8 @@ export async function presenceKey(): Promise<{ public_key: string; alg: number; 
       // info().level describes vyre.person, which may not exist yet; then the phone's own answer about its keystore decides.
       storage = i.level === "none" ? (i.secureHardware ? "hardware" : "software") : keyStorage(i.level);
     } catch { /* unknown */ }
-    return { public_key: spkiFromXY(x, y), alg: -7, ...(storage ? { storage } : null) };
+    // A hardware key also names its signer class (the box refuses a hardware key that does not say what holds it: it could not be made the approving device, trust row 17)
+    return { public_key: spkiFromXY(x, y), alg: -7, ...(storage ? { storage } : null), ...(storage === "hardware" ? { signer: Platform.OS === "android" ? "strongbox" as const : "secure_enclave" as const } : null) };
   } catch {
     return undefined;
   }
