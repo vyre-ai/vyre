@@ -89,7 +89,7 @@ export function createGrants({ ctx }) {
 
 /**
  * The once-only move of the old tables' active rows into kernel grants (the first start after the update, which backs up first). A member grant's resource narrows from the Space root to
- * `member/<person>/`, a storage device's `grant_id` follows its new grant, and a device grant an older build wrote is handed to `adoptDevice` (it becomes a registry row, not a grant). The rows go
+ * `member/<person>`, a storage device's `grant_id` follows its new grant, and a device grant an older build wrote is handed to `adoptDevice` (it becomes a registry row, not a grant). The rows go
  * once they are carried. A server with no kernel keeps them where they are and tries again at the next start.
  * @param {{ ctx: any, adoptDevice: (row: any) => void }} o @returns {Promise<number>} grants moved
  */
@@ -108,7 +108,7 @@ export async function moveLocalGrants({ ctx, space, adoptDevice }) {
     const sub = g.subject.kind === "actor" ? g.subject.actor : null;
     if (sub && sub.kind === "device" && g.actions.includes("space.act")) { adoptDevice(g); db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id); continue; }
     const root = /^vyre:\/\/[^/]+\/$/;
-    const resource = root.test(g.resource.prefix) && g.actions.includes("member.act") && sub ? { ...g.resource, prefix: `${g.resource.prefix}member/${sub.id}/` } : g.resource;
+    const resource = root.test(g.resource.prefix) && g.actions.includes("member.act") && sub ? { ...g.resource, prefix: `${g.resource.prefix}member/${sub.id}` } : g.resource;
     const given = inKernelSpace(ctx, { subject: g.subject, resource });
     const made = await mint.make({ subject: given.subject, actions: g.actions, resource: given.resource, conditions: g.conditions || {}, source: g.source, ...(g.reason ? { reason: g.reason } : {}) });
     if (has("wink_storage_devices")) db.prepare("UPDATE wink_storage_devices SET grant_id = ? WHERE grant_id = ?").run(made, id);
