@@ -633,7 +633,8 @@
       ]
     },
     "daemon": [
-      "flowsHost"
+      "flowsHost",
+      "agentActor"
     ]
   },
   "teaches": {},

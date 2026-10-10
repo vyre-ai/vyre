@@ -633,7 +633,17 @@ export default {
           const made = createRing(id, holders);
           ring = made.doc; keys = made.keys;
         }
-        let made; try { made = await k0.chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(id ? { id } : {}), ...(ring ? { ring } : {}) }); } catch (e) { if (keys) keys.lock(); throw e; }
+        const open = () => k0.chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(id ? { id } : {}), ...(ring ? { ring } : {}) });
+        let made;
+        try {
+          try { made = await open(); }
+          catch (e) {
+            // A built-in agent (the Engineer) that no run has made an actor of the Space yet is registered, then the chat starts: a person's first Engineer chat is not refused.
+            if (!/belongs to the Space/.test(String(e && /** @type {any} */ (e).message)) || !Array.isArray(input.agents) || !input.agents.length || typeof ctx.agentActor !== "function") throw e;
+            for (const a of input.agents) await ctx.agentActor(String(a));
+            made = await open();
+          }
+        } catch (e) { if (keys) keys.lock(); throw e; }
         if (keys) k0.chats.keys.adopt(chain, keys);
         const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
