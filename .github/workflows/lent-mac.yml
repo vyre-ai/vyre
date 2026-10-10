@@ -36,7 +36,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: a chat on a computer run by the real daemon, and the runner's lent-chat tests
         shell: bash
-        run: node --test --test-timeout=240000 core/runner/lent-daemon.test.js core/runner/lent-pipe-runner.test.js core/runner/lent-pipe.test.js core/runner/lent-wire.test.js 2>&1 | tee lent.txt
+        run: node --test --test-timeout=240000 core/runner/lent-daemon.test.js core/runner/lent-chat-e2e.test.js core/runner/lent-pipe-runner.test.js core/runner/lent-pipe.test.js core/runner/lent-wire.test.js 2>&1 | tee lent.txt
       - name: the chaos scenarios for a chat's pipe, its door and the lid shutting mid-turn
         shell: bash
         run: node scripts/runner-chaos.mjs pipe door lidMidTurn 2>&1 | tee chaos.txt
