@@ -116,7 +116,8 @@ test("R031-79: a login that ran out is one Needs-you card that says what to do, 
   const w = await world(t);
   await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
   let loggedIn = false;
-  const x = await extension(w.sockPath, { "ops.call": (/** @type {any} */ a) => (loggedIn ? { ok: true, class: "ok", data: [{ name: "alpha one" }], op: a.op.name, status: 200 } : { ok: false, class: "auth", reason: "HTTP 401", next: "sign in again" }) });
+  const x = await extension(w.sockPath, { "ops.call": (/** @type {any} */ a) => (loggedIn ? { ok: true, class: "ok", data: [{ name: "alpha one" }], op: a.op.name, status: 200 } : { ok: false, class: "auth", reason: "HTTP 401", next: "sign in again" }),
+    "ops.check": () => (loggedIn ? { ok: true, onSite: true, refs: { "session:csrf": true } } : { ok: false, onSite: true, refs: { "session:csrf": false } }) });
   t.after(() => { x.sock.destroy(); });
   await online(w.d);
   const cards = async () => ((await w.cli("approvals.items")).data || {}).items.filter((/** @type {any} */ c) => c.kind === "signin");
@@ -137,7 +138,7 @@ test("R031-79: a login that ran out is one Needs-you card that says what to do, 
   assert.ok(!JSON.stringify(open).includes(F.SECRET_COOKIE) && !JSON.stringify(open).includes(F.CSRF), "no cookie and no token on a card");
   assert.equal((await w.cli("waiting.count")).data.by_kind.signin, 1, "and the one list counts it");
   // still signed out: checking does not clear it
-  assert.equal((await w.cli("connectors.connection.check", { id: "linkedin" })).data.light === "green" ? "green" : "red", "red", "the card's answer re-checks and it is still red");
+  assert.equal((await w.cli("connectors.connection.check", { id: "linkedin" })).data.light, "red", "the card's answer re-checks and it is still red");
   assert.equal((await cards()).length, 1);
   // the person signs in, the Connection works again: the card closes with its outcome
   loggedIn = true;
