@@ -106,6 +106,6 @@ test("a model's tool with no `space` in a team turn lands in the chat's Space, n
   assert.ok(said.includes(String(made.chat)), `the team's chat is in what the model's work.chat.list returned (the team Space's list, not the home's): ${said.slice(0, 600)}`);
   assert.ok(!JSON.stringify((await w.tool("work.chat.list", {})).data).includes(String(made.chat)), "and the home's own list does not have it");
   await as(ANA, "send", { chat: made.chat, text: "vyre threads.list {}" });
-  await until(async () => { seen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return /not_in_team_space|does not act in a team chat/.test(seen) ? seen : null; }, "the refusal in words");
+  await until(async () => { seen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return /not_in_team_space|does not act in a team chat/.test(seen) ? seen : null; }, "the refusal in words").catch(e => { throw new Error(`${e.message} :: ${seen.slice(-900)}`); });
   void firm;
 });
