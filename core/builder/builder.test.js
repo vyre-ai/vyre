@@ -35,8 +35,8 @@ test("what it cannot build is refused in words that name what is missing, never 
   for (const [why, deployment, words] of /** @type {[string, any, RegExp][]} */ ([
     ["a repo", dep({ source: { kind: "repo", ref: "https://git.example.test/x.git#main" } }), /container builder, which is not installed/],
     ["a Drive folder", dep({ source: { kind: "drive", ref: "abc" } }), /container builder/],
-    ["a build command", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "npm run build", output_dir: "dist", image: "static" } }), /build command \(npm run build\) needs the container builder/],
-    ["a node image", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "", output_dir: ".", image: "node-22" } }), /node-22 image needs the container builder/],
+    ["a build command with servers off", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "npm run build", output_dir: "dist", image: "static" } }), /turned off in this test release/],
+    ["a node image with servers off", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "", output_dir: ".", image: "node-22" } }), /turned off in this test release/],
   ])) await assert.rejects(() => build(deployment), (/** @type {any} */ e) => { assert.equal(e.code, "refused", why); assert.match(e.message, words, why); return true; });
   assert.deepEqual(planOf({ source: { kind: "folder", ref: "/x" }, build: {} }), { dir: "/x", outputDir: ".", dockerfile: false }, "no command and no image asks for the folder as it is");
 });
