@@ -128,4 +128,15 @@ test("models: the model picker (sessions.models) reads this one list: Claude Cod
   for (const id of known) assert.ok(picker.includes(id), `${id} is a registry model and the picker offers it`);
   assert.equal(new Set(picker).size, picker.length, "no model twice");
   assert.deepEqual((await b.call("sessions.models", { provider: "codex" })).data.map((/** @type {any} */ m) => m.id).filter((/** @type {string} */ id) => ["opus", "sonnet", "haiku"].includes(id)), [], "another provider's picker has no Claude aliases");
+  // a model only the registry knows (a login reported it; no alias, no config names it) is offered, for its own provider only
+  assert.ok(!(await b.call("sessions.models", { provider: "codex" })).data.some((/** @type {any} */ m) => m.id === "gpt-registry-only"), "not offered before anything reported it");
+  assert.equal((await b.call("sessions.providers.learn", { provider: "codex", models: [{ id: "gpt-registry-only", label: "GPT Registry Only" }] }, "module:switchboard")).data.recorded, true);
+  b.d.registry.modules.get("models"); // the registry reads it on its next refresh
+  await new Promise(r => setTimeout(r, 1100));
+  await b.call("models.refresh", { force: true }).catch(() => null);
+  const registryHas = (await b.call("models.list", { provider: "codex" })).data.models.some((/** @type {any} */ m) => m.id === "gpt-registry-only");
+  assert.ok(registryHas, "the registry took the reported model");
+  const codexPicker = (await b.call("sessions.models", { provider: "codex" })).data;
+  assert.deepEqual(codexPicker.filter((/** @type {any} */ m) => m.id === "gpt-registry-only"), [{ id: "gpt-registry-only", label: "GPT Registry Only" }], "the picker offers it with its label");
+  assert.ok(!(await b.call("sessions.models")).data.some((/** @type {any} */ m) => m.id === "gpt-registry-only"), "and not in Claude's picker");
 });
