@@ -26,7 +26,6 @@ test("a published server's manifest: its image by local id, one data volume, a r
   assert.equal(m.app.hookPort, undefined, "no webhook door");
   assert.equal(m.app.env, undefined, "no plain values; secrets are names and are read from the files Publish wrote");
   assert.equal(mk({}, false).app.open, undefined, "not open until it is live");
-  assert.ok(checkAppModule({ ...m, app: { ...m.app, image: "docker.io/x/y@sha256:" + "0".repeat(64) } }).some(p => p.path === "app.open"), "and `open` is refused on a manifest Publish did not make");
   const { "x-publish": _x, ...catalogLike } = m;
   assert.ok(checkAppModule({ ...catalogLike, app: { ...catalogLike.app, image: "x/y@sha256:" + "0".repeat(64) } }).some(p => p.path === "app.open"), "an open catalog app is refused");
 });

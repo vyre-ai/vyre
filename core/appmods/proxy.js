@@ -236,6 +236,8 @@ export function createHostProxy(o) {
         /** @type {Record<string, string>} */ const h = {};
         for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !k.startsWith("x-vyre-") && typeof v === "string") h[k] = v;
         const jar = jars.get(mh.name);
+        // an open server's visitors send their own credentials to the site they are using; nothing of Vyre's is ever in the header (the owner's session is the cookie this front removes)
+        if (wide && typeof req.headers.authorization === "string") h.authorization = req.headers.authorization;
         if (stranger) {
           // only the signer's own cookies for the app; never the install's session, never ours; an uncompressed answer so a page can be dressed
           const c = signerCookies(req.headers.cookie);
