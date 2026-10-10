@@ -632,6 +632,8 @@ const inRepo = (dir, paths) => {
 const IN_SPACE = Symbol("vyre.in_space");
 /** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
 const VIEW_FOR = Symbol("vyre.view_for");
+/** Set only by Registry.callFlow, after the Flows host has spent the task approval a person gave for exactly this act: the call then counts as the person's own yes, as a redeemed card does. A symbol key cannot come over the wire. */
+const FLOW_ACT = Symbol("vyre.flow_act");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
 const RELAY = Symbol("vyre.relay");
 /**
@@ -1411,14 +1413,14 @@ export class Registry {
   /**
    * Run a flow.steps tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
    * only for a read tool or after it spent the Flow's one approval for exactly this act (the kernel's task approval, bound to the input): the tool's own outward hold is the same yes, never a second.
-   * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string }} o
+   * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string, task?: string }} o (`task`: the approved task the host just spent for this act)
    */
   async callFlow(tool, input, o) {
     const def = this.tools.get(tool);
     if (!def || !def.flowStep) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
     if (def.flowStep.risk === "outward" && !def.outward && !def.flowStep.forced) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
     if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
-    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token });
+    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token, ...(typeof o.task === "string" && def.outward === true ? { [FLOW_ACT]: { task: o.task } } : {}) });
   }
 
   /**
@@ -1510,6 +1512,7 @@ export class Registry {
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; // set below, by the registry relay alone
     delete meta[COVERED]; // set below, only by a card this call just redeemed
+    const flowAct = meta[FLOW_ACT]; delete meta[FLOW_ACT]; // set by callFlow alone (below it becomes the same mark a redeemed card makes)
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1760,6 +1763,13 @@ export class Registry {
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
         return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
       }
+    }
+    // A Flow's call step: the Flows host spent the person's approval for exactly this act (bound to this input) before it got here, so the act is the person's own yes, and a send the tool files at the Gate
+    // can show it as a redeemed card does. The receipt is recorded with the approvals queue (one use, the card's life); without one the send is held at the Gate as before.
+    if (flowAct && String(caller) === "module:flows" && def.outward === true && typeof flowAct.task === "string" && /^[A-Za-z0-9_-]{6,80}$/.test(flowAct.task)) {
+      const receipt = this.tools.get("approvals.receipt");
+      const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`, card = `flowtask:${flowAct.task}`, sha = holdFields(input).input_sha256;
+      if (receipt) { try { await receipt.run({ card, tool, input_sha256: sha, asker }, { caller: "module:registry" }); meta = { ...meta, [COVERED]: { card, tool, input_sha256: sha, asker } }; } catch { /* held at the Gate as before */ } }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses

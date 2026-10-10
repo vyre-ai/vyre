@@ -13,6 +13,7 @@ import { createLenderHost } from "./lender-host.js";
 import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
 import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
+import { createMover, sleepReason } from "./mover.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
@@ -143,6 +144,7 @@ export default {
       // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
       await r.open();
       const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
+      if (spec && spec.skew) throw Object.assign(new Error("This Mac runs an older Vyre than this Space needs, so the session runs on the server. Update Vyre on this Mac, then bring it back."), { code: "unavailable" });
       if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
       if (typeof spec.title === "string" && spec.title) titles.set(session, spec.title);
       const run = resolveAgent(spec);
@@ -276,18 +278,54 @@ export default {
     // no longer has (stopped here), and what it wants done: hand a session over (the person's move), or start one the person brought back. A home that cannot be reached changes nothing here: after a lapse it
     // takes the sessions itself, and this computer is fenced when it is heard from again. The moves run apart from the beat, so a slow final checkpoint never makes this computer look dead.
     const asked = new Set();
+    // Which sessions go to the server and why (mover.js), from the person's limits and this computer's conditions. A session is handed over apart from the beat (freeze, last checkpoint, release), once; a
+    // move the server held back (its cooldown) or that could not be made waits before it is tried again.
+    const mover = createMover();
+    /** @type {"lid-closed" | "asleep" | null} */ let sleeping = null;
+    const handing = new Set();
+    const holdOff = new Map();
+    const handOver = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason) => {
+      const key = `${space}/${session}`, r = runners.get(space);
+      if (!r || handing.has(key) || (holdOff.get(key) || 0) > Date.now()) return;
+      handing.add(key);
+      (async () => {
+        try { const out = await r.moveToServer(session, reason); if (out && out.moved === false) holdOff.set(key, Date.now() + 30_000); }
+        catch { holdOff.set(key, Date.now() + 10_000); }
+        finally { handing.delete(key); }
+      })();
+    };
+    const moveTick = () => {
+      /** @type {any[]} */ const rows = [];
+      for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x });
+      for (const d of mover.tick({ settings: limits, sleeping, onPower: deviceState().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
+    };
+    // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts; when it wakes, check in at once.
+    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); moveTick(); });
+    const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatOnce().catch(() => {}); });
+    /** Consecutive beats a Space's home did not answer. @type {Map<string, number>} */ const missed = new Map();
     let beating = false, beatTimer = null;
     const beatOnce = async () => {
       if (beating) return;
       beating = true;
       try {
         await refreshSettings().catch(() => {});
-        const well = limits.enabled && hereBlock({ spaceAllows: true, memberAccepts: true, state: deviceState(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
+        moveTick();
+        const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: deviceState(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
         for (const [space, l] of lenders) {
           const p = l.ports; if (typeof p.beat !== "function") continue;
           const r = runners.get(space);
           const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true })) : [];
-          let ans; try { ans = await p.beat({ sessions, well }); } catch { continue; }
+          let ans;
+          try { ans = await p.beat({ sessions, well }); }
+          catch {
+            // two beats unanswered: the sessions wait where they are, so they never run ahead of a server that will take them after a lapse; the next answer settles what happens to them
+            const n = (missed.get(space) || 0) + 1; missed.set(space, n);
+            if (n >= 2 && r) r.freeze("offline");
+            continue;
+          }
+          missed.set(space, 0);
+          if (r && ans && Array.isArray(ans.fenced)) for (const sid of ans.fenced) await r.fence(sid).catch(() => {});
+          if (r) r.thaw("offline");
           for (const d of ans && Array.isArray(ans.directives) ? ans.directives : []) {
             const key = `${space}/${d.do}/${d.session}`;
             if (asked.has(key)) continue;
@@ -303,6 +341,6 @@ export default {
       } finally { beating = false; }
     };
     if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, HEARTBEAT_MS); beatTimer.unref?.(); }
-    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

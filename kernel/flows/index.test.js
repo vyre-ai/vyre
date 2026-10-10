@@ -84,3 +84,28 @@ test("service: simulation through the tool reports without writing", async () =>
   assert.equal(r.matched, 1);
   assert.equal([...(kernel.tables.get("matter") || new Map())].length, 0);
 });
+
+test("service: a run with lanes paints the lanes' steps on its picture and lists each lane, and flows.simulate sets last week beside what really happened", async () => {
+  const { kernel, flows, person, settle } = await build();
+  const flow = { format: 1, name: "both_ways", label: "Both ways", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps: [
+    { id: "p", kind: "parallel", steps: [
+      { id: "left", kind: "branch", steps: [{ id: "a", kind: "create", type: "matter", set: { client: "A" } }] },
+      { id: "right", kind: "branch", steps: [{ id: "b", kind: "create", type: "matter", set: { client: "B" } }] },
+    ] },
+  ] };
+  const d = await flows.tools["flows.define"](person, { flow });
+  assert.equal(d.ok, true, JSON.stringify(d.errors));
+  await flows.tools["flows.approve"](person, { id: d.id, version: d.version, hash: d.hash });
+  const since = Date.UTC(2026, 9, 3, 11);
+  kernel.inbound("payment.received", { amount: 1, client: "Svc" });
+  await settle();
+  const roots = (await flows.tools["flows.runs"](person, { id: d.id })).filter(r => !r.parent);
+  assert.equal(roots.length, 1);
+  const one = await flows.tools["flows.run"](person, { run: roots[0].id });
+  assert.deepEqual(one.lanes.map(l => [l.lane, l.state]).sort(), [["left", "done"], ["right", "done"]]);
+  assert.equal(one.painted.nodes.find(n => n.id === "a").state, "done", "a step inside a lane is painted from the lane's own run");
+  const sim = await flows.tools["flows.simulate"](person, { id: d.id, since });
+  assert.equal(sim.ok, true, JSON.stringify(sim.errors));
+  assert.equal(sim.history.matches, true, sim.history.line);
+  assert.equal(sim.history.ran, 1);
+});
