@@ -50,6 +50,12 @@ jobs:
           echo "VYRE_FSCRYPT_DIR=/mnt/fsc" >> "$GITHUB_ENV"
           echo "VYRE_MUST_RUN=1" >> "$GITHUB_ENV"
       - run: npm ci --no-audit --no-fund
+      # The real-browser tests (a published React page drawn in headless Chrome) run everywhere they are counted: the one pinned chrome-headless-shell, hash-checked, cached by its pin (scripts/install-test-chrome.mjs).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vyre/chrome-headless-shell
+          key: chrome-headless-shell-153.0.8010.12
+      - run: node scripts/install-test-chrome.mjs
       # The phone app's tests (apps/app/**) import @noble/*, which only apps/app's own lockfile installs; scripts are off, nothing builds.
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
