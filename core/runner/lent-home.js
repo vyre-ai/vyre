@@ -24,7 +24,8 @@ import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
 import { createPipes } from "./pipe-home.js";
-import { withinOrThrow } from "../../lib/within.js";
+import { within, withinOrThrow } from "../../lib/within.js";
+import { newPrefixedId } from "../../lib/id.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
@@ -79,7 +80,7 @@ export function createLentHome(o) {
   const dropCalls = (/** @type {string} */ session) => { for (const [k, c] of calls) if (c.session === session) calls.delete(k); };
   /** Waits up to HTTP_FIRST_MS for a kept tool call: its answer (and the call is done), or `{ pending: ticket }` to ask again. */
   const settle = async (/** @type {string} */ session, /** @type {string} */ ticket, /** @type {{ p: Promise<any> }} */ c) => {
-    const got = await Promise.race([c.p, new Promise(r => { const t = setTimeout(() => r(null), HTTP_FIRST_MS); t.unref?.(); })]);
+    const got = await within(c.p, HTTP_FIRST_MS, null);
     if (got === null) return { pending: ticket };
     calls.delete(ticket);
     if (got.e) throw got.e;
@@ -379,7 +380,7 @@ export function createLentHome(o) {
       if (body.length > 128 * 1024) throw err("bad_input", "that request is too large");
       if ([...calls.values()].filter(c => c.session === session).length >= MAX_PENDING) throw err("unavailable", "this chat already has several tool calls running; wait for one to finish");
       const run = Promise.resolve(o.http(threads.get(session) || lent.get(session)?.chat || session, method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body)).then(r => ({ r }), e => ({ e }));
-      const ticket = `call_${crypto.randomBytes(9).toString("hex")}`, c = { session, p: run, at: now0 };
+      const ticket = newPrefixedId("call"), c = { session, p: run, at: now0 };
       calls.set(ticket, c);
       return await settle(session, ticket, c);
     },
