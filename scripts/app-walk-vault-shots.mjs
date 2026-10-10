@@ -88,6 +88,7 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
   await step("1-home", async () => { await home(); await shot("1-home"); });
   await step("2-item", async () => { if (OLD) await pg.getByRole("tab", { name: "Keys" }).first().click({ timeout: 8000 }).catch(() => {}); await pg.getByText(/^stripe.live$/i).first().click({ timeout: 8000 }); await pg.waitForTimeout(900); await shot("2-item"); });
   await step("3-add", async () => { await home(); if (OLD) await click("Add an item"); else await menu("Login"); await shot("3-add"); });
+  if (!OLD) await step("3b-add-filled", async () => { await home(); await menu("Login"); await pg.getByLabel("Name", { exact: true }).first().fill("Juniper Drive"); await pg.getByLabel("Username", { exact: true }).first().fill("kit@juniper.example"); await pg.getByRole("button", { name: "Generate a strong one" }).first().click(); await shot("3b-add-filled"); });
   await step("4-sharing", async () => { await home(); await section(OLD ? "Passes" : "Sharing"); await shot("4-sharing"); });
   if (OLD) await step("4b-shared", async () => { await home(); await section("Shared"); await shot("4b-shared"); });
   if (!OLD) {
