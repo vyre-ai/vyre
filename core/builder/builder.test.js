@@ -7,6 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import builder, { planOf } from "./index.js";
+// the Dockerfile path is switched off in the test release unless this is set (core/builder/index.js planOf); these tests are about that path
+process.env.VYRE_PUBLISH_SERVERS = "1";
 
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-builder-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 async function tool(/** @type {import("node:test").TestContext} */ t) {
@@ -45,4 +47,14 @@ test("a folder that is missing or empty answers with the folder reader's own wor
   const build = await tool(t), d = tmp(t);
   await assert.rejects(() => build(dep({ source: { kind: "folder", ref: path.join(d, "gone") } })), { code: "not_found", message: /not there/ });
   await assert.rejects(() => build(dep({ source: { kind: "folder", ref: d } })), { message: /no files to publish/ });
+});
+
+test("publishing an app with its own server is switched off in the test release: a Dockerfile build is refused in words, a folder of ready files still publishes", () => {
+  const saved = process.env.VYRE_PUBLISH_SERVERS;
+  delete process.env.VYRE_PUBLISH_SERVERS;
+  try {
+    assert.throws(() => planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" } }), /Publishing apps with their own server is turned off in this test release/);
+    assert.deepEqual(planOf({ source: { kind: "folder", ref: "/x" }, build: {} }), { dir: "/x", outputDir: ".", dockerfile: false }, "a folder of ready files is untouched");
+    assert.equal(planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "static" } }).dockerfile, false);
+  } finally { if (saved === undefined) delete process.env.VYRE_PUBLISH_SERVERS; else process.env.VYRE_PUBLISH_SERVERS = saved; }
 });

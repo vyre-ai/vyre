@@ -10,6 +10,8 @@ import path from "node:path";
 import builder, { seam } from "../../core/builder/index.js";
 import { publishedManifest, checkPublished } from "../../core/appmods/published.js";
 import { normalizeDraft } from "../../lib/publish/deployment.js";
+// the Dockerfile path is switched off in the test release unless this is set (core/builder/index.js planOf); these tests are about that path
+process.env.VYRE_PUBLISH_SERVERS = "1";
 
 const manifest = (/** @type {string} */ rel) => JSON.parse(fs.readFileSync(new URL(`../../core/${rel}/module.json`, import.meta.url), "utf8"));
 const IMG = "sha256:" + "e".repeat(64);
