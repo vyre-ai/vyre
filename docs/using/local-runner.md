@@ -55,6 +55,14 @@ File names are encrypted but file sizes, counts and times are not hidden by this
 
 A session reaches the internet only if the space allows it; if it does, its traffic leaves from this computer's connection, never to this computer's own network (private and local addresses are refused).
 
+## Your network limit
+
+When you lend a computer you choose how far its sessions may reach: only the AI provider (`provider`), or the provider and the internet the space allows (`internet`). The space can never give a session more than you allowed; the limit you and the space each set, the tighter one wins.
+
+- The limit is yours and it only tightens by itself. If you stop lending a computer and lend it again without saying a limit, it keeps the limit it had. You cannot widen it by leaving it out.
+- To widen it, say so: lend again and confirm the looser limit. That is your own act, so it asks for nothing more. An assistant that tries to lend your computer with a looser limit waits for your one yes first.
+- Your computer signs the limit into every request for a lease, so the space's server holds a session to what the computer itself said, even if a later message says less or more.
+
 
 You can read what your session can read. This protects against loss, theft and access after removal, not against
 a member copying data on purpose. A computer that was open at the moment of removal can read until its lease ends

@@ -15,6 +15,7 @@ export const owners = {
   health: { total: 3, rotate: 1, fix: 2 },
   eval: { model: "claude-x", label: "Claude X", state: "pending", price_known: true, total_usd: 1.5, types: ["a", "b"], at: 1760000000800 },
   signing: { submission: 4411, signer: "Dana Harlow", email: "dana@harlow.test", template: "Engagement letter", at: 1760000000900 },
+  signin: { id: "linkedin", host: "www.linkedin.com", site: "https://www.linkedin.com", class: "auth", words: "sign in to www.linkedin.com again in the browser Vyre uses", agent: "ops", at: 1760000001000 },
 };
 
 /** One card of each kind, as `approvals.items` lists it. `answer` names the OWNER's tool that settles the card; `fill` names the values the screen still asks the person for. */
@@ -45,6 +46,9 @@ export const cards = {
     answer: { tool: "models.eval-approve", input: { model: "claude-x" }, fill: ["evals"] }, decline: { tool: "models.eval-decline", input: { model: "claude-x" } } },
   signing: { id: "documents:4411", kind: "signing", title: "Dana Harlow has not signed Engagement letter", detail: "Sent to dana@harlow.test", at: 1760000000900, source: "documents", quiet: true,
     answer: { tool: "documents.signing.remind", input: { submission: 4411 }, fill: [] } },
+  signin: { id: "connectors:linkedin", kind: "signin", title: "Sign in to www.linkedin.com again", detail: "sign in to www.linkedin.com again in the browser Vyre uses", at: 1760000001000, source: "connectors",
+    answer: { tool: "connectors.connection.check", input: { id: "linkedin" }, fill: [] },
+    answers: [{ label: "Open the computer's screen", open: "/u/glass/ops" }, { label: "Check it now", tool: "connectors.connection.check", input: { id: "linkedin" }, fill: [] }] },
   /** A yes waiting on the phone (a vault reveal, a pairing, an outward call from an agent): the queue's own card. The phone signs it (see `pending`). */
   approval: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f", kind: "approval", title: 'A device wants to show "stripe" from your vault', at: 1760000000900, source: "approvals", answer: { tool: "approvals.answer", input: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f" }, fill: ["yes"] } },
 };
@@ -63,5 +67,5 @@ export const pendingCard = {
   sign: { op: "task.vault_use", space: "spc_tzw2zlaob7zz", fields: { what: "vault.reveal", fields: { name: "stripe" } } },
 };
 
-export const kinds = ["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing"];
+export const kinds = ["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"];
 export const limits = { askMinutes: 5, openCards: 5, groupSeconds: 90, groupMax: 20, recentMinutes: 10, recentMax: 50, titleMax: 120, detailMax: 160 };

@@ -2217,6 +2217,10 @@
    "module": "connectors",
    "reason": "read-only: the website Connections, names and lights, never a cookie (callers list)"
   },
+  "connectors.site.attention": {
+   "module": "connectors",
+   "reason": "read-only: the website Connections whose light is red for a reason only a person can clear, with the light's words, never a cookie (callers list); the approvals queue reads it for Needs you"
+  },
   "connectors.site.operations": {
    "module": "connectors",
    "reason": "read-only: one website Connection's operations and their health, never a value (callers list)"

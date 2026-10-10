@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../../core/daemon/index.js";
-import { fromAsks, fromHeld, fromVault, fromAttention, fromStuckTasks, fromHealth, fromEvals, fromSigning, ITEM_KINDS } from "../../core/approvals/items.js";
+import { fromAsks, fromHeld, fromVault, fromAttention, fromStuckTasks, fromHealth, fromEvals, fromSigning, fromSignIn, ITEM_KINDS } from "../../core/approvals/items.js";
 import { tempHome, present, asOwner } from "../helpers.js";
 import { owners as O, cards as C, pendingCard, itemsAnswer, itemPresence, kinds, shapeDiff } from "./approvals.fixtures.js";
 
@@ -26,6 +26,7 @@ test("approvals v1: every owner's row becomes the card the fixtures show, and th
   assert.deepEqual(fromHealth(O.health)[0], C.health);
   assert.deepEqual(fromEvals([O.eval])[0], C.eval);
   assert.deepEqual(fromSigning([O.signing])[0], C.signing);
+  assert.deepEqual(fromSignIn([O.signin])[0], C.signin);
   for (const c of Object.values(C)) assert.ok(kinds.includes(c.kind), c.id);
 });
 
@@ -67,7 +68,7 @@ test("approvals v1: the queue on a real daemon lists a yes waiting on the phone 
   assert.equal(held.error.code, "held_for_approval");
   const again = await call("approvals.items", {});
   const hold = again.data.items.find((/** @type {any} */ c) => c.id === held.error.approval);
-  assert.equal(hold.title, "An assistant (kit) wants to run mail.send");
+  assert.equal(hold.title, "An assistant (kit) wants to send an email");
   assert.ok(!JSON.stringify(hold).includes("the words of the message"));
   assert.deepEqual(hold.presence, { required: true, covered: false, since: null }, "an outward call from an assistant is answered with a yes");
   assert.ok((await call("approvals.items", {}, "mcp")).error, "a model does not list a person's waiting cards");

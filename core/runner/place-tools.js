@@ -42,7 +42,7 @@ export function settingsReader(get) {
 
 /**
  * @param {any} ctx the module's context
- * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string> }} d
+ * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string>, platform?: string }} d
  */
 export function registerPlaceTools(ctx, d) {
   /** The one person a call is, in a Space, or a refusal: the home tells a person about their own chats only. */
@@ -114,6 +114,7 @@ export function registerPlaceTools(ctx, d) {
     }
     if (hit.row.person !== person) throw refuse("no such chat", "not_found");
     const p = placements();
+    if (i.to === "server" && typeof p.resumable === "function" && !p.resumable(hit.space)) throw refuse("Coming in this release: moving a chat from a computer to the server. It keeps running where it is.", "unavailable");
     const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
@@ -161,6 +162,8 @@ export function registerPlaceTools(ctx, d) {
       input: obj(),
       run: async (_i, meta) => {
         await d.person(meta, "the sessions on this computer");
+        // Windows has no way to freeze a process the way a Mac or Linux does (a stop signal there ends it), so Pause all would say "paused" over sessions that are running or gone
+        if (verb === "pause" && (d.platform || process.platform) === "win32") throw refuse("Pausing sessions is not available on Windows yet. Stop a session from its chat instead.", "unavailable");
         let n = 0; for (const r of d.runners.values()) { n += r.info().length; r[verb](); }
         return { [verb === "pause" ? "paused" : "resumed"]: n };
       },

@@ -89,5 +89,5 @@ test("a held outward call shows in the waiting list with a plain title: who, and
   const a = await w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" });
   assert.match(a.line, /kit/); assert.doesNotMatch(a.line, /aaaaaaaa/, "the digest is not words");
   const { items } = await w.run("approvals.items", {}, { caller: "cli" });
-  assert.deepEqual(items.map(i => i.title), ["An assistant (kit) wants to run mail.send"]);
+  assert.deepEqual(items.map(i => i.title), ["An assistant (kit) wants to send an email"]);
 });
