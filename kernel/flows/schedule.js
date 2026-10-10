@@ -133,7 +133,8 @@ export function nextFire(t, after, zone, space = []) {
 export function dueTimes(t, last, now, zone, space, cap = CATCH_UP_CAP) {
   /** @type {number[]} */ const times = [];
   let more = 0, at = last;
-  for (let i = 0; i < 100_000; i++) {
+  // (a zone-aware line costs a scan of its day, so the walk stops after a thousand times: a week of a once-a-minute line is "a thousand or more")
+  for (let i = 0; i < 1000; i++) {
     const n = nextFire(t, at, zone, space);
     if (n === null || n > now) break;
     if (times.length < cap) times.push(n); else more++;

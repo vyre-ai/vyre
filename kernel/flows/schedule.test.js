@@ -65,6 +65,8 @@ test("due times: everything due since the last run, oldest first, capped, with t
   const many = dueTimes({ on: "time", every_ms: 60_000 }, 0, 120 * 60_000, "UTC", [], 50);
   assert.equal(many.times.length, 50);
   assert.equal(many.more, 70);
+  const week = dueTimes({ on: "time", cron: "*/5 * * * *", tz: NY }, 0, 7 * 86_400_000, NY, [], 50);
+  assert.equal(week.times.length + week.more, 1000, "the walk stops at a thousand times");
   assert.equal(describeWindow({ hours: true, catch_up: "skip" }), "weekdays 9:00 to 17:00; not on the Space's holidays; after downtime, skips what was missed");
   assert.match(describeTrigger({ on: "time", cron: "0 9 * * *", tz: NY, hours: { days: ["mon", "wed"], from: "08:30", to: "12:00" }, holidays: ["12-25"] }), /On a schedule .*, mon, wed 8:30 to 12:00; not on 1 listed day/);
 });
