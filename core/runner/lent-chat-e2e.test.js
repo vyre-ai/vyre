@@ -1,7 +1,6 @@
 // @ts-check
 // A chat that runs on a person's own computer, end to end (R031-95 part B; contracts/lent-spawn.md v1.3). A real daemon (kernel on, the real switchboard and stream) is the home; a lender (the runner module, in the real
-// sandbox, with a fake Claude) is the person's computer. The first message of a new chat is placed on the computer at creation, the process runs there, the answer comes back into the chat, the chat says where it runs, and a
-// Vyre tool call from inside the lent session is answered by the home as that session. The home's book and lender are link's test world (core/runner/testing/lent-rig.js) set as the daemon's lent home.
+// sandbox, with a fake Claude) is the person's computer. The first message of a new chat is placed on the computer at creation, the process runs there, the answer comes back into the chat, and the chat says where it runs. (A lent session reaching Vyre's tools through the home is core/runner/lent-pipe-runner.test.js, which needs the fake agent that speaks the tool protocol.) The home's book and lender are link's test world (core/runner/testing/lent-rig.js) set as the daemon's lent home.
 import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import "./testing/require-sandbox.js";
@@ -24,7 +23,7 @@ import { until, FAKE } from "../sessions/testing/boot.js";
 const SKIP = unavailable() || workspaceUnavailable() || "";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
-test("a new chat is placed on the person's computer, runs there, answers in the chat, says where it runs, and reaches Vyre's tools", { skip: SKIP || false, timeout: 240_000 }, async t => {
+test("a new chat is placed on the person's computer, runs there, answers in the chat, and says where it runs", { skip: SKIP || false, timeout: 240_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
   // the fake Claude, copied where the lender's sandbox can read it, is what both the lender and the box run
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "lce-agent-"));
@@ -97,10 +96,4 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 2, "the second turn", 60_000);
   const again = (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
   assert.match(again, /echo: and again/);
-
-  // a tool call from inside the lent session is answered by the home as that session
-  await ok("threads.send", { thread: th.id, text: "vyre threads.list {}" });
-  await until(async () => (await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 3, "the tool turn", 60_000);
-  const tool = (await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
-  assert.doesNotMatch(String(tool), /unreachable|ECONN|refused|error/i, "Vyre's tool answered a call from the lent session: " + tool);
 });
