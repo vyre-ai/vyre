@@ -125,6 +125,25 @@ export class Access {
     return { revoked: true, grant: g };
   }
 
+  /**
+   * May this deployment have this item's value? Publish grants a deployment its secret as a kernel grant (`vault.run` on the credential's address, to the deployment's own service actor, source
+   * `publish:secret:<deployment>:...`); the Vault releases to Publish for that deployment only while the grant is live, so one key can serve many deployments and the chat's own use, each on its own.
+   * @param {string} name the item @param {string} deployment
+   */
+  deploymentMay(name, deployment) {
+    const K = this.K;
+    if (!K || !/^[A-Za-z0-9_.-]{1,80}$/.test(String(deployment))) return false;
+    const t = this.v.clock(), at = `vyre://${K.space}/credential/${name}`;
+    return K.vault.grantsOn(at).some((/** @type {any} */ g) => g.resource.prefix === at && g.actions.includes("vault.run") && g.source.startsWith(`publish:secret:${deployment}:`)
+      && g.subject.actor && g.subject.actor.id === `deployment-${deployment}` && !(g.conditions && g.conditions.when && g.conditions.when.expires <= t));
+  }
+
+  /** Every deployment's use of a credential goes when the item goes. @param {string} item */
+  async revokeDeployments(item) {
+    const K = this.K;
+    return K ? (await K.vault.takeBack({ prefix: `vyre://${K.space}/credential/${item}`, reason: "the credential was deleted" })).length : 0;
+  }
+
   /** Every lending of an item goes when the item goes. */
   async revokeItem(/** @type {string} */ item, /** @type {string} */ caller) {
     this.db.prepare("DELETE FROM vault_access_requests WHERE item=?").run(item);

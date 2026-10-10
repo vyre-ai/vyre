@@ -1360,6 +1360,7 @@ export class Vault {
     const gone = this.releases.dropItem(name).catch(e => this.log(`vault: what was granted of ${name} was not taken back: ${e.message}`));
     this.revoking.add(gone);
     gone.finally(() => this.revoking.delete(gone));
+    if (this.access) { const q = this.access.revokeDeployments(name).catch(e => this.log(`vault: what deployments held of ${name} was not taken back: ${e.message}`)); this.revoking.add(q); q.finally(() => this.revoking.delete(q)); }
     if (this.access) { const p = this.access.revokeItem(name, String(who)).catch(e => this.log(`vault: what was lent of ${name} was not taken back: ${e.message}`)); this.revoking.add(p); p.finally(() => this.revoking.delete(p)); }
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
@@ -1450,15 +1451,16 @@ export class Vault {
    *   session-credentials.md). Nothing passes this yet - modules run process-wide, not scoped to
    *   one project - so today it is always absent and this filters nothing.
    */
-  async release({ name, field, watcher = "", project }, caller) {
+  async release({ name, field, watcher = "", project, deployment }, caller) {
     const mod = moduleOf(caller);
-    const who = watcher ? `${caller}/${watcher}` : String(caller);
+    const who = watcher ? `${caller}/${watcher}` : deployment ? `${caller}/${deployment}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.granted({ name, module: mod, watcher, project });
+    // Publish asks for a deployment, and a deployment holds its secret as its own kernel grant: that grant, and not a grant to the module, is what lets the value out (R032-11).
+    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project });
     if (!g) {
       this.audit("release", name, who, false, "no grant");
-      throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
+      throw new Error(mod === "publish" ? `${name} is not granted to this deployment · give it from the deployment's secrets` : `${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }

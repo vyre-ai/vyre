@@ -171,8 +171,8 @@ export default {
       return {
         dir,
         classOf: (/** @type {string} */ ref) => (ref.startsWith("vault://config/") ? "config" : "secret"),
-        async read(/** @type {string} */ ref) {
-          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, "")); }
+        async read(/** @type {string} */ ref, /** @type {{ deployment?: string }} */ o = {}) {
+          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, ""), { deployment: o.deployment }); }
           catch (/** @type {any} */ e) {
             if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available", "no_vault");
             throw e;
