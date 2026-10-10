@@ -339,7 +339,7 @@ export default {
     const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); sleepingAt = Date.now(); moveTick(); for (const r of runners.values()) r.freeze("sleep"); });
     const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatAgain = true; beatOnce().catch(() => {}); });
     /** Consecutive beats a Space's home did not answer, and the beat to each that is still out. @type {Map<string, number>} */ const missed = new Map();
-    /** @type {Map<string, Promise<any>>} */ const inflight = new Map();
+    /** @type {Map<string, { call: Promise<any>, at: number }>} */ const inflight = new Map();
     let beating = false, beatTimer = null, beatAgain = false;
     /** One Space's heartbeat: its sessions (in as many calls as it takes), then what the home answered. */
     const beatSpace = async (/** @type {string} */ space, /** @type {any} */ l, /** @type {any[]} */ rows, /** @type {boolean} */ well) => {
@@ -370,11 +370,13 @@ export default {
           if (typeof l.ports.beat !== "function") return;
           const r = runners.get(space);
           const missOne = () => { const n = (missed.get(space) || 0) + 1; missed.set(space, n); if (n >= 2 && r) r.freeze("offline"); };
-          // the last beat to this home is still out (the call hangs): that is a miss too, and no second call piles on it
-          if (inflight.has(space)) { missOne(); return; }
+          // the last beat to this home is still out (the call hangs): that is a miss too, and no second call piles on it. One that has been out for two timeouts is given up, so a call that never returns cannot
+          // stop the heartbeat for good; the next tick asks again.
+          const out = inflight.get(space);
+          if (out) { missOne(); if (Date.now() - out.at > 2 * BEAT_TIMEOUT_MS) inflight.delete(space); return; }
           const call = beatSpace(space, l, rows, well);
-          inflight.set(space, call);
-          call.catch(() => {}).finally(() => { if (inflight.get(space) === call) inflight.delete(space); });
+          inflight.set(space, { call, at: Date.now() });
+          call.catch(() => {}).finally(() => { if (inflight.get(space)?.call === call) inflight.delete(space); });
           /** @type {{ fenced: string[], directives: any[] }} */ let ans;
           try { ans = await Promise.race([call, new Promise((_, no) => { const t = setTimeout(() => no(new Error("the home did not answer")), BEAT_TIMEOUT_MS); t.unref?.(); })]); }
           catch { missOne(); return; }
