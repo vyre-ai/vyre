@@ -90,7 +90,7 @@ export function RealFlow({ id }: { id: string }) {
       ) : null}
       {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
       {painted && picked_run ? (
-        <Sec title={`What run ${picked_run.id.slice(0, 8)} did`}>
+        <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
           <Card flush>
             {recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
           </Card>
@@ -105,7 +105,7 @@ export function RealFlow({ id }: { id: string }) {
               const s = STATE[r.state] ?? { note: r.state, tone: "plain" as const };
               return (
                 <View key={r.id}>{i ? <Divider /> : null}
-                  <Row selected={runId === r.id} onPress={() => setRunId(runId === r.id ? undefined : r.id)} title={`Run ${r.id.slice(0, 8)}`} sub={`Started ${when(r.started_at)}.${r.error?.message ? ` ${r.error.message}` : ""}`} end={<Chip tone={s.tone}>{s.note}</Chip>} />
+                  <Row selected={runId === r.id} onPress={() => setRunId(runId === r.id ? undefined : r.id)} title={`Run of ${when(r.started_at)}`} sub={r.error?.message || undefined} end={<Chip tone={s.tone}>{s.note}</Chip>} />
                 </View>
               );
             })}

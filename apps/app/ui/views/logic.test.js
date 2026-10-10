@@ -247,6 +247,7 @@ test("the Space's own bookkeeping types are not a screen of the person's", () =>
   for (const n of ["def-flow", "flow-state", "kit-proposal", "kit-install", "goal"]) assert.equal(isHiddenType({ name: n }), true, n);
   for (const n of ["contact", "project", "kit", "flowers", "lead"]) assert.equal(isHiddenType({ name: n }), false, n);
   assert.equal(isHiddenType({ name: "x", internal: true }), true);
+  assert.equal(isHiddenType({ name: "project-template" }), true, "a template's JSON body is read in the Templates screen, never as a table of records");
 });
 
 test("a stored filter reads as words in the Filtered row", () => {

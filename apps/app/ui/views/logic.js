@@ -26,7 +26,7 @@ export const isSealedField = (f) => f.kind === "sealed" || !!f.seal;
 export const initialsOf = (s) => String(s).split(/[\s.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
 /** The Space's own bookkeeping (Flow definitions and state, installed Kits and the proposals waiting for a yes, goals): records, but never a screen of the person's. @param {any} t a type definition */
-export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$)/.test(String(t.name));
+export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$|project-template$)/.test(String(t.name));
 
 /** Only the rows a view's stored `filter` (an Expression over the record's fields) holds for; every row when it has none. @param {any[]} rows @param {string | undefined} filter */
 export const viewRows = (rows, filter) => (filter ? rows.filter((r) => holds(filter, r?.data || {})) : rows);
