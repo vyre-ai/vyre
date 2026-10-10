@@ -22,6 +22,7 @@ const keepAlive = (/** @type {any} */ t) => { const k = setInterval(() => {}, 10
 test("lent-spawn v1: the numbers the contract promises are the code's, and the box's paths do not travel", () => {
   assert.deepEqual({ chunkBytes: PIPE.CHUNK, callBytes: PIPE.CALL_BYTES, callChunks: PIPE.CALL_CHUNKS, downHigh: PIPE.DOWN_HIGH, upHigh: PIPE.UP_HIGH, holdMs: PIPE.HOLD_MS, waitMs: PIPE.WAIT_MS, waitMaxMs: PIPE.WAIT_MAX_MS, startMs: PIPE.START_MS, killMs: PIPE.KILL_MS }, F.limits);
   assert.deepEqual(lenderArgs(F.args.given), F.args.sent);
+  assert.deepEqual(lenderArgs(["--mcp-config", JSON.stringify(F.mcpConfig.given)]), ["--mcp-config", JSON.stringify(F.mcpConfig.sent)]);
 });
 
 test("lent-spawn v1: a chat spawned for a ready lender: the heartbeat says start, lent.start answers the SDK's flags, and lent.pipe carries the bytes in the shapes the fixtures give", { timeout: 60_000 }, async t => {
@@ -31,7 +32,14 @@ test("lent-spawn v1: a chat spawned for a ready lender: the heartbeat says start
   await c.vault.lease();
   await r.home.status(r.bob, { device_key: "KEY_LAPTOP" });
   await c.beat({ sessions: [], well: true });
-  const proc = r.home.spawn({ session: SESSION, person: BOB, command: "/box/bin/node", args: F.args.given });
+  const placed = r.home.placeNew({ session: SESSION, person: BOB });
+  assert.equal(shapeDiff(placed, F.placeNew.mac), "", JSON.stringify(placed));
+  assert.equal(shapeDiff(r.home.placeNew({ session: "s_none_here", person: "per_carol" }), F.placeNew.box), "");
+  const waiting = c.wait({ wait_ms: 3000 });
+  const proc = r.home.spawn({ session: SESSION, person: BOB, command: "/box/bin/node", args: F.args.given, title: "A chat", computer: "Office Mac" });
+  const nudged = await waiting;
+  assert.equal(shapeDiff(nudged, F.answerWait), "", JSON.stringify(nudged));
+  assert.equal(shapeDiff(proc.lent, F.lentStarting), "", JSON.stringify(proc.lent));
   for (const key of F.processKeys) assert.ok(key in proc, `the process has ${key}`);
   assert.deepEqual([proc.pid, proc.killed, proc.exitCode, proc.signalCode], [0, false, null, null]);
   // the lender hears it, and the definition it gets is the SDK's flags under the lender's own program
@@ -39,11 +47,13 @@ test("lent-spawn v1: a chat spawned for a ready lender: the heartbeat says start
   assert.equal(shapeDiff(hb.directives[0], F.directive), "", JSON.stringify(hb));
   assert.deepEqual([hb.directives[0].do, hb.directives[0].pipe], ["start", true]);
   const def = await c.spec({ session: SESSION });
+  assert.equal(def.title, "A chat");
   assert.equal(def.command, F.startDefinition.command); assert.deepEqual(def.env, F.startDefinition.env); assert.equal(def.pipe, true);
   assert.deepEqual(def.args, F.args.sent);
   // the wire: the lender's call and the home's answers
   proc.stdin.write("{\"type\":\"user\"}\n");
   const first = await c.pipe({ session: SESSION, up: F.call.up, ack: 0, wait_ms: 0 });
+  assert.equal(shapeDiff(proc.lent, F.lentUp), "", JSON.stringify(proc.lent));
   assert.equal(shapeDiff(first, F.answer), "", JSON.stringify(first));
   assert.deepEqual([first.acked, first.down.length, first.down[0].seq], [1, 1, 1]);
   assert.equal(Buffer.from(first.down[0].b64, "base64").toString(), "{\"type\":\"user\"}\n");
@@ -60,6 +70,21 @@ test("lent-spawn v1: a chat spawned for a ready lender: the heartbeat says start
   const last = await c.pipe({ session: SESSION, ack: 1, exit: { code: null, signal: "SIGTERM" }, wait_ms: 0 });
   assert.equal(shapeDiff(last, F.answerClosed), "", JSON.stringify(last));
   assert.deepEqual(await closed, [null, "SIGTERM"]);
+});
+
+test("lent-spawn v1.2: lent.http carries a tool call and the tool list of the session, and nothing else of vyred", { timeout: 60_000 }, async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const seen = [];
+  const r = await rig(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { seen.push([thread, method, p, headers["x-vyre-caller"], body]); return F.httpAnswer; } });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: SESSION });
+  const call = F.httpCall;
+  const a = await c.http({ session: SESSION, method: call.method, path: call.path, body: call.body, caller: call.caller });
+  assert.equal(shapeDiff(a, F.httpAnswer), "", JSON.stringify(a));
+  assert.deepEqual(seen[0], [SESSION, "POST", call.path, "mcp", call.body]);
+  await c.http({ session: SESSION, method: "GET", path: F.httpList.path });
+  assert.deepEqual(seen[1].slice(0, 3), [SESSION, "GET", "/v1/tools"]);
+  for (const bad of ["/v1/tools/x/y", "/v1/health", "/v1/presence/x", "/events"]) await assert.rejects(c.http({ session: SESSION, method: "POST", path: bad, body: "{}" }), (/** @type {any} */ e) => e.code === "bad_input", bad);
 });
 
 test("lent-spawn v1: a session lent with no pipe open answers idle; a limit broken is bad_input; an old epoch is conflict", { timeout: 60_000 }, async t => {
@@ -118,6 +143,31 @@ test("lent-spawn v1: on a real daemon the lent home hands out a spawn, and with 
   const err = await new Promise(res => proc.on("error", res));
   assert.equal(/** @type {any} */ (err).code, "lent_unavailable");
   assert.equal(host.pipes.has(SESSION), false);
+});
+
+test("lent-spawn v1.1: on a real daemon the host names the Spaces this computer is set to lend to, and a new chat with no ready computer is placed on the box", { timeout: 120_000 }, async t => {
+  keepAlive(t);
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "mac", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const sessionFor = async () => ({ call: async () => ({ v: 1, ok: true, result: {} }) });
+  const d = await start({ root, kernel: true, sessionFor, deviceIdentity: async () => ({ deviceId: "eid_this_mac", deviceKey: "eid_this_mac" }), log: () => {} });
+  t.after(() => d.stop());
+  const db = d.registry.deps.db;
+  const put = (/** @type {string} */ k, /** @type {any} */ v) => db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(k, JSON.stringify(v));
+  put("server-hosted/spc_lendedspace1", { device: "srv_home0000000001" }); put("lend/spc_lendedspace1/eid_this_mac", { lent: true, device: "eid_this_mac" });
+  put("server-hosted/spc_stoppedlend1", { device: "srv_home0000000001" }); put("lend/spc_stoppedlend1/eid_this_mac", { lent: false });
+  put("server-hosted/spc_otherscomputer", { device: "srv_home0000000001" }); put("lend/spc_otherscomputer/eid_another", { lent: true });
+  const host = /** @type {any} */ (d.kernel).kernelFor({ name: "runner", needs: { kernel: { actions: [] } } }).runnerHost();
+  assert.deepEqual(await host.lentTo(), ["spc_lendedspace1"], "only a Space reached over a wire, lent from this computer, and still on");
+  // a screen hears a chat's process fall back to the server when no computer is ready: thread.starting with state fallback
+  const team = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "team" });
+  /** @type {any[]} */ const heard = [];
+  /** @type {any} */ (d.registry.deps).events.on("*", (/** @type {any} */ e) => { if (e && e.type === "thread.starting") heard.push(e.payload || e.data || e); });
+  /** @type {any} */ (d.registry.deps).lentHome(team.space);
+  const proc = host.lentSpawn(team.space, { session: "s_heard", chat: "chat_00000000-0000-4000-8000-0000000000c1", person: d.kernel.id.owner });
+  await new Promise(res => proc.on("close", res));
+  assert.deepEqual(heard.map(x => [x.state, x.reason || null, x.thread]), [["fallback", "no_computer_ready", "chat_00000000-0000-4000-8000-0000000000c1"]]);
+  assert.deepEqual(await host.placeNew(d.kernel.id.space, { session: "s_x1", person: d.kernel.id.owner }), { where: "box" });
 });
 
 // the pump's reading of the child is covered by core/runner/lent-pipe.test.js; this keeps the import honest

@@ -91,14 +91,14 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
     input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
     callers: ["module"],
     run: async ({ id, thread, said }, meta = {}) => {
-      if (!CALLERS.test(String(meta && meta.caller))) throw refuse("only the chat itself resolves a tag", "denied");
+      if (!CALLERS.test(String(meta && meta.caller))) throw refuse("only the chat itself resolves a tag: tag the file again with # in the chat", "denied");
       const m = parseMentionId(id);
-      if (!m || !THREAD.test(String(thread))) throw refuse("that file is not available", "not_found");
+      if (!m || !THREAD.test(String(thread))) throw refuse("that file is not available (tag it again with # in the chat)", "not_found");
       let safe;
-      try { ({ safe } = await resolveIn(m.share, m.rel, { caller: "module:files" })); } catch { throw refuse("that file is not available", "not_found"); }
+      try { ({ safe } = await resolveIn(m.share, m.rel, { caller: "module:files" })); } catch { throw refuse("that file is not available (tag it again with # in the chat)", "not_found"); }
       let st;
-      try { st = fs.statSync(safe.real); } catch { throw refuse("that file is not available", "not_found"); }
-      if (!st.isFile()) throw refuse("that is a folder, not a file", "not_found");
+      try { st = fs.statSync(safe.real); } catch { throw refuse("that file is not available (tag it again with # in the chat)", "not_found"); }
+      if (!st.isFile()) throw refuse("that is a folder, not a file (tag a file inside it)", "not_found");
       const rel = m.rel.replace(/^\/+/, "");
       db().prepare("INSERT OR REPLACE INTO files_mention_grants (thread, share, path, real, said, at) VALUES (?, ?, ?, ?, ?, ?)")
         .run(String(thread), m.share, rel, safe.real, said ? String(said) : null, Date.now());

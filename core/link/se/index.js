@@ -81,7 +81,7 @@ export async function create() {
  * @returns {Promise<string>} base64url DER ECDSA signature
  */
 export async function sign(handle, message, reason) {
-  if (!dialogsAllowed()) throw Object.assign(new Error("Touch ID is off here (VYRE_NO_DIALOGS or a test)"), { code: "no_dialog" });
+  if (!dialogsAllowed()) throw Object.assign(new Error("Touch ID is off here (VYRE_NO_DIALOGS or a test); run it outside a test with VYRE_NO_DIALOGS unset"), { code: "no_dialog" });
   const r = /** @type {any} */ (await run(await helper(), ["sign", reason, "60"], 70_000, JSON.stringify({ handle, message: message.toString("base64") })));
   if (r.code !== 0) throw Object.assign(new Error("you did not confirm it on this Mac"), { code: "presence_required" });
   return r.out;

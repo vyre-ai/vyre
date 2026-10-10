@@ -28,7 +28,7 @@
       "actions": [],
       "mints": [
         { "prefix": "*", "actions": ["records.read", "records.create", "records.update"] },
-        { "prefix": "memory/*", "actions": ["memory.read"] },
+        { "prefix": "memory", "actions": ["memory.read"] },
         { "prefix": "project/*", "actions": ["project.reach"] },
         { "prefix": "file/*", "actions": ["drive.read"] }
       ]

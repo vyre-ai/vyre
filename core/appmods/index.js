@@ -68,7 +68,7 @@ const freePort = host => new Promise((resolve, reject) => { const s = net.create
  *   files?: { fetch: (url: string) => Promise<Uint8Array>, save: (path: string, bytes: Uint8Array) => Promise<{ path: string, size: number }> } }} p
  */
 export async function handleWebhook(p) {
-  if (!p.given || !sameToken(String(p.given), p.token)) throw refuse("that is not the app's token", "denied");
+  if (!p.given || !sameToken(String(p.given), p.token)) throw refuse("that is not the app's token: check the webhook address the app was given", "denied");
   const kind = p.body && typeof p.body === "object" ? String(p.body.event_type || "") : "";
   const map = (p.manifest.events || []).find((/** @type {any} */ e) => e.webhook === kind);
   if (!map) return { ignored: kind || "unknown" };
@@ -155,7 +155,7 @@ export default {
     }
     /** The Space a published server's files and secrets are kept under (for the helper driver). @param {any} m */
     const pubSpaceOf = m => { if (!m || !m["x-publish"]) return {}; const p = /** @type {any} */ (db.prepare("SELECT space FROM appmods_published WHERE name = ?").get(m.name)); return p ? { publishSpace: String(p.space) } : {}; };
-    const known = (/** @type {string} */ name) => { const m = catalog.get(String(name)); if (!m) throw refuse(`no app module called ${name}`, "not_found"); return m; };
+    const known = (/** @type {string} */ name) => { const m = catalog.get(String(name)); if (!m) throw refuse(`no app module called ${name} (appmods.catalog lists the apps this build can run)`, "not_found"); return m; };
 
     /** Webhooks from a docker-direct app arrive at a small listener on the app network's gateway (the daemon's own door is for apps that share the daemon's network). @param {any} m @param {string} host @param {number} port */
     function listen(m, host, port) {
@@ -179,7 +179,7 @@ export default {
     }
     async function receive(/** @type {string} */ name, /** @type {string} */ given, /** @type {any} */ body) {
       const m = known(name);
-      if (!row(name)) throw refuse("that app is not installed", "not_found");
+      if (!row(name)) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       const token = await secret(name, "hook");
       const origin = row(name).origin;
       const files = ctx.kernel && ctx.kernel.drive ? {
@@ -189,15 +189,15 @@ export default {
           const r = await fetch(origin + u.pathname + u.search, { signal: AbortSignal.timeout(60_000) });
           if (!r.ok) throw refuse(`the app would not give the document (${r.status})`, "app_refused");
           const len = Number(r.headers.get("content-length") || 0);
-          if (len > MAX_FILE) throw refuse("the document is bigger than 25 MB", "too_large");
+          if (len > MAX_FILE) throw refuse("the document is bigger than 25 MB: make it smaller and send it again", "too_large");
           const bytes = new Uint8Array(await r.arrayBuffer());
-          if (bytes.length > MAX_FILE) throw refuse("the document is bigger than 25 MB", "too_large");
+          if (bytes.length > MAX_FILE) throw refuse("the document is bigger than 25 MB: make it smaller and send it again", "too_large");
           return bytes;
         },
         save: async (/** @type {string} */ to, /** @type {Uint8Array} */ bytes) => { await ctx.kernel.drive.put(ctx.kernel.serviceChain("appmods"), to, bytes); return { path: to, size: bytes.length }; },
       } : undefined;
       return handleWebhook({ manifest: m, token, given, body, files, emit: (t, p) => ctx.events.emit(t, p),
-        startFlow: (p, o) => { const h = ctx.flowsHost && ctx.kernel && ctx.flowsHost.get(ctx.kernel.space); if (!h) throw refuse("Flows are not running here", "unavailable"); return h.flows.handleWeb(p, o); } });
+        startFlow: (p, o) => { const h = ctx.flowsHost && ctx.kernel && ctx.flowsHost.get(ctx.kernel.space); if (!h) throw refuse("Flows are not running here: ask the owner or an admin to turn them on", "unavailable"); return h.flows.handleWeb(p, o); } });
     }
 
     async function healthy(/** @type {any} */ m, /** @type {string} */ origin) {
@@ -214,24 +214,24 @@ export default {
     ctx.tool("appmods.card", { description: "The install card for one app: what runs, what it uses, what it may reach, what it shows. Built from the manifest, not the app.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => cardOf(known(i.name)) });
     ctx.tool("appmods.list", { description: "The app modules installed on this server and their state.", input: obj({}), run: async () => ({ apps: db.prepare("SELECT name, version, state, installed, note FROM appmods_apps ORDER BY name").all() }) });
     ctx.tool("appmods.status", { description: "One installed app: its state and what the runtime says.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       return { name: r.name, version: r.version, state: r.state, runtime: await driver.status({ space: r.space, manifest: known(r.name) }) };
     } });
     ctx.tool("appmods.screens", { description: "List screens of running installed apps as [{ module, id, label, path, icon? }]; appmods.open makes the address from path.", input: obj({}), run: async () => ({
       screens: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().flatMap((/** @type {any} */ r) => (known(r.name).screens || []).map((/** @type {any} */ s) => ({ module: r.name, ...s }))) }) });
     ctx.tool("appmods.logs", { description: "The last lines an app wrote. For the person who owns this server.", input: obj({ name: str, lines: { type: "integer" } }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       return { text: await driver.logs({ space: r.space, manifest: known(r.name) }, Math.min(Number(i.lines) || 100, 500)) };
     } });
 
     // ---- for the Connections module (team/0.3/IFACE-connection.md): where a running app is, and the Connection record its manifest declares.
     ctx.tool("appmods.origin", { description: "Where a running app is reached from this daemon: { origin }. For Vyre's own modules only (the Connections module calls it for a Connection made from an app).", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running", "not_found");
+      const r = row(String(i.name)); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running (appmods.status shows its state, appmods.start starts it)", "not_found");
       return { origin: r.origin };
     } });
     ctx.tool("appmods.connection", { description: "The Connection an installed app declares, as { app, label, auth, credential: { item, field }, check, operations }, with its Vault item.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
-      const c = known(r.name).connection; if (!c) throw refuse("that app declares no Connection", "not_found");
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
+      const c = known(r.name).connection; if (!c) throw refuse("that app declares no Connection (connectors.connection.propose proposes one by hand)", "not_found");
       return { app: r.name, label: c.label, auth: c.auth, credential: { item: item(r.name, c.credential.replace(/_/g, "-")), field: "value" }, check: c.check, operations: c.operations || [] };
     } });
 
@@ -243,7 +243,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const m = known(i.name);
         if (m["x-publish"]) throw refuse(`${m.name} is a site Publish runs; publish it again to change it`, "unsupported");
-        if (row(m.name)) throw refuse(`${m.name} is already installed`, "exists");
+        if (row(m.name)) throw refuse(`${m.name} is already installed (appmods.status shows how it is doing)`, "exists");
         const sp = space();
         // With the host helper, root makes the app's keys and the webhook key and hands the setup's outputs over once; the daemon keeps them in the Vault below.
         const secrets = /** @type {Record<string, string>} */ ({});
@@ -312,7 +312,7 @@ export default {
       },
     });
     ctx.tool("appmods.start", { description: "Start an installed app again.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       const m = known(r.name);
       const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: byHelper && !m["x-publish"] ? {} : await secretsOf(m), hookPort: r.hook_port, ...pubSpaceOf(m) });
       db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
@@ -321,7 +321,7 @@ export default {
       return { name: m.name, state: "running" };
     } });
     ctx.tool("appmods.stop", { description: "Stop an installed app. Its data stays.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
-      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+      const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       await driver.stop({ space: r.space, manifest: known(r.name) });
       db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(r.name);
       tickets.drop(r.name);
@@ -333,7 +333,7 @@ export default {
       input: obj({ name: str, data: { type: "boolean" } }, ["name"]),
       presence: { summary: async (/** @type {any} */ i) => `Remove ${i && i.name} from this server${i && i.data ? " and delete its data" : ""}` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+        const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
         if (known(r.name)["x-publish"]) throw refuse(`${r.name} is a site Publish runs; retire it in Publish`, "unsupported");
         if (r.connection_id) await ctx.call("connectors.connection.delete", { id: r.connection_id }, { as: meta && meta.caller }).catch(() => {});
         await driver.down({ space: r.space, manifest: known(r.name), hookPort: r.hook_port }, { data: i.data === true });
@@ -427,7 +427,7 @@ export default {
     front.on("upgrade", (req, socket, head) => { hostProxy.upgrade(req, /** @type {any} */ (socket), head).then(done => { if (!done) socket.destroy(); }).catch(() => socket.destroy()); });
     await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
     ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
-      const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening", "unavailable"); return { port: a.port };
+      const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening: wait a minute and call again, then ask the owner of this server", "unavailable"); return { port: a.port };
     } });
     /** The host Vyre is served at, which the apps' hosts hang from: config appmods.base, else <the box's name>.vyre.run, else localhost. */
     const baseHost = () => {
@@ -439,7 +439,7 @@ export default {
     };
     /** Is this call from the Space's owner or an admin? An app has one signed-in user in the app (the install's), so for now only they may open it. @param {any} meta */
     const ownerOrAdmin = async meta => {
-      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") throw refuse("this build runs without its kernel", "unavailable");
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") throw refuse("this build runs without its kernel: ask the owner of this server to run a build that has one", "unavailable");
       const chain = await ctx.kernel.chain(meta).catch(() => null);
       const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
       if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1) return false;
@@ -451,7 +451,7 @@ export default {
       description: "Open an installed app's screen: answers { url }, an address on the app's own origin that carries a one-time ticket good for a minute. Open it in the main pane or a browser tab; the app is already signed in. For the Space's owner and admins. `origin` is the address Vyre itself is open at (its host decides the app's host).",
       input: obj({ name: str, screen: str, origin: str }, ["name"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
+        const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running (appmods.status shows its state, appmods.start starts it)", "not_found");
         if (!(await ownerOrAdmin(meta))) throw refuse("only the owner or an admin of this Space opens this app", "denied");
         const m = known(r.name);
         if (m.app.service) throw refuse(`${r.name} is a service other modules use; it has no screen to open`, "unsupported");
@@ -465,7 +465,7 @@ export default {
     });
     // The previews module's door onto the same ticket path: it has judged who may open a preview, and asks for the ticket address. Modules only, and only for a preview's own name.
     const previewsOnly = (/** @type {any} */ meta, /** @type {string} */ name) => {
-      if (!meta || meta.caller !== "module:previews" || meta.firstParty === false) throw refuse("the previews module alone asks for a preview's ticket", "denied");
+      if (!meta || meta.caller !== "module:previews" || meta.firstParty === false) throw refuse("the previews module alone asks for a preview's ticket: open the preview through the previews module", "denied");
       if (!PREVIEW_NAME.test(String(name))) throw refuse("that is not a preview's name", "bad_input");
     };
     ctx.tool("appmods.ticket", {
@@ -493,9 +493,9 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const name = String(i.name || "");
         if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module makes a link to its signed copies", "denied");
-        const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
+        const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running (appmods.status shows its state, appmods.start starts it)", "not_found");
         const m = known(name);
-        if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link", "unsupported");
+        if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link (documents.send gets a document signed first)", "unsupported");
         const days = i.days === undefined || i.days === null ? null : i.days;
         if (days !== null && (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS)) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days, or does not expire`, "bad_input");
         const expires = days === null ? null : Date.now() + days * 86_400_000;
@@ -531,7 +531,7 @@ export default {
         const problems = checkPublished(m);
         if (problems.length) throw refuse(`that server cannot run here: ${problems.map(p => `${p.path}: ${p.message}`).join("; ")}`, "bad_input");
         const have = row(m.name), mine = db.prepare("SELECT * FROM appmods_published WHERE name = ?").get(m.name);
-        if (have && !mine) throw refuse(`${m.name} is an app installed on this server already`, "exists");
+        if (have && !mine) throw refuse(`${m.name} is an app installed on this server already (appmods.status shows how it is doing)`, "exists");
         // the secrets are read before anything stops: a missing one leaves the running version as it was
         db.prepare("INSERT OR REPLACE INTO appmods_published (name, deployment, space, manifest) VALUES (?,?,?,?)").run(m.name, d.id, sp, JSON.stringify(m));
         const keep = catalog.get(m.name); catalog.set(m.name, m);
@@ -588,8 +588,8 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const name = String(i.name || "");
         if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks for a signature", "denied");
-        const r = row(name); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running", "not_found");
-        if (!(known(name).app || {}).signing) throw refuse("that app does not collect signatures", "unsupported");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running (appmods.status shows its state, appmods.start starts it)", "not_found");
+        if (!(known(name).app || {}).signing) throw refuse("that app does not collect signatures: install one that does (appmods.catalog lists the apps)", "unsupported");
         let body; try { body = requestBody(Number(i.template_id), String(i.email || ""), i.signer); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
         const res = await fetch(`${r.origin}/api/submissions`, { method: "POST", headers: { "content-type": "application/json", "x-auth-token": await secret(name, "api-token") }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
         if (!res.ok) throw refuse(`${name} would not make the signing request (${res.status}); check that template ${body.template_id} exists`, "app_refused");

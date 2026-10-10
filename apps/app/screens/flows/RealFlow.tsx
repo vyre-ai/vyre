@@ -9,8 +9,8 @@ import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
-import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
-import { APPROVE_LABEL, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { approveReal, cardReal, getReal, graphReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { APPROVE_LABEL, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -26,6 +26,7 @@ export function RealFlow({ id }: { id: string }) {
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
   const [shrunk, setShrunk] = useState<string | null>(null);
+  const [health, setHealth] = useState<{ level: string; line: string } | null>(null);
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,8 +36,9 @@ export function RealFlow({ id }: { id: string }) {
     let live = true;
     (async () => {
       try {
-        const [graph, m, rs] = await Promise.all([graphReal(id), getReal(id), runsReal(id)]);
+        const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
         if (!live) return;
+        setHealth(hl);
         setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
@@ -75,9 +77,11 @@ export function RealFlow({ id }: { id: string }) {
     finally { setBusy(false); }
   };
   const picked_run = runs.find((r) => r.id === runId);
+  const hb = healthBanner(health);
 
   return (
     <Frame back="/u/flows" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
+      {hb && hb.tone !== "quiet" ? <Banner tone={hb.tone}><Text>{hb.text}</Text></Banner> : null}
       <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
       {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
       {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}
@@ -88,6 +92,7 @@ export function RealFlow({ id }: { id: string }) {
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}
+      {hb && hb.tone === "quiet" ? <Text tone="muted">{hb.text}</Text> : null}
       {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
       {painted && picked_run ? (
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>

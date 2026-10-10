@@ -11,6 +11,7 @@
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
@@ -20,6 +21,7 @@ import { driverFor, SLOWER_LINE, SWAP_LINE, SIZES_LINE, swapInfo } from "./works
 import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
+import { openVyreDoor } from "./vyre-door.js";
 import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
@@ -191,14 +193,14 @@ export function createRunner(o) {
    * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
-    if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here"), { code: "conflict" });
+    if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
     starting.add(s.session);
     try { return await startInner(s); } finally { starting.delete(s.session); }
   }
   async function startInner(s) {
     const g = o.grants();
     if (!g.spaceAllows || !g.memberAccepts) throw new Error("both grants are needed: the space allows it and this computer accepts it");
-    if (live.has(s.session)) throw Object.assign(new Error("that session is already running here"), { code: "conflict" });
+    if (live.has(s.session)) throw Object.assign(new Error("that session is already running here (runner.places shows where it runs)"), { code: "conflict" });
     const bad = unavailable(platform);
     if (bad) throw new Error(bad);
     const ws = await open();
@@ -222,6 +224,8 @@ export function createRunner(o) {
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;
     const where = await eg.listen(sock ? { socket: sock } : {});
+    // A chat's session reaches Vyre's tools through the home (lent.http): its Vyre MCP server speaks to this door as VYRE_SOCKET
+    const door = s.vyre && typeof s.vyre.call === "function" ? await openVyreDoor({ socket: path.join(os.tmpdir(), `vyre-door-${crypto.randomBytes(6).toString("hex")}.sock`), call: s.vyre.call }) : null;
     let launcher;
     if (platform === "win32") {
       launcher = ensureLauncher(path.join(o.base, "bin"));
@@ -230,13 +234,30 @@ export function createRunner(o) {
       try { fs.writeFileSync(winPrepFile, JSON.stringify(winPrep), { mode: 0o600 }); } catch {}
       if (!prep.exempt) throw new Error("the Windows sandbox could not allow its loopback proxy: run the Vyre helper as administrator once");
     }
-    const p = plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
-      proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
+    // and Claude is told about the Vyre MCP server that runs beside it, with the door as its socket (a server of its own folder, which is read-only in the sandbox)
+    const env = { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) };
+    const planWith = (/** @type {typeof door} */ dr) => {
+      let args = s.args, readOnly = s.readOnly;
+      if (dr && s.vyre && s.vyre.entry && s.vyre.root) {
+        args = [...(s.args || []), "--mcp-config", JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [s.vyre.entry], env: { VYRE_SOCKET: platform === "linux" ? "/run/vyre.sock" : dr.socket } } } })];
+        readOnly = [...(s.readOnly || []), s.vyre.root, ...(s.vyre.also || [])];
+      }
+      return plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env });
+    };
+    let p, doorUsed = door;
+    try { p = planWith(door); }
+    catch (e) {
+      // a Vyre folder the sandbox will not bind (it holds a person's secret folder, as a checkout can): the session runs without Vyre's tools, and the person is told
+      if (!door) throw e;
+      await door.close().catch(() => {}); doorUsed = null;
+      emit({ type: "vyre-unavailable", session: s.session, why: String(/** @type {any} */ (e).message).slice(0, 200) });
+      p = planWith(null);
+    }
     const child = launch(p, { detached: true });
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
     try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: startedOf(Number(child.pid)) || undefined, session: s.session }), { mode: 0o600 }); } catch { /* the sweep at the next start has nothing to read */ }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, chat: s.chat || null, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
+    const h = { session: s.session, chat: s.chat || null, child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -282,6 +303,7 @@ export function createRunner(o) {
     try { await h.queue; if (mnt && !h.released) await h.sy.flush(); } catch {}
     usage.forget(Number(h.child.pid));
     try { await h.eg.close(); } catch {}
+    if (h.door) { try { await h.door.close(); } catch {} }
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     // why it ended, for the Space's home: the person stopped it, the program finished by itself, the program died, or it was handed over / fenced (the home already knows)

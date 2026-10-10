@@ -3,6 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { CSP } from "./app.js";
 
@@ -29,20 +30,42 @@ const FONT_HOSTS = /fonts\.googleapis\.com|fonts\.gstatic\.com|use\.typekit\.net
 const LOADERS = /<(?:link|script|img|iframe|source|video|audio)\b[^>]*\b(?:href|src)="https?:\/\/[^"]*"[^>]*>/gi;
 const siteFiles = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? siteFiles(path.join(dir, e.name)) : /\.(html|css|js)$/.test(e.name) || e.name === "_headers" ? [path.join(dir, e.name)] : []);
 
+/** What a shipped file loads from outside: a font or script host, an imported or url() stylesheet, a tag that fetches from another origin. */
+const outsideLoads = (/** @type {string} */ text, /** @type {RegExp} */ ownOrigin) => {
+  const found = [];
+  // A page's words may talk about a host (the changelog does); what it loads is in its head and its tags.
+  const head = text.includes("</head>") ? text.slice(0, text.indexOf("</head>")) : text;
+  if (FONT_HOSTS.test(head)) found.push("names an outside font or script host");
+  if (/@import\s+(?:url\()?["']?https?:/i.test(text)) found.push("imports an outside stylesheet");
+  if (/url\(\s*["']?https?:\/\/(?!vyre\.run)/i.test(text)) found.push("reads an outside file from CSS");
+  for (const tag of text.match(LOADERS) || []) {
+    if (/\brel="(?:canonical|alternate|author|license|me)"/i.test(tag)) continue;
+    if (!ownOrigin.test(tag)) found.push(`loads from another origin: ${tag.slice(0, 120)}`);
+  }
+  return found;
+};
+
 test("the public site's pages, stylesheet and headers load nothing from another company", () => {
   const files = siteFiles(path.join(root, "site"));
   assert.ok(files.length >= 10, "the site's files were found");
-  for (const f of files) {
-    const text = fs.readFileSync(f, "utf8");
-    const rel = path.relative(root, f);
-    assert.doesNotMatch(text, FONT_HOSTS, `${rel} names an outside font or script host`);
-    assert.doesNotMatch(text, /@import\s+(?:url\()?["']?https?:/i, `${rel} imports an outside stylesheet`);
-    assert.doesNotMatch(text, /url\(\s*["']?https?:\/\/(?!vyre\.run)/i, `${rel} reads an outside file from CSS`);
-    for (const tag of text.match(LOADERS) || []) {
-      if (/\brel="(?:canonical|alternate|author|license|me)"/i.test(tag)) continue;
-      assert.match(tag, /(?:href|src)="https?:\/\/vyre\.run[/"]/, `${rel} loads from another origin: ${tag.slice(0, 120)}`);
+  for (const f of files) assert.deepEqual(outsideLoads(fs.readFileSync(f, "utf8"), /(?:href|src)="https?:\/\/vyre\.run[/"]/), [], path.relative(root, f));
+});
+
+test("the built docs (docs.vyre.run) load nothing from another company, and carry their own fonts", async () => {
+  const { build } = await import("../../scripts/lib/docs/build.js");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-docs-fonts-"));
+  try {
+    build({ root, out, log: () => {} });
+    const files = siteFiles(out);
+    assert.ok(files.some((f) => f.endsWith("index.html")) && files.some((f) => f.endsWith("404.html")), "the docs pages were built");
+    for (const f of files) assert.deepEqual(outsideLoads(fs.readFileSync(f, "utf8"), /(?:href|src)="https?:\/\/docs\.vyre\.run[/"]/), [], path.relative(out, f));
+    const css = fs.readdirSync(path.join(out, "assets")).filter((n) => /^docs\..*\.css$/.test(n)).map((n) => fs.readFileSync(path.join(out, "assets", n), "utf8")).join("");
+    for (const face of ["instrument-sans-latin", "jetbrains-mono-latin"]) {
+      const m = css.match(new RegExp(`url\\((/assets/fonts/${face}\\.[0-9a-f]+\\.woff2)\\)`));
+      assert.ok(m, `the docs stylesheet declares ${face}`);
+      assert.ok(fs.readFileSync(path.join(out, m[1])).equals(fs.readFileSync(path.join(root, "web", "fonts", `${face}.woff2`))), `${face} is web/fonts/${face}.woff2`);
     }
-  }
+  } finally { fs.rmSync(out, { recursive: true, force: true }); }
 });
 
 test("the public site serves its own fonts, the same files as the Deck's", () => {

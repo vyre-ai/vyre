@@ -147,7 +147,7 @@ export async function createRuntime(o = {}) {
   /** Run a tool as the model in Claude Code would: a person's session, not a named agent. @param {string} name @param {any} input @param {string} caller */
   async function run(name, input, caller) {
     const def = tools.get(name);
-    if (!def) throw Object.assign(new Error(`no tool ${name}`), { code: "no_such_tool" });
+    if (!def) throw Object.assign(new Error(`no tool ${name}; use one of the tools this server lists`), { code: "no_such_tool" });
     // The module's own caller rules apply here as they do in Vyre: "mcp" is the model, and a tool listed
     // for the person's surfaces is not the model's to call (reviewer-2 M3).
     if (Array.isArray(def.callers) && !def.callers.includes(callerKind(caller))) throw Object.assign(new Error(`${name} is for the person, not for a model`), { code: "denied" });
@@ -166,7 +166,7 @@ export async function createRuntime(o = {}) {
       if (name === "chrome.send") {
         const id = String(input && input.id || "");
         const h = held.get(id);
-        if (!h) throw Object.assign(new Error("no held act with that id (it was already sent, or it is not one this session held)"), { code: "not_found" });
+        if (!h) throw Object.assign(new Error("no held act with that id (it was already sent, or it is not one this session held); try the act again to get a new id"), { code: "not_found" });
         // The person is asked by the server itself when the client can show a question, so an allow rule
         // for this server never stands in for their yes. Without it, Claude Code's own permission is the approval.
         if (typeof ask === "function" && trace.config().confirmSends !== false) {
@@ -194,7 +194,7 @@ export async function createRuntime(o = {}) {
         }
         out = { ok: true, result: await run("chrome.resume", input, "cli") };
       } else if (HIDDEN.has(name) || !tools.has(name)) {
-        throw Object.assign(new Error(`no tool ${name}`), { code: "no_such_tool" });
+        throw Object.assign(new Error(`no tool ${name}; use one of the tools this server lists`), { code: "no_such_tool" });
       } else {
         out = { ok: true, result: await run(name, input, "mcp") };
       }

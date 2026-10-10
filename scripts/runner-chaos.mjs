@@ -49,7 +49,9 @@ if (role === "home") {
   const agentDir = path.dirname(agentPath);
   const resumes = path.join(root, "resumes.jsonl");
   const chats = new Map();
-  const home = createLentHome({ space: SPACE, root: path.join(root, "lent"), offers: g.offers, leases: k.gateway.leases, lapseMs: LAPSE_MS, chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } },
+  const home = createLentHome({ space: SPACE, root: path.join(root, "lent"), offers: g.offers, leases: k.gateway.leases, lapseMs: LAPSE_MS,
+    // a chat's session reaches Vyre's tools through the home (lent.http): here the home answers with what it was asked
+    http: async (thread, method, p) => ({ status: 200, body: JSON.stringify({ data: { thread, method, path: p } }) }), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } },
     emit: (type, payload) => console.log(JSON.stringify({ ev: type, ...payload })),
     // the server's continuation of a session its lender gave up or lost: what the server would carry on from is recorded, whole
     resume: async i => {
@@ -250,6 +252,19 @@ else {
       check((await said("did alpha")) === 1 && (await said("did beta")) === 1, "each turn was answered once, none lost and none repeated");
       await ctl({ cmd: "kill", session: sess });
       await until("the chat's process to end", async () => (await ctl({ cmd: "read", session: sess })).closed, 30_000).then(() => check(true, "a kill from the SDK ended the process"), () => check(false, "a kill from the SDK ended the process"));
+      l.send({ cmd: "exit" });
+    },
+    // A chat's session on the lender reaches Vyre's tools through the runner's door (a unix socket inside the sandbox: bound in on Linux, one seatbelt rule on macOS) and the home answers as that session.
+    async door() {
+      const l = await lend("door");
+      const sess = "chatdoor1";
+      await ctl({ cmd: "spawn", session: sess });
+      await until("the chat's process to start on the lender", async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+      await ctl({ cmd: "write", session: sess, text: "vyre system.echo {\"text\":\"hi\"}\n" });
+      const reply = await until("the home's answer through the door", async () => (await ctl({ cmd: "read", session: sess })).lines.find(x => x.includes("\"vyre\"")), 30_000).catch(() => null);
+      const r = reply ? JSON.parse(reply).reply : null;
+      check(r && r.status === 200 && JSON.parse(r.body).data.path === "/v1/tools/system.echo" && JSON.parse(r.body).data.thread === sess, "a tool call through the door reached the home as that session: " + JSON.stringify(r).slice(0, 160));
+      await ctl({ cmd: "kill", session: sess });
       l.send({ cmd: "exit" });
     },
     async sleep() {

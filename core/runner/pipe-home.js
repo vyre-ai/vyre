@@ -2,6 +2,7 @@
 // The home's end of a lent spawn (contracts/lent-spawn.md): a chat's agent process that runs on a person's lent computer, seen from the box as a ChildProcess. The Agent SDK on the box writes the process's stdin and reads
 // its stdout and stderr as for a box session; this carries the bytes to the lender and back through one long-poll wire call, `lent.pipe`, exactly once and in order (`seq` and `ack` on both sides, a chunk is kept until the other
 // side has said it has it). Nothing here decides where a session runs (the placement book does), what the lender may do (the Offers do) or whether a lender is fenced (the epoch does): lent-home.js asks, this carries.
+import fs from "node:fs";
 import { EventEmitter } from "node:events";
 import { Writable, PassThrough } from "node:stream";
 
@@ -17,19 +18,39 @@ export const PIPE = Object.freeze({
 });
 
 /** Options of the SDK's flags that name a file, socket or folder on the box: they mean nothing on another computer. */
-const BOX_PATH_FLAGS = new Set(["--mcp-config", "--settings", "--add-dir", "--plugin-dir", "--append-system-prompt-file", "--debug-file"]);
+const BOX_PATH_FLAGS = new Set(["--settings", "--add-dir", "--debug-file", ...["plugin-dir", "append-system-prompt-file"].map(f => `--${f}`)]);   // spelt apart: the provider's flag names stay in the adapters (test/provider-adapters)
 
-/** The SDK's arguments with every flag that names something on the box (and its value) taken out. @param {unknown} args @returns {string[]} */
+/** The SDK's MCP servers that live inside the SDK itself (type "sdk": they ride the control channel over stdio), from a `--mcp-config` value that is JSON text or the path of a file on the box; the others name a program or socket on the box. @param {string} value */
+function sdkServers(value) {
+  try {
+    const j = JSON.parse(value.trim().startsWith("{") ? value : fs.readFileSync(value, "utf8"));
+    return Object.fromEntries(Object.entries((j && j.mcpServers) || {}).filter(([, v]) => v && /** @type {any} */ (v).type === "sdk"));
+  } catch { return {}; }
+}
+
+/**
+ * The SDK's arguments for the lender: every flag that names a file, socket or folder on the box (and its value) taken out, and the interpreter's script before the first flag. The one exception is the SDK's own in-process MCP servers,
+ * which are kept (they need nothing but the process's stdio); the Vyre MCP server of the box is replaced by the lender's own door to the home (lent.http).
+ * @param {unknown} args @returns {string[]}
+ */
 export function lenderArgs(args) {
   const out = /** @type {string[]} */ ([]);
   const a = Array.isArray(args) ? args.map(String) : [];
   // the SDK may start the program through an interpreter (node cli.js --flags): what comes before the first flag names a file on the box
   while (a.length && !a[0].startsWith("-")) a.shift();
+  /** @type {Record<string, any>} */ const sdk = {};
   for (let i = 0; i < a.length; i++) {
     const flag = a[i].split("=")[0];
+    if (flag === "--mcp-config") {
+      const values = a[i].includes("=") ? [a[i].slice(a[i].indexOf("=") + 1)] : [];
+      if (!a[i].includes("=")) while (i + 1 < a.length && !a[i + 1].startsWith("--")) values.push(a[++i]);
+      for (const v of values) Object.assign(sdk, sdkServers(v));
+      continue;
+    }
     if (BOX_PATH_FLAGS.has(flag)) { if (!a[i].includes("=") && i + 1 < a.length && !a[i + 1].startsWith("--")) i++; continue; }
     out.push(a[i]);
   }
+  if (Object.keys(sdk).length) out.push("--mcp-config", JSON.stringify({ mcpServers: sdk }));
   return out;
 }
 
@@ -96,10 +117,10 @@ export function createPipes(o = {}) {
   /**
    * A ChildProcess-shaped object for a session that will run on `device`. The lender is asked in its next heartbeat; writes to stdin wait for it. If it does not take the session in `startMs`, the process fails as a spawn
    * that never started (`lent_unavailable`) and nothing ran.
-   * @param {{ session: string, chat?: string | null, person: string, device: string | null, command: string, args?: string[], signal?: AbortSignal }} i (`device` null: no computer is ready)
+   * @param {{ session: string, chat?: string | null, title?: string | null, computer?: string | null, person: string, device: string | null, command: string, args?: string[], signal?: AbortSignal }} i (`device` null: no computer is ready)
    */
   function spawn(i) {
-    /** @type {P} */ const p = /** @type {any} */ ({ session: i.session, chat: i.chat || null, person: i.person, command: i.command, args: lenderArgs(i.args), device: i.device || "", state: "starting", epoch: null,
+    /** @type {P} */ const p = /** @type {any} */ ({ session: i.session, chat: i.chat || null, title: typeof i.title === "string" && i.title ? i.title.slice(0, 120) : null, person: i.person, command: i.command, args: lenderArgs(i.args), device: i.device || "", state: "starting", epoch: null,
       downSeq: 0, down: [], ackDown: 0, downBytes: 0, drain: null, end: false, kill: null, upTaken: 0, waiter: null, waitTimer: null, startTimer: null, killTimer: null, closed: false });
     const old = table.get(i.session);
     if (old && old.state !== "ended") finish(old, { code: null, signal: "SIGHUP" });
@@ -118,7 +139,10 @@ export function createPipes(o = {}) {
       final(cb) { p.end = true; wake(p); cb(); },
     });
     pr.stdin.on("error", () => {});
-    pr.pid = 0; pr.killed = false; pr.exitCode = null; pr.signalCode = null; pr.connected = false; pr.spawnfile = i.command; pr.spawnargs = [i.command, ...p.args]; pr.moved = null; pr.lent = null;
+    pr.pid = 0; pr.killed = false; pr.exitCode = null; pr.signalCode = null; pr.connected = false; pr.spawnfile = i.command; pr.spawnargs = [i.command, ...p.args]; pr.moved = null;
+    // from the first moment the SDK's caller can say where it is starting: the computer's name and "starting" until the lender has the process up
+    pr.lent = i.device ? { session: i.session, device: i.device, computer: i.computer || null, state: "starting", epoch: null } : null;
+    if (i.device) setImmediate(() => { if (p.state === "starting") pr.emit("starting", pr.lent); });
     pr.kill = (/** @type {string} */ sig = "SIGTERM") => {
       if (p.state === "ended") return false;
       pr.killed = true;
@@ -150,7 +174,7 @@ export function createPipes(o = {}) {
     if (!p) return new Promise(res => { const t = setT(() => res({ down: [], acked: 0, idle: true }), Math.min(waitMs, 2000)); t.unref?.(); });
     if (p.device !== device) throw bad("this session is not lent to this computer", "conflict");
     if (p.state === "ended") return Promise.resolve(answerOf(p));
-    if (p.state === "starting") { p.state = "up"; p.epoch = epoch; if (p.startTimer) { clearT(p.startTimer); p.startTimer = null; } p.proc.connected = true; p.proc.lent = { session, device, epoch }; setImmediate(() => p.proc.emit("spawn")); }
+    if (p.state === "starting") { p.state = "up"; p.epoch = epoch; if (p.startTimer) { clearT(p.startTimer); p.startTimer = null; } p.proc.connected = true; p.proc.lent = { ...(p.proc.lent || {}), session, device, state: "up", epoch }; setImmediate(() => p.proc.emit("spawn")); }
     else if (p.epoch !== epoch) { p.epoch = epoch; }
     // what the lender sent: taken in order, a repeat or a gap leaves `acked` where it was so the lender sends again from there
     const up = Array.isArray(i && i.up) ? i.up : [];
@@ -193,7 +217,7 @@ export function createPipes(o = {}) {
     /** The sessions waiting for a lender, for the heartbeat answer to `device`: it starts them. */
     wants(/** @type {string} */ device) { return [...table.values()].filter(p => p.state === "starting" && p.device === device && !p.claimed).map(p => ({ do: "start", session: p.session, ...(p.chat ? { chat: p.chat } : {}), pipe: true })); },
     /** What the home's definition of this session becomes when the lender that was asked starts it: the SDK's flags in place of the Space's bare program. Null when nobody spawned it here for this computer. */
-    pending(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); return p && p.state === "starting" && p.device === device ? { command: p.command, args: p.args, chat: p.chat } : null; },
+    pending(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); return p && p.state === "starting" && p.device === device ? { command: p.command, args: p.args, chat: p.chat, title: /** @type {any} */ (p).title || null } : null; },
     /** The lender took the session: it is not asked again. */
     claimed(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); if (p && p.device === device) /** @type {any} */ (p).claimed = true; },
     has(/** @type {string} */ session) { const p = table.get(session); return Boolean(p && p.state !== "ended"); },

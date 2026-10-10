@@ -332,6 +332,12 @@ test("space helper RH-2: purge and fscrypt-enable are only `vyre admin`, which n
   a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /could not find the folder/);
   fs.rmSync(path.join(r.F, "no-mounts"));
+  // The installer mounts the whole home (/home/vyre); the daemon's folder is .vyre inside it. Root finds it from that mount too.
+  r.flag("home-mount");
+  fs.mkdirSync(path.join(r.F, "lend", ".vyre"), { recursive: true });
+  a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
+  assert.equal(a.code, 0, a.out); assert.doesNotMatch(a.out, /could not find the folder/);
+  fs.rmSync(path.join(r.F, "home-mount"));
   a = /** @type {any} */ (await r.run(["admin", "fscrypt-enable"], { VYRE_ADMIN_NO_TTY: "1" }, "fscrypt\n"));
   assert.equal(a.code, 0, a.out); assert.match(a.out, /cannot be undone, and it changes nothing else/);
   assert.match(r.calls(), /^tune2fs -O encrypt \/dev\/vda1$/m);

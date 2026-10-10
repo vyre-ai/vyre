@@ -147,7 +147,7 @@ export default {
         usd: { type: "number" }, tokens_in: { type: "integer" }, tokens_out: { type: "integer" }, calls: { type: "integer" }, estimated: { type: "boolean" } } },
       run: async (i, { caller, firstParty } = {}) => {
         // Vyre's own modules only: a recorded spend can pause a thread, so an added module may not forge one.
-        if (!String(caller || "").startsWith("module:") || firstParty !== true) throw Object.assign(new Error("spend.record is for Vyre's own modules"), { code: "denied" });
+        if (!String(caller || "").startsWith("module:") || firstParty !== true) throw Object.assign(new Error("recording a spend is for Vyre's own modules (spend.summary shows what is spent)"), { code: "denied" });
         return record(i);
       },
     });

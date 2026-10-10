@@ -10,7 +10,7 @@ import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
 import { explainRun } from "./describe.js";
 import { applyPatch } from "./patch.js";
-import { graph } from "./canvas.js";
+import { graph, paintRun } from "./canvas.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 const flowOf = (steps, extra = {}) => ({ format: 1, name: "par", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
@@ -114,6 +114,26 @@ test("parallel: a lane that does not finish fails the step after the others sett
   assert.equal(mine(w2, "payment").length, 1, "its failure path let the run go on");
 });
 
+test("parallel: the picture of a run paints each lane by how far its steps got, and the lane that failed is the one marked", async () => {
+  const w = await world();
+  const flow = flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("good", [{ id: "m", kind: "create", type: "matter", set: { client: "Fine" } }]),
+    lane("bad", [{ id: "q", kind: "ask", to: "role:member", title: "Anyone?" }]),
+    lane("slow", [{ id: "t", kind: "assign", to: "role:manager", title: "Slow lane", output: { kind: "note" }, how: "person", await: true }]),
+  ] }]);
+  const { id } = await install(w, flow);
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [parent] = await roots(w, id);
+  const lanes = await kids(w, id);
+  const shown = { ...parent, steps: Object.assign({}, ...lanes.map(k => k.steps), parent.steps) };
+  const state = Object.fromEntries(paintRun(flow, shown, w.cat).nodes.map(n => [n.id, n.state]));
+  assert.equal(state.good, "done", "its step ran, so the lane is done, not 'not reached'");
+  assert.equal(state.bad, "failed");
+  assert.equal(state.m, "done");
+  assert.equal(state.q, "failed");
+});
+
 test("parallel: a failed lane is one row in Needs attention, the parent's, and it says which lane and why", async () => {
   const w = await world();
   const { id } = await install(w, flowOf([{ id: "p", kind: "parallel", label: "Both checks", steps: [
@@ -132,6 +152,8 @@ test("parallel: a failed lane is one row in Needs attention, the parent's, and i
   assert.match(rows[0].message, /the lane bad of Both checks did not finish/);
   const h = await w.runner.health(id);
   assert.deepEqual([h.week.total, h.week.failed, h.week.ok], [1, 1, 0], "the Flow ran once and failed once, not three times");
+  assert.equal(h.attention, 1, "and one thing needs a person, as the Needs-you list says, not one for the lane too");
+  assert.match(h.line, /1 needs you/);
 });
 
 test("parallel: retrying the parent sends the failed lane round again and keeps the one that finished", async () => {

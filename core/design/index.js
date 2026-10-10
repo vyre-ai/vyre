@@ -96,8 +96,8 @@ export default {
       input: { type: "object", required: ["id", "yes"], properties: { id: { type: "integer" }, yes: { type: "boolean" } } },
       run: async (/** @type {any} */ i) => {
         const row = /** @type {any} */ (db.prepare("SELECT * FROM design_proposals WHERE id = ?").get(Number(i.id)));
-        if (!row) throw Object.assign(new Error("no such proposal"), { code: "not_found" });
-        if (row.status !== "pending") throw Object.assign(new Error(`that proposal is already ${row.status}`), { code: "conflict" });
+        if (!row) throw Object.assign(new Error("no such proposal (design.proposals lists them)"), { code: "not_found" });
+        if (row.status !== "pending") throw Object.assign(new Error(`that proposal is already ${row.status}; design.proposals shows the ones still waiting`), { code: "conflict" });
         const now = Date.now();
         db.prepare("UPDATE design_proposals SET status = ?, decided_at = ? WHERE id = ?").run(i.yes ? "accepted" : "rejected", now, row.id);
         if (!i.yes) return { status: "rejected" };

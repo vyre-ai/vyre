@@ -42,7 +42,7 @@ export function plainKernelError(e) {
 export function kernelMembers({ handle, now = Date.now }) {
   const grants = () => {
     const g = handle && handle.gateway && handle.gateway.grants;
-    if (!g) throw Object.assign(new Error("This space's kernel is not reachable."), { code: "unreachable" });
+    if (!g) throw Object.assign(new Error("This space's kernel is not reachable; wait a minute and try again, or check the home is on."), { code: "unreachable" });
     return g;
   };
   /** @template T @param {() => Promise<T>} f @returns {Promise<T>} */
@@ -75,13 +75,13 @@ export function kernelMembers({ handle, now = Date.now }) {
       /** Cancel an invite (its issuer, or a manager and above). Needs the kernel's `invites.revoke(chain, id, proof)`. */
       revoke: (/** @type {any} */ k, /** @type {string} */ id) => run(async () => {
         const g = grants();
-        if (typeof g.invites.revoke !== "function") throw Object.assign(new Error("This space's kernel cannot cancel an invite yet."), { code: "unavailable", own: true });
+        if (typeof g.invites.revoke !== "function") throw Object.assign(new Error("This space's kernel cannot cancel an invite yet; ask the owner to update its home."), { code: "unavailable", own: true });
         return g.invites.revoke(need(k).chain, id, k.proof);
       }),
       /** The invites the caller may see: their own, or all of them for a manager and above. Needs the kernel's `invites.list(chain)`; never carries a link or a hash. */
       list: (/** @type {any} */ k) => run(async () => {
         const g = grants();
-        if (typeof g.invites.list !== "function") throw Object.assign(new Error("This space's kernel cannot list invites yet."), { code: "unavailable", own: true });
+        if (typeof g.invites.list !== "function") throw Object.assign(new Error("This space's kernel cannot list invites yet; ask the owner to update its home."), { code: "unavailable", own: true });
         return g.invites.list(need(k).chain);
       }),
       /** The join card: what the invite offers, from the kernel. */

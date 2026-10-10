@@ -6,6 +6,9 @@ import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { rig, BOB } from "./testing/lent-rig.js";
 import { startPump } from "./pipe-pump.js";
 import { createPipes, lenderArgs, PIPE } from "./pipe-home.js";
@@ -166,4 +169,101 @@ test("an ended pipe is remembered long enough for the lender's last call to hear
   for (const t of timers.splice(0)) t.fn();   // an unknown session's call is answered idle on a timer of its own
   assert.deepEqual(await gone, { down: [], acked: 0, idle: true }, "a minute later nothing is kept of it");
   void proc;
+});
+
+test("the process says where it is starting from the first moment, and the title travels to the lender", async t => {
+  keepAlive(t);
+  const r = await rig(t);
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const proc = r.home.spawn({ session: "s_title", person: BOB, title: "Draft the engagement letter", computer: "Office Mac" });
+  assert.deepEqual([proc.lent.state, proc.lent.computer, proc.lent.device], ["starting", "Office Mac", "dev_laptop"], "there from the call, before anything has started");
+  const starting = new Promise(res => proc.on("starting", res));
+  assert.equal((/** @type {any} */ (await starting)).state, "starting");
+  const spec = await c.spec({ session: "s_title" });
+  assert.equal(spec.title, "Draft the engagement letter", "runner.here can name it");
+  const up = new Promise(res => proc.on("spawn", res));
+  await c.pipe({ session: "s_title", ack: 0, wait_ms: 0 });
+  await up;
+  assert.deepEqual([proc.lent.state, proc.lent.computer, Number.isInteger(proc.lent.epoch)], ["up", "Office Mac", true]);
+});
+
+test("a new chat is placed when it is created: a ready computer gets the row, none ready is the box and writes nothing, and a spawn that never started takes the row back", async t => {
+  keepAlive(t);
+  const r = await rig(t);
+  assert.deepEqual(r.home.placeNew({ session: "s_new0", person: BOB }), { where: "box" }, "no computer has beaten: the box");
+  assert.ok(!r.home.book.get("s_new0"), "and nothing is written");
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const p = r.home.placeNew({ session: "s_new1", chat: null, person: BOB });
+  assert.deepEqual([p.where, p.device], ["mac", "dev_laptop"]);
+  assert.deepEqual([r.home.book.get("s_new1").where, r.home.book.get("s_new1").device, r.home.book.get("s_new1").state], ["mac", "dev_laptop", "here"], "the row is the chat's now");
+  assert.deepEqual(r.home.placeNew({ session: "s_new1", person: BOB }), { where: "mac", device: "dev_laptop", epoch: p.epoch }, "asking again is the same answer");
+  assert.deepEqual(r.home.placeNew({ session: "s_new1", person: "per_carol" }), { where: "box" }, "someone else\'s chat is not theirs to place");
+  // the spawn follows and the lender starts it: the reservation becomes the lender\'s own row
+  const proc = r.home.spawn({ session: "s_new1", person: BOB });
+  await c.beat({ sessions: [], well: true }); await c.spec({ session: "s_new1" });
+  assert.equal(r.home.book.get("s_new1").epoch, p.epoch + 1);
+  proc.kill();
+  // a place for a chat whose spawn then fails as never started is taken back at once
+  const q = r.home.placeNew({ session: "s_new2", person: BOB });
+  assert.equal(q.where, "mac");
+  const lost = r.home.spawn({ session: "s_new2", person: "per_carol" });   // not this person\'s computer: fails at once
+  await new Promise(res => lost.on("error", res));
+  assert.ok(!r.home.book.get("s_new2"), "the row is gone: the chat never reached a computer");
+});
+
+test("the nudge: a computer waiting on the home is told to start a chat at once, and a wait with nothing to say comes back empty", async t => {
+  keepAlive(t);
+  const r = await rig(t);
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  assert.deepEqual(await c.wait({ wait_ms: 50 }), { directives: [] });
+  const waiting = c.wait({ wait_ms: 8000 });
+  await wait(50);
+  const t0 = Date.now();
+  r.home.spawn({ session: "s_nudge", person: BOB });
+  const ans = await waiting;
+  assert.ok(Date.now() - t0 < 1000, "told at once, not at the next heartbeat");
+  assert.deepEqual(ans.directives, [{ do: "start", session: "s_nudge", pipe: true }]);
+});
+
+test("the SDK's in-process MCP servers go to the lender and the box's own servers do not, whether the config is text or a file on the box", () => {
+  const inline = JSON.stringify({ mcpServers: { vyre: { command: "node", args: ["/box/run.js"] }, canvas: { type: "sdk", name: "canvas" } } });
+  assert.deepEqual(lenderArgs(["--verbose", "--mcp-config", inline]), ["--verbose", "--mcp-config", JSON.stringify({ mcpServers: { canvas: { type: "sdk", name: "canvas" } } })]);
+  assert.deepEqual(lenderArgs(["--mcp-config", JSON.stringify({ mcpServers: { vyre: { command: "node" } } }), "--verbose"]), ["--verbose"], "nothing in-process: no flag at all");
+  const f = path.join(os.tmpdir(), `lenderargs-${process.pid}.json`); fs.writeFileSync(f, inline);
+  try { assert.deepEqual(lenderArgs([`--mcp-config=${f}`]), ["--mcp-config", JSON.stringify({ mcpServers: { canvas: { type: "sdk", name: "canvas" } } })]); } finally { fs.rmSync(f, { force: true }); }
+});
+
+test("lent.http: a tool call of the chat's session on a lender is the session's own call at the home, fenced like every write, and only a tool call", async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const seen = [];
+  const r = await rig(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { seen.push([thread, method, p, headers, body]); return thread === "s_http" ? { status: 200, body: JSON.stringify({ data: { echoed: body ? JSON.parse(body) : null } }) } : null; } });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: "s_http" });
+  const ans = await c.http({ session: "s_http", path: "/v1/tools/records.list", body: JSON.stringify({ type: "contact" }), caller: "mcp" });
+  assert.deepEqual([ans.status, JSON.parse(ans.body)], [200, { data: { echoed: { type: "contact" } } }]);
+  assert.deepEqual(seen[0].slice(0, 4), ["s_http", "POST", "/v1/tools/records.list", { "x-vyre-caller": "mcp" }], "the home runs it on that session's socket, as that session");
+  const list = await c.http({ session: "s_http", method: "GET", path: "/v1/tools" });
+  assert.deepEqual([list.status, seen[seen.length - 1].slice(0, 3)], [200, ["s_http", "GET", "/v1/tools"]], "the list of tools the session may use");
+  for (const bad of ["/v1/presence/confirm", "/v1/tools/../x", "/v1/tools/", "/events"]) await assert.rejects(c.http({ session: "s_http", path: bad, body: "{}" }), (/** @type {any} */ e) => e.code === "bad_input", bad);
+  await assert.rejects(c.http({ session: "s_http", path: "/v1/tools/x", body: "x".repeat(130 * 1024) }), (/** @type {any} */ e) => e.code === "bad_input" || e.code === "too_large");
+  // a session with no socket open at the home says so, and a fenced lender is stopped
+  await c.spec({ session: "s_nosock" });
+  await assert.rejects(c.http({ session: "s_nosock", path: "/v1/tools/x", body: "{}" }), (/** @type {any} */ e) => e.code === "unavailable");
+  await r.home.takeOver("s_http", "lid-closed", { auto: true });
+  await assert.rejects(c.http({ session: "s_http", path: "/v1/tools/x", body: "{}" }), (/** @type {any} */ e) => e.code === "conflict" || e.code === "not_found");
+});
+
+test("each chat that borrows a computer is one line on the timeline: lease.borrowed names the chat, the computer and the limit that holds", async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const said = [];
+  const r = await rig(t, { emit: (/** @type {string} */ type, /** @type {any} */ payload) => said.push([type, payload]) });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: "s_line" });
+  const [type, line] = said.find(x => x[0] === "lease.borrowed") || [];
+  assert.equal(type, "lease.borrowed");
+  assert.deepEqual([line.session, line.person, line.device, line.limit, line.epoch], ["s_line", BOB, "dev_laptop", null, 1]);
+  assert.ok(Number.isInteger(line.at) && line.thread);
 });

@@ -148,7 +148,7 @@ export default {
         .run(ENGINEER.name, "agent", "[]", "{}", ENGINEER.instructions, "[]", 0, null, null, 1, now, now, `agt_${mintUuid()}`);
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
-    const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
+    const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name} (agents.list shows them)`), { code: "not_found" }); return a; };
     const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(shape), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
@@ -413,7 +413,7 @@ export default {
       run: async i => {
         const d = db.prepare("SELECT * FROM agents_drafts WHERE id = ?").get(String(i.id));
         const a = d && get(String(d.agent));
-        if (!d || !a || d.state !== "open" || d.hash !== i.hash) throw Object.assign(new Error("that change is no longer waiting"), { code: "not_found" });
+        if (!d || !a || d.state !== "open" || d.hash !== i.hash) throw Object.assign(new Error("that change is no longer waiting; ask for it again (agents.versions shows what was applied)"), { code: "not_found" });
         if (d.hash !== hashOf({ agent: a.name, patch: JSON.parse(String(d.patch)), base: hashOf(snapOf(a)) })) throw Object.assign(new Error(`${a.name} changed since this was drafted: ask again`), { code: "conflict" });
         db.prepare("UPDATE agents_drafts SET state = 'applied' WHERE id = ?").run(d.id);
         const version = writeVersion(a, JSON.parse(String(d.patch)), { by: d.by || d.proposer, approved_by: String(i.approver) });
@@ -519,7 +519,7 @@ export default {
           const n = Number(i.rollback);
           const vs = versionsOf(a.name).reverse();
           const target = n === 0 ? (vs[0] ? JSON.parse(String(vs[0].before)) : null) : (vs.find(v => v.n === n) ? JSON.parse(String(vs.find(v => v.n === n).after)) : null);
-          if (!target) throw Object.assign(new Error(`${a.name} has no version ${n}`), { code: "not_found" });
+          if (!target) throw Object.assign(new Error(`${a.name} has no version ${n} (agents.versions lists its versions)`), { code: "not_found" });
           after = target; note = `rolled back to version ${n}`;
         }
         const person = await personOf(meta);
@@ -539,9 +539,9 @@ export default {
       run: async (i, meta0) => {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
-        if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
+        if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents; ask the person to sign in first"), { code: "denied" });
         // An unnamed model session (mcp or harness, no agent behind it) is no one's agent and asks nobody: it has no grants of its own to ask under.
-        if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under"), { code: "denied" });
+        if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under; ask the person to put the question to the agent"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
         if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
@@ -622,7 +622,7 @@ export default {
         if (!/^(module:assistant|cli|local|deck|capsule)$/.test(String(caller || ""))) throw Object.assign(new Error("only the assistant module or the person rolls a thread"), { code: "denied" });
         const a = must(i.agent);
         const st = await status(a);
-        if (st.doing === "working" || st.doing === "waiting on your answer") throw Object.assign(new Error(`${a.name} is ${st.doing}; roll the thread when it is idle`), { code: "busy" });
+        if (st.doing === "working" || st.doing === "waiting on your answer") throw Object.assign(new Error(`${a.name} is ${st.doing}; wait until it is idle, then roll the thread again`), { code: "busy" });
         const t = await launch(a, i.seed ? { prompt: i.seed } : {});
         return { agent: a.name, thread: t.id, previous: a.thread };
       },
@@ -635,7 +635,7 @@ export default {
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:planner") throw Object.assign(new Error("only the planner runs an agent's jobs"), { code: "denied" });
         const a = must(i.agent);
-        if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}`), { code: "denied" });
+        if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         const t = await launch(a, { prompt: i.prompt, job: true, project: i.project });
         return { agent: a.name, thread: t.id };
       },
@@ -654,7 +654,7 @@ export default {
       callers: ["mcp", "harness", "cli", "local", "deck", "capsule", "module"],
       run: async (i, meta) => {
         const parent = meta.agent ? get(String(meta.agent)) : null;
-        if (!parent || !meta.thread) throw Object.assign(new Error("a helper is started by an agent from its own thread: there is none behind this call"), { code: "denied" });
+        if (!parent || !meta.thread) throw Object.assign(new Error("a helper is started by an agent from its own thread: there is none behind this call; call it from an agent's own thread"), { code: "denied" });
         if (db.prepare("SELECT 1 FROM agents_subs WHERE thread = ?").get(String(meta.thread))) throw Object.assign(new Error("a helper does not start helpers; ask the agent that started you"), { code: "denied" });
         if (db.prepare("SELECT COUNT(*) AS n FROM agents_subs WHERE parent_thread = ? AND state = 'running'").get(String(meta.thread)).n >= SUB_MAX) throw Object.assign(new Error(`at most ${SUB_MAX} helpers at once; wait for one to finish`), { code: "busy" });
         const task = String(i.task || "").trim();
@@ -665,10 +665,10 @@ export default {
         if (i.tools !== undefined) {
           if (!Array.isArray(i.tools) || i.tools.some((/** @type {any} */ t) => typeof t !== "string")) throw Object.assign(new Error("tools is a list of tool names"), { code: "bad_input" });
           const extra = mine ? i.tools.filter((/** @type {string} */ t) => !mine.includes(t)) : [];
-          if (extra.length) throw Object.assign(new Error(`a helper cannot hold more than you do: ${extra.join(", ")} ${extra.length === 1 ? "is" : "are"} not yours`), { code: "denied" });
+          if (extra.length) throw Object.assign(new Error(`a helper cannot hold more than you do: ${extra.join(", ")} ${extra.length === 1 ? "is" : "are"} not yours; pass only tools you hold`), { code: "denied" });
           only = i.tools;
         } else only = mine;
-        if (i.project && parent.projects !== "*" && !parent.projects.includes(String(i.project))) throw Object.assign(new Error(`${parent.name} has no access to ${i.project}`), { code: "denied" });
+        if (i.project && parent.projects !== "*" && !parent.projects.includes(String(i.project))) throw Object.assign(new Error(`${parent.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         const id = `sub_${mintUuid()}`, label = String(i.label || "helper").replace(/[^\w .-]/g, "").slice(0, 40) || "helper";
         db.prepare("INSERT INTO agents_subs (id, parent, parent_thread, label, only, project, at) VALUES (?,?,?,?,?,?,?)").run(id, parent.name, String(meta.thread), label, only ? JSON.stringify(only) : null, i.project ? String(i.project) : null, Date.now());
         const ev = (/** @type {string} */ type, /** @type {any} */ more = {}) => ctx.events.emit(type, { request: id, teammate: parent.name, project: i.project ? String(i.project) : "", reply_to: String(meta.thread), role: `helper: ${label}`, sub: true, ...more });
@@ -747,8 +747,8 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ agent, id }, meta) => {
         const a = must(agent);
-        if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id`), { code: "not_found" });
-        if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });
+        if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id (agents.list shows them; leave id out to go by name)`), { code: "not_found" });
+        if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays; agents.stop stops its threads instead`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
         if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
@@ -774,7 +774,7 @@ export default {
       callers: ["module"],
       run: async ({ name, uid }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault") throw Object.assign(new Error("agents.uid is the projects, plugin-agent and vault modules'"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent and vault modules only; agents.list shows the agents"), { code: "denied" });
         if (uid !== undefined) { const r = /** @type {any} */ (db.prepare("SELECT name FROM agents_agents WHERE uid = ?").get(String(uid))); return { name: r ? String(r.name) : null }; }
         return { uid: must(String(name).toLowerCase()).uid };
       },

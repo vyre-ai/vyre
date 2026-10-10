@@ -27,7 +27,7 @@ function fakeSealer() {
     renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
     revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
     reinstate: async () => ({ reinstated: true }),
-    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
+    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease: ask the home to lend this computer again"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
   } };
 }
 
@@ -44,7 +44,7 @@ export async function rig(t, o = {}) {
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
   const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, ...(o.canResume ? { canResume: o.canResume } : {}), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap, ...(o.now ? { now: o.now } : {}), ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.emit ? { emit: o.emit } : {}),
+  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.emit ? { emit: o.emit } : {}), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap, ...(o.now ? { now: o.now } : {}), ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.emit ? { emit: o.emit } : {}),
     specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };

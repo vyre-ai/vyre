@@ -94,3 +94,17 @@ test("a person who has chats sees them with the gap above; the gap fills the pag
   assert.deepEqual(chatsView({ from: "live", gap: null, rows: [], live: true }), { body: "empty", banner: false });
   assert.deepEqual(chatsView({ from: "unsupported", gap, rows: [row], live: true }), { body: "unsupported", banner: false });
 });
+
+test("chats list: a chat that runs on a lent computer says so first in its line; a chat on the server says nothing", async () => {
+  const { computerOf, chatSub } = await import("./chats-model.js");
+  const places = { places: [{ chat: "c1", session: "s1", computer: "Dana's MacBook", device: "d1", online: true }, { chat: "c2", session: "s2", computer: "Studio Mac", device: "d2", online: false }, { chat: "c3", session: "s3", computer: "", device: "d3", online: true }] };
+  assert.equal(computerOf(places, "c1"), "On Dana's MacBook");
+  assert.equal(computerOf(places, "c2"), "Studio Mac is offline");
+  assert.equal(computerOf(places, "c3"), "", "a row with no name is the server's line, never an id");
+  assert.equal(computerOf(places, "c9"), "");
+  assert.equal(computerOf(null, "c1"), "", "a box without runner.places says nothing");
+  assert.equal(computerOf([{ chat: "c1", computer: "Dana's MacBook" }], "c1"), "On Dana's MacBook", "the answer may be a bare array");
+  const row = { id: "c1", title: "t", project: "Northwind", people: ["alex"], agents: ["kit"], models: [], providers: [], status: "idle", last: 0, line: "", asks: 0, unread: 0, open: true };
+  assert.equal(chatSub(row, "On Dana's MacBook"), "On Dana's MacBook · alex, kit · Northwind");
+  assert.equal(chatSub(row), "alex, kit · Northwind");
+});

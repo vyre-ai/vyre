@@ -25,7 +25,8 @@ import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 import { ALIASES } from "./memory-tools.js";
-import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind } from "./core-tools.js";
+import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
+import { nextCall } from "../../lib/errors-teach.js";
 import { createLearner } from "../../lib/tools-learn.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
@@ -111,6 +112,10 @@ let catalog = [];
 /** @type {ReturnType<typeof indexOf> | null} */
 let index = null;
 
+/** The listing being fetched, shared: a burst of calls before the first listing waits on one fetch, not one each (the daemon builds the whole catalogue for every fetch). @type {Promise<any[]> | null} */
+let loading = null;
+const loadTools = () => (loading ||= tools().finally(() => { loading = null; }));
+
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, ident());
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
@@ -136,10 +141,16 @@ async function tools() {
   return listing(cat, process.env.VYRE_MCP_LISTING, process.env.VYRE_MCP_FEATURES);
 }
 
+/** A failed call, in the words the model reads: the code and message, then ready calls for the tools the message names (the name it calls them by and an example input), so it need not look them up. @param {{ code: string, message: string }} e */
+function failed(e) {
+  const calls = nextCall(String(e.message || ""), catalog, { listed: new Set(CORE) });
+  return { content: [{ type: "text", text: `${e.code}: ${e.message}${calls.length ? `\nNext: ${calls.join(" or ")}` : ""}` }], isError: true };
+}
+
 /** A hub call: the server's own MCP result as it is, or a held call said plainly. @param {string} name @param {any} args */
 async function hubCall(name, args) {
   const r = await call("mcp.call", { name, arguments: args }, { ...ident(), session: sessionKey(), timeout: 120_000 });
-  if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+  if (r.error) return failed(r.error);
   const d = r.data;
   if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
   if (d && Array.isArray(d.content)) return d;
@@ -190,20 +201,20 @@ function present(data, tool = "", always = false) {
 async function runTool(asked, args, params) {
   const { r, tool, hub } = await invoke(asked, args, params);
   if (hub) {
-    if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+    if (r.error) return failed(r.error);
     const d = r.data;
     if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
     if (d && Array.isArray(d.content)) return d;
     return { content: [{ type: "text", text: typeof d === "string" ? d : JSON.stringify(d) }] };
   }
-  if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+  if (r.error) return failed(r.error);
   return present(r.data, tool);
 }
 
 /** results_read, and the early drop. @param {any} a */
 function resultsRead(a) {
   const r = store.read(owner(), a || {});
-  if ("error" in r) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+  if ("error" in r) return failed(r.error);
   return reply(JSON.stringify(r.data), r.data);
 }
 
@@ -240,9 +251,9 @@ async function handle(msg) {
           "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +
           "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
-    case "tools/list": return { tools: await tools() };
+    case "tools/list": return { tools: await loadTools() };
     case "tools/call": {
-      if (!names.size) await tools();
+      if (!names.size) await loadTools();
       const asked = String(params?.name || "");
       if (asked === "tools_find") {
         const q = String(params?.arguments?.query || "").trim();

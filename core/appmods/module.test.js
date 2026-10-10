@@ -45,10 +45,11 @@ async function world(t, opt = {}) {
         const ok = f.get("authenticity_token") === "tok123" && f.get("user[email]") === "vyre+documents@vyre.invalid" && f.get("user[password]") === "pw_1234567890abcdef" && /sess=anon/.test(q.headers.cookie || "");
         return void r.writeHead(ok ? 302 : 422, { location: "/", ...(ok ? { "set-cookie": "sess=authed; path=/; HttpOnly" } : {}) }).end();
       }
+      // a static public asset needs no session: the front asks for it as a stranger (S6), never with the install's admin session
+      if (q.url === "/manifest.json") return void r.writeHead(200, { "content-type": "application/json" }).end("{}");
       if (!authed) return void r.writeHead(302, { location: "/sign_in" }).end();
       if (q.url === "/") return void r.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "tracker=1; path=/" }).end(`<html><head><link rel="stylesheet" href="/packs/app.css"><script src="/packs/app.js" defer></script></head><body><a href="/templates/1">T</a><meta property="og:url" content="http://localhost:3000/"></body></html>`);
       if (q.url === "/packs/app.css") return void r.writeHead(200, { "content-type": "text/css" }).end("body{background:url(/img/x.png)}");
-      if (q.url === "/manifest.json") return void r.writeHead(200, { "content-type": "application/json" }).end("{}");
       if (q.url === "/packs/app.js") return void r.writeHead(200, { "content-type": "text/javascript" }).end("fetch('/api/x')");
       if (q.url === "/go") return void r.writeHead(302, { location: origin() + "/templates/1" }).end();
       if (q.url === "/save" && q.method === "POST") return void r.writeHead(q.headers.origin === `http://${q.headers.host}` ? 200 : 403, { "content-type": "application/json" }).end(JSON.stringify({ got: body }));

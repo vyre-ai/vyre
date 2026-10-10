@@ -251,11 +251,11 @@ export default {
      * @param {{ deleted?: boolean, read?: boolean }} [o] */
     const reach = async (id, meta, o = {}) => {
       const r = typeof id === "string" ? row(id) : null;
-      if (!r || (r.deleted_at && !o.deleted)) throw refuse(`no artifact ${id}`, "not_found");
+      if (!r || (r.deleted_at && !o.deleted)) throw refuse(`no artifact ${id} (artifacts.list shows the ones you may see)`, "not_found");
       if (!inScope(r, await scopeOf(meta))) {
         // Read only: a thread the person tagged this artifact into reads exactly it, in any project.
         const t = o.read && meta && !addedModule(meta) && !/^module:/.test(String(meta.caller || "")) ? meta.thread : null;
-        if (!(t && db.prepare("SELECT 1 FROM artifacts_grants WHERE thread = ? AND artifact = ?").get(String(t), r.id))) throw refuse(`no artifact ${id}`, "not_found");
+        if (!(t && db.prepare("SELECT 1 FROM artifacts_grants WHERE thread = ? AND artifact = ?").get(String(t), r.id))) throw refuse(`no artifact ${id} (artifacts.list shows the ones you may see)`, "not_found");
       }
       return r;
     };
@@ -300,7 +300,7 @@ export default {
         try { JSON.parse(files[DATA_FILE]); } catch { throw refuse("a dashboard's data must be JSON", "bad_input"); }
       } else if (dataIn !== undefined) throw refuse("only a dashboard takes data", "bad_input");
       const size = Object.values(files).reduce((n, v) => n + Buffer.byteLength(v), 0);
-      if (size > MAX_BYTES) throw refuse(`an artifact version is at most ${MAX_BYTES / 1024 / 1024} MB; this one is ${(size / 1024 / 1024).toFixed(1)} MB`, "too_large");
+      if (size > MAX_BYTES) throw refuse(`an artifact version is at most ${MAX_BYTES / 1024 / 1024} MB; this one is ${(size / 1024 / 1024).toFixed(1)} MB: make it smaller and save it again`, "too_large");
       return { files, size };
     };
 
@@ -310,7 +310,7 @@ export default {
     /** @param {any} r @param {number} [n] */
     const filesAt = async (r, n) => {
       const v = versionRow(r.id, n ?? r.head);
-      if (!v) throw refuse(`${r.id} has no version ${n}`, "not_found");
+      if (!v) throw refuse(`${r.id} has no version ${n} (artifacts.versions lists them)`, "not_found");
       return { v, files: await store.read(r.project, r.id, v.sha) };
     };
 
@@ -552,16 +552,16 @@ export default {
     const writeAsync = promisify(fs.write);
     const copyCaptured = async (reg, file, format, out) => {
       const id = `${reg.dev}:${reg.ino}`;
-      if (dirId(reg.dir) !== id) throw refuse("the session's folder is not the one registered", "denied");
+      if (dirId(reg.dir) !== id) throw refuse("the session's folder is not the one registered (the session registers it again with artifacts.capture.register)", "denied");
       if (_test.beforeOpen) _test.beforeOpen(file);
       let fh;
-      try { fh = await fs.promises.open(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { throw refuse(`${path.basename(file)} can't be read`, "not_found"); }
+      try { fh = await fs.promises.open(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { throw refuse(`${path.basename(file)} can't be read: check that it is still in the thread's artifacts folder`, "not_found"); }
       try {
         const st = await fh.stat({ bigint: true });
-        if (!st.isFile() || st.nlink !== 1n) throw refuse(`${path.basename(file)} is not a plain file`, "denied");
-        if (st.size > BigInt(MAX_MEDIA)) throw refuse(`a media file is at most ${MAX_MEDIA / 1024 / 1024} MB`, "too_large");
-        if (reg.uid !== null && reg.uid !== undefined && st.uid !== BigInt(reg.uid)) throw refuse("the file is not the agent's own", "denied");
-        if (LINUX_FD) { try { if (fs.readlinkSync(`/proc/self/fd/${fh.fd}`) !== file) throw 0; } catch { throw refuse("the file is not where it says", "denied"); } }
+        if (!st.isFile() || st.nlink !== 1n) throw refuse(`${path.basename(file)} is not a plain file: save it as a plain file, not a link`, "denied");
+        if (st.size > BigInt(MAX_MEDIA)) throw refuse(`a media file is at most ${MAX_MEDIA / 1024 / 1024} MB: make it smaller and save it again`, "too_large");
+        if (reg.uid !== null && reg.uid !== undefined && st.uid !== BigInt(reg.uid)) throw refuse("the file is not the agent's own: make it in the agent's own session", "denied");
+        if (LINUX_FD) { try { if (fs.readlinkSync(`/proc/self/fd/${fh.fd}`) !== file) throw 0; } catch { throw refuse("the file is not where it says: give its real path inside the thread's artifacts folder", "denied"); } }
         const hash = crypto.createHash("sha256");
         const buf = Buffer.alloc(1024 * 1024);
         let total = 0;
@@ -571,12 +571,12 @@ export default {
           if (n <= 0) break;
           if (total === 0 && !MEDIA[format].magic(buf.subarray(0, n))) throw refuse(`this is not a ${format} file, whatever its name says`, "bad_input");
           total += n;
-          if (total > MAX_MEDIA) throw refuse(`a media file is at most ${MAX_MEDIA / 1024 / 1024} MB`, "too_large");
+          if (total > MAX_MEDIA) throw refuse(`a media file is at most ${MAX_MEDIA / 1024 / 1024} MB: make it smaller and save it again`, "too_large");
           hash.update(buf.subarray(0, n));
           if (out >= 0) await writeAsync(out, buf, 0, n);
         }
         if (total === 0) throw refuse("the file is empty", "bad_input");
-        if (dirId(reg.dir) !== id) throw refuse("the session's folder changed while it was read", "denied");
+        if (dirId(reg.dir) !== id) throw refuse("the session's folder changed while it was read: try again", "denied");
         return { bytes: total, sha256: hash.digest("hex") };
       } finally { await fh.close(); }
     };
@@ -601,13 +601,13 @@ export default {
       // after the check changes nothing: what is opened is the folder that was checked (reviewer-2 LOW).
       let rfd;
       try { rfd = fs.openSync(root, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW); }
-      catch { throw refuse("this thread's artifacts folder is no longer the one registered", "denied"); }
+      catch { throw refuse("this thread's artifacts folder is no longer the one registered (the session registers it again with artifacts.capture.register)", "denied"); }
       try {
         const rs = fs.fstatSync(rfd, { bigint: true });
-        if (`${rs.dev}:${rs.ino}` !== `${reg.dev}:${reg.ino}`) throw refuse("this thread's artifacts folder is no longer the one registered", "denied");
+        if (`${rs.dev}:${rs.ino}` !== `${reg.dev}:${reg.ino}`) throw refuse("this thread's artifacts folder is no longer the one registered (the session registers it again with artifacts.capture.register)", "denied");
         const rbase = LINUX_FD ? `/proc/self/fd/${rfd}` : root;
         const dest = path.join(rbase, "from-artifacts");
-        try { fs.mkdirSync(dest, { mode: 0o755 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the thread's artifacts folder is not writable by Vyre", "not_available"); }
+        try { fs.mkdirSync(dest, { mode: 0o755 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the thread's artifacts folder is not writable by Vyre: ask the owner of this machine to let Vyre write to it", "not_available"); }
         let dfd;
         try { dfd = fs.openSync(dest, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW); }
         catch { throw refuse("from-artifacts in the thread's folder is not a plain folder; remove it and try again", "denied"); }
@@ -621,7 +621,7 @@ export default {
           let ofd;
           try { ofd = fs.openSync(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o644); }
           catch (e) {
-            if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the file could not be copied into the thread's folder", "not_available");
+            if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the file could not be copied into the thread's folder: try again, or ask the owner of this machine to check the folder", "not_available");
             // Already copied: fine if it is a plain file of Vyre's; a link or anything else at that name is refused.
             const st = fs.lstatSync(target, { bigint: true });
             if (st.isFile() && st.nlink === 1n && (me < 0 || st.uid === BigInt(me))) return shown;
@@ -669,7 +669,7 @@ export default {
      * @param {{ thread: string, name?: string, mime?: string, data_b64: string, title?: string, provider?: string, model?: string, prompt?: string, source?: string }} i
      */
     const ingestBytes = async i => {
-      if (!(await threadOf(i.thread))) throw refuse(`no thread ${i.thread}`, "not_found");
+      if (!(await threadOf(i.thread))) throw refuse(`no thread ${i.thread} (threads.list shows the threads)`, "not_found");
       const byMime = Object.entries(MEDIA).find(([, m]) => m.mime === String(i.mime || "").toLowerCase());
       const format = (i.name ? mediaFormatOf(String(i.name)) : null) || (byMime ? byMime[0] : null);
       if (!format) throw refuse(`say what it is: a name ending in ${Object.keys(MEDIA).join(", ")}, or its media type`, "bad_input");
@@ -720,7 +720,7 @@ export default {
     const ingestMedia = async i => {
       if (typeof i.data_b64 === "string") return ingestBytes(i);
       const reg = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_capture_dirs WHERE thread = ?").get(i.thread));
-      if (!reg || !reg.dev) throw refuse(`no artifacts folder is registered for thread ${i.thread}`, "not_found");
+      if (!reg || !reg.dev) throw refuse(`no artifacts folder is registered for thread ${i.thread}: send the file's bytes as data_b64 instead`, "not_found");
       const name = path.basename(String(i.name));
       const file = path.join(reg.dir, name);
       if (name.startsWith(".") || name !== i.name) throw refuse("name the file as it is in the artifacts folder, at the top level", "bad_input");
@@ -897,7 +897,7 @@ export default {
       run: async (i, meta) => {
         if (!trustedCaller(meta) || !TAG_RECORDERS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's session and assistant modules record a tag", "denied");
         const r = await reach(i.id, meta);
-        if (!(await threadOf(i.thread))) throw refuse(`no thread ${i.thread}`, "not_found");
+        if (!(await threadOf(i.thread))) throw refuse(`no thread ${i.thread} (threads.list shows the threads)`, "not_found");
         db.prepare("INSERT OR IGNORE INTO artifacts_grants (thread, artifact, at) VALUES (?, ?, ?)").run(String(i.thread), r.id, Date.now());
         return {
           name: r.title, hint: r.media ? `${r.kind} (${MEDIA[r.format].mime}), made by ${JSON.parse(r.media).provider || "an agent"}` : `${r.kind}, version ${r.head}${r.untrusted ? ", made by an agent" : ""}`,
@@ -980,7 +980,7 @@ export default {
         const r = await reach(i.id, meta, { read: true });
         const to = i.to ?? r.head, from = i.from ?? Math.max(1, to - 1);
         const a = versionRow(r.id, from), b = versionRow(r.id, to);
-        if (!a || !b) throw refuse(`${r.id} has versions 1 to ${r.head}`, "not_found");
+        if (!a || !b) throw refuse(`${r.id} has versions 1 to ${r.head} (artifacts.versions lists them)`, "not_found");
         const diff = await store.diff(r.project, r.id, a.sha, b.sha);
         const added = (diff.match(/^\+(?!\+\+)/gm) || []).length, removed = (diff.match(/^-(?!--)/gm) || []).length;
         return { id: r.id, from, to, added, removed, diff, ...(trustedCaller(meta) ? {} : { note: QUOTED }) };
@@ -1113,7 +1113,7 @@ export default {
         const srv = serverState();
         if (!srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");
         const version = i.version === undefined ? r.head : i.version === "latest" ? null : i.version;
-        if (version !== null && !versionRow(r.id, version)) throw refuse(`${r.id} has versions 1 to ${r.head}`, "not_found");
+        if (version !== null && !versionRow(r.id, version)) throw refuse(`${r.id} has versions 1 to ${r.head} (artifacts.versions lists them)`, "not_found");
         const ttl = EXPIRES[i.expires || "30d"];
         const expires_at = ttl === null ? null : now() + ttl;
         const old = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
@@ -1170,7 +1170,7 @@ export default {
       input: { type: "object", required: ["base"], properties: { base: { type: ["string", "null"] } } },
       examples: [{ base: "https://studio.vyre.run" }],
       run: async (i, meta) => {
-        if (!(meta && meta.firstParty === true)) throw refuse("the public address is set by Vyre's network setup", "denied");
+        if (!(meta && meta.firstParty === true)) throw refuse("the public address is set by Vyre's network setup: ask the owner of this server to change it there", "denied");
         if (i.base !== null && !/^https:\/\/[a-z0-9.-]+(?::\d{1,5})?$/.test(i.base)) throw refuse("base must be an https origin", "bad_input");
         kv.set("public_base", i.base);
         return { base: i.base };
@@ -1182,7 +1182,7 @@ export default {
       input: { type: "object", required: ["thread", "dir"], properties: { thread: str, dir: str, uid: { type: "integer", minimum: 0 } } },
       examples: [{ thread: "t_1", dir: "/work/.vyre-artifacts/t_1", uid: 1001 }],
       run: async (i, meta) => {
-        if (!(meta && meta.firstParty === true) && !isPerson(meta)) throw refuse("sessions registers capture folders", "denied");
+        if (!(meta && meta.firstParty === true) && !isPerson(meta)) throw refuse("only the sessions module, or a person, registers capture folders", "denied");
         const dir = String(i.dir);
         // A real folder, named by its own real path (no link anywhere in it), and never inside
         // vyred's home (reviewer-2 H1, L1). uid: the agent's own user; files by anyone else are ignored.
@@ -1192,7 +1192,7 @@ export default {
         let real;
         try { real = fs.realpathSync(dir); } catch { throw refuse(`${dir} does not exist`, "bad_input"); }
         if (real !== dir) throw refuse("dir must not go through a link", "bad_input");
-        if (real === home || real.startsWith(home + path.sep)) throw refuse("dir can't be inside Vyre's own home", "denied");
+        if (real === home || real.startsWith(home + path.sep)) throw refuse("dir can't be inside Vyre's own home: give a folder outside it", "denied");
         const st = fs.lstatSync(dir, { bigint: true });
         if (!st.isDirectory()) throw refuse(`${dir} is not a folder`, "bad_input");
         db.prepare("INSERT OR REPLACE INTO artifacts_capture_dirs (thread, dir, dev, ino, uid) VALUES (?,?,?,?,?)").run(i.thread, dir, String(st.dev), String(st.ino), i.uid ?? null);

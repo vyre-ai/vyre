@@ -45,6 +45,14 @@ const outer = await install({ format: 1, name: "file_it", label: "File it", auth
   { id: "after", kind: "create", type: "filing-note", set: { body: { expr: "\"after: \" + steps.s.result.body" } } },
 ] });
 await host.flows.tools["flows.start"](host.personChain(), { id: outer.id, input: {} });
+// a Flow whose second lane cannot finish (nobody holds the role): the run did not finish, and the page says so and offers one Retry
+const failing = await install({ format: 1, name: "two_checks", label: "Two checks", authorship: "human", trigger: { on: "manual" }, steps: [
+  { id: "p", kind: "parallel", steps: [
+    { id: "fine", kind: "branch", steps: [{ id: "n", kind: "create", type: "filing-note", set: { body: "fine" } }] },
+    { id: "stuck", kind: "branch", steps: [{ id: "q", kind: "ask", to: "role:nobody_holds_this", title: "Anyone?" }] },
+  ] },
+] });
+await host.flows.tools["flows.start"](host.personChain(), { id: failing.id, input: {} });
 // a draft nobody has approved yet: the page offers the approval
 const draftOf = async (name, label) => (await d.registry.call("flows.define", { flow: { format: 1, name, label, authorship: "human", trigger: { on: "manual" }, steps: [{ id: "n", kind: "create", type: "filing-note", set: { body: "told" } }] } }, "cli", { token: TOKEN })).data;
 const draft = await draftOf("tell_the_client", "Tell the client"), draft2 = await draftOf("tell_the_court", "Tell the court");   // one for each width: the first pass approves its own
@@ -60,7 +68,7 @@ const task = await d.kernel.gateway.ask.request(ownerChain, { title: "Approve th
 const chat = await d.kernel.gateway.grants.chats.create(ownerChain, {}).catch(() => null);
 await new Promise((r) => setTimeout(r, 4000));
 const ROUTES = [
-  ["now", "/u/now"], ["now-needs", "/u/now/needs"], ["flows", "/u/flows"], ["flow", `/u/flows/${outer.id}`], ["flow-draft", `/u/flows/${draft.id}`], ["flow-draft-2", `/u/flows/${draft2.id}`], ["kits", "/u/kits"], ["engineer", "/u/engineer"],
+  ["now", "/u/now"], ["now-needs", "/u/now/needs"], ["flows", "/u/flows"], ["flow", `/u/flows/${outer.id}`], ["flow-failed", `/u/flows/${failing.id}`], ["flow-draft", `/u/flows/${draft.id}`], ["flow-draft-2", `/u/flows/${draft2.id}`], ["kits", "/u/kits"], ["engineer", "/u/engineer"],
   ["projects", "/u/projects"], ["project", `/u/project/${PROJECT}`], ["project-free", `/u/project/${PLAIN}`], ["templates", "/u/templates"], ["template", `/u/templates/${lib.template}`],
   ["assistants", "/u/assistants"], ["settings-assistants", "/u/settings/assistants"], ["planner", "/u/planner"], ["calendar", "/u/calendar"], ["drive", "/u/drive"],
   ["chats", "/u/chats"], ["connections", "/u/connections"], ["spaces", "/u/spaces"], ["search", "/u/search"], ["records-contact", "/u/records/contact"],
@@ -103,7 +111,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}/app`;
 const BAD = [[/\bfl_[0-9a-f]{8}/, "a Flow id"], [/\bper_[a-z0-9]{12,}/, "a person id"], [/\bspc_[a-z2-7]{8,}/, "a space id"], [/\brun_[a-z0-9]{6,}/, "a run id"], [/vyre:\/\//, "a vyre:// address"],
-  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"], [/did not load\b/, "an error state"], [/That did not (go through|work)/, "an error toast"]];
+  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"], [/\b[a-z]+(-[a-z]+)+\.(created|updated|removed)\b/, "an event name (def-flow.created)"], [/did not load\b/, "an error state"], [/That did not (go through|work)/, "an error toast"]];
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 let wrong = 0;
 // each screen on a wide screen in light and on a phone in dark, so a layout that hides words shows up too
@@ -119,6 +127,17 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
     await pg.waitForTimeout(3500);
     // one real action where a screen has its main one: run a Flow, open a project's timeline
     if (name === "flow") { await pg.getByText("Run now", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500); }
+    if (name === "flow-failed") {
+      // the run did not finish: its row says so in words, a click shows what happened, and there is one Retry (not one for each lane)
+      const row = pg.getByText(/^Run of /).first();
+      if (await row.count()) { await row.click().catch(() => {}); await pg.waitForTimeout(2500); }
+      else problems.push("the failed Flow lists no run");
+      const t = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+      if (!/did not finish|nobody holds the role|no one to ask/i.test(t)) problems.push(`the failed run does not say it did not finish: ${t.slice(0, 160)}`);
+      if (/\bfine Not reached\b/.test(t)) problems.push("a lane whose steps ran reads \"Not reached\"");
+      const retries = await pg.getByText("Retry this run", { exact: true }).count();
+      if (retries !== 1) problems.push(`the failed run offers ${retries} Retry buttons, not one`);
+    }
     if ((name === "flow-draft" && wide === "wide") || (name === "flow-draft-2" && wide === "phone")) {
       // the person approves the draft: the button must say what it does, and afterwards the Flow can run
       const before = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");

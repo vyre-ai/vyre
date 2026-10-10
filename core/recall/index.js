@@ -472,7 +472,7 @@ export default {
      */
     const readableSession = (r, session) => {
       if (r.all) return resolveSession(db, session);
-      const gone = () => Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+      const gone = () => Object.assign(new Error(`no session ${session} (recall.sessions lists them)`), { code: "not_found" });
       const exact = /** @type {any} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE id = ?").get(session));
       if (exact) { if (!inFolders(exact.cwd, r.folders)) throw gone(); return resolveSession(db, exact.id); }
       const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session)).filter(x => inFolders(x.cwd, r.folders));
@@ -572,7 +572,7 @@ export default {
       let row = sessionRow(db, input.session);
       if (!row) {
         const e = find(folders(), input.session);
-        if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
+        if (!e) throw Object.assign(new Error(`no session ${input.session} (recall.sessions lists them)`), { code: "not_found" });
         row = { id: e.id, file: e.file, ...peek(e.file), title: null };
       }
       const { id, cwd, name, title } = row;

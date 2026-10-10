@@ -301,7 +301,7 @@ function checkFields(obj, shapes, path, out, strict) {
  */
 export function buildRequest(d, name, input = {}) {  // input: { params, query, body, headers }
   const op = d.ops[name];
-  if (!op) throw Object.assign(new Error(`${d.id} has no op ${name}`), { code: "not_found" });
+  if (!op) throw Object.assign(new Error(`${d.id} has no op ${name} (connectors.connection.get shows its operations)`), { code: "not_found" });
   const sh = op.input || {}, problems = /** @type {string[]} */ ([]);
   checkFields(input.params || {}, sh.params || {}, "params", problems, true);
   checkFields(input.query || {}, sh.query || {}, "query", problems, true);
@@ -334,7 +334,7 @@ export function opFor(d, method, path) {
  */
 export function parseResponse(d, name, res) {
   const op = d.ops[name];
-  if (!op) throw Object.assign(new Error(`${d.id} has no op ${name}`), { code: "not_found" });
+  if (!op) throw Object.assign(new Error(`${d.id} has no op ${name} (connectors.connection.get shows its operations)`), { code: "not_found" });
   /** @type {string[]} */ const problems = [];
   if (!(res.status >= 200 && res.status < 300)) return { ok: false, status: res.status, problems: [`the service answered ${res.status}`] };
   if (op.output) checkFields(res.json, op.output, "response", problems, false);

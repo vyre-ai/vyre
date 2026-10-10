@@ -381,6 +381,7 @@ export class Vault {
     /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */
     this.releases = new Release(this);
     this.links = new Links(this);
+    /** @type {import("./used-by.js").UsedBy | null} Everything that uses one credential (R031-70), set by index.js with the module context. */ this.usedBy = null;
     /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
     this.emergency = new Emergency(this);
@@ -742,11 +743,11 @@ export class Vault {
       throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled", detail: { retry_after_s: Math.ceil((f.until - t0) / 1000) } });
     }
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw Object.assign(new Error("this vault has no account password yet · vyre vault account create"), { code: "no_account" });
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet: run vyre vault account create"), { code: "no_account" });
     await this.key();
     const params = clampKdf(rec, { test: Boolean(this.testKdf) });
     const text = await this.secretKeys.read();
-    if (!text) throw Object.assign(new Error("this device has no Secret Key for the account · use your recovery kit"), { code: "no_secret_key" });
+    if (!text) throw Object.assign(new Error("this device has no Secret Key for the account: use your recovery kit"), { code: "no_secret_key" });
     const { acct, bytes } = parseSecretKey(text);
     if (acct !== rec.acct) { bytes.fill(0); throw Object.assign(new Error("the Secret Key on this device belongs to another account"), { code: "wrong_account" }); }
     // The try is counted BEFORE it is tested and written down (a crash in the middle is a wrong try, not a free one); a right password resets the count.
@@ -802,7 +803,7 @@ export class Vault {
   /** The AUK through the enclave: one Touch ID dialog, and only this Mac's enclave can answer it. */
   async touchIdAuk(who) {
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    if (!rec) throw new Error("this vault has no account password yet: run vyre vault account create");
     const t = readJsonFile(this.dir, TOUCHID);
     if (!t || t.acct !== rec.acct) throw new Error("Touch ID unlock is not set up on this Mac · vyre vault account enroll-touchid");
     if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
@@ -1140,8 +1141,11 @@ export class Vault {
 
   /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
   async apiCredentialNames() {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all());
+    // no such item, no key needed: the connector list is asked for at start-up, and a home with none must not get a key made for it
+    if (!rows.length) return [];
     await this.key();
-    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
+    return rows.filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
   }
 
   /**

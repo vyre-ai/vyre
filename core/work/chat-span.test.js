@@ -57,8 +57,8 @@ test("a span of a chat is read word for word by a person in it and by an assista
   // an assistant the chat lists reads it under its own chain
   assert.equal((await ask(w.as.juno, { from: 1, to: 1 })).runs[0].lines[0].seq, 1);
   // a member of the Space who is NOT in the chat: no such chat, the same refusal as a chat that does not exist
-  await assert.rejects(() => ask(w.as.carol, { from: 1, to: 4 }), { code: "not_found", message: "no such chat" });
-  await assert.rejects(() => ask(w.as.carol, { chat: "chat_nothere01", from: 1 }).catch(e => { throw e; }), { code: "not_found", message: "no such chat" });
+  await assert.rejects(() => ask(w.as.carol, { from: 1, to: 4 }), { code: "not_found", message: "no such chat (work.chat.list shows the chats you may see)" });
+  await assert.rejects(() => ask(w.as.carol, { chat: "chat_nothere01", from: 1 }).catch(e => { throw e; }), { code: "not_found", message: "no such chat (work.chat.list shows the chats you may see)" });
   // an assistant the chat does not list is refused the same way
   const other = w.rig.assistant("per_alex", "kit");
   await assert.rejects(() => ask(other, { from: 1, to: 4 }), { code: "not_found" });
@@ -87,5 +87,5 @@ test("a terminal session in a chat is read the same way: under the asker's chain
   assert.deepEqual(r.runs[0].lines.map(l => l.text), ["Draft the demand letter to Northwind.", "Drafted. The amount is {{field:vyre://spc/record/r2#amount}}."]);
   assert.equal(r.runs[0].lines[0].address, `line:${session}#1`);
   assert.equal((await ask(w.as.bob, { from: 2, to: 2, slot: "terminal:6f1d2c3a" })).runs[0].lines[0].seq, 2);
-  await assert.rejects(() => ask(w.as.carol, { from: 1, to: 2 }), { code: "not_found", message: "no such chat" });
+  await assert.rejects(() => ask(w.as.carol, { from: 1, to: 2 }), { code: "not_found", message: "no such chat (work.chat.list shows the chats you may see)" });
 });

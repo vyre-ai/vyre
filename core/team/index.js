@@ -272,7 +272,7 @@ export default {
     /** Every teammate a project may summon: its own, plus any shared with it or with everyone ("*"). */
     const serving = project => db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT)
       .filter(tm => tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project)));
-    const mustT = agent => { const tm = byAgent(agent); if (!tm) throw Object.assign(new Error(`no teammate ${agent}`), { code: "not_found" }); return tm; };
+    const mustT = agent => { const tm = byAgent(agent); if (!tm) throw Object.assign(new Error(`no teammate ${agent} (team.list shows the teammates)`), { code: "not_found" }); return tm; };
     /** docs/design/teammates.md section 1: on unless a person has turned it off for this project. */
     const defaultEnabled = project => {
       const r = db.prepare("SELECT teammate_default FROM team_project_settings WHERE project = ?").get(project);
@@ -312,7 +312,7 @@ export default {
       return text.length > APPEND_MAX ? text.slice(0, APPEND_MAX - 1) + "…" : text;
     };
     const reqById = id => shapeR(db.prepare("SELECT * FROM team_requests WHERE id = ?").get(id));
-    const mustR = id => { const r = reqById(id); if (!r) throw Object.assign(new Error(`no request ${id}`), { code: "not_found" }); return r; };
+    const mustR = id => { const r = reqById(id); if (!r) throw Object.assign(new Error(`no request ${id}; use the id team.ask gave back`), { code: "not_found" }); return r; };
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
     const dutyApi = makeDuties({ db, call: (tool, input) => ctx.call(tool, input), emit: (e, p) => ctx.events.emit(e, p), slugOf: id => slugOf(id) });
@@ -401,7 +401,7 @@ export default {
       }
       const tm = callerTeammate(agent);
       if (tm) return tm.project;
-      if (agent) throw Object.assign(new Error("this agent is not a teammate"), { code: "denied" });
+      if (agent) throw Object.assign(new Error("this agent is not a teammate; the person can add it with team.add"), { code: "denied" });
       if (isPerson(caller) && input && input.project) return needId(input.project);
       throw Object.assign(new Error("say which project: call from inside one, or pass project"), { code: "bad_input" });
     };
@@ -1041,7 +1041,7 @@ export default {
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const old = charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version = ?").get(tm.agent, Number(i.version)));
-        if (!old) throw Object.assign(new Error(`${tm.agent} has no charter version ${i.version}`), { code: "not_found" });
+        if (!old) throw Object.assign(new Error(`${tm.agent} has no charter version ${i.version} (team.charter.history lists the versions)`), { code: "not_found" });
         return writeCharter(tm.agent, old.text, meta.agent || String(meta.caller || "vyre"), `revert to version ${old.version}`);
       },
     });
@@ -1067,7 +1067,7 @@ export default {
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const d = /** @type {any} */ (db.prepare("SELECT * FROM team_charter_drafts WHERE teammate = ?").get(tm.agent));
-        if (!d) throw Object.assign(new Error(`${tm.agent} has no drafted charter waiting`), { code: "not_found" });
+        if (!d) throw Object.assign(new Error(`${tm.agent} has no drafted charter waiting; team.charter.draft writes one`), { code: "not_found" });
         db.prepare("DELETE FROM team_charter_drafts WHERE teammate = ?").run(tm.agent);
         if (i.decline === true) return { agent: tm.agent, declined: true };
         return writeCharter(tm.agent, String(d.text), `${meta.agent || String(meta.caller || "vyre")} (accepted draft by ${String(d.by).slice(0, 60)})`, d.note);
@@ -1116,13 +1116,13 @@ export default {
         if (i.agent) {
           const r = await ctx.call("agents.list", {});
           const a = (!r.error && Array.isArray(r.data) ? r.data : []).find(x => x.name === String(i.agent));
-          if (!a) throw Object.assign(new Error(`no agent ${i.agent}`), { code: "not_found" });
+          if (!a) throw Object.assign(new Error(`no agent ${i.agent} (agents.list shows them)`), { code: "not_found" });
           if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
           // The agents' project lists hold short names: sessions and the projects module still key by them.
           const slug = await slugOf(tm.project);
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(slug));
           // Giving an agent a project is the person's own signed act (agents.update with projects, or projects.access.grant), never a module's: a teammate's role is filled only by an agent that already reaches the project.
-          if (!reaches) throw Object.assign(new Error(`${a.name} has no access to ${slug}: give it the project first (projects.access.grant), then fill the role`), { code: "denied" });
+          if (!reaches) throw Object.assign(new Error(`${a.name} has no access to ${slug}: give it the project first (the person does that), then fill the role`), { code: "denied" });
           filler = a.name;
         }
         if ((tm.filler || null) === filler) return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: true };
@@ -1178,7 +1178,7 @@ export default {
         // Turning on, or changing what a running duty does, starts code the person has not seen: the person's own surface only (a tap on the card).
         const cur = dutyApi.get(id);
         const widens = patch.enabled === true || (cur.started && (patch.when !== undefined || patch.instruction !== undefined || patch.act !== undefined));
-        if (widens && !isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's own tap (team.duties.enable on the card)"), { code: "denied" });
+        if (widens && !isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's own tap on the duty's card"), { code: "denied" });
         return dutyApi.update(id, patch);
       },
     });
@@ -1244,11 +1244,11 @@ export default {
         }
         if (tool === "team.duties.start") {
           const d = dutyApi.get(String(i.id || ""));
-          if (!d) throw Object.assign(new Error("no such duty"), { code: "not_found" });
+          if (!d) throw Object.assign(new Error("no such duty (team.duties.list shows a teammate's duties)"), { code: "not_found" });
           return { to: [`team.duties.start:${d.teammate}/${d.id}@${d.hash}`] };
         }
         const tm = i.teammate ? byAgent(String(i.teammate)) : i.project && i.role ? roleOf(i.project, i.role) : null;
-        if (!tm || tm.retired_at) throw Object.assign(new Error("no such teammate"), { code: "not_found" });
+        if (!tm || tm.retired_at) throw Object.assign(new Error("no such teammate (team.list shows them)"), { code: "not_found" });
         if (tool === "team.retire") return { to: [`team.retire:${tm.project}/${tm.role}`] };
         if (tool === "team.role.fill") return { to: [`team.role.fill:${tm.project}/${tm.role}/${i.agent ? String(i.agent) : "default"}`] };
         throw Object.assign(new Error(`${tool} is not an asked team tool`), { code: "bad_input" });
@@ -1353,16 +1353,16 @@ export default {
         const choice = modelChoice(i.model);
         const project = await projectOf(meta, i);
         const tm = byRole(project, i.to) || serving(project).find(x => x.role === i.to);
-        if (!tm) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}`), { code: "not_found" });
+        if (!tm) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to} (team.list shows the roles)`), { code: "not_found" });
         const callerTm = callerTeammate(meta.agent);
         let via = [];
         if (callerTm) {
           const openReq = reqById(callerTm.current_request || "");
           const priorChain = openReq ? openReq.via : []; // every teammate already between the original caller and callerTm
-          if (priorChain.includes(tm.agent) || tm.agent === callerTm.agent) throw Object.assign(new Error(`a cycle: ${tm.agent} already waits on ${callerTm.agent} for this request`), { code: "denied" });
+          if (priorChain.includes(tm.agent) || tm.agent === callerTm.agent) throw Object.assign(new Error(`a cycle: ${tm.agent} already waits on ${callerTm.agent} for this request; send it to another teammate, or let the first one finish`), { code: "denied" });
           // priorChain.length + callerTm itself is how many teammates are chained so far; refuse
           // before adding tm.agent as one more, so a chain never grows past MAX_VIA teammates.
-          if (priorChain.length + 1 >= MAX_VIA) throw Object.assign(new Error(`requests may not chain past ${MAX_VIA} teammates deep`), { code: "denied" });
+          if (priorChain.length + 1 >= MAX_VIA) throw Object.assign(new Error(`requests may not chain past ${MAX_VIA} teammates deep; finish this one yourself or ask the person to split it`), { code: "denied" });
           via = [...priorChain, callerTm.agent];
         }
         const priority = i.priority || "normal";
@@ -1419,8 +1419,8 @@ export default {
       if (!meta.agent) throw Object.assign(new Error("team.done and team.fail are a teammate's own tools"), { code: "denied" });
       const tm = mustT(meta.agent);
       const r = given ? mustR(given) : (tm.current_request ? mustR(tm.current_request) : null);
-      if (!r) throw Object.assign(new Error(`${tm.agent} has no running request`), { code: "not_found" });
-      if (meta.agent !== r.teammate) throw Object.assign(new Error("that request belongs to another teammate"), { code: "denied" });
+      if (!r) throw Object.assign(new Error(`${tm.agent} has no running request; give the id of the request to close`), { code: "not_found" });
+      if (meta.agent !== r.teammate) throw Object.assign(new Error("that request belongs to another teammate; close only your own, or ask the person"), { code: "denied" });
       if (r.state !== "running") throw Object.assign(new Error(`request ${r.id} is ${r.state}, not running`), { code: "denied" });
       return r;
     };

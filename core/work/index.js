@@ -26,7 +26,7 @@ import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
-const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
+const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 /** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
 const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
@@ -181,7 +181,7 @@ export default {
         const k = kernelOf(), chain = await chainOf(extra), m = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\/./.exec(String(i.path));
         // only a chat's own people can share its files: a chat that is not theirs is not there for them
         const row = m ? ((await k.records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: m[1] }, page: { limit: 1 } })).rows || [])[0] : null, me = chain.hops[0] && chain.hops[0].actor.id;
-        if (!row || !String(row.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(me)) throw Object.assign(new Error("that file is not in a chat of yours"), { code: "not_found" });
+        if (!row || !String(row.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(me)) throw Object.assign(new Error("that file is not in a chat of yours (work.file.list shows the files of a chat you are in)"), { code: "not_found" });
         const r = await k.records.create(chain, "file-share", { path: String(i.path) }); return { shared: true, id: r.id };
       } });
     ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
@@ -241,7 +241,7 @@ export default {
       run: async (input, extra) => {
         const k = kernelOf();
         const to = await sideOf(String(input.to_space), extra), from = withCarry(await sideOf(k.space, extra), to);
-        if (!from.gw.moves || typeof from.gw.moves.out !== "function" || !to.gw.moves || typeof to.gw.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet, so nothing was moved"), { code: "unavailable" });
+        if (!from.gw.moves || typeof from.gw.moves.out !== "function" || !to.gw.moves || typeof to.gw.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet, so nothing was moved; update the kernel on both sides, then try again"), { code: "unavailable" });
         // A move is saved as it goes (the id map, the move id, what is done), so a crash or a retry resumes it: no second target project, no second approval, no record copied twice.
         const db = ctx.store.db;
         db.exec("CREATE TABLE IF NOT EXISTS work_moves (key TEXT PRIMARY KEY, state TEXT NOT NULL, at INTEGER NOT NULL)");
@@ -383,9 +383,9 @@ export default {
       callers: ["module"],
       run: async (input, extra) => {
         kernelOf();
-        if (String((extra && extra.caller) || "") !== "module:projects") throw Object.assign(new Error("work.project.ensure is the projects module's"), { code: "denied" });
+        if (String((extra && extra.caller) || "") !== "module:projects") throw Object.assign(new Error("only the projects module ensures a project this way; work.project.create makes one"), { code: "denied" });
         const rec = await hubOf().ensureProject(String(input.slug), typeof input.name === "string" ? input.name : undefined);
-        if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        if (!rec) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
         return { urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
@@ -395,10 +395,10 @@ export default {
       callers: ["module"],
       run: async (input, extra) => {
         kernelOf();
-        if (String((extra && extra.caller) || "") !== "module:team") throw Object.assign(new Error("work.team.member is the teammates module's"), { code: "denied" });
+        if (String((extra && extra.caller) || "") !== "module:team") throw Object.assign(new Error("only the teammates module changes a project's members this way; work.team.add adds a teammate"), { code: "denied" });
         const made = await hubOf().teamMember({ action: input.action === "remove" ? "remove" : "add", project: String(input.project), agent: String(input.agent),
           ...(typeof input.role === "string" ? { role: input.role } : {}), ...(typeof input.instructions === "string" ? { instructions: input.instructions } : {}) });
-        if (!made) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        if (!made) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
         return made;
       },
     });
@@ -414,7 +414,7 @@ export default {
         // answered from the service's own read; an added module is not answered.
         const viaModule = String((extra && extra.caller) || "").startsWith("module:");
         const mine = !rec ? null : viaModule ? ((extra && extra.firstParty) || (extra && extra.caller) === "module:vyred" ? rec : null) : await k.records.get(await chainOf(extra), "project", rec.id).catch(() => null);
-        if (!rec || !mine) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        if (!rec || !mine) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
         return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
@@ -423,7 +423,7 @@ export default {
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
       run: async (input, extra) => {
         const rec = await hubOf().projectOf(input.project);
-        if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        if (!rec) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
         const r = await hubOf().renameProject(rec, input.name, "record", await chainOf(extra));
         return { project: r.urn, slug: r.data.slug, name: r.data.name, drive_path: r.data.drive_path };
       },
@@ -487,7 +487,7 @@ export default {
         const chain = await chainOf(extra);
         const chat = String(input.chat);
         const c = (() => { try { return kernelOf().chats.read(chain, chat); } catch { return null; } })();
-        if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        if (!c) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
         const slots = runs.map((/** @type {any} */ r) => ({ slot: r.slot || (r.agent ? `agent:${r.agent}` : null), thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
@@ -539,17 +539,17 @@ export default {
         const chain = await chainOf(extra);
         mustBeThePerson(chain, "putting back a chat's history");
         const chat = String(input.chat);
-        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
-        if (!rec || !rec.data.drive) throw Object.assign(new Error("this chat has no folder here"), { code: "not_found" });
+        if (!rec || !rec.data.drive) throw Object.assign(new Error("this chat has no folder here; bring it over with work.chat.upgrade-move first"), { code: "not_found" });
         const folder = `${rec.data.drive}/chat/${chat}`;
         const read = async (/** @type {string} */ path) => { const got = await kernelOf().drive.get(chain, path); return Buffer.from(/** @type {any} */ (got && (got.bytes || got.data || got))); };
         /** @type {any} */ let manifest;
-        try { manifest = JSON.parse((await read(manifestPath(folder))).toString("utf8")); } catch { throw Object.assign(new Error("this chat carried no history"), { code: "not_found" }); }
+        try { manifest = JSON.parse((await read(manifestPath(folder))).toString("utf8")); } catch { throw Object.assign(new Error("this chat carried no history; leave it, there is nothing to put back"), { code: "not_found" }); }
         if (!manifest || manifest.v !== 1 || manifest.chat !== chat || !Array.isArray(manifest.chunks)) throw Object.assign(new Error("that history is not this chat's"), { code: "bad_input" });
         // which chunks are already back, so a stopped import carries on instead of putting anything twice
         const db = ctx.store && ctx.store.db;
-        if (!db) throw Object.assign(new Error("this module has no store here"), { code: "unavailable" });
+        if (!db) throw Object.assign(new Error("this module has no store here; ask the owner or an admin"), { code: "unavailable" });
         db.exec("CREATE TABLE IF NOT EXISTS work_history_imports (chat TEXT NOT NULL, n INTEGER NOT NULL, sha256 TEXT NOT NULL, PRIMARY KEY (chat, n))");
         const done = new Set(/** @type {any[]} */ (db.prepare("SELECT n FROM work_history_imports WHERE chat = ?").all(chat)).map(r => Number(r.n)));
         const total = { frames: 0, members: 0, runs: 0, events: 0, chunks: 0 };
@@ -580,7 +580,7 @@ export default {
         const chain = await chainOf(extra);
         const chat = String(input.chat);
         const c = (() => { try { return kernelOf().chats.read(chain, chat); } catch { return null; } })();
-        if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        if (!c) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const from = Number(input.from);
         if (!Number.isInteger(from) || from < 0) throw fail("bad_input", "from is a line number, 0 or more");
         const to = input.to === undefined ? from + 99 : Number(input.to);
@@ -591,7 +591,7 @@ export default {
         const allRuns = [...(of.runs || []), ...((of.terminals || []).map((/** @type {string} */ id) => ({ thread: id, slot: `terminal:${String(id).slice(0, 8)}`, terminal: true })))];
         const slotOf = (/** @type {any} */ r) => r.slot || (r.agent ? `agent:${r.agent}` : null);
         const runs = input.slot ? allRuns.filter((/** @type {any} */ r) => slotOf(r) === String(input.slot)) : allRuns;
-        if (input.slot && !runs.length) throw Object.assign(new Error("no such slot in that chat"), { code: "not_found" });
+        if (input.slot && !runs.length) throw Object.assign(new Error("no such slot in that chat (work.chat.get lists the slots of a chat)"), { code: "not_found" });
         const e = engineOf();
         /** @type {any[]} */ const out = [];
         let budget = 96 * 1024;
@@ -651,7 +651,7 @@ export default {
     });
     // A chat's key, lent to this server by a participant's own device for the chat's files to open (kernel/gateway/chat-keys.js). The server never makes or keeps a key: the device opens the ring with its own key and
     // answers the request with the keys wrapped to a one-use key, which live in this process's memory and nowhere else.
-    const lease = () => { const k = kernelOf(); if (!k.chats || !k.chats.keys) throw Object.assign(new Error("this kernel keeps no sealed chats"), { code: "unavailable" }); return k.chats.keys; };
+    const lease = () => { const k = kernelOf(); if (!k.chats || !k.chats.keys) throw Object.assign(new Error("this kernel keeps no sealed chats; update it to one that does"), { code: "unavailable" }); return k.chats.keys; };
     ctx.tool("work.chat.keys.begin", {
       description: "Ask to lend a chat's key: returns { request, session_pub, epoch }. The device opens the chat's ring (work.chat.get names it) with its own key and answers with work.chat.keys.finish.",
       input: obj({ chat: { type: "string" } }, ["chat"]),
@@ -677,9 +677,9 @@ export default {
       input: obj({ chat: { type: "string" }, title: { type: "string" } }, ["chat", "title"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const rec = await hubOf().chatRecord(String(input.chat));
-        if (!rec) throw Object.assign(new Error("no record of that chat"), { code: "not_found" });
+        if (!rec) throw Object.assign(new Error("no record of that chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const r = await hubOf().renameChat(rec, input.title, "record", chain);
         return { chat: r.data.chat, title: r.data.title };
       },
@@ -689,7 +689,7 @@ export default {
       input: obj({ chat: { type: "string" }, project: { type: "string" } }, ["chat", "project"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
-        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        if (!inChat(chain, String(input.chat))) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
         const r = await hubOf().moveChat(String(input.chat), input.project, chain);
         return { chat: r.data.chat, project: r.data.project && r.data.project.urn, drive: r.data.drive, location: r.data.location };
       },
