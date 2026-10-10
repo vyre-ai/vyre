@@ -10,6 +10,9 @@ world=$!
 trap 'kill $world 2>/dev/null' EXIT
 for _ in $(seq 1 20); do grep -q READY "$out/world.log" && break; sleep 1; done
 adb wait-for-device
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2; done
+# a loaded hosted emulator makes the launcher miss its deadline: no "isn't responding" dialog may sit over the app
+adb shell settings put global hide_error_dialogs 1
 sleep 45
 adb install -r -g "$apk" || { echo "install failed"; exit 1; }
 adb logcat -c
@@ -18,6 +21,9 @@ adb shell am start -W -a android.intent.action.VIEW -p sh.vyre.app -d "vyre://gl
 share=0
 for i in $(seq 1 12); do
   sleep 5
+  adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+  # the app in front, or started again (a first start on this emulator can lose the foreground to a slow launcher)
+  adb shell dumpsys activity activities | grep -m1 -E "mResumedActivity|topResumedActivity" | grep -q sh.vyre.app || adb shell am start -a android.intent.action.VIEW -p sh.vyre.app -d "vyre://glass-relay-proof" >/dev/null 2>&1 || true
   adb exec-out screencap -p >"$out/glass-$i.png"
   share=$(node "$here/png-grey.mjs" "$out/glass-$i.png" 2>/dev/null || echo 0)
   echo "after $((i * 5)) s: grey share $share"
