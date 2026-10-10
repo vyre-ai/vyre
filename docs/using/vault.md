@@ -453,8 +453,9 @@ Link a login to the client, matter or project it belongs to (the portal login fo
 every use of it shows on that record's timeline: "portal-login was used to sign in by the agent
 kit". Only the name and the time appear. The login itself is never on the record, the link or the
 timeline, and a link gives nobody access to anything; it only says which record the login is for.
-Deleting the login takes its links with it. In the app, open the login and choose **Link to a
-record**; in the terminal, `vyre call vault.link '{"item":"portal-login","to":"vyre://.../client/..."}'`.
+Deleting the login takes its links with it. For now you link from the terminal,
+`vyre call vault.link '{"item":"portal-login","to":"vyre://.../client/..."}'`; the app's own
+screen for it comes with the Vault screens.
 
 ## Keys for a published site
 
