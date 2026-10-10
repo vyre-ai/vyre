@@ -39,15 +39,11 @@ function titleOf(def, rec) {
 /** A value is a whole day when it carries no time: "2026-10-04", not an ISO datetime. @param {any} v */
 const wholeDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
-/** Records whose dates are when something HAPPENED to them (a chat's start and last turn), not when something is due: they are the Space's activity, never a day on the calendar. */
-export const NOT_SCHEDULED = Object.freeze(new Set(["chat-record"]));
-
 /** Every dated record of every type as one item per date shown, soonest first. @param {any[]} types @param {Record<string, any[]>} byType @returns {Item[]} */
 export function collect(types, byType) {
   /** @type {Item[]} */
   const out = [];
   for (const def of types) {
-    if (NOT_SCHEDULED.has(String(def.name))) continue;
     const f = dateFields(def);
     const vd = viewDefOf(def);
     for (const rec of byType[def.name] || []) {

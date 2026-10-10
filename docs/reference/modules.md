@@ -111,7 +111,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 61 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 60 | 0 | cli |
 
 ## about
 
@@ -1211,8 +1211,8 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [61](tools.md#work), 5 of them only for other modules
+- Tools: [60](tools.md#work), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
-- Needs daemon: `flowsHost`, `agentActor`
+- Needs daemon: `flowsHost`
 - Needs kernel: `{"work":true,"attrs":true,"actions":["drive.read","drive.write","events.read","grants.list","records.create","records.read","records.remove","records.update","tasks.request"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact","inverse":{"name":"projects","label":"Projects"}},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"},{"name":"template","kind":"text","label":"Template it started from (blank when none)"},{"name":"template_version","kind":"text","label":"Template version it started from"},{"name":"lead","kind":"text","label":"Project lead (an agent of the Space; a template may name one)"},{"name":"credentials","kind":"link","label":"Logins and keys it uses","many":true},{"name":"template_stage","kind":"text","label":"Stage it is in (a template project)"},{"name":"template_snapshot","kind":"text","label":"The template's stages as they were when it started (JSON)"},{"name":"personal_of","kind":"text","label":"The person whose private Personal project this is (blank for every other project)"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"chat-record","label":"Chat","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project","inverse":{"name":"chats","label":"Chats"}},{"name":"about","kind":"link","label":"About"},{"name":"shared","kind":"boolean","label":"Shown on the timeline to everyone who can see the record"},{"name":"chat","kind":"text","label":"Chat id","unique":true},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"former","kind":"text","label":"Former participants (people and agents who could not move with it)"},{"name":"started","kind":"datetime","label":"Started"},{"name":"last_active","kind":"datetime","label":"Last active"},{"name":"status","kind":"choice","label":"Status","options":["working","idle","stopped","failed"]},{"name":"drive","kind":"text","label":"Project Drive folder"},{"name":"location","kind":"text","label":"This chat's Drive folder"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"file-share","label":"Shared file","icon":"IconShare","fields":[{"name":"path","kind":"text","label":"File path","required":true}]}]}`

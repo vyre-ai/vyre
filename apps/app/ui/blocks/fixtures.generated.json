@@ -3991,17 +3991,17 @@
     }
    }
   },
-  "preview-card": {
-   "title": "Preview card",
+  "computers-lately": {
+   "title": "Your computers, lately",
    "screens": {
     "full": {
-     "component": "preview-card"
+     "component": "computers-lately"
     },
     "compact": {
-     "component": "preview-card"
+     "component": "computers-lately"
     },
     "glance": {
-     "component": "preview-card"
+     "component": "computers-lately"
     }
    }
   },

@@ -1544,10 +1544,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.link.suggest opened to a model or a module in 021a571ef (10 Oct 2026); the body decides: read-only: which records a text names, at most three, each one the caller may read; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
  },
  {
-  "tool": "work.project.members",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.project.members opened to a model or a module in a30768605 (10 Oct 2026); the body decides: read-only: who is on a project's team and the role each fills, read under the caller's own kernel chain; callers list in code (capsule, cli, deck, device, local): no model caller"
- },
- {
   "tool": "work.project.move-plan",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.project.move-plan opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: read-only: the plan is read under the caller's own chain in both Spaces"
  },

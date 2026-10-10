@@ -12,9 +12,9 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { leaseRows } from "../screens/runner/lease-model.js";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
-import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -101,8 +101,14 @@ function Sample({ name }: { name: string }) {
     ];
     return <ChatsList rows={rows} now={now} places={{ places: [{ chat: "demo", computer: "Dana's MacBook", online: true }] }} onOpen={() => {}} />;
   }
-  if (name === "preview-card") {
-    return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
+  if (name === "computers-lately") {
+    const now = 1_700_000_000_000;
+    const rows = leaseRows([
+      { type: "lease.borrowed", seq: 3, time: now - 60_000, data: { device: "d1", limit: "provider" } },
+      { type: "lease.issued", seq: 2, time: now - 120_000, data: { device: "d1", limit: "provider" } },
+      { type: "lease.refused", seq: 1, time: now - 3_600_000, data: { device: "d2", why: "no_lend" } },
+    ], (id) => ({ d1: "Dana's MacBook", d2: "Studio Mac" }[id] ?? ""), now);
+    return <BlockScreen screen={{ v: 2, id: "cl", layout: { block: "l" }, blocks: { l: { type: "list", content: { rows } } } } as never} handlers={{}} />;
   }
   if (name === "runner-chip") {
     return (

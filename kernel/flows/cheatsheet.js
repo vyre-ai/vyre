@@ -50,7 +50,7 @@ const ms = (/** @type {number} */ n) => (n >= 60_000 ? `${n / 60_000} min` : `${
 /** The cheat sheet, as text. */
 export function cheatsheet() {
   /** @type {string[]} */ const out = [];
-  out.push("# Flows cheat sheet", "", "A Flow is a trigger and steps. Write it in the lines form (tools_call flows.code with format lines; tools_call flows.patch edits it). Names a step makes are read as `steps.<id>`; the trigger as `trigger`; a failure path reads `error`; a check reads `output`.", "");
+  out.push("# Flows cheat sheet", "", "A Flow is a trigger and steps. Write it in the lines form (flows.code format lines; flows.patch edits it). Names a step makes are read as `steps.<id>`; the trigger as `trigger`; a failure path reads `error`; a check reads `output`.", "");
   out.push("## Shape", "```", "name: my_flow", "authorship: model", "trigger: {on: event, event: payment.received}", "steps:", "  who find type=client where=`record.email == trigger.email`", "  mark update type=client record=`steps.who.rows[0].id` set={tagged: true}", "on_failure:", "  tell assign to=role:partner title=\"A run failed\" output={kind: note}", "```", "A `key=value` value is a word, number, \"string\", [list], {key: value}, or a `backtick expression`. Optional keys: label, description, caps, concurrency, lock, stuck_after_ms, on_failure. In `if`, `where`, `over`, `from` and `check` the whole value is expression text; inside `set`, `match`, `input` and the like a value is a plain value, or a `backtick expression` to compute it.", "");
   out.push("## Triggers", ...Object.values(TRIGGER_REGISTRY).map(t => `- ${t.on.join(" | ")}: keys ${t.keys.join(", ")}; reads ${t.scope.join(", ")}${TRIGGER_EXAMPLES[t.on[0]] ? `; e.g. \`${JSON.stringify(TRIGGER_EXAMPLES[t.on[0]]).replace(/"/g, "")}\`` : ""}`), "");
   out.push("## Steps (id kind key=value; each also takes timeout_ms, retry, on_fail, verify unless it says otherwise)");
@@ -73,6 +73,6 @@ export function cheatsheet() {
   out.push("- An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.");
   out.push(`- Functions: ${Object.keys(FUNCTIONS).join(", ")}. Nothing else is callable.`, "");
   out.push("## Limits", `- ${LIMITS.steps} steps a Flow, ${LIMITS.depth} levels of nesting, repeat at most ${LIMITS.repeatMax}, a Code step's source at most ${LIMITS.codeSource / 1024} KB. Step ids: lowercase letters, digits, underscores, starting with a letter.`);
-  out.push("- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; tools_call flows.propose checks it and runs its test cases first.");
+  out.push("- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; flows.propose checks it and runs its test cases first.");
   return out.join("\n") + "\n";
 }

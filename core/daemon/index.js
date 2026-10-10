@@ -343,9 +343,7 @@ async function startLocked(opts, root, p, release) {
       try { const r = /** @type {any} */ (await registry.call("relay.devices.all", {}, "module:vyred")); const list = r && r.data && (Array.isArray(r.data) ? r.data : r.data.devices); if (Array.isArray(list)) nameMap = new Map(list.filter((/** @type {any} */ x) => x && x.id && x.name).map((/** @type {any} */ x) => [String(x.id), String(x.name)])); } catch { /* the names are a nicety */ }
       return nameMap;
     };
-    // `space` is the Space the asking module's kernel serves: the switchboard places a new chat of that Space (contracts/lent-spawn.md placeNew)
-    const runnerHost = (/** @type {any} */ a) => ({
-      space: a && a.space,
+    const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
@@ -560,9 +558,6 @@ async function startLocked(opts, root, p, release) {
         return String((await make()).id);
       }
     };
-    // A built-in agent (the Engineer) is listed in a chat before any run of it has made it an actor of the Space: the work module asks the daemon to register it, through the kernel's own registration
-    // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
-    registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.

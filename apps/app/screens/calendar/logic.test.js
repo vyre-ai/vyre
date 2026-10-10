@@ -94,10 +94,3 @@ test("a time that belongs to a space with its own zone also says the space's tim
   assert.equal(timeLine(item, { person: "Asia/Karachi", space: null }), "9:00 pm");
   assert.equal(timeLine(item, { person: "America/Los_Angeles", space: "America/Los_Angeles" }), "9:00 am");
 });
-
-test("a chat's started and last-active times are activity, not days on the calendar", () => {
-  const CHAT = { name: "chat-record", label: "Chat", fields: [f("title", "text"), f("started", "datetime", "Started"), f("last_active", "datetime", "Last active")] };
-  const chat = collect([CHAT, MATTER], { "chat-record": [rec("chat-record", "c1", { title: "New chat", started: "2026-10-04T09:30:00", last_active: "2026-10-04T09:45:00" })], matter: byType.matter });
-  assert.deepEqual(chat.map((i) => i.type), ["matter", "matter"], "only the matter's two dates");
-  assert.equal(chat.some((i) => i.title === "New chat"), false);
-});
