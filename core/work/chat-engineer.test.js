@@ -31,5 +31,3 @@ test("the @Engineer chat starts the way the app starts it, and is pinned", { tim
   assert.ok(!pinned.error, JSON.stringify(pinned.error));
   assert.equal((await call("work.chat.persistent", { kind: "engineer" })).data.chat, made.data.chat, "the pinned chat is the one made");
 });
-  assert.ok(second.error || second.data, "an ordinary chat still starts or says why");
-});
