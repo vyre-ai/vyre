@@ -1102,7 +1102,7 @@ shardTest("an invitee on a development build joins in one accept: its own softwa
   const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
   assert.deepEqual([member.person, member.role], [kit.id, "member"]);
   // the joined space is kit's now: it is listed, and its records are reached through a member stream to the home (no invite, no pairing)
-  const listed = await k.call("spaces.list");
+  const listed = await k.call("spaces.list", {}, "cli", {});   // kit's own terminal: a Space list is for the person on the call, and a paired-device label alone is nobody (ledger row 54)
   assert.ok(!listed.error && listed.data.some((/** @type {any} */ x) => x.id === made.space && x.member === true), JSON.stringify(listed).slice(0, 300));
   // the home ends an invitee channel after its life (5 minutes in production; 1.2 s here): a member's next call reconnects with no error
   seams.set(f.w.root, { ...(seams.get(f.w.root) || {}), inviteeTotalMs: 1200 });

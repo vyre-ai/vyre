@@ -136,7 +136,8 @@
    "androidx.credentials:credentials": "passkeys"
   },
   "apps/app/modules/vyre-notify/android/build.gradle": {
-   "androidx.core:core-ktx": "notification and scan helpers"
+   "androidx.core:core-ktx": "notification and scan helpers",
+   "com.facebook.react:react-android": "the foreground service that keeps the notice loop alive runs React Native's own headless task (HeadlessJsTaskService); the app already ships this library, and the module only compiles against it"
   },
   "apps/app/modules/vyre-scan/android/build.gradle": {
    "androidx.camera:camera-core": "scan a QR with CameraX",
