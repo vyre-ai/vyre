@@ -21,10 +21,11 @@ test("a key in an assistant text block, a tool call input, a streamed delta and 
   assert.equal(result.is_error, false);
 });
 
-test("a message with nothing to take out is the very same object, and a message that is not one of the four is left alone", () => {
+test("a message with nothing to take out is the very same object; the scrub reads no provider format, so a key anywhere in any message goes", () => {
   const clean = { type: "assistant", message: { content: [{ type: "text", text: "hello" }] } };
   assert.equal(scrubOut(clean), clean);
-  const other = { type: "system", subtype: "init", note: KEY };
-  assert.equal(scrubOut(other), other);
+  const other = scrubOut({ type: "system", subtype: "init", nested: { list: [`x ${KEY}`] } });
+  assert.ok(!JSON.stringify(other).includes(KEY));
+  assert.equal(other.subtype, "init");
   assert.equal(scrubOut(null), null);
 });

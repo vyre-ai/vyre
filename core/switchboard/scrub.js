@@ -1,42 +1,26 @@
 // @ts-check
-// The one outgoing scrub (REVIEW-LEDGER 35): every message a session's process prints is cleaned of credential shapes before the Switchboard translates it, for every provider,
-// so what reaches the transcript, recall and the screen never holds a key the agent happened to print (a token it read from its own login file, a key from an environment dump). It is the table every redactor
-// reads (lib/credential-shapes.js). The four places a message carries words: an assistant text block, a tool_use input, a streamed text delta, and the turn's result.
+// The one outgoing scrub (REVIEW-LEDGER 35): every message a session's process prints is cleaned of credential shapes before the Switchboard translates it, for every provider, so what reaches the
+// transcript, recall and the screen never holds a key the agent happened to print (a token it read from its own login file, a key from an environment dump). It is the table every redactor reads
+// (lib/credential-shapes.js). It reads no provider's format: every piece of text anywhere in a message (words, a tool call's input, streamed words, a result, a tool's output) is cleaned the same way, so a
+// provider that changes its message shape is still covered. Costs one pass over the message's strings.
 import { redact } from "../../lib/credential-shapes.js";
 
-/** @param {string} s */
-const text = s => redact(s);
-
-/** A tool_use input, cleaned as JSON so its shape survives; an input that no longer parses is kept as the cleaned text. @param {unknown} input */
-function cleanInput(input) {
-  const s = JSON.stringify(input ?? {});
-  const r = redact(s);
-  if (r === s) return input;
-  try { return JSON.parse(r); } catch { return { text: r }; }
+/** @param {any} v @param {number} depth @returns {any} the same value when nothing in it changed */
+function clean(v, depth) {
+  if (typeof v === "string") return v.length < 12 ? v : redact(v);
+  if (!v || typeof v !== "object" || depth > 12) return v;
+  if (Array.isArray(v)) {
+    let out = /** @type {any[] | null} */ (null);
+    v.forEach((x, i) => { const c = clean(x, depth + 1); if (c !== x) { out = out || v.slice(); out[i] = c; } });
+    return out || v;
+  }
+  /** @type {Record<string, any> | null} */ let out = null;
+  for (const k of Object.keys(v)) { const x = v[k], c = clean(x, depth + 1); if (c !== x) { out = out || { ...v }; out[k] = c; } }
+  return out || v;
 }
 
 /**
- * A copy of the message with credential shapes taken out of the words it carries; the very same object when there is nothing to take out.
+ * A copy of the message with credential shapes taken out of every text it carries; the very same object when there is nothing to take out.
  * @param {any} m
  */
-export function scrubOut(m) {
-  if (!m || typeof m !== "object") return m;
-  if (m.type === "assistant" && m.message && Array.isArray(m.message.content)) {
-    let changed = false;
-    const content = m.message.content.map((/** @type {any} */ b) => {
-      if (b && b.type === "text" && typeof b.text === "string") { const t = text(b.text); if (t !== b.text) { changed = true; return { ...b, text: t }; } }
-      if (b && b.type === "tool_use" && b.input !== undefined) { const i = cleanInput(b.input); if (i !== b.input) { changed = true; return { ...b, input: i }; } }
-      return b;
-    });
-    return changed ? { ...m, message: { ...m.message, content } } : m;
-  }
-  if (m.type === "stream_event" && m.event && m.event.delta && typeof m.event.delta.text === "string") {
-    const t = text(m.event.delta.text);
-    return t === m.event.delta.text ? m : { ...m, event: { ...m.event, delta: { ...m.event.delta, text: t } } };
-  }
-  if (m.type === "result" && typeof m.result === "string") {
-    const t = text(m.result);
-    return t === m.result ? m : { ...m, result: t };
-  }
-  return m;
-}
+export const scrubOut = m => clean(m, 0);
