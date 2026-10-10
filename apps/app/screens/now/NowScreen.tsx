@@ -15,6 +15,7 @@ import { CREATE_ASSISTANT, shouldShow, type AgentRow } from "../assistants/creat
 import { callT } from "../../src/real/call-tool";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { GetStarted } from "./GetStarted";
+import { RecordsSetup } from "./RecordsSetup";
 import { getStarted } from "./get-started.js";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
@@ -46,6 +47,7 @@ export default function NowScreen() {
   const { run, sheets } = useTaskActions(world, go);
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+      {real ? <RecordsSetup /> : null}
       {started ? <GetStarted title={started.title} steps={started.steps} /> : null}
       {real && !started ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}

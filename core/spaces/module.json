@@ -82,6 +82,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.records.status", "effect": "read",
+    "reach": "person"
+   },
+   {
     "name": "spaces.bundle.enrol", "effect": "write",
     "reach": "person"
    },

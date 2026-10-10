@@ -1438,6 +1438,23 @@ export default {
       return out;
     };
 
+    // Whether each space's records are up (a team space's own store takes about a minute the first time): { spaces: [{ space, ready, words? }] }, `words` the plain progress sentence. The app's Now shows a calm
+    // "setting up" card from it instead of an error or an empty list.
+    tool("spaces.records.status", "Whether the records of each space on this device are ready, and when not, in plain words how far the first start is.", obj(), async () => {
+      const out = [];
+      const ids = new Set([...(K && typeof K.space === "string" ? [K.space] : []), ...(K && K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : [])]);
+      for (const id of ids) {
+        let h = null; try { h = K ? K.for(id) : null; } catch { h = null; }
+        const store = (h && h.store) || (id === (K && K.space) ? K.store : null);
+        if (!store || typeof store.attached !== "function") { out.push({ space: id, ready: true }); continue; }
+        if (store.attached()) { out.push({ space: id, ready: true }); continue; }
+        let words = "";
+        try { words = String((await store.health()).detail || ""); } catch { /* no words */ }
+        out.push({ space: id, ready: false, ...(words ? { words } : {}) });
+      }
+      return { spaces: out };
+    });
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
 
     /**
