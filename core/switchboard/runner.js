@@ -124,7 +124,7 @@ export function run(o) {
   child.stderr.on("data", c => { err = (err + c).slice(-2000); });
   // A write after the child died raises EPIPE on stdin; it is reported through onExit instead.
   child.stdin.on("error", () => {});
-  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err); };
+  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err, /** @type {any} */ (child).moved); };
   child.on("exit", done);
   child.on("error", e => { err = e.message; done(null, null); });
 
