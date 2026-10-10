@@ -14,7 +14,7 @@ test("a message from the app arrives in the page as a message event marked __hos
   vm.runInNewContext(toPage({ t: "connect", url: "ws://box:7000/glass/x?ticket=a\"b", quality: 6, compression: 2, fit: true }), { window, Event, Object });
   assert.equal(seen.length, 1);
   assert.equal(seen[0].type, "message");
-  assert.deepEqual(seen[0].data, { t: "connect", url: 'ws://box:7000/glass/x?ticket=a"b', quality: 6, compression: 2, fit: true, __host: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(seen[0].data)), { t: "connect", url: 'ws://box:7000/glass/x?ticket=a"b', quality: 6, compression: 2, fit: true, __host: true });
   // a message cannot break out of the script, whatever its text
   const out = [];
   vm.runInNewContext(toPage({ t: "x", note: "</script> ');alert(1);//" }), { window: { dispatchEvent: (e) => out.push(e) }, Event, Object });
