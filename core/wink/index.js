@@ -775,6 +775,8 @@ export function createWink(inject = {}) {
           } catch { return null; }
         },
       },
+      // the own domains the person named for their apps (sign.firm.com): each gets its own certificate and a listing with the directory (control/publicgate.js)
+      hosts: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.domain.list", {})); const d = r && r.data; return d && Array.isArray(d.domains) ? d.domains.map((/** @type {any} */ x) => String(x.host)) : []; } catch { return []; } },
       // any app module installed (running or not): the certificate and the wildcard in DNS follow this
       apps: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.list", {})); return Boolean(r && r.data && Array.isArray(r.data.apps) && r.data.apps.length); } catch { return false; } },
       onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); Promise.resolve(ctx.call("vault.mcp.base", { base })).catch(() => {}); },
@@ -788,7 +790,14 @@ export function createWink(inject = {}) {
     });
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
       ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged()),
-      ctx.events.on("appmods.installed", () => netd.appsChanged()), ctx.events.on("appmods.removed", () => netd.appsChanged())] : [];
+      ctx.events.on("appmods.installed", () => netd.appsChanged()), ctx.events.on("appmods.removed", () => netd.appsChanged()),
+      ctx.events.on("appmods.domain-changed", () => netd.hostsChanged())] : [];
+    // Where the own domains stand (waiting for the DNS record, getting a certificate, live), for the apps module's list and its signing links. Modules only.
+    ctx.tool("wink.public.hosts", {
+      internal: true, description: "Where each own domain stands on the public gate: { hosts: [{ host, state, why? }] }. Internal: the apps module reads it.",
+      input: { type: "object", properties: {} },
+      run: async () => ({ hosts: (netd && netd.status().publicGate && netd.status().publicGate.hosts) || [] }),
+    });
     // The port of this box's public gate on loopback, for the relay module's tunnel (a visitor's TLS stream is handed to the gate there, which holds the certificate). Modules only, and only the relay's.
     ctx.tool("wink.gate.port", {
       internal: true, description: "The loopback port of this box's public gate: { port } or { port: null } while there is none. Internal: the relay module's tunnel end connects each public stream to it.",
