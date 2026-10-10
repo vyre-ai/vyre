@@ -122,7 +122,7 @@ try {
   });
   await J.step("a stranger reaches it over HTTP with its secret, and the walls hold (read-only root, writable data, not Vyre's cookie)", async () => {
     const got = visit("GET", "/hello?a=1", { cookie: "vyre_app=FORGED; theme=dark", "x-vyre-viewer": "owner" });
-    assert(got && got.status === 200, JSON.stringify(got).slice(0, 300));
+    assert(got && got.status === 200, `${JSON.stringify(got).slice(0, 200)} host=${siteHost()} status=${JSON.stringify(op("appmods.status", { name: NAME })).slice(0, 300)} hosts=${JSON.stringify(op("appmods.hosts"))}`);
     const j = JSON.parse(got.body);
     assert(j.root === "root-read-only" && j.data === "data-writable", `${j.root} ${j.data}`);
     assert(j.key === hexSha("first-secret"), "the granted secret reached the process");
