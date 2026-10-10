@@ -1365,6 +1365,7 @@ sp_attach_net() {
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
     hdock network connect --alias "$alias" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
     # Docker turns forwarding on in the container's namespace at each join: off again right here, for every join path (pub-up checks it once more before a server starts)
+    # shellcheck disable=SC2015
     _pj=$(sp_pid 2>/dev/null) && timeout 20 nsenter -t "$_pj" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
   fi
 }
@@ -2373,6 +2374,7 @@ sp_pub_owns() {
   [ "$(awk 'NR == 1 { print $1 " " $2; exit }' "$_pf" 2>/dev/null || true)" = "$1 $PR_SPACE" ]
 }
 # sp_pub_scrub FILE: the job's own runtime secrets, by exact value, are replaced in what it printed (a job can print what it was given). The values are read from root's env file for the name, line by line.
+# shellcheck disable=SC2015
 sp_pub_scrub() {
   f=$1; ef=$SP_APPS/$PR_NAME/secrets.env
   [ -f "$ef" ] || return 0
