@@ -23,7 +23,7 @@ const PAGE = 2000;
 const SAFE_REL = /^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\0]{1,400}$/;
 
 /**
- * @param {{ target: (thread: string) => Promise<{ file: string, root: string, native: string, cwd?: string, account?: number } | null>, place?: (tg: { file: string, root: string, native: string, cwd?: string, account?: number }, bytes: Buffer) => Promise<void>, port?: (space: string) => any, say?: (type: string, payload: any) => void, fsx?: typeof fs }} o
+ * @param {{ target: (thread: string) => Promise<{ file: string, root: string, native: string, cwd?: string, account?: number } | null>, place?: (tg: { file: string, root: string, native: string, cwd?: string, account?: number }, bytes: Buffer) => Promise<void>, placeFile?: (tg: { cwd?: string, account?: number }, rel: string, bytes: Buffer) => Promise<boolean>, port?: (space: string) => any, say?: (type: string, payload: any) => void, fsx?: typeof fs }} o
  * @returns {(i: any) => Promise<{ resumed: boolean, turn: number, lines: number, files: number, conflicts: string[], held?: number }>}
  */
 export function createResumeLent(o) {
@@ -89,9 +89,14 @@ export function createResumeLent(o) {
         if (plantable(rel)) { conflicts.push(rel); continue; }   // a settings file, hook, MCP list or instructions file is never carried (row 29)
         const e = /** @type {any} */ (ent || {});
         if (e.hash === "deleted" || e.version === undefined || e.version === null) continue;
-        if (tg.account !== undefined) { held++; if (heldNames.length < 20) heldNames.push(rel); continue; }
+        if (tg.account !== undefined && typeof o.placeFile !== "function") { held++; if (heldNames.length < 20) heldNames.push(rel); continue; }
         let bytes; try { bytes = await i.view.file(remote, e.version); } catch { continue; }
         if (!bytes) continue;
+        if (tg.account !== undefined && o.placeFile) {
+          // the packaged box: the folder is the account's, so the spawner puts the file there as the account, only where nothing is (a file that is there is a clash, reported; nothing is ever replaced)
+          try { if (await o.placeFile(tg, rel, Buffer.from(bytes))) files++; else conflicts.push(rel); } catch { held++; if (heldNames.length < 20) heldNames.push(rel); }
+          continue;
+        }
         let have = null; try { have = readInside(tg.cwd, rel, 256 * 1024 * 1024); } catch { /* not there */ }
         if (have && Buffer.compare(have, Buffer.from(bytes)) === 0) continue;
         if (have) { conflicts.push(rel); continue; }

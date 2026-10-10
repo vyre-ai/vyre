@@ -118,6 +118,29 @@ export async function placeTranscript(account, file, bytes, { socket = SOCKET } 
   return true;
 }
 
+/**
+ * Put one work file in a chat's folder as the account that owns it (the spawner checks the folder, the path and the kind of file; made only where nothing is; 0600; never through a link). Answers true, or false when a file is
+ * already there (the caller reports the clash); anything else refused throws.
+ * @param {number} account @param {string} cwd @param {string} rel @param {Buffer | Uint8Array} bytes @param {{ socket?: string }} [o]
+ */
+export async function placeFile(account, cwd, rel, bytes, { socket = SOCKET } = {}) {
+  const buf = Buffer.from(bytes);
+  const c = /** @type {net.Socket} */ (await connect(socket));
+  const answer = new Promise((resolve, reject) => {
+    let out = "";
+    c.setEncoding("utf8");
+    c.on("data", d => { out += d; });
+    c.on("end", () => { try { resolve(JSON.parse(out.split("\n")[0])); } catch { reject(new Error("spawner: no answer")); } });
+    c.on("error", reject);
+  });
+  c.write(JSON.stringify({ op: "place-file", account, cwd, rel, size: buf.length, sha256: crypto.createHash("sha256").update(buf).digest("hex") }) + "\n");
+  if (buf.length) c.write(buf);
+  const r = /** @type {any} */ (await answer);
+  if (r.exists) return false;
+  if (r.error) throw new Error(`spawner: ${r.error}`);
+  return true;
+}
+
 export async function shareTranscript(account, file, { socket = SOCKET } = {}) {
   const c = /** @type {net.Socket} */ (await connect(socket));
   const answer = new Promise((resolve, reject) => {

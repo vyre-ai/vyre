@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
-import { spawnAsAgent, wipeAccount, shareTranscript, placeTranscript } from "./client.js";
-import { PLACE_SCRIPT } from "./server.js";
+import { spawnAsAgent, wipeAccount, shareTranscript, placeTranscript, placeFile } from "./client.js";
+import { PLACE_SCRIPT, PLACE_FILE_SCRIPT, plantableRel } from "./server.js";
 import { spawnSync } from "node:child_process";
 import net from "node:net";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -294,4 +294,83 @@ test("spawner place, the real setpriv call (root on Linux only): the file belong
   assert.equal(await placeTranscript(2000, file, Buffer.from("one\ntwo\n"), { socket }), true);
   const st = fs.statSync(file);
   assert.deepEqual([st.uid, st.mode & 0o777, fs.readFileSync(file, "utf8")], [2000, 0o600, "one\ntwo\n"]);
+});
+
+test("spawner place-file: one work file of the account's own folder, whole, checked against its hash; another folder, a path that climbs, a settings or instruction file, a wrong hash or size and a bad shape are refused, and a file that is there is a clash, not replaced", async t => {
+  const placed = /** @type {any[]} */ ([]);
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"), work = path.join(dir, "work"); for (const u of ["2000", "2001"]) fs.mkdirSync(path.join(acct, u), { recursive: true }); fs.mkdirSync(work, { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat,
+    placeFile: (who, cwd, rel, bytes) => { if (rel === "clash.txt") throw Object.assign(new Error("exit"), { code: 14 }); placed.push([who.uid, cwd, rel, bytes.toString()]); } } });
+  t.after(() => srv.close());
+  const cwd = path.join(acct, "2000", "work", "acme");
+  assert.equal(await placeFile(2000, cwd, "notes/a.txt", Buffer.from("from the Mac"), { socket }), true);
+  assert.equal(await placeFile(2000, cwd, "empty.txt", Buffer.alloc(0), { socket }), true);
+  assert.equal(await placeFile(2000, path.join(work, "acme"), "b.txt", Buffer.from("x"), { socket }), true, "a folder under /work is allowed too");
+  assert.deepEqual(placed.map(x => [x[0], x[2], x[3]]), [[2000, "notes/a.txt", "from the Mac"], [2000, "empty.txt", ""], [2000, "b.txt", "x"]]);
+  assert.equal(await placeFile(2000, cwd, "clash.txt", Buffer.from("x"), { socket }), false, "a file that is there is reported, not replaced");
+  const n = placed.length;
+  await assert.rejects(placeFile(2000, path.join(acct, "2001", "work"), "a.txt", Buffer.from("x"), { socket }), /a work folder is under/);   // another account's folder
+  await assert.rejects(placeFile(2000, path.join(dir, "elsewhere"), "a.txt", Buffer.from("x"), { socket }), /a work folder is under/);
+  await assert.rejects(placeFile(2000, cwd + "/../../../x", "a.txt", Buffer.from("x"), { socket }), /a work folder is under/);
+  for (const bad of ["../x.txt", "a/../../x", "/etc/passwd", "a//b", "./a", "a/.", "", "a\nb"]) await assert.rejects(placeFile(2000, cwd, bad, Buffer.from("x"), { socket }), /plain path/, bad);
+  for (const bad of [".claude/settings.json", ".mcp.json", "CLAUDE.md", "sub/AGENTS.md", ".git/hooks/pre-commit", "x/.husky/pre-commit", ".env"]) await assert.rejects(placeFile(2000, cwd, bad, Buffer.from("x"), { socket }), /never carried/, bad);
+  await assert.rejects(placeFile(2999, cwd, "a.txt", Buffer.from("x"), { socket }), /account must be a uid/);
+  const raw = (/** @type {any} */ req, /** @type {string} */ body = "") => new Promise(res => { const c = net.connect(socket, () => { let o = ""; c.on("data", d => { o += d; }); c.on("end", () => res(JSON.parse(o.split("\n")[0]))); c.write(JSON.stringify(req) + "\n" + body); }); });
+  assert.match(String(/** @type {any} */ (await raw({ op: "place-file", account: 2000, cwd, rel: "a.txt", size: 3, sha256: "0".repeat(64) }, "abc")).error), /does not match its sha256/);
+  assert.match(String(/** @type {any} */ (await raw({ op: "place-file", account: 2000, cwd, rel: "a.txt", size: 64 * 1024 * 1024 + 1, sha256: "0".repeat(64) })).error), /0 bytes to 64 MiB/);
+  assert.equal(placed.length, n, "nothing else was placed");
+});
+
+test("spawner place-file, the real script (run as the current user): 0600, whole, made only where nothing is, folders on the way made 0700; a link anywhere, another owner's folder, a non-file in the way are refused and nothing is written through a link", { skip: process.platform !== "linux" }, t => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-pf-"))); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const uid = String(process.getuid());
+  const cwd = path.join(dir, "chat"); fs.mkdirSync(cwd);
+  const run = (/** @type {string} */ rel, /** @type {string} */ body, /** @type {string} */ owner = uid, /** @type {string} */ c = cwd) => spawnSync("/bin/sh", ["-c", PLACE_FILE_SCRIPT, "sh", c, rel, owner], { input: body });
+  assert.equal(run("notes/deep/a.txt", "one\ntwo\n").status, 0);
+  const f = path.join(cwd, "notes", "deep", "a.txt");
+  assert.equal(fs.readFileSync(f, "utf8"), "one\ntwo\n");
+  assert.equal((fs.statSync(f).mode & 0o777).toString(8), "600", "0600");
+  assert.equal((fs.statSync(path.join(cwd, "notes")).mode & 0o777).toString(8), "700", "folders made on the way are 0700");
+  assert.deepEqual(fs.readdirSync(path.dirname(f)), ["a.txt"], "no temp file is left");
+  assert.equal(run("notes/deep/a.txt", "other\n").status, 14, "a file that is there is never replaced");
+  assert.equal(fs.readFileSync(f, "utf8"), "one\ntwo\n");
+  assert.equal(run("empty", "").status, 0); assert.equal(fs.readFileSync(path.join(cwd, "empty"), "utf8"), "");
+  // a link as the file, as a folder on the way, or as the chat folder itself
+  const other = path.join(dir, "elsewhere"); fs.mkdirSync(other);
+  fs.symlinkSync(path.join(other, "target.txt"), path.join(cwd, "link.txt"));
+  assert.equal(run("link.txt", "x").status, 14);
+  fs.symlinkSync(other, path.join(cwd, "up"));
+  assert.equal(run("up/x.txt", "x").status, 11);
+  assert.equal(run("up/new/x.txt", "x").status, 11);
+  const linked = path.join(dir, "chatlink"); fs.symlinkSync(cwd, linked);
+  assert.equal(run("fresh.txt", "x", uid, linked).status, 13, "the folder must be its own real path");
+  assert.deepEqual(fs.readdirSync(other), [], "nothing was written through a link");
+  // another owner's folder, and a file where a folder should be
+  assert.equal(run("o.txt", "x", String(process.getuid() + 1)).status, 13);
+  fs.writeFileSync(path.join(cwd, "afile"), "x"); assert.equal(run("afile/x.txt", "x").status, 13);
+  fs.mkdirSync(path.join(cwd, "adir")); assert.equal(run("adir", "x").status, 14, "a folder where the file should be");
+});
+
+test("spawner place-file rule and the runner's are one rule: plantableRel and plantable() agree on every path", async () => {
+  const { plantable } = await import("../runner/safefs.js");
+  for (const p of [".claude/settings.json", ".mcp.json", "CLAUDE.md", "claude.local.md", "sub/AGENTS.md", "GEMINI.md", "GROK.md", ".github/workflows/x.yml", ".cursorrules", ".whatever/x", "a/.b/c", "src/app.js", "README.md", "docs/claude-notes.md", "a/b/c.txt", "notes/copilot-instructions.md", "x/.env"]) assert.equal(plantableRel(p), plantable(p), p);
+});
+
+test("the daemon's own-server host places a work file through the spawner as the account, and reports a clash", async t => {
+  const { createOwnServerHost } = await import("../daemon/ownserver-host.js");
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock"); /** @type {any[]} */ const log = [];
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat,
+    placeFile: (who, cwd, rel, bytes) => { if (rel === "there.txt") throw Object.assign(new Error("exit"), { code: 14 }); log.push([who.uid, cwd, rel, bytes.toString()]); } } });
+  t.after(() => srv.close());
+  const host = createOwnServerHost({ kernel: { id: { space: "spc_aaaaaaaaaaaa", owner: "per_o" }, chains: {}, gateway: {} }, registry: {}, root: dir, spawnerSocket: socket });
+  const cwd = path.join(acct, "2000", "work");
+  assert.equal(await host.placeFile(2000, cwd, "a.txt", Buffer.from("x")), true);
+  assert.equal(await host.placeFile(2000, cwd, "there.txt", Buffer.from("x")), false);
+  assert.deepEqual(log, [[2000, cwd, "a.txt", "x"]]);
 });

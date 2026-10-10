@@ -138,3 +138,15 @@ test("settings, hooks, MCP lists and instructions in the work folder are never c
   assert.equal(plantable("src/.hidden/x.js"), true, "a dot segment anywhere is held");
   assert.equal(plantable("src/app.js"), false);
 });
+
+test("on the packaged box the work files are placed in the account's folder by the spawner: absent ones are made, one that is there is a clash, one the spawner refuses is held and told", async t => {
+  const w = await world(t, { whole: 3, extra: 0, files: { "a.txt": "A", "clash.txt": "C", "no.txt": "N" } });
+  /** @type {any[]} */ const asked = [];
+  const placeFile = async (/** @type {any} */ tg, /** @type {string} */ rel, /** @type {Buffer} */ bytes) => { asked.push([tg.account, tg.cwd, rel, bytes.toString()]); if (rel === "clash.txt") return false; if (rel === "no.txt") throw new Error("refused"); return true; };
+  const resume = createResumeLent({ target: async () => ({ file: w.file, root: path.dirname(path.dirname(w.file)), native: NATIVE, cwd: w.cwd, account: 2007 }), port: () => w.own, say: (type, p) => w.said.push([type, p]), placeFile, place: async (tg, bytes) => { fs.mkdirSync(path.dirname(tg.file), { recursive: true }); fs.writeFileSync(tg.file, bytes); } });
+  const r = await resume({ space: SPACE, session: LENT, thread: "thread_a", view: w.lentView });
+  assert.deepEqual([r.files, r.conflicts, r.held], [1, ["clash.txt"], 1]);
+  assert.deepEqual(asked.map(x => [x[0], x[2], x[3]]).sort(), [[2007, "a.txt", "A"], [2007, "clash.txt", "C"], [2007, "no.txt", "N"]]);
+  assert.ok(!fs.existsSync(path.join(w.cwd, "a.txt")), "the server wrote nothing into the account's folder itself");
+  assert.match(String(/** @type {any} */ (w.said.find(x => x[0] === "runner.resumed"))?.[1]?.line), /1 file from your computer did not come over.*no\.txt/);
+});

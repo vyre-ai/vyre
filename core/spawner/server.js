@@ -45,7 +45,7 @@ const MAX_LIVE = 16;
  *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, seed?: (home: string, who: Who, files: Record<string, string>) => void, log?: (m: string) => void,
  *   seed?: (home: string, who: Who, files: Record<string, string>) => void,
  *   grantGroup?: (home: string, who: Who) => void,
- *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void | Promise<void> } }} o
+ *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void | Promise<void>, placeFile?: (who: Who, cwd: string, rel: string, bytes: Buffer) => void | Promise<void> } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
  *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, reprobe?, heldCap?, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
@@ -61,6 +61,23 @@ export const PLACE_MAX = 64 * 1024 * 1024;
  * is a link, when the folder is not the account's own, or when the target already exists as anything but a plain file. $1 = the file, $2 = the account's uid. Exported so a test runs the real logic.
  */
 export const PLACE_SCRIPT = 'f="$1"; d=$(dirname -- "$f"); [ ! -L "$d" ] && [ ! -L "$f" ] || exit 11; q="$d"; while [ ! -e "$q" ]; do q=$(dirname -- "$q"); done; [ "$(readlink -f -- "$q")" = "$q" ] || exit 13; umask 077; mkdir -p -- "$d" || exit 12; [ "$(readlink -f -- "$d")" = "$d" ] && [ "$(stat -c %u -- "$d")" = "$2" ] || exit 13; { [ ! -e "$f" ] || { [ -f "$f" ] && [ "$(stat -c %u -- "$f")" = "$2" ]; }; } || exit 14; t=$(mktemp -p "$d" .place.XXXXXX) || exit 15; if cat > "$t" && chmod 0600 -- "$t" && mv -T -- "$t" "$f"; then exit 0; fi; rm -f -- "$t"; exit 16';
+/** The most one placed work file may be, decoded (a file of a chat's folder). */
+export const PLACE_FILE_MAX = 64 * 1024 * 1024;
+/**
+ * What runs AS THE ACCOUNT to put one work file in a chat's folder (op `place-file`): $1 = the folder (its real path), $2 = the file's path inside it, $3 = the account's uid, the bytes on stdin. The folder must be a real directory of the
+ * account's; every folder on the way must be a real directory of the account's or is made (0700); nothing on the way may be a link; the file is written to a temp file in its folder and then LINKED in, so it is made only when
+ * nothing is there (exit 14 otherwise: a file that exists is never replaced, the caller reports the clash), mode 0600, never through a link. Exported so a test runs the real logic.
+ */
+export const PLACE_FILE_SCRIPT = 'c="$1"; r="$2"; u="$3"; [ ! -L "$c" ] && [ -d "$c" ] && [ "$(readlink -f -- "$c")" = "$c" ] && [ "$(stat -c %u -- "$c")" = "$u" ] || exit 13; umask 077; d="$c"; rest="$r"; while case "$rest" in */*) true;; *) false;; esac; do seg="${rest%%/*}"; rest="${rest#*/}"; d="$d/$seg"; [ ! -L "$d" ] || exit 11; if [ -e "$d" ]; then [ -d "$d" ] && [ "$(stat -c %u -- "$d")" = "$u" ] || exit 13; else mkdir -- "$d" || exit 12; fi; done; f="$d/$rest"; [ ! -L "$f" ] && [ ! -e "$f" ] || exit 14; t=$(mktemp -p "$d" .place.XXXXXX) || exit 15; if cat > "$t" && ln -- "$t" "$f" 2>/dev/null; then rm -f -- "$t"; exit 0; fi; rm -f -- "$t"; exit 16';
+/**
+ * Paths of a work folder that are never carried from another computer: any segment that starts with a dot, and the agent instruction files by name (the same rule as core/runner/safefs.js plantable(); a test holds the two together).
+ * @param {string} rel
+ */
+export function plantableRel(rel) {
+  const p = String(rel).split("/").map(x => x.toLowerCase());
+  if (p.some(x => x.startsWith("."))) return true;
+  return /^(claude|claude\.local|agents|gemini|grok|copilot-instructions)\.md$/.test(p[p.length - 1] || "");
+}
 
 export async function serve(o) {
   const log = o.log || (() => {});
@@ -374,6 +391,46 @@ export async function serve(o) {
         });
         sock.end(JSON.stringify({ placed: true }) + "\n");
       } catch (e) { sock.end(JSON.stringify({ error: `cannot place that transcript (${/** @type {any} */ (e).code ?? /** @type {Error} */ (e).message})` }) + "\n"); }
+      finally { placing--; }
+      return;
+    }
+    if (req.op === "place-file") {
+      // vyred carries a chat on from a person's computer and its work files with it (core/runner/resume-lent.js): on the packaged box the chat's folder is the account's, so only this process can put a file in it as the account.
+      // As narrow as `place`: one regular file of the work folder, made only where nothing is, as the account itself, 0600, never through a link, never a settings, hook, MCP or instruction file (plantableRel), never while
+      // the account has a session running. The folder is the account's own: under its HOME or under /work, and a real directory (the script checks every step). The bytes follow the request line.
+      const w = whoFor({ account: req.account });
+      if (!w.who || !acc) { sock.end(JSON.stringify({ error: w.why || "no accounts here" }) + "\n"); return; }
+      for (const s of live.values()) if (s.req.account === req.account) { sock.end(JSON.stringify({ error: `account ${req.account} still has a session running` }) + "\n"); return; }
+      if (placing >= 2) { sock.end(JSON.stringify({ error: "the spawner is placing other files: try again in a moment" }) + "\n"); return; }
+      const home = path.resolve(/** @type {string} */ (w.who.home)), cwd = typeof req.cwd === "string" && path.isAbsolute(req.cwd) ? path.resolve(req.cwd) : "";
+      const under = (/** @type {string} */ dir) => cwd.startsWith(dir + path.sep);
+      if (!cwd || cwd !== req.cwd || !(under(home) || under(work))) { sock.end(JSON.stringify({ error: `a work folder is under ${home} or ${work}` }) + "\n"); return; }
+      const rel = typeof req.rel === "string" ? req.rel : "";
+      if (!rel || rel.length > 400 || rel.startsWith("/") || /[\0\r\n]/.test(rel) || rel.split("/").some(x => !x || x === "." || x === ".." || x.length > 255)) { sock.end(JSON.stringify({ error: "a work file is a plain path inside the folder" }) + "\n"); return; }
+      if (plantableRel(rel)) { sock.end(JSON.stringify({ error: "that kind of file (settings, hooks, MCP lists, instructions, dot folders) is never carried" }) + "\n"); return; }
+      if (!Number.isInteger(req.size) || req.size < 0 || req.size > PLACE_FILE_MAX || typeof req.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(req.sha256)) { sock.end(JSON.stringify({ error: "a work file is 0 bytes to 64 MiB, with its sha256" }) + "\n"); return; }
+      /** @type {Buffer} */ let bytes;
+      placing++;
+      try {
+        bytes = req.size === 0 ? Buffer.alloc(0) : await new Promise((resolve, reject) => {
+          /** @type {Buffer[]} */ let parts = []; let n = 0;
+          const timer = setTimeout(() => { sock.off("data", onData); parts = []; reject(new Error("the file did not arrive")); }, 30_000);
+          const gone = () => { clearTimeout(timer); sock.off("data", onData); parts = []; reject(new Error("the connection closed before the file arrived")); };
+          sock.once("end", gone); sock.once("close", gone);
+          const onData = (/** @type {Buffer} */ d) => { n += d.length; if (n > req.size) { clearTimeout(timer); sock.off("data", onData); reject(new Error("more bytes than the request said")); return; } parts.push(d); if (n === req.size) { clearTimeout(timer); sock.off("data", onData); resolve(Buffer.concat(parts)); } };
+          sock.on("data", onData); sock.resume();
+        });
+      } catch (e) { placing--; sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
+      if (crypto.createHash("sha256").update(bytes).digest("hex") !== req.sha256) { placing--; sock.end(JSON.stringify({ error: "the file does not match its sha256" }) + "\n"); return; }
+      try {
+        if (acc.placeFile) await acc.placeFile(w.who, cwd, rel, bytes);
+        else await new Promise((resolve, reject) => {
+          const child = execFile("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c", PLACE_FILE_SCRIPT, "sh", cwd, rel, String(w.who.uid)], { timeout: 60_000, killSignal: "SIGKILL" }, e => (e ? reject(e) : resolve(undefined)));
+          child.stdin?.on("error", () => {});
+          child.stdin?.end(bytes);
+        });
+        sock.end(JSON.stringify({ placed: true }) + "\n");
+      } catch (e) { const code = /** @type {any} */ (e).code; sock.end(JSON.stringify({ error: code === 14 ? "a file is already there" : `cannot place that file (${code ?? /** @type {Error} */ (e).message})`, ...(code === 14 ? { exists: true } : {}) }) + "\n"); }
       finally { placing--; }
       return;
     }
