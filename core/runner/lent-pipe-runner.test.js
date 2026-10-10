@@ -24,13 +24,13 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
 const lines = (/** @type {any} */ stream) => { /** @type {string[]} */ const got = []; let buf = ""; stream.on("data", (/** @type {any} */ d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { got.push(buf.slice(0, i)); buf = buf.slice(i + 1); } }); return got; };
 
-async function world(/** @type {import("node:test").TestContext} */ t, /** @type {{ enrolled?: boolean, heartbeatMs?: number, http?: any }} */ o = {}) {
+async function world(/** @type {import("node:test").TestContext} */ t, /** @type {{ enrolled?: boolean, heartbeatMs?: number, http?: any, canResume?: () => boolean }} */ o = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "lp-agent-"));
   const agent = path.join(agentDir, "agent.js");
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), agent);
   const was = process.env.VYRE_CLAUDE_BIN; process.env.VYRE_CLAUDE_BIN = agent;
   const root = fs.mkdtempSync(path.join(SCRATCH, "lp-root-"));
-  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();
@@ -45,7 +45,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; fs.rmSync(agentDir, { recursive: true, force: true }); });
   const run = (/** @type {string} */ tool, /** @type {any} */ input) => tools.get(tool).run(input, { caller: "cli" });
-  return { r, run, book: r.home.book };
+  return { r, run, book: r.home.book, say: (/** @type {string} */ type) => ctx.events.emit(type, {}) };
 }
 
 test("a chat spawned for a lender runs in the lender's sandbox with the SDK's flags, turns go down and answers come up, and the runner's own checkpoint is taken at the end of the turn", { skip: SKIP || false, timeout: 120_000 }, async t => {
@@ -130,11 +130,12 @@ test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks
   // the Harness hooks run on the lender too, from its own copy of the plugin, and ask the home through the same door as the session's own (caller harness): the home's word is the hook's answer
   proc.stdin.write("hook rules {\"session_id\":\"s_tools\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}\n");
   const hook = JSON.parse(await waitFor(() => out.find(l => l.includes("\"hook\"")), 30_000));
+  assert.ok(hook.stdout, "the hook said something: " + JSON.stringify(hook));
   assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.permissionDecision, "deny", JSON.stringify(hook));
   assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"]], ["s_tools", "/v1/tools/harness.rules", "harness"], "as a hook, not as the MCP server");
   // and Vyre's real MCP server, run inside the sandbox from that config, lists the tools the home says this session has
   proc.stdin.write("mcp\n");
-  const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000).catch(e => { throw new Error(`${e.message}; the program said: ${out.slice(-6).join(" | ").slice(0, 700)}`); }));
   assert.equal(mcp.init, "ok", JSON.stringify(mcp));
   assert.ok(Array.isArray(mcp.tools) && mcp.tools.includes("tools_find"), "the server answered from the home's list: " + JSON.stringify(mcp.tools));
   proc.kill();
@@ -145,7 +146,7 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   // the box: a real daemon, and the session's own socket opened the way the switchboard opens it (its route, its caller binding)
   process.env.VYRE_SEAL_DEV = "1";
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const manifest = JSON.parse(fs.readFileSync(new URL("../switchboard/module.json", import.meta.url), "utf8"));
@@ -167,12 +168,58 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   assert.deepEqual(echo, await onBox("system.echo", { text: "same" }), "a module tool answers the same");
   // Vyre's own MCP server, run in the sandbox, finds tools in the box's catalog and calls one of them
   const n0 = out.length; proc.stdin.write("mcp tools_find {\"query\":\"echo\"}\n");
-  const mcp = JSON.parse(await waitFor(() => out.slice(n0).find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  const mcp = JSON.parse(await waitFor(() => out.slice(n0).find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000).catch(e => { throw new Error(`${e.message}; the program said: ${out.slice(-6).join(" | ").slice(0, 700)}`); }));
   assert.equal(mcp.init, "ok", JSON.stringify(mcp));
   assert.ok(mcp.tools.includes("tools_find") && mcp.tools.includes("tools_call"), JSON.stringify(mcp.tools));
   assert.ok(JSON.stringify(mcp.called).includes("system_echo") || JSON.stringify(mcp.called).includes("system.echo"), "tools_find found the box's echo tool: " + JSON.stringify(mcp.called).slice(0, 300));
   // and what the session may not do on the box, it may not do from the Mac
   const reveal = await viaLender("vault.reveal", { name: "x" });
   assert.equal(reveal.error && reveal.error.code, "denied");
+  // a send is held for the person exactly as it is on the box: nothing is sent from the Mac either, and what the model is told is the same
+  const sendArgs = { via: "email", to: "a@example.com", subject: "hi", body: "hello" };
+  const sentFromMac = await viaLender("comms.send", sendArgs), sentOnBox = await onBox("comms.send", sendArgs);
+  assert.equal(sentFromMac.error && sentFromMac.error.code, "held_for_approval", JSON.stringify(sentFromMac).slice(0, 300));
+  assert.equal(sentOnBox.error && sentOnBox.error.code, "held_for_approval");
+  const waiting = /** @type {any} */ ((await d.registry.call("approvals.pending", {}, "deck")).data).approvals.map((/** @type {any} */ a) => a.id);
+  assert.ok(waiting.includes(sentFromMac.error.approval), "the card waits at the home, for the person: " + JSON.stringify(waiting));
   proc.kill();
+});
+
+test("a program that crashes on a Mac ends for the SDK with the exit code it really had, even when the server can carry on; the home then takes the session with reason crash", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t, { canResume: () => true });
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  // the lender's report of the exit is slow, the home's take-over is not: the order the SDK hears them in is what is under test
+  const pipe = w.r.home.pipe.bind(w.r.home); w.r.home.pipe = async (/** @type {any} */ chain, /** @type {any} */ i) => { if (i && i.exit) await sleep(1200); return pipe(chain, i); };
+  const proc = w.r.home.spawn({ session: "s_crash", person: BOB, args: ["--output-format", "stream-json"] });
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  const closed = new Promise(res => proc.on("close", (/** @type {any} */ c, /** @type {any} */ s) => res([c, s])));
+  proc.stdin.write("crash 3\n");
+  assert.deepEqual(await closed, [3, null], "its own exit code, not a hang-up");
+  assert.equal(proc.moved ?? null, null, "not a move");
+  await waitFor(() => { const r = w.book.get("s_crash"); return r && r.where === "server" && r.reason === "crash"; }, 15_000);
+});
+
+test("the lid shuts: the chat on the Mac moves to the server, and a chat started afterwards is placed on the box and runs nothing on the Mac (the fallback)", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t, { canResume: () => true });
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  assert.equal(w.r.home.placeNew({ session: "s_first", person: BOB }).where, "mac", "before the lid shuts a new chat is placed on the Mac");
+  const proc = w.r.home.spawn({ session: "s_first", person: BOB, args: ["--output-format", "stream-json"] });
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  const closed = new Promise(res => proc.on("close", (/** @type {any} */ c, /** @type {any} */ s) => res([c, s])));
+  w.say("link.sleeping");
+  assert.deepEqual(await closed, [null, "SIGHUP"], "the SDK hears the move");
+  assert.equal(proc.moved && proc.moved.to, "server");
+  await waitFor(() => w.book.get("s_first")?.where === "server", 15_000);
+  await sleep(1500);   // the lender's next beats say it is asleep
+  // the computer is not ready now: a new chat is the box's, and a spawn that was asked for anyway never starts
+  assert.equal(w.r.home.placeNew({ session: "s_second", person: BOB }).where, "box", "a chat started after the lid shut is placed on the box");
+  const late = w.r.home.spawn({ session: "s_second", person: BOB, args: ["--output-format", "stream-json"] });
+  assert.equal(late.lent ?? null, null, "no computer is named for it");
+  const err = await new Promise(res => late.on("error", res));
+  assert.equal(/** @type {any} */ (err).code, "lent_unavailable", "it fails as a spawn that never started, so the box runs it");
+  assert.equal(w.book.get("s_second") ?? null, null, "and no row says it is on the Mac");
 });

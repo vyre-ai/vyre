@@ -88,7 +88,7 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     spaceKey: { pub: i => withCtx("spacekey.pub", i), sign: i => withCtx("spacekey.sign", i, { bytes: Buffer.from(i.bytes).toString("base64") }) },
     /** Key leases for a lent computer's workspace. `allowed` is the kernel's answer that both Offer grants hold. */
     lease: {
-      issue: i => withCtx("lease.issue", i, { device: i.device, allowed: i.allowed, ...(i.signed ? { signed: true, hello: i.hello ?? null, proof: i.proof } : {}) }),
+      issue: i => withCtx("lease.issue", i, { device: i.device, allowed: i.allowed }),
       renew: i => withCtx("lease.renew", i, { lease: i.id, allowed: i.allowed }),
       revoke: i => withCtx("lease.revoke", i, { member: i.member, device: i.device }),
       reinstate: i => withCtx("lease.reinstate", i, { member: i.member, device: i.device, proof: i.proof }),

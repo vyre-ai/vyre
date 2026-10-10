@@ -84,7 +84,17 @@ export function createLentClient(o) {
     /** The bytes of a chat's process on this computer, up and down, in one long call (contracts/lent-spawn.md). A fenced session is stopped here like any other write. */
     pipe: async ({ session, up, exit, ack, wait_ms }) => { try { return await o.invoke("lent.pipe", [{ session, epoch: epochs.get(session), ...(up && up.length ? { up } : {}), ...(exit ? { exit } : {}), ack, ...(Number.isInteger(wait_ms) ? { wait_ms } : {}) }]); } catch (e) { fence(session, e); throw e; } },
     /** A tool call of the chat's session, brought to the home as that session's own (lent.http). */
-    http: async ({ session, method, path, body, caller }) => { try { return await o.invoke("lent.http", [{ session, epoch: epochs.get(session), method: method === "GET" ? "GET" : "POST", path, body, caller }]); } catch (e) { fence(session, e); throw e; } },
+    http: async ({ session, method, path, body, caller }) => {
+      try {
+        let r = await o.invoke("lent.http", [{ session, epoch: epochs.get(session), method: method === "GET" ? "GET" : "POST", path, body, caller }]);
+        // A call that outlasts one wire call is kept at the home under a ticket; ask for it again until it answers (the home gives up on it after its own limit).
+        for (const until = Date.now() + (o.callMaxMs ?? 31 * 60_000); r && typeof r.pending === "string"; ) {
+          if (Date.now() > until) throw Object.assign(new Error("the tool call took too long"), { code: "timeout" });
+          r = await o.invoke("lent.http", [{ session, epoch: epochs.get(session), ticket: r.pending }]);
+        }
+        return r;
+      } catch (e) { fence(session, e); throw e; }
+    },
     /** The nudge: held at the home up to `wait_ms` until it has something for this computer to do (a chat to start), so a ready computer is told at once. The directives are the heartbeat's. */
     wait: ({ wait_ms }) => o.invoke("lent.wait", [{ wait_ms }]),
     /** Told when the home fences a session of this computer. */

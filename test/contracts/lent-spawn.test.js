@@ -106,6 +106,28 @@ test("lent-spawn v1.3: Vyre's tools are routed by the thread the chat's socket i
   assert.ok(r.home.placements().some((/** @type {any} */ x) => x.session === OLD), "the row is still keyed by the session");
 });
 
+test("lent-spawn v1.3: a tool call that outlasts one wire call is kept at the home under a ticket, the lender asks again, and the chat sees one long call", { timeout: 60_000 }, async t => {
+  keepAlive(t);
+  let release = () => {};
+  const gate = new Promise(res => { release = () => res(undefined); });
+  const r = await rig(t, { httpFirstMs: 40, http: async (/** @type {string} */ _t, /** @type {string} */ _m, /** @type {string} */ p) => { if (p.endsWith("/slow")) await gate; if (p.endsWith("/sleep")) await new Promise(res => setTimeout(res, 200)); return F.httpAnswer; } });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: SESSION });
+  // on the wire: the first call answers pending after the first wait, and the ticket is only good for its own session
+  const raw = await r.home.http(r.bob, { session: SESSION, epoch: 1, method: "POST", path: "/v1/tools/slow", body: "{}" });
+  assert.equal(typeof raw.pending, "string", JSON.stringify(raw));
+  const again = await r.home.http(r.bob, { session: SESSION, epoch: 1, ticket: raw.pending });
+  assert.equal(again.pending, raw.pending, "still running: the same ticket");
+  await assert.rejects(r.home.http(r.bob, { session: SESSION, epoch: 1, ticket: "call_nope" }), (/** @type {any} */ e) => e.code === "not_found");
+  release();
+  const done = await r.home.http(r.bob, { session: SESSION, epoch: 1, ticket: raw.pending });
+  assert.deepEqual([done.status, done.body], [F.httpAnswer.status, F.httpAnswer.body]);
+  await assert.rejects(r.home.http(r.bob, { session: SESSION, epoch: 1, ticket: raw.pending }), (/** @type {any} */ e) => e.code === "not_found", "an answer is handed over once");
+  // through the lender's client the chat never sees the ticket: one call, the answer
+  const a = await c.http({ session: SESSION, method: "POST", path: "/v1/tools/sleep", body: "{}" });   // 200 ms against a 40 ms first wait: asked for again at least twice
+  assert.deepEqual([a.status, a.body], [F.httpAnswer.status, F.httpAnswer.body]);
+});
+
 test("lent-spawn v1: a session lent with no pipe open answers idle; a limit broken is bad_input; an old epoch is conflict", { timeout: 60_000 }, async t => {
   keepAlive(t);
   const r = await rig(t);
