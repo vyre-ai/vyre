@@ -470,6 +470,7 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
     await settle(150);
     const st = (await w.d.registry.call("relay.setup.status", {}, "cli")).data;
     assert.equal(st.state, expect, `stamp ${at}`);
+    if (expect === "none") { assert.equal(st.failed, true, `stamp ${at}: the status says the code was not used`); assert.match(st.why, /older than an hour|no valid time/, "and why"); } else assert.notEqual(st.failed, true);
     assert.equal(process.env.VYRE_SETUP_CODE, undefined, "taken out of the environment either way");
     await w.d.stop();
   }

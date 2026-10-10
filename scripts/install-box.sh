@@ -721,6 +721,9 @@ show_words() {
       words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
     fi
     if [ -n "$words" ]; then say "  Your four words: $BOLD$words$RESET"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
+    # the box says why it did not use the code (a code older than an hour, the relay refusing it): say it now, not after three minutes of waiting
+    why=$(printf '%s' "$out" | sed -n 's/.*"failed": *true.*"why": *"\([^"]*\)".*/\1/p')
+    if [ -n "$why" ]; then say "  Vyre could not start the pairing: $why"; say "  Make a new install line in the Vyre app and run it again."; return 0; fi
     n=$((n + 1)); sleep 1
   done
   say "  The four words did not show yet. To see them, run: ${BOLD}${SUDO:+sudo }vyre words${RESET}"

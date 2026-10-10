@@ -555,9 +555,11 @@ export default {
       return setupStatus();
     }
 
+    /** Why the setup code the install line carried was not used (a stamp that is not within the hour, or the relay refusing it): the status says so, so the installer and the person are not left waiting. @type {string | null} */
+    let bootSetupFailure = null;
     const setupStatus = () => {
       const s = setup;
-      if (!s || !s.live) return { state: "none" };
+      if (!s || !s.live) return bootSetupFailure ? { state: "none", failed: true, why: bootSetupFailure } : { state: "none" };
       return { state: s.state, registered: s.registered, ticket: s.ticket === "minted", expiresAt: s.exp, ownerExists: personExists(),
         words: s.words(k().box.pub).join(" ") };
     };
@@ -1419,8 +1421,8 @@ export default {
     if (!seam.env) { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
     if (bootCode) {
       const at = bootAt > 1e12 ? bootAt : bootAt * 1000, age = Date.now() - at;
-      if (!(Number.isFinite(at) && at > 0 && age >= -5 * 60_000 && age <= SETUP_TTL)) ctx.log("relay: the setup code on this box has no valid stamp within the last hour and was not used");
-      else beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
+      if (!(Number.isFinite(at) && at > 0 && age >= -5 * 60_000 && age <= SETUP_TTL)) { bootSetupFailure = "the code on the install line is older than an hour (or has no valid time), so it was not used; make a new install line in the app"; ctx.log("relay: the setup code on this box has no valid stamp within the last hour and was not used"); }
+      else beginSetup(String(bootCode)).catch(e => { bootSetupFailure = `the relay or this box refused the setup code: ${/** @type {Error} */ (e).message}`; ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`); });
     }
 
     // Taking a device's presence key away (presence.remove) takes the device away too: its open
