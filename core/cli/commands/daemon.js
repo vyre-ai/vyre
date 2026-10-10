@@ -51,12 +51,16 @@ export default [
       }
       const d = h.data;
       // A first index, or the first model download, is the one slow thing a fresh install does.
-      const recall = progressLine((await call("recall.status")).data);
+      // Neither question may hold `vyre status` up: on a first start search and memory answer only after the index and the Records store are up, which can take minutes. Three seconds each, then
+      // the line says "starting" and the rest of the status is printed.
+      const [recallRes, memRes] = await Promise.all([call("recall.status", {}, { timeout: 3000 }), call("memory.stats", {}, { timeout: 3000 }).catch(() => null)]);
+      const slow = (/** @type {any} */ r) => Boolean(r && r.error && r.error.code === "timeout");
+      const recall = slow(recallRes) ? "search index: starting" : progressLine(recallRes.data);
       // What memory knows about the user, and the model pass's spend; absent when memory is.
-      const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
-      const mem = memoryLine(personal);
+      const personal = memRes?.data?.personal;
+      const mem = slow(memRes) ? "memory: starting" : memoryLine(personal);
       if (json()) {
-        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}), ...(readSpace() ? { space: readSpace() } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
+        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem && personal ? { memory: personal } : {}), ...(slow(memRes) ? { memory_note: "starting" } : {}), ...(readSpace() ? { space: readSpace() } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
           { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
           { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
           ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
