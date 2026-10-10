@@ -237,6 +237,28 @@ try {
   check(blank === 'about:blank|""', "4e about:blank opened and read back over /cdp", blank);
   const dbgPort = inC("1000:1000", "python3 -c \"import socket\nfor p in (9222,9223):\n    s=socket.socket(); s.settimeout(1)\n    try: s.connect(('127.0.0.1',p)); print(p,'open')\n    except Exception as e: print(p,type(e).__name__)\"");
   check(!/open/.test(dbgPort), "4e no raw Chrome debugging port to dial from inside the computer", dbgPort.replace(/\n/g, "; "));
+  // ---- 4k. Vyre Computer's front door: the agent drives a page through `computer.use` (the cloud computer by default), interface first -------------
+  // Nothing is named in `on`, so the answer is the agent's own computer; every act below is the engine's own tool (chrome.*) behind the one door, with the engine's own floor.
+  const use = async input => { const x = await agent("computer.use", input); if (x.error) throw new Error(`computer.use ${input.do}: ${x.error.message}`); return x.data; };
+  await gotoPage("data:text/html,<title>door start</title><label>Search box<input aria-label=\"Search box\"></label>");
+  const routed = await use({ do: "route", goal: "type a name", site: "door.csproof.invalid" });
+  check(routed && /screen/.test(JSON.stringify(routed)) && /Cloud computer/.test(JSON.stringify(routed)), "4k computer.use route: no Connection or learned operation covers the site, so the screen, on the cloud computer by default", JSON.stringify(routed).slice(0, 160));
+  // the agent's Chrome reaches the public web only: a loopback or local page is refused by the door, with the way out named
+  const local = await agent("computer.use", { do: "open", url: "http://127.0.0.1:8099/" });
+  check(!!local.error && /public/.test(local.error.message || ""), "4k computer.use open of a local page is refused (the agent's Chrome reaches the public web only)", local.error && local.error.message);
+  const looked = await use({ do: "look" });
+  check(looked && looked.engine === "chrome.snapshot" && JSON.stringify(looked).includes("Search box"), "4k computer.use look returned the page's controls (chrome.snapshot)", JSON.stringify(looked).slice(0, 160));
+  const typed = await use({ do: "type", args: { selector: { name: "Search box" }, text: "kit through the door" } });
+  check(typed && typed.engine === "chrome.type", "4k computer.use type went to chrome.type", JSON.stringify(typed).slice(0, 140));
+  const value = await evalIn("(document.querySelector('input') || {}).value");
+  check(value === "kit through the door", "4k the text is in the page, read back over /cdp", value);
+  const other = await agent("computer.use", { do: "look", on: "nowhere-computer" });
+  check(!other.error && JSON.stringify(other.data).includes("question"), "4k a computer that does not exist is a question with the real names, never a guess", JSON.stringify(other.data || other.error).slice(0, 160));
+  const bad = await agent("computer.use", { do: "launch-missiles" });
+  check(!!bad.error, "4k an action that is not a computer's is refused", bad.error && bad.error.message);
+  const rival = await agent("computer.use", { do: "look", agent: "someone-else" });
+  check(!!rival.error && /own computer/.test(rival.error.message || ""), "4k an agent cannot use another agent's computer through the door", rival.error && rival.error.message);
+
   cdp.ws && cdp.ws.close();
 
   // ---- step 3 again, on the computer the pool itself made -------------------------------------

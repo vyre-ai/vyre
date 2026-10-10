@@ -342,6 +342,27 @@ test("vyre uninstall --delete-data deletes every volume in one step, with no sec
   assert.match(r.stdout, /your data is deleted/);
 });
 
+test("vyre uninstall --delete-data also removes the root-owned state Vyre wrote and the Spaces' stores, so a fresh install starts clean; --keep-data leaves them", t => {
+  for (const [args, gone] of [[["--delete-data"], true], [["--keep-data"], false]]) {
+    const b = installed(t);
+    const upd = path.join(b.base, "var-lib-vyre-update"), spaces = path.join(b.base, "var-lib-vyre-spaces");
+    for (const d of [upd, spaces]) { fs.mkdirSync(path.join(d, "status"), { recursive: true }); fs.writeFileSync(path.join(d, "status", "release"), "stale"); }
+    const env = { ...b.env, VYRE_UPDATE_ROOT: upd, VYRE_SPACES_ROOT: spaces };
+    const r = spawnSync("sh", [BOXVYRE, "uninstall", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(upd), !gone, `${args}: the updater's state ${gone ? "is removed" : "is kept"}`);
+    assert.equal(fs.existsSync(spaces), !gone, `${args}: the Space helper's state ${gone ? "is removed" : "is kept"}`);
+  }
+});
+
+test("vyre uninstall --delete-data never removes a root or system folder named through the environment", t => {
+  const b = installed(t);
+  const env = { ...b.env, VYRE_UPDATE_ROOT: "/", VYRE_SPACES_ROOT: "relative/path" };
+  const r = spawnSync("sh", [BOXVYRE, "uninstall", "--delete-data"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync("/usr") && fs.existsSync("/etc"), "the machine is still there");
+});
+
 test("vyre uninstall --keep-data and a bad option", t => {
   const b = installed(t);
   const bad = uninstall(b, ["--nuke"]);
@@ -465,6 +486,36 @@ test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /The four words did not show yet\. To see them, run: sudo vyre words/);
   assert.ok(r.stdout.indexOf("four words did not show") < r.stdout.indexOf("Go back to the Vyre app to finish."));
+});
+
+test("install-box.sh v2: a box that says why it did not take the setup code is believed at once, and the person is told what to do, not left on the fallback line", t => {
+  const why = "the relay or this box refused the setup code: too many setup requests; wait a minute";
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"none","failed":true,"why":"${why}"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_WORDS_TRIES: "50" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Vyre could not start the pairing: the relay or this box refused the setup code: too many setup requests; wait a minute/);
+  assert.match(r.stdout, /Make a new install line in the Vyre app and run it again\./);
+  assert.doesNotMatch(r.stdout, /The four words did not show yet/);
+});
+
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned packs the checkout as a development build and signs nothing; the default still signs", t => {
+  for (const [mode, want] of [["unsigned", "SIGN=0"], [undefined, "SIGN=1"]]) {
+    const b = box(t, {});
+    const env = { ...b.env, VYRE_NO_UP: "1" };
+    if (mode) env.VYRE_DEV_SIGN = mode; else delete env.VYRE_DEV_SIGN;
+    const r = run(env, ["--yes", "--from", REPO]);
+    // the stub docker makes no files, so the pack step ends the run; what it was asked to do is the point
+    assert.match(b.calls(), new RegExp(`-e ${want} `), `${mode || "default"}: the pack step was told ${want}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, mode ? /packing the checkout as a development build \(not signed\)/ : /packing the checkout and signing it/);
+  }
+});
+
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned is refused on a released install (no --from), before anything is downloaded or installed", t => {
+  const b = box(t, {});
+  const r = run({ ...b.env, VYRE_DEV_SIGN: "unsigned", VYRE_NO_UP: "1" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /VYRE_DEV_SIGN=unsigned is only for an install from a checkout/);
+  assert.doesNotMatch(b.calls(), /compose .* up|docker run/, "nothing was started");
 });
 
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;

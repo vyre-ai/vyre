@@ -402,24 +402,27 @@ dev_sign() {
   TMP=$(mktemp -d)
   nodeimg=$(sed -n 's/^FROM \(node:[^ ]*\).*/\1/p' "$FROM/box/Dockerfile" | head -n 1)
   [ -n "$nodeimg" ] || die "$FROM/box/Dockerfile names no node image to pack and sign with"
-  say "packing the checkout and signing it with a throwaway key (this install only)"
-  dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
+  # VYRE_DEV_SIGN=unsigned packs the checkout the same way and signs nothing: a DEVELOPMENT build (no release signature), which takes the developer switches in vyre.env (VYRE_SEAL_DEV and the
+  # others, kernel/devbuild.js) and runs its modules by the path rule (VYRE_KERNEL_PATH_RULE=1). For a throwaway test box only; a signed or released build ignores every one of those switches.
+  SIGN=1; [ "${VYRE_DEV_SIGN:-1}" != unsigned ] || SIGN=0
+  if [ "$SIGN" = 1 ]; then say "packing the checkout and signing it with a throwaway key (this install only)"; else say "packing the checkout as a development build (not signed)"; fi
+  dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e "SIGN=$SIGN" -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
     set -e
     mkdir /tmp/w /tmp/u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /tmp/w -xf -
     cd /tmp/w && npm pack --silent --pack-destination /tmp >/dev/null
     tar -xzf /tmp/*.tgz -C /tmp/u --strip-components=1
-    node /from/scripts/dev-sign.mjs --root /tmp/u --out /out
+    if [ "$SIGN" = 1 ]; then node /from/scripts/dev-sign.mjs --root /tmp/u --out /out; fi
     cp /tmp/u/box/vyre /out/vyre
     tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /tmp/u .
   ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
   # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
-  [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
+  { [ -s "$TMP/vyre.tgz" ] && { [ "$SIGN" = 0 ] || [ -s "$TMP/SHA256SUMS.sig" ]; }; } || die "the packed checkout is incomplete; nothing was installed"
   TGZ=1; DEVSIGNED=1
   # An image left from an earlier install is used as it is (compose never rebuilds a present vyre:local), so it would run the OLD tree with none of this signing: remove it, and the box is built fresh.
   dk docker image rm -f vyre:local >/dev/null 2>&1 || true
   unpack
   WRAPPER_SRC="$TMP/vyre"
-  done_step "the checkout is signed for this server only"
+  if [ "$SIGN" = 1 ]; then done_step "the checkout is signed for this server only"; else done_step "the checkout is packed as a development build"; fi
 }
 
 # The box files: from a checkout with --from, else downloaded from BASE.
@@ -436,6 +439,8 @@ write_stack() {
     # VYRE_DEV_SIGN=0 skips it (the tests' stub docker makes no files); the box then needs VYRE_KERNEL_PATH_RULE=1 to run its modules.
     { [ "$DRY" = 1 ] || [ "${VYRE_DEV_SIGN:-1}" = 0 ]; } || dev_sign
   else
+    # An unsigned development build is for a checkout on a throwaway test box only: the released install line (fetching from the release site) always verifies the release signature.
+    [ "${VYRE_DEV_SIGN:-1}" != unsigned ] || die "VYRE_DEV_SIGN=unsigned is only for an install from a checkout (--from); a released install is always checked against the release signature. Nothing was installed."
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
     if [ "$DRY" = 1 ]; then
@@ -710,7 +715,7 @@ mbx_send() {
 # cannot be read are said so, with the one command that shows them: the page asks for them either way.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
-  n=0
+  n=0; told=
   # A first start (the record store, the relay link) can take a few minutes: wait up to three, saying so once, before giving the fallback (the 0.2.12 live walk saw both).
   while [ "$n" -lt "${VYRE_WORDS_TRIES:-180}" ]; do
     [ "$n" != 10 ] || say "  Waiting for the four words while Vyre starts (this can take a few minutes the first time)..."
@@ -721,6 +726,14 @@ show_words() {
       words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
     fi
     if [ -n "$words" ]; then say "  Your four words: $BOLD$words$RESET"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
+    # the box says why it did not use the code (a code older than an hour, the relay refusing it): say it now, not after three minutes of waiting
+    why=$(printf '%s' "$out" | sed -n 's/.*"failed": *true.*"why": *"\([^"]*\)".*/\1/p')
+    if [ -n "$why" ]; then say "  Vyre could not start the pairing: $why"; say "  Make a new install line in the Vyre app and run it again."; return 0; fi
+    # a busy relay is waited out by the box itself; say so once, and keep waiting
+    if [ -z "$told" ]; then
+      busy=$(printf '%s' "$out" | sed -n 's/.*"retrying": *true.*"why": *"\([^"]*\)".*/\1/p')
+      if [ -n "$busy" ]; then told=1; say "  The relay is busy right now: Vyre keeps trying on its own ($busy)."; fi
+    fi
     n=$((n + 1)); sleep 1
   done
   say "  The four words did not show yet. To see them, run: ${BOLD}${SUDO:+sudo }vyre words${RESET}"

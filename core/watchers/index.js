@@ -30,6 +30,7 @@ import { validZone, systemZone } from "../../lib/time/index.js";
  * this sits right at that floor rather than four times past it.
  */
 const TICK_MS = 60_000;
+export const SYNC_EVERY = 30;
 
 /** The wall is probed once per vyred. @type {Promise<any>|null} */
 let cachedWall = null;
@@ -229,7 +230,9 @@ export default {
       run: async ({ name, token, body }) => rt.hook(name, token, body),
     });
 
-    const timer = setInterval(() => { rt.tick(); void sync(); }, TICK_MS);
+    // the minute look is one local query for what is due; the definition records (Records) are brought into step when a watcher tool changes one, and as a safety net every half hour, not every minute
+    let looks = 0;
+    const timer = setInterval(() => { rt.tick(); if (++looks % SYNC_EVERY === 0) void sync(); }, TICK_MS);
     timer.unref?.();
     rt.tick();
     void sync();

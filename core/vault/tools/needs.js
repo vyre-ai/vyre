@@ -14,7 +14,7 @@
 // the connections table (decision 9b) listens on.
 
 import { presence, quoted } from "./presence.js";
-import { callerKind } from "../../modules/index.js";
+import { isAsker } from "../asker.js";
 import { provider as catalog, formFields, checkProviderFields, checkServiceAccount, PROVIDERS } from "../providers.js";
 import { classify } from "../../../lib/credential-shapes.js";
 
@@ -111,7 +111,7 @@ export function register({ ctx, vault, tool }) {
   tool("vault.connect", PEOPLE, "Fill one module's need: check the fields (or a dropped service-account file) against the provider catalog, save the item with the need's kind and provider, and grant it to the module. For a sign-in provider it stores nothing and returns next: {tool, input}. Values come from a person's surface, never from Claude.",
     obj({ module: str, need: str, fields: { type: "object" }, file: obj({ content: str, filename: str }, ["content"]), label: str }, ["module", "need"]),
     async ({ module, need: id, fields, file, label }, { caller }) => {
-      if (callerKind(caller) === "mcp") throw new Error("vault.connect takes values from a person's surface, never from Claude");
+      if (isAsker(caller)) throw new Error("vault.connect takes values from a person's surface, never from Claude");
       const n = needOf(module, id);
       const p = catalog(n.provider);
       if (!p) throw new Error(`${module}'s need ${id} names provider ${n.provider}, which is not in the catalog`);
