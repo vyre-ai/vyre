@@ -42,3 +42,4 @@ grep -c "watcher connected" "$out/world.log" >"$out/connections.txt" || true
 echo "the fake screen server saw $(cat "$out/connections.txt") connection(s)"
 [ $ok = 0 ] || { echo "no frame was drawn"; exit 1; }
 echo "a frame was drawn by the phone's Glass page in relay mode"
+# run on the APK with the reason shown
