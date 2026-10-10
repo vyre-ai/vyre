@@ -525,7 +525,7 @@ export const ASK_FIRST = new Map([
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
   ["appmods.domain.add", "opens an app's public pages to the outside at the person's own domain"],
-  ["appmods.domain.remove", "changes what reaches the Space from outside"],
+  ["appmods.domain.remove", "takes the person's own domain from an app, so its public pages stop answering at that address"],
 ]);
 
 // The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,
