@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(flows): a failed lane is one row in Needs attention (the parent's, which names the lane and why, and whose Retry sends the failed lanes round again), and a Flow's health line counts a run with lanes once, not once per lane.
 - feat(documents,comms): Documents and Comms teach themselves (tips): send a template for signature with one yes, make a matter sign itself from a stage, and text a client from your own number.
 - feat(relay): the public door opens and shuts at once. `relay.tunnel_url` is a live setting: set the edge's address and the box dials it, clear it and the box hangs up, with no restart (core/relay/tunnel.test.js).
 - feat(app): the Vault's shared-vault buttons work (R031-76, contracts/vault.md v1). New shared vault, Invite (a role and a code to send), Manage (make admin, member or read only, take out of the vault), Change the keys, and Accept a share (a vault invite or a pass, told apart by how it starts) call vault.vaults.create and rotate, vault.members.invite, role, remove and accept, and vault.pass.accept, each with the person's one yes through the app's own call. Taking someone out names what to replace. Only an admin sees the buttons.

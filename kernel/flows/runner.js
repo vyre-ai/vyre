@@ -275,6 +275,8 @@ export class FlowRunner {
     const versions = new Map();
     for (const r of await this.store.listRuns({ limit: 1000 })) {
       if (!r.attention || r.state === "done" || r.state === "cancelled") continue;
+      // a lane or sub-flow whose parent already reports the failure is one row, the parent's: Retry on it sends the failed lanes round again
+      if (r.parent) { const p = await this.store.getRun(r.parent.run); if (p && p.state === "failed" && p.error && /^(branch|subflow)_failed$/.test(p.error.code)) continue; }
       let label = r.gate ? `Stage gate: ${r.gate.type} ${r.gate.stage}` : r.flow;
       let stepLabel = r.attention.step || "";
       if (!r.gate) {
