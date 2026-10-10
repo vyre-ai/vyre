@@ -21,9 +21,9 @@ export class UsedBy {
   /** @param {import("./vault.js").Vault} vault @param {any} ctx */
   constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; }
 
-  /** Ask another module for names, never failing the list: a module that is not here has no users to show. @param {string} tool @param {any} input */
-  async ask(tool, input) {
-    try { const r = await this.ctx.call(tool, input); return r && r.data ? r.data : null; } catch { return null; }
+  /** The data of a call to another module, or null: a module that is not here has no users to show. @param {Promise<any>} call */
+  async answer(call) {
+    try { const r = await call; return r && r.data ? r.data : null; } catch { return null; }
   }
 
   /** @param {{ item: string }} q @param {any} meta */
@@ -68,10 +68,10 @@ export class UsedBy {
     }
 
     // an app is made with keys named app-<app>-<variable> (appmods); only an app that is installed counts
-    const apps = await this.ask("appmods.list", {});
+    const apps = await this.answer(this.ctx.call("appmods.list", {}));
     for (const a of (apps && Array.isArray(apps.apps) ? apps.apps : [])) if (name.startsWith(`app-${a.name}-`)) add("app", String(a.name), `the app ${a.name} (${a.state})`, a.installed == null ? null : Number(a.installed));
 
-    const flows = await this.ask("flows.credential-uses", { name });
+    const flows = await this.answer(this.ctx.call("flows.credential-uses", { name }));
     for (const f of (flows && Array.isArray(flows.uses) ? flows.uses : [])) add("flow", String(f.id), `the Flow ${String(f.name || f.id)}`);
 
     try { for (const l of (await this.v.links.list({ item: name }, meta)).links) add("record", String(l.to), "a record it is linked to"); } catch { /* no kernel: no record links */ }
