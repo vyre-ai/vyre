@@ -2,6 +2,7 @@ import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
 import { MembersList } from "./MembersList";
+import { ComputersLately } from "../runner/ComputersLately";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
@@ -73,6 +74,7 @@ export function SpacesScreen() {
         ))}
       </View>
       {cur && canInvite && !MOCK ? <ZoneSection space={cur.id} zone={(cur as { zone?: string | null }).zone ?? null} spaceName={spaceName} onSaved={() => void load()} /> : null}
+      {cur && canInvite && !MOCK ? <ComputersLately space={cur.id} /> : null}
       <Sec title={`Members of ${spaceName}`}>
         <MembersList members={members} can={(m) => canManage(MY_ROLE, m.role, m.id === ME)} team={TEAM} onOpen={open} onExtend={(m) => setSheet({ kind: "extend", id: m.id })} />
         {canInvite ? (

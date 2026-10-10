@@ -1016,5 +1016,6 @@
  "core/vault/links.test.js": 2,
  "core/github/scan.test.js": 3,
  "apps/app/screens/runner/run-switch.test.js": 7,
- "test/a5-no-copies.test.js": 2
+ "test/a5-no-copies.test.js": 2,
+ "apps/app/screens/runner/lease-model.test.js": 2
 }
