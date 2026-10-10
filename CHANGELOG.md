@@ -1,6 +1,9 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(ci): work branches run the Node the box ships. node.yml's matrix is Node 22 for work branches and 22 and 24 for main and pull requests; test/node-runtime.test.js fails when a matrix list leaves out the major of box/Dockerfile's FROM node.
+- test(perf): the idle CPU budget is judged on the better of two windows when the first is over budget (scripts/lib/perf-window.mjs), both numbers printed; a real idle cost is over budget in both, a neighbour's burst on a shared runner in one.
+- test(relay): core/relay/setup.test.js waits for the message, the closed channel or the boot's decision it reads, instead of sleeping 30 to 150 ms and reading.
 - test: the mobile test world removes its sessions folder (the `.sessions` folder beside its home) when it exits, so the tmp guard finds nothing left.
 - test(golden): the stored golden set follows 0.3.0's tools. 58 tools it did not know are recorded, 14 of them (appmods.* reads and connectors.*) run for a model and are named in kernel/golden/allow.json with the 4 Oct ruling's reason; the 30 cells that moved are flows.kit.propose for modules and views.get, views.list for agent sessions (from denied to would run), recorded as the code decides them today.
 - test: no known-red files are left. The golden recorder runs as fourteen files (a role and a run each, the generated callers in six parts), sessions as eight and switchboard as four, so no file nears the 300 s limit; federation-answer and journey follow the product; the installer test waits four tries for the check words, not a hundred and eighty.
