@@ -4079,7 +4079,7 @@ Make a GitHub repo for a folder (private unless public is asked), under the acco
   - `description` string
   - `owner` string
   - `visibility` "private" or "public"
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 - Needs a person present.
 
 ### `github.repos`
