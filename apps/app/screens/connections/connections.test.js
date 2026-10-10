@@ -298,3 +298,23 @@ test("one list of what is connected: apps and MCP servers together, each with a 
   assert.equal(all.find((c) => c.label === "Acme")?.words, "the key was refused (401)");
   assert.deepEqual(unifyConnected([], []), []);
 });
+
+test("connections list: the line under a connection says how it is doing in plain words, and what it is", { skip: !strip }, async () => {
+  const { connectedLine, connectedKind } = await import("./any-app.ts");
+  const c = (/** @type {any} */ o) => ({ key: "k", kind: "api", label: "Acme", where: "api.acme.example", status: "ok", words: "connected", ...o });
+  assert.equal(connectedLine(c({})), "Working: connected");
+  assert.equal(connectedLine(c({ status: "bad", words: "the key was refused (401)" })), "Needs attention: the key was refused (401)");
+  assert.equal(connectedLine(c({ status: "idle", words: "not used yet" })), "Idle: not used yet");
+  assert.equal(connectedKind(c({ kind: "mcp" })), "MCP server");
+  assert.equal(connectedKind(c({ kind: "api" })), "App");
+});
+
+test("connections list: each connection is one list row; one that needs attention is a warning chip with the reason", { skip: !strip }, async () => {
+  const { connectedRows } = await import("./any-app.ts");
+  const c = (/** @type {any} */ o) => ({ key: "k", kind: "api", label: "Acme", where: "api.acme.example", status: "ok", words: "connected", ...o });
+  assert.deepEqual(connectedRows([c({}), c({ key: "m", kind: "mcp", label: "docs", where: "", status: "bad", words: "it would not start" }), c({ key: "i", label: "Idle one", status: "idle", words: "not used yet" })]), [
+    { id: "k", title: "Acme", subtitle: "Working: connected · api.acme.example", icon: "link", accessory: "App" },
+    { id: "m", title: "docs", subtitle: "it would not start", icon: "cable", accessory: "Needs attention", tone: "warn" },
+    { id: "i", title: "Idle one", subtitle: "Idle: not used yet · api.acme.example", icon: "link", accessory: "App" },
+  ]);
+});

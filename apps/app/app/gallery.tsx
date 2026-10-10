@@ -13,6 +13,7 @@ import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { SitesList } from "../screens/sites/SitesList";
+import { ConnectedList } from "../screens/connections/ConnectedList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
@@ -88,6 +89,15 @@ function Sample({ name }: { name: string }) {
       site("menu", [dep("e", 1, "Draft")], "plain", "Draft"),
     ];
     return <SitesList rows={rows} onOpen={() => {}} />;
+  }
+  if (name === "connected-list") {
+    const list = [
+      { key: "a", kind: "api" as const, label: "GoHighLevel Sales", where: "services.leadconnectorhq.com", status: "ok" as const, words: "connected" },
+      { key: "b", kind: "mcp" as const, label: "tracker", where: "tracker.example.com", status: "ok" as const, words: "Running, 4 tools" },
+      { key: "c", kind: "api" as const, label: "Acme", where: "api.acme.example", status: "bad" as const, words: "the key was refused (401)" },
+      { key: "d", kind: "mcp" as const, label: "docs", where: "", status: "idle" as const, words: "not started yet" },
+    ];
+    return <ConnectedList list={list} onOpen={() => {}} />;
   }
   if (name === "runner-chip") {
     return (
