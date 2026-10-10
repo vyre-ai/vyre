@@ -10,6 +10,7 @@ import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
 import { decorate } from "./places.js";
+import { secretsIn } from "./no-secrets.js";
 import { checkRides } from "./rides.js";
 
 /**
@@ -137,6 +138,7 @@ export function compileFlow(flow, cat) {
 /** @param {any} flow @param {Catalog} cat @returns {ReturnType<typeof compileFlow>} */
 function compileRaw(flow, cat) {
   /** @type {any[]} */ const errors = checkFlow(flow);
+  for (const x of secretsIn(flow)) errors.push({ path: x.path, message: `this looks like ${x.kind}: a Flow never holds a key, a password or a token. Put it in the Vault and name the Connection instead (the Vault uses it; the Flow only names it)` });
   // A "Call a service" step that names a Connection is written out as the service step it stands for before anything reads it; what is stored is the written-out Flow (connection-step.js).
   if (!errors.length) {
     const ex = expandConnections(flow, cat);
