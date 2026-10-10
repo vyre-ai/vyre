@@ -22,3 +22,12 @@ test("the web hello always carries the device key: presenceKey() imports its enc
   assert.match(pairing, /presenceKey: await presenceKey\(\)/, "pairing offers the key in the hello");
   assert.match(web, /export async function presenceKey/);
 });
+
+// The home refuses a hardware key whose hello does not name its signer class (core/wink/pairing.js presenceKeyFor: it could not be made the approving device), so the phone's hello must name it, or no real iPhone or Android
+// could pair. The fixtures once hid that: they stubbed a signer the app never sent.
+test("the phone's hello names the signer class of a hardware key: secure_enclave on iPhone, strongbox on Android", () => {
+  const native = read("api/relay.native.ts");
+  const fn = native.slice(native.indexOf("export async function presenceKey"), native.indexOf("export const about"));
+  assert.match(fn, /storage === "hardware" \? \{ signer: Platform\.OS === "android" \? "strongbox" as const : "secure_enclave" as const \}/);
+  assert.match(read("api/relay.d.ts"), /signer\?: "secure_enclave" \| "strongbox"/);
+});

@@ -350,6 +350,7 @@ export const PERSON_ONLY = new Map([
   ["outside.revoke", "ends an outside agent: the person's own act"],
   ["attachments.put", "adds a file to a chat as the person: it keeps the person's own file in the chat's sealed folder, the person's own act"],
   ["attachments.list", "the files added to a chat the person is in: the person's own view"],
+  ["attachments.get", "one file added to a chat the person is in, or its preview: the person's own view"],
   ["ask.answer", "answers a question card in the person's own words: an assistant answering would decide for the person"],
   ["ask.cancel", "puts a question card away: the person's own act, the agent is told it was cancelled"],
   ["previews.keep", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only (assistant management: BACKLOG 0.3.2)"],

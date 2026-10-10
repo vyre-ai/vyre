@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { plan, launch } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
-import { signalTree } from "./proctree.js";
+import { killTree } from "./proctree.js";
 
 const READER = path.join(path.dirname(fileURLToPath(import.meta.url)), "reader.js");
 
@@ -26,7 +26,7 @@ export function sandboxReader(o) {
     let err = "", buf = Buffer.alloc(0), received = 0, truncated = false, done = false, chain = Promise.resolve();
     // The sandbox starts the reader through a second process of its own (the namespace's init), which dies with the first only if the first lives long enough to arrange it. Ending just the one Vyre started, at the
     // moment it was started (a reader killed on its deadline), left the second and everything under it running and holding the pipes. The whole tree under it is ended.
-    const kill = () => { try { signalTree(Number(child.pid), "SIGKILL"); } catch { /* gone */ } try { child.kill("SIGKILL"); } catch { /* gone */ } };
+    const kill = () => { try { killTree(Number(child.pid)); } catch { /* gone */ } try { child.kill("SIGKILL"); } catch { /* gone */ } };
     const fail = e => { if (done) return; done = true; clearTimeout(timer); kill(); reject(e); };
     // A reader that runs too long, or sends more than its caps allow, is killed: a hostile session cannot stall or exhaust the runner.
     const timer = setTimeout(() => fail(new Error("the workspace reader took too long")), lim.deadlineMs);
