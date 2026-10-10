@@ -21,6 +21,9 @@ import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
 import { inversesOf } from "../../kernel/gateway/links.js";
 import { SnapshotStore } from "./snapshots.js";
+
+/** @template T @param {T} v @returns {T} */
+const deepFreeze = (v) => { if (v && typeof v === "object" && !Object.isFrozen(v)) { Object.freeze(v); for (const x of Object.values(v)) deepFreeze(x); } return v; };
 import { twentyGet } from "./client.js";
 import { syncViews, syncFieldOrder, FIELD_ICON } from "./views.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty, idOfLink, camel } from "./plan.js";
@@ -73,6 +76,7 @@ export class TwentyStore {
     /** @type {Map<string, string>} urn -> signature of the attributes its create wrote */ this.mirrored = new Map();
     this.meta = new (class AttrMap extends Map { /** @param {string} u @param {any} a */ set(u, a) { super.set(u, a); store.mirrorAttrs(u, a); return this; } })();
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
+    /** The frozen list types() hands out, until a type changes. @type {any[] | null} */ this.typeList = null;
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
     /** @type {any[]} */ this.log = [];
     this.logFile = o.dir ? path.join(o.dir, "changes.jsonl") : null;
@@ -88,7 +92,7 @@ export class TwentyStore {
   #loadTypes() {
     const f = path.join(/** @type {string} */ (this.dir), "types.json");
     if (!fs.existsSync(f)) return;
-    for (const t of JSON.parse(fs.readFileSync(f, "utf8"))) { const p = planType(t.def, { plural: t.plural, space: this.space }); this.plans.set(p.vyre, p); }
+    for (const t of JSON.parse(fs.readFileSync(f, "utf8"))) { const p = planType(t.def, { plural: t.plural, space: this.space }); this.plans.set(p.vyre, p); } this.typeList = null;
   }
   #saveTypes() {
     if (!this.dir) return;
@@ -438,7 +442,7 @@ export class TwentyStore {
       if (!known || canonical(known.def) !== canonical(def)) looks.push({ p, def, was: known ? known.def : undefined });
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
-      this.plans.set(def.name, p);
+      this.plans.set(def.name, p); this.typeList = null;
     };
     try {
       for (const t of diff.add_types ?? []) await apply(t, false);
@@ -461,7 +465,7 @@ export class TwentyStore {
         if (live.rows.length) throw new StoreError("invalid", `type ${name} still has records`);
         const o = objs.get(p.singular);
         if (o) { await this.client.gql("metadata", "mutation Off($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: o.id, update: { isActive: false } } }); await this.client.gql("metadata", "mutation Del($i: DeleteOneObjectInput!) { deleteOneObject(input: $i) { id } }", { i: { id: o.id } }); }
-        this.plans.delete(name); changes.push(`removed type ${name}`);
+        this.plans.delete(name); this.typeList = null; changes.push(`removed type ${name}`);
       }
     } catch (e) { throw asStoreError(e); }
     this.#saveTypes();
@@ -506,7 +510,7 @@ export class TwentyStore {
   }
 
   /** Every definition the store holds, as it was defined. */
-  async types() { return [...this.plans.values()].map((p) => structuredClone(p.def)); }
+  async types() { return this.typeList ??= deepFreeze([...this.plans.values()].map((p) => structuredClone(p.def))); }
 
   /** @param {string} type */
   async describe(type) {

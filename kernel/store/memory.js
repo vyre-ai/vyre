@@ -10,6 +10,8 @@ import { page, aggregate as agg, fieldOf } from "./query.js";
 export const CONFORMANCE_REVISION = 7;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
+/** @template T @param {T} v @returns {T} */
+const deepFreeze = v => { if (v && typeof v === "object" && !Object.isFrozen(v)) { Object.freeze(v); for (const x of Object.values(v)) deepFreeze(x); } return v; };
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
@@ -35,12 +37,16 @@ function mapTable() {
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
+  // The deep-frozen copy types() hands out, kept until a type changes: every records query asks for the type list three or four times, and cloning all the types each time was most of the CPU
+  // of an idle vyred's minute tick. A caller that tries to change it fails loudly instead of corrupting the cache; copy what you need to change.
+  /** @type {any[] | null} */ let typeList = null;
   /** @type {Map<string, Table>} */ const rows = new Map();
   const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
   /** @type {{ readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] }} */
   const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, pop: () => { a.pop(); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
     for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
+    typeList = null;
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
     if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
   }
@@ -109,7 +115,7 @@ export function createMemoryStore(cfg = {}) {
       for (const t of diff.add_types || []) {
         const had = types.get(t.name);
         if (had && canonical(had) === canonical(t)) continue;
-        types.set(t.name, clone(t));
+        types.set(t.name, clone(t)); typeList = null;
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         rebuildUnique(t.name);
@@ -119,22 +125,22 @@ export function createMemoryStore(cfg = {}) {
         if (!types.has(t.name)) throw fail("unknown_type", `no type ${t.name}`);
         if (canonical(types.get(t.name)) === canonical(t)) continue;
         const before = types.get(t.name);
-        types.set(t.name, clone(t));
-        try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); rebuildUnique(t.name); throw e; }
+        types.set(t.name, clone(t)); typeList = null;
+        try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); typeList = null; rebuildUnique(t.name); throw e; }
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
         if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
-        types.delete(name); rows.delete(name);
+        types.delete(name); rows.delete(name); typeList = null;
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
       }
       return { applied: changesMade.length > 0, changes: changesMade };
     },
-    /** Every type definition, as defined. */
-    async types() { touch("types", []); return [...types.values()].map(t => clone(t)); },
+    /** Every type definition, as defined: one deep-frozen list, the same until a type changes. */
+    async types() { touch("types", []); return typeList ??= deepFreeze([...types.values()].map(t => clone(t))); },
     /** The field names and kinds of a type, or null when there is no such type (the gateway reads sealed fields from here). */
     async describe(type) {
       touch("describe", [type]);
