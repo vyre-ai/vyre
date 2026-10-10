@@ -105,7 +105,7 @@ export function registerDocuments(ctx) {
   const daysFor = (/** @type {any} */ i) => (i.days !== undefined ? i.days : linkDays());
 
   ctx.tool("documents.signed-link", {
-    description: "A link to a signed copy: { slug, days? }. With no days it lasts until you end the links (documents.signed-link.revoke), unless the setting documents.signed_link_days gives a number of days. Whoever holds the link can open the file.",
+    description: "A link to a signed copy: { slug, days? }. It lasts until revoked unless days or the setting documents.signed_link_days says otherwise. Whoever holds it can open the file.",
     input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -120,7 +120,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.signed-link.revoke", {
-    description: "End every link to a signed copy made so far: {}. Anyone holding one gets the same plain refusal as a made-up link; links made afterwards work.",
+    description: "End every link to a signed copy made so far: {}. Holders get the refusal a made-up link gets; links made afterwards work.",
     input: obj({ space: str }),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -158,7 +158,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes covers both. The link does not expire unless days is given or documents.signed_link_days is set.",
+    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes covers both. No expiry unless days or the setting is given.",
     input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

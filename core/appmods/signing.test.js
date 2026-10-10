@@ -187,7 +187,6 @@ test("a link to the signed copy is made under a key, ends on its day, and is che
 });
 
 test("a link with no end opens the signed copy years later, only for the key it was made under, and cannot be given an end by changing it", async t => {
-  const f = await front(t, { now: () => Date.UTC(2026, 9, 10) });
   const forever = mintLink(KEY, "abc123", null);
   assert.match(forever, /^0\.abc123\.[A-Za-z0-9_-]{43}$/);
   for (const when of [Date.UTC(2026, 9, 10), Date.UTC(2026, 10, 10) + 31 * 86_400_000, Date.UTC(2046, 0, 1)]) assert.deepEqual(checkLink(KEY, forever, when), { ok: true, slug: "abc123" }, new Date(when).toISOString());
@@ -203,7 +202,6 @@ test("a link with no end opens the signed copy years later, only for the key it 
   now += 10 * 365 * 86_400_000;
   assert.equal((await g.call("GET", `/signed/${forever}`)).status, 200, "and after ten years");
   assert.equal((await g.call("GET", "/s/abc123/documents")).status, 404, "the slug alone still does not reach the file");
-  void f;
 });
 
 test("the signed copy opens only by its link: the slug no longer lists or downloads it, an expired link says so, a bad one is a 404", async t => {
