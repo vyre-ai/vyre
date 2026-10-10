@@ -32,7 +32,7 @@
       { "name": "appmods.domain.list", "effect": "read", "reach": "anyone" }
     ]
   },
-  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.domain-changed", "appmods.started", "appmods.stopped", "appmods.restarted", "documents.signed", "documents.form-completed"], "on": ["vault.item-changed"] },
+  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.domain-changed", "appmods.started", "appmods.stopped", "appmods.restarted", "documents.signed", "documents.declined", "documents.form-completed"], "on": ["vault.item-changed"] },
   "shows": { "cli": [] },
   "views": {
     "documents-waiting": {

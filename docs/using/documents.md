@@ -24,6 +24,8 @@ The result is filed in the Drive under `Documents/<project>/` and, when your Spa
 
 In the Documents screen, Send for signature shows the signer, the template and your note; confirm it and the signer gets their link by e-mail. From an agent, the approval card for `documents.send` carries the whole act. From a Flow, your answer to the Flow's own question is the yes: nothing waits at the Gate afterwards. Either way, what you read before saying yes is the signer, the template and any note; the link line is fixed.
 
+If the signer declines instead, Documents says so at once: the Document is filed as Declined on the signer's Contact (their timeline shows it), and the event `documents.declined` carries the reason they gave for a Flow of your own to use.
+
 ## Sign from a stage
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
