@@ -645,7 +645,7 @@ export default {
           }
         } catch (e) {
           // The same chat asked for again (a client that retried a call whose answer was lost, or one that waited for the store to come up): the id the caller chose is theirs already, and the answer is the chat as it is.
-          const again = input.id && /chat id is new/.test(String(e && /** @type {any} */ (e).message)) ? await k0.chats.read(chain, String(input.id)).catch(() => null) : null;
+          const again = input.id && /chat id is new/.test(String(e && /** @type {any} */ (e).message)) ? (() => { try { return k0.chats.read(chain, String(input.id)); } catch { return null; } })() : null;
           if (!again) { if (keys) keys.lock(); throw e; }
           made = { id: String(input.id), people: again.people || [], assistants: again.assistants || [] };
           keys = null;
