@@ -29,7 +29,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 
 ## Triggers
 - watcher: keys on, watcher, where; reads trigger; e.g. `{on:watcher,watcher:new-mail}`
-- time: keys on, cron, every_ms, at, tz; reads trigger; e.g. `{on:time,cron:0 9 * * 1-5}`
+- time: keys on, cron, every_ms, at, tz, hours, holidays, catch_up; reads trigger; e.g. `{on:time,cron:0 9 * * 1-5}`
 - event | stage: keys on, event, where, type, stage; reads trigger, event; e.g. `{on:event,event:payment.received,where:trigger.amount > 0}`
 - web: keys on, path; reads trigger; e.g. `{on:web,path:intake}`
 - manual: keys on, input; reads trigger; e.g. `{on:manual}`
@@ -57,6 +57,21 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     each repeat over=steps.who.rows as=row max=50
       steps:
         tag update type=client record=`row.id` set={tagged: true}
+- parallel: steps; also on_fail, verify
+    both parallel
+      steps:
+        left branch
+          steps:
+            mail create type=matter set={client: A}
+        right branch
+          steps:
+            note create type=matter set={client: B}
+- branch: steps; also nothing (its steps have their own)
+    left branch
+      steps:
+        mail create type=matter set={client: A}
+- subflow: flow, input; also on_fail, verify
+    welcome subflow flow=send_welcome input={client: `trigger.client`}
 - wait: for_ms, until, event, where, timeout_ms, on_timeout; also retry, on_fail, verify
     pause wait for_ms=3600000
 - ask: to, title, form, record; also timeout_ms, retry, on_fail, verify
