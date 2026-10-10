@@ -443,6 +443,8 @@ test("a model reads through a credential only inside its scope: an agent in proj
   await assert.rejects(read("mailbox-a", "mcp:agent:kit", { agent: "kit", thread: "t-1", project: "project-b" }), /not available to the agent kit/);
   assert.equal(net.calls.length, 0, "no request was made");
   assert.ok(audit().some(e => e.action === "api-request" && !e.ok && /outside the credential's scope/.test(e.why)), "the refusal is audited");
+  // An agent inside the person's own CLI (a person's surface label with the agent's name) is held to the same scope: the label does not make it the person.
+  await assert.rejects(read("mailbox-a", "cli:agent:kit", { agent: "kit", thread: "t-1", project: "project-b" }), /not available to the agent kit/);
   // A session bound to project B (no named agent) is refused too.
   await assert.rejects(read("mailbox-a", "mcp:thread:t-2", { thread: "t-2", project: "project-b" }), /not available to this project/);
   // Project A's own agent reads, with no prompt.
