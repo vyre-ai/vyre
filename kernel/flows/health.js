@@ -40,7 +40,10 @@ export function healthOf(i) {
   const ended = week.filter(r => ["done", "failed", "cancelled"].includes(r.state));
   const ok = ended.filter(r => r.state === "done").length, failed = ended.filter(r => r.state === "failed").length;
   const last = [...own].sort((a, b) => b.started_at - a.started_at)[0] || null;
-  const attention = i.runs.filter(r => r.attention && !["done", "cancelled"].includes(r.state) || (r.attention && r.attention.kind === "verify")).length;
+  // a lane or sub-flow whose parent already reports the failure is one thing to look at, the parent's (the same rule as the Needs-you list)
+  const byId = new Map(i.runs.map(r => [r.id, r]));
+  const reported = (/** @type {any} */ r) => { const p = r.parent && byId.get(r.parent.run); return Boolean(p && p.state === "failed" && p.error && /^(branch|subflow)_failed$/.test(p.error.code)); };
+  const attention = i.runs.filter(r => (r.attention && !["done", "cancelled"].includes(r.state) || (r.attention && r.attention.kind === "verify")) && !reported(r)).length;
   const held = i.held ?? i.runs.filter(r => r.state === "queued").length;
   const lights = i.lights || {};
   const redConns = (i.connectors || []).filter(c => lights[c] === "red" || lights[c.replace(/^conn-/, "")] === "red");

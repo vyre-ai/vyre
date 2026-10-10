@@ -152,6 +152,8 @@ test("parallel: a failed lane is one row in Needs attention, the parent's, and i
   assert.match(rows[0].message, /the lane bad of Both checks did not finish/);
   const h = await w.runner.health(id);
   assert.deepEqual([h.week.total, h.week.failed, h.week.ok], [1, 1, 0], "the Flow ran once and failed once, not three times");
+  assert.equal(h.attention, 1, "and one thing needs a person, as the Needs-you list says, not one for the lane too");
+  assert.match(h.line, /1 needs you/);
 });
 
 test("parallel: retrying the parent sends the failed lane round again and keeps the one that finished", async () => {

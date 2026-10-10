@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APPROVE_LABEL, healthRow, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
@@ -41,4 +41,13 @@ test("a row in the Flows list says how the Flow is doing in the kernel's words, 
   assert.equal(healthRow({ trigger: "Every weekday at 9", level: "red", line: "Red: google is down. Last run 2 days ago, failed" }).chip, "Needs a look");
   assert.equal(healthRow({ trigger: "Every day", level: "amber", line: "Paused" }).chip, null, "a pause is said in the line, not shouted");
   assert.deepEqual(healthRow({}), { sub: undefined, chip: null });
+});
+
+test("a Flow's own page leads with a banner when it is red or amber, and says how it is doing quietly when it is well", () => {
+  assert.deepEqual(healthBanner({ level: "red", line: "Red: google is down. Last run 2 days ago, failed" }), { tone: "err", text: "Red: google is down. Last run 2 days ago, failed" });
+  assert.equal(healthBanner({ level: "amber", line: "Paused" }).tone, "warn");
+  assert.equal(healthBanner({ level: "green", line: "Last run 3 minutes ago. 4 of 4 ok this week" }).tone, "quiet");
+  assert.equal(healthBanner({ level: "grey", line: "Not approved yet" }).tone, "quiet");
+  assert.equal(healthBanner(null), null);
+  assert.equal(healthBanner({ level: "red" }), null, "no line, nothing to say");
 });
