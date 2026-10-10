@@ -22,7 +22,7 @@ export default function GlassRelayProof() {
             relay
             label="Proof screen"
             frameRef={frame}
-            openSocket={(path: string) => new WebSocket(HOST + path)}
+            openSocket={(path: string) => { const s = new WebSocket(HOST + path); s.addEventListener("error", (e: any) => console.log("glass-proof", "socket error", e?.message)); return s; }}
             onMessage={(m: { t: string }) => {
               setSaid(m.t);
               if (m.t === "ready") frame.current?.post({ t: "connect", url: "ws://box.invalid/v1/streams/computers/glass?ticket=proof", quality: 4, compression: 4, fit: true });
