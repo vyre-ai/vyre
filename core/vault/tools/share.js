@@ -6,7 +6,7 @@
 // person, and saying "I compared fingerprints" or printing a kit needs a person who is present.
 
 import { serveKit } from "../kit.js";
-import { callerKind as kindOf } from "../../modules/index.js";
+import { isAsker } from "../asker.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -33,7 +33,7 @@ export function register({ ctx, vault, secretKey, ttlMs }) {
     input: obj({ card: str, name: str }, ["card"]),
     callers: ["cli", "local", "mcp"],
     // From Claude the card waits as pending for a person, so there is nothing to prove yet.
-    presence: { summary: async ({ name, card }) => `Trust the card for ${name || personName(card)}`, skip: ({ caller }) => kindOf(caller) === "mcp" },
+    presence: { summary: async ({ name, card }) => `Trust the card for ${name || personName(card)}`, skip: ({ caller }) => isAsker(caller) },
     run: (input, { caller }) => share.addPerson(input, caller),
   });
 

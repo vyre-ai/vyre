@@ -10,12 +10,12 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
+import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
-const MIN_TICK_MS = 60_000;
 
 /** Is the Space's own record store still starting (a deferred store that has not attached)? A store with no deferral is never away. @param {any} store */
 export function storeIsAway(store) {
@@ -255,37 +255,17 @@ export function createFlowsHost(o) {
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
-    // A wait or a schedule that comes due sooner than the timer's sleep wakes it early (set below).
-    /** @type {() => Promise<void>} */ let nudge = async () => {};
+    // The timer sleeps until the next wake and is woken by events (core/daemon/wake-timer.js): an idle box makes no records query between them.
+    const wake = createWakeTimer({ nextWake: () => flows.nextWake(), tick: () => flows.tick(), now: clock, log: m => log(`flows ${space}: ${m}`) });
     // One subscription feeds triggers, waits, Kit approvals and stages.
     // (while the Space's own record store is still starting there is nothing to match an event against, and each one would fail and log the same line: they are skipped, and the store's join starts the Flows)
     const storeAway = () => storeIsAway(k.store);
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { if (storeAway()) return; try { await flows.onEvent(e); void nudge(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { if (storeAway()) return; try { await flows.onEvent(e); void wake.poke(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { if (/** @type {any} */ (err) && /** @type {any} */ (err).code === "unavailable") return; log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
-    // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
-    /** @type {NodeJS.Timeout | null} */ let timer = null;
-    let stopped = false, plannedAt = Infinity, nudging = false, lastNudge = 0;
-    const arm = async () => {
-      if (stopped) return;
-      let wait = MIN_TICK_MS;
-      try { const next = await flows.nextWake(); if (typeof next === "number") wait = Math.max(1000, Math.min(MIN_TICK_MS, next - clock())); } catch (err) { log(`flows ${space}: no next wake (${/** @type {Error} */ (err).message})`); }
-      if (stopped) return;
-      plannedAt = clock() + wait;
-      timer = setTimeout(async () => { try { await flows.tick(); } catch (err) { log(`flows ${space}: tick failed (${/** @type {Error} */ (err).message})`); } void arm(); }, wait);
-      timer.unref();
-    };
-    // A run that started a short wait, or a Flow with a schedule that is due sooner, must not sit out the timer's last sleep (a minute at most): look again at most once a second, and sleep less if the next wake moved up.
-    let nudgeLater = false;
-    nudge = async () => {
-      if (stopped || nudging || timer === null) return;
-      if (clock() - lastNudge < 1000) { if (!nudgeLater) { nudgeLater = true; setTimeout(() => { nudgeLater = false; void nudge(); }, 1000).unref(); } return; }
-      nudging = true; lastNudge = clock();
-      try { const next = await flows.nextWake(); if (typeof next === "number" && next < plannedAt - 500) { clearTimeout(timer); await arm(); } } catch { /* the next tick looks again */ } finally { nudging = false; }
-    };
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.
-    await whenStoreReady(k.store, async () => { await recover(); void arm(); });
+    await whenStoreReady(k.store, async () => { await recover(); void wake.arm(); });
 
     const host = Object.freeze({ space, flows, stages, get owner() { return ownerOf(); },
       /** The chain of a session token this Space's door minted (an assistant's session, a person's), or null. */
@@ -294,7 +274,7 @@ export function createFlowsHost(o) {
       personChain: () => personChain(ownerOf()),
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
-      stop: () => { stopped = true; if (timer) clearTimeout(timer); if (typeof offDevice === "function") offDevice(); } });
+      stop: () => { wake.stop(); if (typeof offDevice === "function") offDevice(); } });
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
