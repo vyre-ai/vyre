@@ -54,13 +54,13 @@ test("pub-build: the folder is taken, judged, built by an unprivileged rootless 
   assert.ok(/ --cap-drop ALL --cap-add SETUID --cap-add SETGID /.test(b) && !/--privileged|docker\.sock|--network host/.test(b));
   const mounts = b.split(" ").filter((x, i, a) => a[i - 1] === "-v");
   assert.equal(mounts.length, 2);
-  assert.ok(mounts[0].endsWith("/claim/ctx:/ctx:ro") && mounts[1].endsWith("/out"), mounts.join(" "));
+  assert.ok(mounts[0].endsWith("/build/ctx:/ctx:ro") && mounts[1].endsWith("/out"), mounts.join(" "));
   assert.match(b, /--output type=docker,name=vyre-pub\/northwind:0123456789abcdef,dest=\/out\/image\.tar/);
   assert.ok(!b.includes(path.join(r.F, "lend")), "no path of the daemon's is on the build's command line");
   assert.ok(!fs.existsSync(path.join(r.priv, "pub", DEP, "out")), "the build's folder is gone");
   // the judging ran in the recorded image, unprivileged and cut off, with the context read-only
   const calls = r.calls();
-  assert.match(calls, /run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 .* -v .*\/claim\/ctx:\/ctx:ro --entrypoint node sha256:/);
+  assert.match(calls, /run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 .* -v .*\/build\/ctx:\/ctx:ro --entrypoint node sha256:/);
   assert.ok(read(path.join(r.F, "pubplans")).includes("check northwind 8080 512 0.5 256 / 200+404 60"));
 });
 
@@ -68,7 +68,7 @@ test("pub-build refuses what the daemon's own rules refuse, and what is not a pl
   const r = await ready(t);
   const refused = async (/** @type {any} */ st, /** @type {RegExp} */ words, /** @type {string} */ why) => { assert.equal(st.state, "failed", why + " " + JSON.stringify(st)); assert.match(st.message, words, why); };
   const builds = () => (fs.existsSync(path.join(r.F, "pub-builds")) ? read(path.join(r.F, "pub-builds")).trim().split("\n").filter(Boolean).length : 0);
-  await refused(await r.build(DEP, { files: { "Dockerfile": "FROM evil.example/x\nEXPOSE 80\n" } }), /starts from evil\.example\/x/, "a base that is not allowed");
+  await refused(await r.build(DEP, { files: { "Dockerfile": "FROM evil.example/x\nEXPOSE 80\n" } }), /starts from evil\.example.x/, "a base that is not allowed");
   await refused(await r.build(DEP, { files: { "Dockerfile": "# syntax=evil/x\nFROM alpine\n" } }), /build frontend/, "a syntax line");
   await refused(await r.build(DEP, { files: { "Dockerfile": "FROM alpine\nCOPY --from=evil.example/x /a /a\n" } }), /takes files from/, "a copy from another image");
   await refused(await r.build(DEP, { files: { "index.html": "x" } }), /no Dockerfile/, "no Dockerfile");
@@ -200,7 +200,7 @@ test("pub-stop and pub-down take the rules away and keep the data; a deployment 
   assert.deepEqual(r.appFw(), [], "every rule with the server's comment is gone");
   assert.match(dn.message, /data is kept/);
   assert.ok(!/ -v\b|volume rm/.test(r.calls().split("\n").filter(l => /compose .* down/.test(l)).join("\n")), "the data volume is kept");
-  const up2 = await r.up(DEP2, {});
+  const up2 = await r.up(DEP2, { request: REQUEST({ version: "4" }) });
   assert.equal(up2.state, "ok", JSON.stringify(up2));
   assert.equal(read(path.join(r.priv, "apps", "northwind", "pubdep")).trim(), DEP2);
 });
