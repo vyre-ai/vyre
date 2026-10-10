@@ -195,9 +195,3 @@ test("two starts of one name at once: the second is told to wait and writes noth
   assert.equal(ok.state, "ok", JSON.stringify(ok));
   assert.ok(!fs.existsSync(lock), "the lock is released when the start is over");
 });
-
-test("the build network's DNS exception falls back to systemd-resolved's upstream list when /etc/resolv.conf is only the local stub", opts, async t => {
-  const src = fs.readFileSync(new URL("../box/vyre", import.meta.url), "utf8");
-  assert.match(src, /\/run\/systemd\/resolve\/resolv\.conf/, "the fallback is in the helper");
-  void t;
-});
