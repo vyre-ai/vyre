@@ -33,6 +33,12 @@ jobs:
           cache: npm
       - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
       - run: npm ci --no-audit --no-fund
+      # The real-browser tests (a published React page drawn in headless Chrome) run everywhere they are counted: the one pinned chrome-headless-shell, hash-checked, cached by its pin (scripts/install-test-chrome.mjs).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vyre/chrome-headless-shell
+          key: chrome-headless-shell-153.0.8010.12
+      - run: node scripts/install-test-chrome.mjs
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
       - name: Land every waiting queue branch
