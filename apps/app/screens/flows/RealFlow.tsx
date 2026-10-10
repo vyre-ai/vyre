@@ -10,7 +10,7 @@ import { FlowCode } from "./FlowCode";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
-import { shownWarnings, titleOf, versionWaits } from "./real-model.js";
+import { APPROVE_LABEL, shownWarnings, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -83,7 +83,7 @@ export function RealFlow({ id }: { id: string }) {
       {waiting && card ? (
         <Sec title="Waiting for your approval">
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
-            actions={[{ label: busy ? "Approving" : "Approve", kind: "primary", icon: "check", onPress: busy ? () => {} : approve }]} />
+            actions={[{ label: busy ? "Approving" : APPROVE_LABEL, kind: "primary", icon: "check", onPress: busy ? () => {} : approve }]} />
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}
