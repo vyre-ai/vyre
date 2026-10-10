@@ -57,9 +57,17 @@ try {
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => pw.call(tool, { space, ...input });
   const decide = async (/** @type {any} */ held) => { const r = await call("publish.decide", { task: held.task, approve: true }); return r; };
   const op = (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = inBox(`vyre call ${tool} '${JSON.stringify(input)}'`); try { return JSON.parse(r.stdout); } catch { return null; } };
+  /** The apps' front is a loopback listener of the daemon (appmods.front is for modules only): the loopback port that answers an unknown host with the front's plain 404. */
+  const frontPort = () => {
+    const script = `const fs=require("fs"),http=require("http");const ports=[...new Set(fs.readFileSync("/proc/net/tcp","utf8").split("\\n").slice(1).map(l=>l.trim().split(/\\s+/)).filter(f=>f[3]==="0A"&&/^0100007F:/.test(f[1])).map(f=>parseInt(f[1].split(":")[1],16)))];(async()=>{for(const p of ports){const ok=await new Promise(r=>{const q=http.get({host:"127.0.0.1",port:p,path:"/",headers:{host:"unknown.invalid"},timeout:2000},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>r(res.statusCode===404&&b==="not found"&&res.headers["cache-control"]==="no-store"));});q.on("error",()=>r(false));q.on("timeout",()=>{q.destroy();r(false)});});if(ok){console.log(p);return}}console.log("")})()`;
+    const r = sh(`docker exec -u vyre vyre-vyre-1 node -e ${JSON.stringify(script)}`);
+    return Number(String(r.stdout).trim()) || 0;
+  };
+  /** The site's public host: the one appmods.hosts lists for its name. */
+  const siteHost = () => { const h = ((op("appmods.hosts") || {}).hosts || []).find((/** @type {string} */ x) => x.startsWith(`${NAME}.`)); return h || ""; };
   /** A stranger at the apps' front, from inside the box's container: the Host is the site's own, the cookie is made up, nothing of Vyre's. */
   const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}) => {
-    const port = (op("appmods.front") || {}).port, host = dep && dep.hostname;
+    const port = frontPort(), host = siteHost();
     const script = `const http=require("http");const r=http.request({host:"127.0.0.1",port:${Number(port)},path:${JSON.stringify(p)},method:${JSON.stringify(method)},headers:Object.assign({host:${JSON.stringify(host)}},${JSON.stringify(headers)})},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>console.log(JSON.stringify({status:res.statusCode,headers:res.headers,body:b})))});r.on("error",e=>console.log(JSON.stringify({error:String(e)})));r.end();`;
     const r = sh(`docker exec -u vyre vyre-vyre-1 node -e ${JSON.stringify(script)}`);
     try { return JSON.parse(String(r.stdout).trim().split("\n").pop() || "null"); } catch { return null; }
@@ -132,8 +140,8 @@ try {
     return "restarted with the new secret";
   });
   await J.step("a WebSocket opens for a stranger through the front", async () => {
-    const port = (op("appmods.front") || {}).port;
-    const script = `const net=require("net");const c=net.connect(${Number(port)},"127.0.0.1",()=>c.write("GET /live HTTP/1.1\\r\\nHost: ${dep.hostname}\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\\r\\nSec-WebSocket-Version: 13\\r\\nCookie: vyre_app=FORGED; theme=dark\\r\\n\\r\\n"));let b="";c.on("data",d=>{b+=d;if(b.includes("theme"))process.stdout.write(b)});setTimeout(()=>process.exit(),4000)`;
+    const port = frontPort(), host = siteHost();
+    const script = `const net=require("net");const c=net.connect(${Number(port)},"127.0.0.1",()=>c.write("GET /live HTTP/1.1\\r\\nHost: ${host}\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\\r\\nSec-WebSocket-Version: 13\\r\\nCookie: vyre_app=FORGED; theme=dark\\r\\n\\r\\n"));let b="";c.on("data",d=>{b+=d;if(b.includes("theme"))process.stdout.write(b)});setTimeout(()=>process.exit(),4000)`;
     const r = sh(`docker exec -u vyre vyre-vyre-1 node -e ${JSON.stringify(script)}`);
     assert(/^HTTP\/1\.1 101 /.test(String(r.stdout)) && /"cookie":"theme=dark"/.test(String(r.stdout)), String(r.stdout).slice(0, 300));
     return "101";
