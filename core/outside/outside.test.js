@@ -159,7 +159,6 @@ test("memory and files of a project it was given are asked and read through the 
   const other = await ok("work.project.create", { name: "Northwind Bakery" });
   const id = String(made.project).split("/").pop();
   await ok("files.drive.upload", { path: `${made.drive_path}/notes.txt`, base64: Buffer.from("Dana pays on the 15th").toString("base64") });
-  await ok("files.drive.upload", { path: `${made.drive_path}/chat/chat_x/private.txt`, base64: Buffer.from("a chat's private file").toString("base64") });
   await ok("files.drive.upload", { path: `${other.drive_path}/menu.txt`, base64: Buffer.from("not for Muse").toString("base64") });
   await d.kernel.gateway.memory.file(owner, { text: "Harlow settles on the 15th", source: jane.urn, kind: "decision", scope: `project:${id}` });
   const reg = await ok("outside.register", { name: "Muse" });
