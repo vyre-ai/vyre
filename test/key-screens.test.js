@@ -38,14 +38,24 @@ function facts(file) {
   const src = fs.readFileSync(file, "utf8");
   const tree = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   let draws = false;
-  /** @type {string[]} */ const imports = [];
+  /** @type {{ spec: string, names: string[] }[]} */ const bound = [];
+  /** @type {Set<string>} */ const used = new Set();
   const visit = (/** @type {any} */ n) => {
-    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) imports.push(n.moduleSpecifier.text);
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const c = n.importClause, names = [];
+      if (c && c.name) names.push(c.name.text);
+      if (c && c.namedBindings) { if (ts.isNamespaceImport(c.namedBindings)) names.push(c.namedBindings.name.text); else for (const e of c.namedBindings.elements) names.push(e.name.text); }
+      bound.push({ spec: n.moduleSpecifier.text, names });
+      return; // what an import names is not a use of it
+    }
+    if (ts.isIdentifier(n)) used.add(n.text);
     if ((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) && n.tagName.getText() === "BlockScreen") draws = true;
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "BlockScreen") draws = true;
     ts.forEachChild(n, visit);
   };
   visit(tree);
+  // only the files whose imported names the code really uses: an import left behind after a screen stopped drawing a component does not make it drawn from blocks
+  const imports = bound.filter(b => b.names.some(nm => used.has(nm))).map(b => b.spec);
   return { draws, imports };
 }
 
