@@ -4047,6 +4047,20 @@
     }
    }
   },
+  "attach-thumbs": {
+   "title": "Picture thumbnails",
+   "screens": {
+    "full": {
+     "component": "attach-thumbs"
+    },
+    "compact": {
+     "component": "attach-thumbs"
+    },
+    "glance": {
+     "component": "attach-thumbs"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

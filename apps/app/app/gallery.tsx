@@ -12,6 +12,7 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
@@ -127,6 +128,19 @@ function Sample({ name }: { name: string }) {
       { type: "task", kind: "task", id: "t1", urn: "u", title: "Collect ID", line: "Collect ID was done by Sam", at: now - 27 * h },
       { type: "call", kind: "call", id: "c1", urn: "u", title: "Call", line: "Call with the client, 18 minutes", at: now - 50 * h },
     ]} />;
+  }
+  if (name === "attach-thumbs") {
+    const P = { a: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAACFUlEQVR42sXUa08TURAG4PcHFwoUCpS20DvVCPESMEqAqPESNUpQe9tewIKAgMB22227Lb0BBQr6D+DAJo1uhbPGPTmT9/uTmcwM7KZfDtNPp+l8tOvM1dVyd7c83ac+84nffBwwN4M9zTs9R3d7D+/1Hkz0NSb7Gvct9QeW2kNL9VF/Zaq/Mj2w/3ig/MRaempVZqzK7GBxbrAwP5R/NiQ/H5ZfDOde2rKvbNJrW+bNSObtiPjOvvfevvvBsQMu6kcCc1EXHD/ARV10boOL+sm5BS7q59FNcFFDBDZWvfizblLDY9/BTlXrr2pkbANMVbU61ZhrHaxVtTSq4FqDIdtEhTVqnMCG7DAV1qgJ9zcYcjlUWKOm3Ksw5F6psEZd8qzAqC/xT+qyJw0Df5N+Ne1Nw9iPqFNd8X4Fiz/cucMaddW7DC7qmm8JXNR1Xwpc1A1/ClzUTX8SXNStQAJc1O1AHFzUnXEBXNRdAnNR98Zj4KKKwSj0qOKXeiZUl0K1W1QlWlaipVK0dIvaEPIHgnwYl6VgBHp6VVWSbKiWC1dJOntV1fJVlEqMpNjZq6oexXMk0DNhjSqHK/nrFCL77Qlr1GqsWCMRCnUh355wW20S+H/UYqTcnvBNauM6v/dK1ONEFtRtYqFewdQdZqGeJCRQL4eFepqUQL1XFmqLwNQvwUJtJTOg/iYW6llSBPUjslDPU+Il3WE3rUUO8aoAAAAASUVORK5CYII=", b: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAAB4UlEQVR42sXU6VIaQRQF4H4h9n3Nc0WzuEWdYSBxyR61F8C4BQUFsif+Hp7JnGYCVQPRnpTT1V3n/1d9695DHgxpdUCrfVq9opVLWunRSpdWLmj5nJY7tPyJlc9YCTllpRNWOmbFI1b8yIqHrNhmhRYvNHlB8DzCeZ7xPOW5A57b57k9nvsgsu9F9p3IvhXZNyKDvBaZVyLzUqR3BTGipneaxIia3gZsQk1tNYkRNfUCsAk19RywCTXVAByqeuN/t6lJwPpU7/1TTdYB61S9N68mHcCa1b+2X03WAIexTWrYrybsFgllh5XwjJqwAIdxOWrYryY2AYdxr2rYryY2AIfUEv+lxtdbJMRuCq7GnwEOtREDqvE1wBp6eH6HZ9T4KmATagywETW2AtiEGltuEyNqdKlNjKjRp4BNqNEngE2o0ceATaiRR21iRI0sAjahRhYAB1Ab127jt8wdqvPNdb7K3KHa/ZF9JRN5CDjAXz218Uumjvx05//qqc4XmRry2Z3/q6falzIkyIRnVJkfrvNdZjrhGbU2HMkMZKYTnqpj+B6qHO9kwrepNYx3MuGpavcAq7ZJh2p3Aat2WIdqAVZejg7VugCsulcd6hhWtYQO1ToHrOomHaqElY2oQ7U6oz/sMkViifXP7QAAAABJRU5ErkJggg==", c: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAACGUlEQVR42sXU+U8TURAH8PkDaSndbvciKl5B8IoXahDPKB4QVFDTvdoi4IGi/BUKCBUQBNxttzdF0P8AX7uhSXctb4378ibf3z+ZyczA79H2XwlpJy7t6NK2Jm2r4k9F3JLFrZhYeSFUngubz4TNEaE8LJSe8qUnfPExXxziC4NcYYDLP+JyD7ncAy57P5rtj1r3otbdaOYOm77Npm+x5k3WvMEa1yNGX+THtchGb2TjKrN+hVm/zKz1MEBFXbvEABX1+8UwUFFXL4SBirp6HsE01JVzYaCirpxtA3/V3cZqpn47g2Biql1/VZdPtwFR1S63unwKwYRVuxzq0skQ+LJNeLhRXepGsB87jIUd6mJXCHy5HCzsUBdPhMCXe8XDjerXTgT79CX+SU0dbwUff5N3NXUMwb5+RI/qwtFWIPGH3TvsUBeOIJiGOn84CFTU+Y4gUFG/HEIwDXXuYBCoqHMHEExDnW0PABV1VkIwDXVGDAAVdUYIABX1M98CXtTytF7+WM0+av6tln+j5l+r+6jWqGIllUxS/sS1gJdebbX0QS9NaSjF95q7V1vNobxScxMKirtXW80kqgEvE3aoxXe1TGqFSa0+YYeaHa9lTLFeKvUJ19V0XIb/UQtovHsTbqZWszfhulqDcdtEQjV1GbA7TEI1NRmwl0NCrcG4eyWhGqoM2C9BQjWUGGB/Ewm1CmM/IgnVkGN/APded9/JzrEcAAAAAElFTkSuQmCC" };
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Thumb uri={P.a} name="lease-photo.png" onRemove={() => {}} />
+          <Thumb uri={P.b} name="signature.png" state="uploading" onRemove={() => {}} />
+          <Thumb uri={P.c} name="scan.jpg" state="failed" onRemove={() => {}} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}><Thumb uri={P.a} name="lease-photo.png" size={120} /><Thumb uri={P.b} name="signature.png" size={120} /></View>
+      </View>
+    );
   }
   if (name === "runner-chip") {
     return (
