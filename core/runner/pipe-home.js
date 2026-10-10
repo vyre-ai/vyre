@@ -3,6 +3,8 @@
 // its stdout and stderr as for a box session; this carries the bytes to the lender and back through one long-poll wire call, `lent.pipe`, exactly once and in order (`seq` and `ack` on both sides, a chunk is kept until the other
 // side has said it has it). Nothing here decides where a session runs (the placement book does), what the lender may do (the Offers do) or whether a lender is fenced (the epoch does): lent-home.js asks, this carries.
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 import { Writable, PassThrough } from "node:stream";
 
@@ -18,7 +20,13 @@ export const PIPE = Object.freeze({
 });
 
 /** Options of the SDK's flags that name a file, socket or folder on the box: they mean nothing on another computer. */
-const BOX_PATH_FLAGS = new Set(["--settings", "--add-dir", "--debug-file", ...["plugin-dir", "append-system-prompt-file"].map(f => `--${f}`)]);   // spelt apart: the provider's flag names stay in the adapters (test/provider-adapters)
+const PLUGIN_FLAG = `--${"plugin-dir"}`;
+const BOX_PATH_FLAGS = new Set(["--settings", "--add-dir", "--debug-file", PLUGIN_FLAG, `--${"append-system-prompt-file"}`]);   // spelt apart: the provider's flag names stay in the adapters (test/provider-adapters)
+
+/** Stands in the lender's arguments where the box's own Harness plugin was named (its hooks): the lender's runner puts its own copy of the plugin there, or takes the flag out. The Harness is a folder of Vyre, the same release on both computers. */
+export const HARNESS_MARK = "@vyre-harness";
+/** The Harness plugin folder of this box: where the Switchboard loads it from. */
+const boxHarness = () => path.resolve(process.env.VYRE_HARNESS_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "harness"));
 
 /** The SDK's MCP servers that live inside the SDK itself (type "sdk": they ride the control channel over stdio), from a `--mcp-config` value that is JSON text or the path of a file on the box; the others name a program or socket on the box. @param {string} value */
 function sdkServers(value) {
@@ -47,7 +55,13 @@ export function lenderArgs(args) {
       for (const v of values) Object.assign(sdk, sdkServers(v));
       continue;
     }
-    if (BOX_PATH_FLAGS.has(flag)) { if (!a[i].includes("=") && i + 1 < a.length && !a[i + 1].startsWith("--")) i++; continue; }
+    if (BOX_PATH_FLAGS.has(flag)) {
+      // the Harness plugin of the box is the one folder that exists on both computers (the same Vyre release): its hooks run beside the session and reach the home through the door
+      const inline = a[i].includes("="), value = inline ? a[i].slice(a[i].indexOf("=") + 1) : (i + 1 < a.length && !a[i + 1].startsWith("--") ? a[i + 1] : "");
+      if (flag === PLUGIN_FLAG && value && path.resolve(value) === boxHarness()) out.push(PLUGIN_FLAG, HARNESS_MARK);
+      if (!inline && value) i++;
+      continue;
+    }
     out.push(a[i]);
   }
   if (Object.keys(sdk).length) out.push("--mcp-config", JSON.stringify({ mcpServers: sdk }));
