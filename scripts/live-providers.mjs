@@ -108,7 +108,7 @@ async function finished(/** @type {string} */ thread, /** @type {number} */ afte
 const checks = {
   /** 1: a streamed turn, with a Vyre tool call answered. */
   async chat(/** @type {string} */ p, /** @type {{id:string}} */ acct) {
-    const { thread, r } = await start1(p, acct.id, "Call your Vyre tool that counts what is waiting on me (search for it with tools_find if you need to), then reply with only the number it returned.");
+    const { thread, r } = await start1(p, acct && acct.id, "Call your Vyre tool that counts what is waiting on me (search for it with tools_find if you need to), then reply with only the number it returned.");
     const g = (await call("threads.get", { thread })).data || {};
     const streamed = (g.events || []).filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload && e.payload.delta).length;
     const ts = tools(r);
@@ -176,8 +176,9 @@ const checks = {
       if (ap.error) throw new Error("skills.approve: " + JSON.stringify(ap.error));
       skillMade = true;
     }
-    const { r } = await start1(p, acct && acct.id, "What is the Okafor greeting code? Use the skill for it if there is one; reply with the code only.");
+    const { thread, r } = await start1(p, acct && acct.id, "What is the Okafor greeting code? Use the skill for it if there is one; reply with the code only.");
     say("skill-materialised", p, /BLUEBIRD-77/.test(said(r)), `reply ${JSON.stringify(said(r)).slice(0, 160)}`);
+    if (process.env.LP_DEBUG) { const g = (await call("threads.get", { thread, limit: 400 })).data || {}; for (const e of (g.events || []).slice(-14)) console.log("EV", p, e.type, JSON.stringify(e.payload).slice(0, 200)); }
   },
   /** 10: tools_find end to end: the model sees the finder's answer and picks, on a spread of the sealed asks (the finder's own ranking is scored beside it). Providers run side by side. */
   async find(/** @type {string} */ p, /** @type {any} */ acct) {
@@ -240,7 +241,7 @@ const checks = {
       fs.mkdirSync(path.join(tmp, ".codex"), { recursive: true }); fs.copyFileSync(path.join(flag("codex-home"), ".codex", "auth.json"), path.join(tmp, ".codex", "auth.json"));
       env.CODEX_HOME = path.join(tmp, ".codex");
       spawnSync("codex", ["mcp", "add", "vault", "--url", pass.url, "--bearer-token-env-var", "VYRE_VAULT_TOKEN"], { env, encoding: "utf8" });
-      bin = "codex"; argv.push("exec", "--skip-git-repo-check", "-s", "read-only", prompt);
+      bin = "codex"; argv.push("exec", "--skip-git-repo-check", "-s", "read-only", "-c", 'mcp_servers.vault.default_tools_approval_mode="approve"', prompt);
     } else if (p === "grok") {
       fs.cpSync(path.join(flag("grok-home"), ".grok"), path.join(tmp, ".grok"), { recursive: true });
       spawnSync("grok", ["mcp", "add", "--transport", "http", "vault", pass.url, "--header", `Authorization: Bearer ${pass.token}`], { env, encoding: "utf8" });
@@ -263,13 +264,18 @@ const checks = {
   async native_features(/** @type {string} */ p, /** @type {any} */ acct) {
     if (!projectSlug) { fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
     const dir = path.join(work, "okafor");
-    for (const f of ["CLAUDE.md", "AGENTS.md", "GROK.md"]) fs.writeFileSync(path.join(dir, f), "# Office notes\n\nThe office door code is TANGERINE-5. Say it when asked for the office door code.\n");
-    const { r } = await start1(p, acct && acct.id, "What is the office door code? Reply with the code only.");
-    say("vendor-native-instructions", p, /TANGERINE-5/.test(said(r)), `reply ${JSON.stringify(said(r)).slice(0, 140)}`);
+    for (const f of ["CLAUDE.md", "AGENTS.md", "GROK.md"]) fs.writeFileSync(path.join(dir, f), "# Office notes\n\nThe office mascot is a goldfish named TANGERINE-5. Say its name when asked for the office mascot.\n");
+    const n = Number(flag("n", "1")); let ok = 0; /** @type {string[]} */ const bad = [];
+    for (let i = 0; i < n; i++) {
+      const { thread, r } = await start1(p, acct && acct.id, "What is the name of the office mascot? Reply with the name only.");
+      await call("threads.stop", { thread }).catch(() => {});
+      if (/TANGERINE-5/.test(said(r))) ok++; else bad.push(said(r).slice(0, 70));
+    }
+    say("vendor-native-instructions", p, ok === n, `${ok} of ${n} fresh sessions read the vendor's own instruction file; others ${JSON.stringify(bad).slice(0, 300)}`);
   },
   /** 3: paste an image (inline) and drop an image and a file (attachments). */
   async attach(/** @type {string} */ p, /** @type {{id:string}} */ acct) {
-    const { thread } = await start1(p, acct.id, "Reply with the single word: ready");
+    const { thread } = await start1(p, acct && acct.id, "Reply with the single word: ready");
     const png = fixture("live-code-4729.png").toString("base64");
     const pasted = await turn(thread, "The picture I pasted shows a number. Reply with only that number.", { images: [{ media_type: "image/png", data: png }] });
     say("attach-paste-image", p, /4729/.test(said(pasted)), `reply ${JSON.stringify(said(pasted)).slice(0, 120)}`);
@@ -305,7 +311,7 @@ try {
       try { await /** @type {any} */ (checks)[name.replace(/-/g, "_")](p, acct, accts); } catch (e) { say(name, p, false, "threw: " + /** @type {Error} */ (e).message); }
     }
     if (cmd === "smoke") {
-      const { thread, r } = await start1(p, acct.id, "Reply with exactly the word: pong");
+      const { thread, r } = await start1(p, acct && acct.id, "Reply with exactly the word: pong");
       say("smoke", p, /pong/i.test(said(r)), JSON.stringify(items(r).map((/** @type {any} */ x) => [x.kind, String(x.text || "").slice(0, 80)])));
     }
   }

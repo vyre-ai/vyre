@@ -429,11 +429,18 @@ test("acp: Grok is given the Space's skills folder with agent --plugin-dir, betw
   fs.writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`);
   fs.chmodSync(bin, 0o755);
   w.provider = grokProvider({ bin, home: "/acct/2000", floor: () => null });
-  w.env.VYRE_SKILLS_DIR = "/lib/skills/abc";
+  const lib = path.join(w.store, "lib-abc");
+  fs.mkdirSync(path.join(lib, "skills", "greeting"), { recursive: true });
+  fs.writeFileSync(path.join(lib, "skills", "greeting", "SKILL.md"), "---\nname: greeting\n---\nthe code\n");
+  w.env.VYRE_SKILLS_DIR = lib;
   const s = open(w);
   await s.until(m => m.type === "system" && m.subtype === "init", "init");
   await s.proc.stop(1000);
-  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", "/lib/skills/abc", "stdio"]);
+  // the folder Grok is given is a copy inside the session's own folder, because Vyre's file and terminal tools refuse anything in Vyre's home
+  const inFolder = path.join(w.cwd, ".vyre", "library", "lib-abc");
+  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", inFolder, "stdio"]);
+  assert.equal(fs.readFileSync(path.join(inFolder, "skills", "greeting", "SKILL.md"), "utf8"), "---\nname: greeting\n---\nthe code\n");
+  assert.equal(fs.readFileSync(path.join(w.cwd, ".vyre", "library", ".gitignore"), "utf8"), "*\n");
 });
 
 test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {
