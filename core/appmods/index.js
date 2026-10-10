@@ -16,6 +16,7 @@ import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
+import { publishedManifest, checkPublished } from "./published.js";
 import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
@@ -30,6 +31,8 @@ export const MIGRATIONS = [
    );`,
   `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
   `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
+  // Servers Publish made from a built image (team/contracts/builder.md): the manifest it was made with, the deployment it belongs to and the Space whose publish folder holds its secrets.
+  `CREATE TABLE appmods_published (name TEXT PRIMARY KEY, deployment TEXT NOT NULL, space TEXT NOT NULL, manifest TEXT NOT NULL);`,
   // Signed-in browser sessions on an app's own origin (and a preview's): kept by the hash of the cookie so a restart or an update does not sign anyone out.
   `CREATE TABLE appmods_sessions (h TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, exp INTEGER NOT NULL, who_w TEXT, who_r TEXT);`,
   // the key an app's expiring links to a signed copy are made under; it never leaves the box
@@ -134,7 +137,22 @@ export default {
       const r = await ctx.call("vault.put", { name: item(name, what), kind: "secret", description: `${note} (made by Vyre for the ${name} app)`, value, grants: ["appmods"] });
       if (r.error) throw refuse(`the Vault would not keep ${what}: ${r.error.message}`, r.error.code || "vault");
     };
-    const secretsOf = async (/** @type {any} */ m) => Object.fromEntries(await Promise.all((m.app.secrets || []).map(async (/** @type {any} */ s) => [s.env, await secret(m.name, s.env.toLowerCase())])));
+    /** The runtime secrets of a published server: the files Publish wrote from the Vault (its own grants), in the deployment's folder under the publish folder of its Space. The folder is derived here, never taken from a call. */
+    const publishedSecrets = (/** @type {any} */ m) => {
+      const pub = db.prepare("SELECT * FROM appmods_published WHERE name = ?").get(m.name);
+      /** @type {Record<string, string>} */ const out = {};
+      for (const n of m["x-publish"].secrets || []) {
+        const file = path.join(ctx.paths.root, "publish", String(pub && pub.space), "secrets", String(m["x-publish"].deployment), n);
+        let v; try { v = fs.readFileSync(file, "utf8"); } catch { throw refuse(`the secret ${n} is not granted to this site yet: give it from the site's secrets, then publish again`, "no_secret"); }
+        out[n] = v;
+      }
+      return out;
+    };
+    const secretsOf = async (/** @type {any} */ m) => m["x-publish"] ? publishedSecrets(m) : Object.fromEntries(await Promise.all((m.app.secrets || []).map(async (/** @type {any} */ s) => [s.env, await secret(m.name, s.env.toLowerCase())])));
+    // The servers Publish made keep their manifests in the database and are known like any app from here on.
+    for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_published").all())) {
+      try { if (catalog.has(r.name)) { ctx.log.warn(`appmods: the published server ${r.name} has the name of an app that ships with Vyre and is not loaded`); continue; } catalog.set(r.name, JSON.parse(r.manifest)); } catch { /* an unreadable row is left out */ }
+    }
     const known = (/** @type {string} */ name) => { const m = catalog.get(String(name)); if (!m) throw refuse(`no app module called ${name}`, "not_found"); return m; };
 
     /** Webhooks from a docker-direct app arrive at a small listener on the app network's gateway (the daemon's own door is for apps that share the daemon's network). @param {any} m @param {string} host @param {number} port */
@@ -190,7 +208,7 @@ export default {
     }
 
     // ---- reading
-    ctx.tool("appmods.catalog", { description: "The apps this build can run as modules, each with its install card and whether it is installed here.", input: obj({}), run: async () => ({ apps: [...catalog.values()].map(m => ({ ...cardOf(m), installed: Boolean(row(m.name)) })) }) });
+    ctx.tool("appmods.catalog", { description: "The apps this build can run as modules, each with its install card and whether it is installed here.", input: obj({}), run: async () => ({ apps: [...catalog.values()].filter(m => !m["x-publish"]).map(m => ({ ...cardOf(m), installed: Boolean(row(m.name)) })) }) });
     ctx.tool("appmods.card", { description: "The install card for one app: what runs, what it uses, what it may reach, what it shows. Built from the manifest, never from the app.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => cardOf(known(i.name)) });
     ctx.tool("appmods.list", { description: "The app modules installed on this server and their state.", input: obj({}), run: async () => ({ apps: db.prepare("SELECT name, version, state, installed, note FROM appmods_apps ORDER BY name").all() }) });
     ctx.tool("appmods.status", { description: "One installed app: its state and what the runtime says.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
@@ -222,6 +240,7 @@ export default {
       presence: { summary: async (/** @type {any} */ i) => `Install ${i && i.name} on this server` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const m = known(i.name);
+        if (m["x-publish"]) throw refuse(`${m.name} is a site Publish runs; publish it again to change it`, "unsupported");
         if (row(m.name)) throw refuse(`${m.name} is already installed`, "exists");
         const sp = space();
         // With the host helper, root makes the app's keys and the webhook key and hands the setup's outputs over once; the daemon keeps them in the Vault below.
@@ -313,6 +332,7 @@ export default {
       presence: { summary: async (/** @type {any} */ i) => `Remove ${i && i.name} from this server${i && i.data ? " and delete its data" : ""}` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
+        if (known(r.name)["x-publish"]) throw refuse(`${r.name} is a site Publish runs; retire it in Publish`, "unsupported");
         if (r.connection_id) await ctx.call("connectors.connection.delete", { id: r.connection_id }, { as: meta && meta.caller }).catch(() => {});
         await driver.down({ space: r.space, manifest: known(r.name), hookPort: r.hook_port }, { data: i.data === true });
         const l = listeners.get(r.name); if (l) { l.close(); listeners.delete(r.name); }
@@ -388,6 +408,8 @@ export default {
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
         if (!m || m.app.service) return null;
+        // A server Publish made keeps its own cookies (the proxy removes only Vyre's) and, once it is live, answers strangers on every route; it never signs in to anything
+        if (m["x-publish"]) return { origin: r.origin, origins: [r.origin], login: null, public: [], passCookies: true, ...(m.app.open ? { open: true } : {}), credentials: async () => ({}) };
         return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [], ...(m.app.signing ? { signing: m.app.signing } : {}),
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
@@ -488,6 +510,74 @@ export default {
         if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module ends the links to its signed copies", "denied");
         const gone = db.prepare("DELETE FROM appmods_link_keys WHERE name = ?").run(name).changes;
         return { revoked: gone > 0 };
+      },
+    });
+    // ---- servers Publish made (team/contracts/builder.md, the container path). Publish alone calls these, inside the person's held yes.
+    const publishOnly = (/** @type {any} */ meta) => { if (!meta || meta.caller !== "module:publish") throw refuse("only Publish runs a site's server", "denied"); };
+    const byDeployment = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM appmods_published WHERE deployment = ?").get(String(id)));
+    ctx.tool("appmods.publish.install", {
+      internal: true, callers: ["module"],
+      description: "Run (or replace) the server of a published site: { deployment } -> { name, state, url }. Publish only, inside the held yes.",
+      input: obj({ deployment: { type: "object" } }, ["deployment"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        publishOnly(meta);
+        if (byHelper) throw refuse("this server runs apps through its host helper, which cannot run your own image yet", "unsupported");
+        const d = i.deployment || {};
+        const sp = String(d.space || "");
+        if (!/^spc_[a-z2-7]{12}$/.test(sp)) throw refuse("the deployment names no Space", "bad_input");
+        const catalogNames = [...catalog.values()].filter(x => !x["x-publish"]).map(x => x.name);
+        let m; try { m = publishedManifest(d, { catalogNames, public: true }); } catch (e) { throw refuse(String(/** @type {Error} */ (e).message), "bad_input"); }
+        const problems = checkPublished(m);
+        if (problems.length) throw refuse(`that server cannot run here: ${problems.map(p => `${p.path}: ${p.message}`).join("; ")}`, "bad_input");
+        const have = row(m.name), mine = db.prepare("SELECT * FROM appmods_published WHERE name = ?").get(m.name);
+        if (have && !mine) throw refuse(`${m.name} is an app installed on this server already`, "exists");
+        // the secrets are read before anything stops: a missing one leaves the running version as it was
+        db.prepare("INSERT OR REPLACE INTO appmods_published (name, deployment, space, manifest) VALUES (?,?,?,?)").run(m.name, d.id, sp, JSON.stringify(m));
+        const keep = catalog.get(m.name); catalog.set(m.name, m);
+        let secrets; try { secrets = publishedSecrets(m); } catch (e) { if (keep) catalog.set(m.name, keep); else { catalog.delete(m.name); db.prepare("DELETE FROM appmods_published WHERE name = ?").run(m.name); } throw e; }
+        const at = space();
+        if (have) { await driver.down({ space: have.space, manifest: keep || m }, { data: false }); tickets.drop(m.name); }
+        if (have) db.prepare("UPDATE appmods_apps SET version = ?, state = 'installing', origin = NULL, note = NULL WHERE name = ?").run(m.version, m.name);
+        else db.prepare("INSERT INTO appmods_apps (name, space, version, state, origin, hook_port, login_email, installed, note) VALUES (?,?,?,?,?,?,?,?,?)").run(m.name, at, m.version, "installing", null, 0, "", Date.now(), null);
+        try {
+          const up = await driver.up({ space: at, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets });
+          db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, m.name);
+          await healthy(m, up.origin);
+          db.prepare("UPDATE appmods_apps SET state = 'running' WHERE name = ?").run(m.name);
+        } catch (e) {
+          db.prepare("UPDATE appmods_apps SET state = 'failed', note = ? WHERE name = ?").run(String(/** @type {Error} */ (e).message).slice(0, 300), m.name);
+          throw e;
+        }
+        ctx.events.emit("appmods.installed", { name: m.name, version: m.version, source: "publish", deployment: d.id });
+        return { name: m.name, state: "running", url: originFor(m.name, baseHost()) };
+      },
+    });
+    ctx.tool("appmods.publish.stop", {
+      internal: true, callers: ["module"],
+      description: "Stop a published site's server: { deployment } -> { name, state }. Publish only.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        publishOnly(meta);
+        const p = byDeployment(i.deployment); if (!p) return { name: null, state: "none" };
+        const r = row(p.name);
+        if (r) { await driver.stop({ space: r.space, manifest: known(p.name) }); db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(p.name); tickets.drop(p.name); ctx.events.emit("appmods.stopped", { name: p.name, source: "publish", deployment: p.deployment }); }
+        return { name: p.name, state: "stopped" };
+      },
+    });
+    ctx.tool("appmods.publish.remove", {
+      internal: true, callers: ["module"],
+      description: "Remove a published site's server: { deployment, data? } -> { name, removed }. Its data stays unless data is true. Publish only.",
+      input: obj({ deployment: str, data: { type: "boolean" } }, ["deployment"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        publishOnly(meta);
+        const p = byDeployment(i.deployment); if (!p) return { name: null, removed: false };
+        const r = row(p.name);
+        if (r) await driver.down({ space: r.space, manifest: known(p.name) }, { data: i.data === true });
+        db.prepare("DELETE FROM appmods_apps WHERE name = ?").run(p.name);
+        db.prepare("DELETE FROM appmods_published WHERE name = ?").run(p.name);
+        catalog.delete(p.name); tickets.drop(p.name);
+        ctx.events.emit("appmods.removed", { name: p.name, source: "publish", deployment: p.deployment });
+        return { name: p.name, removed: true };
       },
     });
     ctx.tool("appmods.signing.request", {
