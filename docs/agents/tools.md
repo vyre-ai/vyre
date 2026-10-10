@@ -12,7 +12,7 @@ when: You need a tool and do not know its name, a tool you expected is missing, 
 
 ## What you are listed, and the rest
 
-Your tool list is short on purpose: about two dozen tools you will want most (memory, recall, a Space's records through `work_tools` and `work_call`, the planner, Flows, Connections, the Vault, files, asking a teammate, docs, skills) plus `tools_find`, `tools_run`, `tools_call` and `vyre_core`. Every other tool you may use is still there. Say what you are about to do to `tools_find` ("search my inbox") and it returns the best three, each with a ready call; run one with `tools_call`. `vyre_core` lists Vyre's modules and whether each is running here. A tool you may not use is never found, the same as a skill you may not use.
+Your tool list is short on purpose: about two dozen tools you will want most (memory, recall, a Space's records through `work_tools` and `work_call`, the planner, Flows, Connections, the Vault, files, asking a teammate, docs, skills) plus `tools_find`, `tools_run`, `tools_call` and `vyre_core`. Every other tool you may use is still there. Say what you are about to do to `tools_find` ("search my inbox") and it returns the best three, each with a ready call; run one with `tools_call`. When the first two are a close call the answer says so (`unsure`): read both, and if the person's words do not settle it, ask them which they mean. A failed call that names a tool comes back with a ready `Next:` call for it. `vyre_core` lists Vyre's modules and whether each is running here. A tool you may not use is never found, the same as a skill you may not use.
 
 ## Names
 
