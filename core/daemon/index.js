@@ -363,7 +363,7 @@ async function startLocked(opts, root, p, release) {
             if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here"), { code: "not_found" });
             const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread }, "module:vyred", { door: true })).data);
             if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move"), { code: "unavailable" });
-            const port = ownHostOf()?.port(space);
+            const port = ownHostOf()?.port(kernel.id.space);   // this home serves one Space, its own
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);

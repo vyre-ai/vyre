@@ -37,12 +37,16 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
 
   /** @type {string[]} the tool requests that came down the lender's door, with the thread each was for */ const doorCalls = [];
   // the home: link's lent world, whose tool requests go to the daemon's own session socket for the thread
-  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { doorCalls.push(`${thread} ${p}`); return lentRequest(thread, method, p, headers, body); },
+  /** @type {any} */ let daemon = null;
+  // the home carries a chat on from the computer with the daemon's own loader (runner.resume-lent), as the packaged home does
+  const resume = async (/** @type {any} */ i) => { const x = await daemon.registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread }, "module:vyred"); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
+  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, resume, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { doorCalls.push(`${thread} ${p}`); return lentRequest(thread, method, p, headers, body); },
     specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [REPO], labels: {}, network: "provider", credentialRoutes: [] }) });
 
   // the daemon: kernel on, the stream and the switchboard real; the lent home is the rig's, and a loader exists so the server could carry a session on (the loader itself is agent-core's)
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, resumeLent: async () => ({}) });
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  daemon = d;
   asOwner(d, root);
   t.after(() => d.stop());
   const deps = /** @type {any} */ (d.registry.deps);
@@ -51,7 +55,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const ownerId = String(d.kernel.id.owner);
   const asOwner0 = (/** @type {any} */ row) => (row && row.person === BOB ? { ...row, person: ownerId } : row);
   const book = new Proxy(r.home.book, { get: (b, prop) => (prop === "find" ? (/** @type {string} */ id, /** @type {string} */ person) => asOwner0(b.find(id, person === ownerId ? BOB : person)) : prop === "get" ? (/** @type {string} */ id) => asOwner0(b.get(id)) : /** @type {any} */ (b)[prop]) });
-  const home = new Proxy(r.home, { get: (target, prop) => (prop === "placeNew" ? (/** @type {any} */ i) => target.placeNew({ ...i, person: BOB }) : prop === "spawn" ? (/** @type {any} */ i) => target.spawn({ ...i, person: BOB }) : prop === "book" ? book : /** @type {any} */ (target)[prop]) });
+  const home = new Proxy(r.home, { get: (target, prop) => (prop === "placeNew" ? (/** @type {any} */ i) => target.placeNew({ ...i, person: BOB }) : prop === "spawn" ? (/** @type {any} */ i) => target.spawn({ ...i, person: BOB }) : prop === "adopt" ? (/** @type {any} */ i) => target.adopt({ ...i, person: BOB }) : prop === "book" ? book : /** @type {any} */ (target)[prop]) });
   deps.lentHome = () => home;
   deps.lentSpaces = () => [SPACE];
 
@@ -77,6 +81,8 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const call = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli");
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input) => { const x = await call(tool, input); assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; };
   const placing = /** @type {any[]} */ ([]);
+  /** @type {any[]} */ const resumed = [];
+  d.events.on("runner.resumed", (/** @type {any} */ e) => resumed.push(e.payload || e));
   d.events.on("thread.placing", (/** @type {any} */ e) => placing.push(e.payload || e));
 
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "lce-work-")));
@@ -112,4 +118,33 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const answer = JSON.parse(tool);
   assert.ok(doorCalls.some(c => c.startsWith(th.id) && c.includes("/v1/tools/threads.list")), "the call came down the lender's door for this chat's thread: " + JSON.stringify(doorCalls));
   assert.ok(!answer.error && Array.isArray(answer.data ? answer.data : answer.threads || answer), "the home answered the tool call from the lent session: " + tool.slice(0, 300));
+  // The round trip (G01): the chat goes to the server and comes back to the computer, each time with its turns.
+  const where = () => r.home.book.get(th.id)?.where;
+  const finished = async () => (await ok("threads.get", { thread: th.id, limit: 400 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length;
+  const lastSaid = async () => String((await ok("threads.get", { thread: th.id, limit: 400 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1));
+  const chatId = String((await ok("threads.get", { thread: th.id, limit: 1 })).thread.chat);
+  const turnsBefore = await finished();
+  await ok("runner.move", { thread: chatId, to: "server" });
+  await until(async () => where() === "server", "the chat is the server's", 60_000);
+  await ok("threads.send", { thread: th.id, text: "now on the server" });
+  await until(async () => (await finished()) > turnsBefore, "a turn on the server", 90_000);
+  assert.match(await lastSaid(), /echo: now on the server/, "the server carried the chat on and answered");
+  assert.equal(where(), "server");
+  // with its turns: the loader carried the computer's checkpointed turns onto the server before the chat's process started there, and the chat's transcript on the server holds them
+  assert.ok(resumed.length >= 1 && resumed[0].lines >= 1 && resumed[0].turn >= 1, "the server carried on from the computer's last whole turn: " + JSON.stringify(resumed));
+  const onServer = fs.readdirSync(transcripts, { recursive: true, withFileTypes: true }).filter(e => e.isFile() && e.name.endsWith(".jsonl")).map(e => fs.readFileSync(path.join(e.parentPath || e.path, e.name), "utf8").split("\n").filter(Boolean).length);
+  assert.ok(onServer.some(n => n > resumed[0].lines), "the server's transcript holds the computer's turns and the server's own: " + JSON.stringify(onServer));
+  const ups = () => placing.filter(p => p.state === "up").length;
+  const upsBefore = ups();
+  await ok("runner.move", { thread: chatId, to: "mac" });
+  await until(async () => where() === "mac", "the chat is on the computer again", 60_000);
+  const afterServer = await finished();
+  await ok("threads.send", { thread: th.id, text: "back on the computer" });
+  await until(async () => (await finished()) > afterServer, "a turn back on the computer", 90_000);
+  assert.match(await lastSaid(), /echo: back on the computer/, "the computer carried the chat on and answered");
+  assert.equal(where(), "mac");
+  // and back with its turns: the home's store holds the server's whole turns too, for the computer's seed
+  assert.ok((await r.home.view(th.id).transcript(1, 1_000_000)).length > resumed[0].lines, "the computer was given the turns the server added");
+  assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
+
 });
