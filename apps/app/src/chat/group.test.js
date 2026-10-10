@@ -197,10 +197,11 @@ test("reply mode: the group knows the mode the log last set, and the folder show
   assert.equal(g.replyMode(), null);
   const f = createFolder();
   const frame = (cur, mode, who) => ({ v: 1, id: `f${cur}`, cur, session: "s", turn: null, type: "session.reply-mode", time: cur, corr: null, author: who, data: { mode } });
-  for (const fr of [frame(1, "mention", "person:bob"), frame(2, "every", "person:carol")]) { g.apply(fr); f.apply(fr); }
+  const join = (cur, who, name) => ({ v: 1, id: `j${cur}`, cur, session: "s", turn: null, type: "session.participant-joined", time: cur, corr: null, data: { who, name } });
+  for (const fr of [join(1, "person:bob", "Bob"), frame(2, "mention", "person:bob"), frame(3, "every", "person:zed")]) { g.apply(fr); f.apply(fr); }
   assert.equal(g.replyMode(), "every");
-  const lines = f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key).text);
+  const lines = f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key).text).filter((t) => /set replies/.test(t));
   assert.equal(lines.length, 2);
-  assert.match(lines[0], /set replies to: the AI answers when mentioned/);
-  assert.match(lines[1], /set replies to: the AI answers every message/);
+  assert.match(lines[0], /^Bob set replies to: the AI answers when mentioned/);
+  assert.match(lines[1], /^Someone set replies to: the AI answers every message/, "an author the chat has no name for is Someone, never a raw id");
 });

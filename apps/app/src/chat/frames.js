@@ -272,7 +272,7 @@ export function createFolder() {
       case "reply-mode": {
         const mode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
         const key = "rm:" + f.cur;
-        put(key, "notice", { key, kind: "notice", text: `${f.author ? nameOf(String(f.author)) : "Someone"} set replies to: ${mode === "every" ? "the AI answers every message" : "the AI answers when mentioned"}` });
+        put(key, "notice", { key, kind: "notice", text: `${f.author && names.has(String(f.author)) ? nameOf(String(f.author)) : "Someone"} set replies to: ${mode === "every" ? "the AI answers every message" : "the AI answers when mentioned"}` });
         out.layout = true;
         touch(key);
         break;
