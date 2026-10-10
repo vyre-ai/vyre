@@ -48,6 +48,10 @@ On a server, each account runs as its own user, so one account's sign-in cannot 
 another's. An account that an agent started stays pending until you finish it on your own
 device.
 
+### What a vendor sees
+
+A sign-in session (Claude, Codex or Grok on your own subscription) talks to its own vendor with your own sign-in. Vyre keeps the session: the transcript, memory, tools and the Gate that holds a send for your yes are Vyre's, and what you type is checked for keys before the vendor hears it; what the model prints is checked for keys before it reaches the transcript. Vyre does not check a sealed customer value you typed into the chat against the session's record of what it has used: the vendor is your choice, and the Gate still holds anything that leaves your Space. A session on an API key (OpenRouter, an OpenAI-compatible address, or a Codex or Grok account that holds a key) goes through Vyre's model door instead.
+
 ## One picker per session
 
 Chat has one chip above the message box that says who answers, the model and the effort, for

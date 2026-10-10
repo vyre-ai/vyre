@@ -17,6 +17,7 @@
 //                   and says back the answers it got
 //   "plan"          asks ExitPlanMode with a sample plan (steps, what it will not touch, the files);
 //                   says it starts building if allowed, else that it keeps planning (with the note)
+//   "leak"          prints $FAKE_LEAK in a tool call, streamed words and the result
 //   "tooluse2 <a> <b>"  two finished tool calls, then a reply
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
 //                   a TodoWrite, then a markdown reply
@@ -485,6 +486,12 @@ async function turn(prompt, uuid = null) {
       out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: `tu-t2-${i}`, content: "ok" }] } });
     }
     await say("done"); return result(true, "done");
+  }
+  // "leak": the process prints the key in $FAKE_LEAK everywhere it can (a tool call input, streamed words, the result), as an agent that read its own login file would.
+  if (p === "leak") {
+    const k = process.env.FAKE_LEAK || "";
+    out({ type: "assistant", message: { id: "m-leak", role: "assistant", content: [{ type: "tool_use", id: "tu-leak", name: "Bash", input: { command: `cat auth.json # ${k}` } }] } });
+    await say(`the key is ${k}`); return result(true, `done ${k}`);
   }
   // "tooljson <name> <json>": a finished tool call whose result is that JSON, as a Vyre MCP tool's is (the rollover test reads the receipt it leaves), then a reply.
   const toolJson = /^tooljson (\S+) (.+)$/s.exec(p);

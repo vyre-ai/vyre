@@ -116,7 +116,12 @@ async function prompt(id, blocks) {
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "usage_update", used: Number(m[1]), size: 258400 } } });
     say(`context ${m[1]}`);
   } else if (t === "mode") say("mode: " + mode);
-  else say("echo: " + t);
+  else if (t === "leak") {
+    // an agent that read its own login file and prints the key: in a tool call input and in its words
+    const k = process.env.FAKE_LEAK || "";
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", toolCallId: "leak-1", title: "Run cat", kind: "execute", status: "pending", rawInput: { command: `cat auth.json # ${k}` } } } });
+    say(`the key is ${k}`);
+  } else say("echo: " + t);
   // FAKE_ACP_USAGE=acp: the standard ACP usage on the response (Codex); =grok: the same names in _meta (Grok Build), no usage_update either way.
   const used = process.env.FAKE_ACP_USAGE === "acp" ? { usage: { totalTokens: 120, inputTokens: 100, cachedReadTokens: 30, outputTokens: 20, thoughtTokens: 5 } }
     : process.env.FAKE_ACP_USAGE === "grok" ? { _meta: { modelId: "grok-x", totalTokens: 120, inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, reasoningTokens: 5, usage: { inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, cacheCreationTokens: 0, reasoningTokens: 5, costUsdTicks: 113859200 } } } : {};
