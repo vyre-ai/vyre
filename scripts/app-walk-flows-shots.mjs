@@ -47,6 +47,7 @@ const outer = await install({ format: 1, name: "file_it", label: "File it", auth
 await host.flows.tools["flows.start"](host.personChain(), { id: outer.id, input: {} });
 await new Promise((r) => setTimeout(r, 4000));
 const FLOW_ID = outer.id;
+if (process.env.DEBUGRUN) { const rr = await call("flows.runs", { id: FLOW_ID }).catch((e) => ({ e: String(e) })); console.log("runs:", JSON.stringify(rr).slice(0, 300)); const rid = (Array.isArray(rr) ? rr : []).find((x) => !x.parent)?.id; if (rid) console.log("describe:", JSON.stringify(await call("flows.describe", { run: rid }).catch((e) => ({ e: String(e) }))).slice(0, 600)); }
 
 // ---- the app in front of it
 const SOCKET = paths(root).socket;
@@ -87,6 +88,7 @@ for (const scheme of ["light", "dark"]) for (const [label, viewport] of SIZES) {
   const pg = await ctx.newPage();
   pg.on("console", (m) => { if (m.type() === "error") console.log("console error:", m.text().slice(0, 200)); });
   pg.on("response", (r) => { if (r.status() === 404) console.log("404:", r.url().slice(0, 160)); });
+  pg.on("response", async (r) => { if (/flows\.describe/.test(r.url())) console.log("describe response:", r.status(), (await r.text().catch(() => "")).slice(0, 200)); });
   pg.on("pageerror", (e) => console.log("page error:", String(e).slice(0, 200)));
   await pg.goto(`${BASE}/u/flows`, { waitUntil: "domcontentloaded" });
   await pg.waitForTimeout(3500);
@@ -96,6 +98,12 @@ for (const scheme of ["light", "dark"]) for (const [label, viewport] of SIZES) {
   const text = (await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 300);
   console.log(`flow-${label}-${scheme}:`, text);
   await pg.screenshot({ path: path.join(OUT, `flow-${label}-${scheme}.png`), fullPage: true });
+  // t3: pick a run and the box explains it in plain words
+  await pg.getByText(/^Run of /).first().click().catch((e) => console.log("no run row:", e.message.slice(0, 80)));
+  await pg.waitForTimeout(3000);
+  const explained = await pg.getByText("Explain this run", { exact: true }).count();
+  console.log(`explain-${label}-${scheme}: ${explained ? "shown" : "NOT shown"}: ${(await pg.locator("body").innerText()).replace(/\s+/g, " ").match(/Explain this run.{0,200}/)?.[0] ?? ""}`);
+  await pg.screenshot({ path: path.join(OUT, `t3-explain-run-${label}-${scheme}.png`), fullPage: true });
   await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(0);

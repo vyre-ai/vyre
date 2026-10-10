@@ -121,6 +121,11 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await shot("c6-linked", 1500);
   const linked = await call("work.timeline", { record: String(client.urn) });
   must(JSON.stringify(linked).includes(chat.id), "after Link the chat is not on Northwind's timeline");
+  // c13: the chat, once shared, is on the record's own timeline with the rest of its story
+  await call("work.chat.link", { chat: chat.id, record: String(client.urn), shared: true }).catch((e) => must(false, `share failed: ${e.message}`));
+  await pg.goto(`${BASE}/u/record/${RECORD}`, { waitUntil: "domcontentloaded" });
+  await pg.getByText("Northwind lease letter", { exact: false }).first().waitFor({ timeout: 20000 }).catch(() => must(false, "the shared chat is not on the record's timeline"));
+  await shot("c13-record-timeline", 800);
   // c5: the reply cites the account's name as a chip; pressing it opens the record
   await pg.goto(`${BASE}/u/chats/${chat3.id}`, { waitUntil: "domcontentloaded" });
   await pg.getByText("Name: Northwind Bakery", { exact: false }).first().waitFor({ timeout: 20000 }).catch(() => must(false, "the cited field is not drawn on the reply"));
