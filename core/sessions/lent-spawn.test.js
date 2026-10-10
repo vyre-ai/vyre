@@ -7,9 +7,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf } from "../../lib/lent-placement.js";
 import { spawnSession } from "./spawn.js";
-import { Switchboard } from "../switchboard/index.js";
 import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
 
@@ -139,14 +138,14 @@ test("the switchboard says thread.placing while a chat's process starts on the c
   const said = /** @type {any[]} */ ([]);
   const proc = fake(); proc.lent = { computer: "Office Mac", state: "starting" };
   const self = { deps: { lentFor: async () => () => proc }, chatOf: () => "chat_1", nativeOf: () => "ses_1", turnAsker: new Map(), emit: (/** @type {string} */ type, /** @type {any} */ payload, /** @type {string} */ thread) => said.push({ type, payload, thread }) };
-  const spawn = await /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", { provider: "claude", project: null });
+  const spawn = await /** @type {any} */ lentOf(self, "thr_1", { provider: "claude", project: null });
   const p = spawn("claude", [], {}, "/x", {});
   assert.equal(p, proc);
   proc.emit("spawn");
   assert.deepEqual(said.map(x => [x.type, x.payload.state, x.payload.computer]), [["thread.placing", "starting", "Office Mac"], ["thread.placing", "up", "Office Mac"]]);
   const gone = fake(); gone.lent = { computer: "Office Mac" };
   self.deps.lentFor = async () => () => gone;
-  const again = await /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", {});
+  const again = await lentOf(self, "thr_1", {});
   again("claude", [], {}, "/x", {});
   gone.emit("error", Object.assign(new Error("none"), { code: "lent_unavailable" }));
   assert.deepEqual(said.at(-1).payload, { thread: "thr_1", state: "fallback", computer: "Office Mac", reason: "unavailable" });
@@ -155,7 +154,7 @@ test("the switchboard says thread.placing while a chat's process starts on the c
 test("the switchboard asks for a lent spawn for a claude session only, and a failing lookup is the box's", async () => {
   const fn = () => ({});
   const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native", turnAsker: new Map() });
-  const ask = (/** @type {any} */ self, /** @type {any} */ rec) => /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", rec);
+  const ask = (/** @type {any} */ self, /** @type {any} */ rec) => lentOf(self, "thr_1", rec);
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "claude" })), "function");
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, {})), "function", "claude is the default");
   assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
