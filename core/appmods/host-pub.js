@@ -8,7 +8,7 @@
 //
 // Nothing here is a request from a person or the daemon: root passes only values it checked against its own patterns first.
 import fs from "node:fs";
-import { checkDockerfile } from "../builder/container.js";
+import { checkDockerfile } from "../../lib/publish/dockerfile.js";
 import { publishedManifest, checkPublished } from "./published.js";
 import { catalogOf } from "./host-plan.js";
 
