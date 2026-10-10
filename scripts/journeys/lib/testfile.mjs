@@ -50,11 +50,13 @@ export function walkTestFile(J, file, owner, o = {}) {
     if (m[1] === "not ok") why = whyOf(lines, i + 1);
     cases.push({ ok: m[1] === "ok", name: m[2], why });
   }
+  // A case that is the file itself ("not ok 3 - /path/x.test.js ... test failed") means the process ended badly after its cases (an uncaught error, an exit): what it printed last is the only reason there is.
+  const long = out.split("\n").filter(l => l.trim() && !/^(ok|not ok) \d+ - |^\s+(duration_ms|type|location|failureType|exitCode|signal|code|name):|^\s+---$|^\s+\.\.\.$/.test(l)).slice(-14).join(" | ").slice(0, 1500);
   return { cases, status: r.status, tail: out.split("\n").filter(Boolean).slice(-6).join(" | ").slice(0, 400), file, owner,
     /** one journey step per case of the file */
     async report() {
       if (!cases.length) await J.step(`${file} ran`, () => { throw new Error(`the test file reported no cases (exit ${r.status}): ${this.tail}`); }, { owner });
-      for (const c of cases) await J.step(c.name, () => { if (!c.ok) throw new Error(c.why || `the case failed and the test file gave no reason; the end of its output: ${this.tail}`); return file; }, { owner });
+      for (const c of cases) await J.step(c.name, () => { if (!c.ok) throw new Error(/\.m?js$/.test(c.name) ? `${c.why} (the process ended badly after its cases; exit ${r.status}; its last output: ${long})` : c.why || `the case failed and the test file gave no reason; the end of its output: ${this.tail}`); return file; }, { owner });
     },
   };
 }

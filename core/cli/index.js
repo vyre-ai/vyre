@@ -51,7 +51,7 @@ export const GROUPS = [
   ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "ringing", "dismiss", "todo", "notes"]],
   ["Memory", ["recall", "index", "roll", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence", "signin", "signout"]],
-  ["Box care", ["update", "backup", "restore"]],
+  ["Box care", ["update", "backup", "restore", "reboot"]],
   ["Under the hood", ["modules", "module", "tools", "call", "commands", "tips", "kit"]],
 ];
 
@@ -112,6 +112,8 @@ function crashed(name, err) {
 
 /** @param {string[]} argv */
 export async function main(argv) {
+  // Session mode: a session Vyre started gets three commands over its own socket, and nothing local runs (core/cli/session.js).
+  if (process.env.VYRE_SOCKET && process.env.VYRE_THREAD) return (await import("./session.js")).run(argv);
   const [cmd, ...rest] = argv;
   if (cmd === "version" || cmd === "--version" || cmd === "-v") { out(VERSION); return 0; }
   const all = await commands();

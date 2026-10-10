@@ -33,6 +33,7 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
+import { failure, requiresFailure, reported, stubTools, startWaiting } from "./store-waiting.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -824,7 +825,7 @@ export class Registry {
   async startOne(f) {
     const m = f.manifest, rec = this.modules.get(m.name);
     const failedDep = requiresOf(m).find(d => this.modules.get(d)?.state !== "running");
-    if (failedDep) { Object.assign(rec, { state: "failed", error: `requires "${failedDep}", which is not running` }); return; }
+    if (failedDep) { Object.assign(rec, requiresFailure(this, failedDep)); return; }
     try {
       const entry = path.join(f.dir, m.main || "index.js");
       // Every module goes through the adapter for the contract it names (compat/v<major>.js, the
@@ -853,27 +854,18 @@ export class Registry {
       rec.state = "running"; delete rec.error;
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
-      Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
-      // A module that failed only because the Space's record store is still starting is started again when the store joins (startStoreWaiting).
-      if (/** @type {any} */ (e) && /** @type {any} */ (e).code === "unavailable") rec.waitsForStore = true; else delete rec.waitsForStore;
+      // A module that failed only because the Space's record store is still starting is "waiting": it reports running, answers in the store's words, and starts again when the store joins (store-waiting.js).
+      Object.assign(rec, failure(e));
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
+      if (rec.state === "waiting") stubTools(this, m, rec.error);
+      this.deps.log(`module ${m.name} ${rec.state === "waiting" ? "is waiting for the records" : "failed to start"}: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
 
   /** The record store has joined: start again every module that failed because it was away, then the ones that failed for needing one of them. */
-  async startStoreWaiting() {
-    const failed = () => [...this.modules.values()].filter((/** @type {any} */ r) => r.state === "failed");
-    const again = failed().filter((/** @type {any} */ r) => r.waitsForStore);
-    for (const r of again) await this.startOne({ manifest: r.manifest, dir: r.dir });
-    const up = new Set(again.filter((/** @type {any} */ r) => r.state === "running").map((/** @type {any} */ r) => r.manifest.name));
-    for (const r of failed()) {
-      const dep = String(/** @type {any} */ (r).error || "").match(/^requires "([^"]+)", which is not running$/);
-      if (dep && up.has(dep[1])) await this.startOne({ manifest: r.manifest, dir: r.dir });
-    }
-  }
+  async startStoreWaiting() { return startWaiting(this); }
 
   /**
    * `ctx.kernel.for(space).call(tool, input, chain)`: run a module tool in a hosted Space's own instance, under the chain the caller holds THERE (`kernel.chainIn(space, meta)`), after that
@@ -1975,7 +1967,7 @@ export class Registry {
     // its connections and for suggest, the notice kinds it raises and the events it emits.
     return [...this.modules.entries()].map(([name, r]) => {
       const m = r.manifest || {}, u = this.use.get(name);
-      return { name, version: r.manifest && r.manifest.version, state: r.state, error: r.error,
+      return { name, version: r.manifest && r.manifest.version, state: reported(r), ...(r.state === "waiting" ? { waiting: "records" } : {}), error: r.error,
         ...(m.shows ? { shows: m.shows } : {}),
         ...(m.does && m.does.commands ? { commands: m.does.commands } : {}),
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
