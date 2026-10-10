@@ -96,8 +96,8 @@ if (a[0] === "run" && a.includes("--entrypoint")) {
       const r = cp.spawnSync("node", ["-e", 'import(process.env.REPO + "/core/appmods/host-pub.js").then(m=>process.stdout.write(m.run(process.argv.slice(1))))', ...args], { encoding: "utf8", env: { ...process.env, REPO, ...(mnt ? { VYRE_PUB_CTX: mnt.split(":")[0] } : {}) } });
       let outText = r.stdout || "";
       // a generator that forgot the guards, to see the lint refuse it
-      if (args[0] === "compose" && has("pubcompose-no-readonly")) outText = outText.replace("    read_only: true\n", "");
-      if (args[0] === "compose" && has("pubcompose-no-tmpfs")) outText = outText.replace(/    tmpfs:\n      - [^\n]*\n/, "");
+      if (args[0] === "compose" && has("pubcompose-no-readonly")) outText = outText.replace("    read_only: true\\n", "");
+      if (args[0] === "compose" && has("pubcompose-no-tmpfs")) outText = outText.replace(/    tmpfs:\\n      - [^\\n]*\\n/, "");
       process.stdout.write(outText); process.exit(0);
     }
     if (script.includes("host-plan.js")) {
