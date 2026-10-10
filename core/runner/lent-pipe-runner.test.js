@@ -17,6 +17,7 @@ import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
 import { createFolders } from "./folders.js";
+import { workTranscript } from "../switchboard/adopt.js";
 import { start } from "../daemon/index.js";
 import { openThreadSocket, lentRequest } from "../daemon/threadsock.js";
 import { tempHome } from "../../test/helpers.js";
@@ -40,7 +41,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
     paths: { root }, config: { role: "local", name: "Office Mac" },
     events: { emit: (/** @type {string} */ type) => { for (const f of handlers.get(type) || []) f({ type }); }, on: (/** @type {string} */ type, /** @type {any} */ f) => { handlers.set(type, [...(handlers.get(type) || []), f]); return () => handlers.set(type, (handlers.get(type) || []).filter((/** @type {any} */ x) => x !== f)); } },
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
-    call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: { devices: [] } }),
+    call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : name === "threads.work-transcript" ? { data: { file: workTranscript(input.work, input.cwd, input.session) } } : { data: { devices: [] } }),
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call: (/** @type {string} */ name, /** @type {any[]} */ args) => remote.call(name, args) }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }), ...(o.enrolled ? { lentTo: async () => [SPACE] } : {}) }) },
   };
   seams.set(root, { heartbeatMs: o.heartbeatMs || 150, beatTimeoutMs: 400, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
