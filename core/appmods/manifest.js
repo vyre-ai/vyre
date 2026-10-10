@@ -54,7 +54,7 @@ export function checkAppModule(m) {
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
-    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "signing", "tmp", "hookPort", "service"];
+    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "signing", "tmp", "hookPort", "service", "readOnly", "open"];
     for (const k of Object.keys(a)) if (!ak.includes(k)) bad(`app.${k}`, `${k} is not part of app`);
     if (typeof a.image !== "string" || !PINNED_RE.test(a.image)) bad("app.image", "the image is pinned by digest: name:tag@sha256:<64 hex>");
     if (!(Number.isInteger(a.port) && a.port >= 1 && a.port <= 65535)) bad("app.port", "port is a whole number from 1 to 65535");
@@ -92,6 +92,13 @@ export function checkAppModule(m) {
       if (!num(l.memoryMb, /** @type {[number, number]} */ (LIMITS.memoryMb))) bad("app.limits.memoryMb", `memoryMb is ${LIMITS.memoryMb[0]} to ${LIMITS.memoryMb[1]}`);
       if (!num(l.cpus, /** @type {[number, number]} */ (LIMITS.cpus))) bad("app.limits.cpus", `cpus is ${LIMITS.cpus[0]} to ${LIMITS.cpus[1]}`);
       if (!num(l.pids, /** @type {[number, number]} */ (LIMITS.pids))) bad("app.limits.pids", `pids is ${LIMITS.pids[0]} to ${LIMITS.pids[1]}`);
+    }
+    // A root that cannot be written (the app keeps its state in its volumes and /tmp), and an app that answers strangers on every route: only an image Vyre built itself may be open, and an open app has no sign-in of its own to hide
+    if (a.readOnly !== undefined && typeof a.readOnly !== "boolean") bad("app.readOnly", "readOnly is true or false");
+    if (a.open !== undefined) {
+      if (a.open !== true) bad("app.open", "open is true, or left out");
+      else if (!isObj(m["x-publish"])) bad("app.open", "only an app Publish made from the owner's own folder may answer strangers on every route");
+      else for (const k of ["login", "public", "signing", "service"]) if (a[k] !== undefined) bad(`app.${k}`, `an open app has no ${k}`);
     }
     // A service has no screens and no public host: other modules reach it by `appmods.origin` and nobody else does (a converter, for one).
     if (a.service !== undefined) {
