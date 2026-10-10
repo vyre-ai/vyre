@@ -69,7 +69,7 @@ test("a schedule with business hours in a real daemon: the health line and the n
   const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   const token = (await d.kernel.surfaces.open(chain, {})).token;
   await d.kernel.gateway.records.define(chain, { add_types: [NOTE] });
-  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "weekday_note", label: "Weekday note", authorship: "human", trigger: { on: "time", cron: "0 9 * * 1-5", tz: "America/New_York", hours: true, holidays: ["12-25"], catch_up: "skip" },
+  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "weekday_note", label: "Weekday note", authorship: "human", trigger: { on: "time", cron: "0 9 * * 1-5", tz: "America/New_York", hours: true, catch_up: "skip" },
     steps: [{ id: "c", kind: "create", type: "filing-note", set: { body: "hi" } }] } }, "cli", { token });
   assert.ok(r.data && r.data.ok, JSON.stringify(r));
   await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
@@ -82,4 +82,13 @@ test("a schedule with business hours in a real daemon: the health line and the n
   assert.equal(Number(part("hour")) % 24, 9, "at 9:00 New York");
   const health = (await d.registry.call("flows.health", { id: r.data.id }, "cli", { token })).data;
   assert.ok(health, "the Flow has a health line");
+
+  // the Space's holiday list (Settings, Flows) keeps that day off: the next time moves on to the next open weekday
+  const day = (/** @type {number} */ ms) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+  const set = await d.registry.call("settings.set", { key: "flows.holidays", value: day(wake) }, "cli", { token });
+  assert.ok(!set.error, JSON.stringify(set.error));
+  await host.flows.tick();
+  const moved = await host.flows.runner.nextWake();
+  assert.ok(moved && moved > wake, `the holiday moved the next time on (${day(wake)} -> ${moved && day(moved)})`);
+  assert.notEqual(day(moved), day(wake));
 });

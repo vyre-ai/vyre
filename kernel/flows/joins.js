@@ -78,6 +78,19 @@ export function createJoins(h) {
     throw h.suspendOn(ctx, key, wait);
   }
 
+  /**
+   * What a lane or a sub-flow read from outside is what this run now holds: if any child was tainted (it read content from outside the Space), so is the run, and every step after the join needs an
+   * Ask before an outward act or a grant. Otherwise a lane could launder outside content past the check.
+   * @param {any} run @param {any[]} kids
+   */
+  function taint(run, kids) {
+    for (const k of kids) {
+      if (!k) continue;
+      if (k.tainted) run.tainted = true;
+      for (const sp of k.source_spaces || []) if (!run.source_spaces.includes(sp)) run.source_spaces = [...run.source_spaces, sp];
+    }
+  }
+
   /** @param {any} s @param {any[]} kids @param {string} what */
   function check(s, kids, what) {
     const bad = kids.filter(k => !k || k.state !== "done");
@@ -103,8 +116,8 @@ export function createJoins(h) {
     if (ctx.dry) { for (const b of lanes) await h.walk(ctx, b.steps || [], suffix, locals); return { dry: true }; }
     if (led && led.children) {
       const kids = await Promise.all(led.children.map((/** @type {string} */ id) => h.store.getRun(id)));
-      if (led.status === "waiting" && led.wait && led.wait.result) { check(s, kids, "lane"); return branchesOf(kids); }
-      if (kids.every(k => k && k.state === "done")) return branchesOf(kids);
+      if (led.status === "waiting" && led.wait && led.wait.result) { taint(run, kids); check(s, kids, "lane"); return branchesOf(kids); }
+      if (kids.every(k => k && k.state === "done")) { taint(run, kids); return branchesOf(kids); }
       // a retry of a parent whose lane failed: the lanes that did not finish go again. With only stopped lanes left nothing can wake the parent, so it says so now.
       if (!kids.some(k => k && (!SETTLED.has(k.state) || k.state === "failed"))) check(s, kids, "lane");
       for (const k of kids) if (k && (k.state === "failed" || k.state === "paused")) void h.retry(k.id).catch(() => {});
@@ -136,7 +149,7 @@ export function createJoins(h) {
     if (ctx.dry) return { dry: true, result: null };
     if (led && led.children) {
       const kid = await h.store.getRun(led.children[0]);
-      if (kid && kid.state === "done") return { run: kid.id, state: "done", result: kid.result === undefined ? null : kid.result };
+      if (kid && kid.state === "done") { taint(run, [kid]); return { run: kid.id, state: "done", result: kid.result === undefined ? null : kid.result }; }
       if (led.status === "waiting" && led.wait && led.wait.result) check(s, [kid], "subflow");
       if (!kid || kid.state === "cancelled") check(s, [kid], "subflow");
       if (kid.state === "failed" || kid.state === "paused") void h.retry(kid.id).catch(() => {});
