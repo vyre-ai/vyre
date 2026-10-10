@@ -141,7 +141,7 @@ export function createNetd(o) {
     if (!publicUrl && o.directory && o.publicGate !== false) {
       pub = D.createPublicGate({
         name: () => (o.name ? o.name() : null), domain: o.domain, dir: path.join(dir, "certs"), directory: o.directory || { acme: async () => { throw new Error("no directory"); }, acmeClear: async () => {}, publish: async () => {} },
-        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}), ...(o.apps ? { apps: o.apps } : {}),
+        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}), ...(o.apps ? { apps: o.apps } : {}), ...(o.hosts ? { hosts: o.hosts } : {}),
         reachable: reachNow, log, ...(o.certDeps || {}),
       });
       // started in the background below: a certificate can take a minute, and the network does not wait for it
@@ -304,6 +304,8 @@ export function createNetd(o) {
     /** A device row was added or removed: give or take away the node's rule now. */
     /** An app module was installed, or the last one removed: the public gate gets the certificate and the DNS the apps need, or lets go of them. Never throws. */
     appsChanged() { return pub && pub.appsChanged ? Promise.resolve(pub.appsChanged()).catch(e => { log(`wink net: apps: ${/** @type {Error} */ (e).message}`); }) : Promise.resolve(); },
+    /** The person added or removed an own domain (sign.firm.com): the public gate looks again now. Never throws. */
+    hostsChanged() { return pub && pub.hostsChanged ? Promise.resolve(pub.hostsChanged()).catch(e => { log(`wink net: own hosts: ${/** @type {Error} */ (e).message}`); }) : Promise.resolve(); },
     deviceChanged() { return syncPolicy().catch(e => { log(`wink net: policy: ${/** @type {Error} */ (e).message}`); }); },
     syncPolicy,
     async handover(_q) {

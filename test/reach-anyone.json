@@ -2504,6 +2504,14 @@
   "work.timeline": {
    "module": "work",
    "reason": "read-only: tasks, files, messages, documents and chats that link to a record or project, each only if the caller may read it; a chat shows by title only to its people or when shared; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "appmods.domain.list": {
+   "module": "appmods",
+   "reason": "read-only: the person's own domains for apps and where each stands; public names and a state word, no secret and nothing outward"
+  },
+  "names.domain.check": {
+   "module": "names",
+   "reason": "read-only: a live DNS check of the two records for an own domain, answered to the caller that asks; the directory call is the box's own signed read and nothing is changed"
   }
  }
 }

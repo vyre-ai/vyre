@@ -20,6 +20,10 @@
         "reach": "modules"
       },
       {
+        "name": "wink.public.hosts",
+        "reach": "modules"
+      },
+      {
         "name": "wink.network.whois",
         "reach": "modules"
       },
