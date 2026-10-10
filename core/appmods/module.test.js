@@ -70,7 +70,7 @@ async function world(t, opt = {}) {
   seam.driver = opt.helper ? helperDriver : driver;
   t.after(() => { seam.driver = null; });
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, ...(opt.config || {}) }));
   const lines = [];
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
@@ -385,6 +385,38 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal((await ask({ email: "not an address" })).error.code, "bad_input");
   assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
+});
+
+test("own domains: the owner points a domain at the signing app, the front answers it by alias and nothing else, and a model or a bad host is refused", async t => {
+  const w = await world(t, { config: { relay: { tunnel_url: "wss://edge.test:8443" } } });
+  const none = await world(t);
+  assert.equal((await none.cli("appmods.domain.add", { host: "sign.firm.example" })).error.code, "not_found", "no app running yet");
+  await none.cli("appmods.install", { name: "documents" });
+  assert.equal((await none.cli("appmods.domain.add", { host: "sign.firm.example" })).error.code, "unavailable", "no public door on this server");
+  await w.cli("appmods.install", { name: "documents" });
+  for (const host of ["vyre.run", "x.vyre.run", "10.0.0.1", "nodot", "http://", "xn--a.example"]) assert.equal((await w.cli("appmods.domain.add", { host })).error.code, "bad_input", host);
+  assert.ok((await w.model("appmods.domain.add", { host: "sign.firm.example" })).error, "a model cannot point a domain");
+  // before: the host is nobody's
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } })).status, 404);
+  const added = await w.cli("appmods.domain.add", { host: "https://Sign.Firm.Example/" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  assert.deepEqual([added.data.host, added.data.app, added.data.state], ["sign.firm.example", "documents", "waiting"]);
+  assert.deepEqual(added.data.records.map(r => [r.type, r.name, r.value]), [["CNAME", "sign.firm.example", "test-box.vyre.run"]], "the challenge record needs the directory's answer, which this box has no name for");
+  assert.deepEqual((await w.cli("appmods.domain.list")).data.domains.map(d => [d.host, d.app, d.state]), [["sign.firm.example", "documents", "waiting"]]);
+  assert.ok((await w.cli("appmods.hosts")).data.hosts.includes("sign.firm.example"), "the public gate may carry it to the front");
+  // after: the signer's pretty link goes to the page, any other host is still nobody's, and the app's own screens still need the person's ticket
+  const r = await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } });
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.location, "/s/abc123");
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "other.firm.example" } })).status, 404);
+  assert.equal((await w.web("GET", "/", { headers: { host: "sign.firm.example" } })).status, 404, "the app's own screens are not public on it");
+  // a second listing of the same host is one domain; removing it ends it
+  assert.equal((await w.cli("appmods.domain.add", { host: "sign.firm.example" })).error, undefined);
+  assert.equal((await w.cli("appmods.domain.list")).data.domains.length, 1);
+  assert.equal((await w.model("appmods.domain.remove", { host: "sign.firm.example" })).error !== undefined, true);
+  assert.deepEqual((await w.cli("appmods.domain.remove", { host: "sign.firm.example" })).data, { host: "sign.firm.example", removed: true });
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } })).status, 404);
+  assert.equal((await w.cli("appmods.domain.remove", { host: "sign.firm.example" })).error.code, "not_found");
 });
 
 test("a key rotated in the Vault reaches the running app: its container is made again with the new value, its data stays, once for a burst", async t => {

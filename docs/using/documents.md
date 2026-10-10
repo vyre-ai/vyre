@@ -36,6 +36,15 @@ A signer outside your network needs a way in. Set the public address of an edge 
 
 When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer for your yes), and a new one is one call away.
 
+### Your own address for signing pages
+
+To send signers to `sign.yourfirm.com` instead of the Space's address, ask for it: `appmods.domain.add { host: "sign.yourfirm.com" }` (the owner or an admin; Documents must be running and the public address above set). Vyre answers the two records to add at your domain's DNS:
+
+- `sign.yourfirm.com` as a CNAME to `<your name>.vyre.run`, so visitors come to your server;
+- `_acme-challenge.sign.yourfirm.com` as a CNAME to the address Vyre shows, which lets your server get the certificate for the domain (only the owner of the domain can add it).
+
+`appmods.domain.list` says where each domain stands: waiting for a record, getting its certificate, or live. Vyre looks again every few minutes. Once it is live, new signing links and links to signed copies use your address; until then they keep the Space's, so nothing breaks while you wait. `appmods.domain.remove` takes it back. Up to five domains.
+
 ## Send an email or a text
 
 `comms.send` sends an email through your own mail account or a text through your own Twilio account. It is held at the Gate until you say yes to the final words; a text to several numbers is one yes. Texts need `comms.sms` in `config.json` (`{ "account": "AC…", "from": "+1…" }`) and your Twilio key in the Vault. Once sent, the message is logged on the client it went to.

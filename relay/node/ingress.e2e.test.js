@@ -21,7 +21,7 @@ const NAME = "harlow.vyre.run", APP_HOST = "documents.harlow.vyre.run";
 
 /** @param {number} port @param {string} ca @param {string} host @param {string} path */
 const visit = (port, ca, host, path) => new Promise((resolve, reject) => {
-  const req = https.request({ host: "127.0.0.1", port, ca, servername: host, method: "GET", path, headers: { host }, timeout: 8000 }, res => {
+  const req = https.request({ host: "127.0.0.1", port, ca, agent: false, servername: host, method: "GET", path, headers: { host }, timeout: 8000 }, res => {
     const ch = /** @type {Buffer[]} */ ([]); res.on("data", d => ch.push(d)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(ch).toString() }));
   });
   req.on("error", reject); req.on("timeout", () => req.destroy(new Error("timeout"))); req.end();
@@ -80,4 +80,42 @@ test("ingress: a signer outside reaches the dressed signing page through the rel
   await new Promise(r => v.once("close", r));
   suspended = false;
   assert.equal(/** @type {any} */ (await visit(tlsPort, cert, APP_HOST, "/sign/abc")).status, 200, "and lifted, it serves again");
+});
+
+test("ingress, own domain: a signer reaches the page at the firm's own address, with the firm's own certificate, through the same relay; a host the directory did not list or the box did not name is refused", async t => {
+  const OWN = "sign.firm.example";
+  const space = selfSigned({ ips: ["127.0.0.1"], names: [NAME, APP_HOST] });
+  const own = selfSigned({ ips: ["127.0.0.1"], names: [OWN] });
+  const front = http.createServer((req, res) => { if (req.url === "/s/abc" && req.headers.host === OWN) { res.setHeader("content-type", "text/html"); res.end("<h1>Sign at the firm</h1>"); } else { res.statusCode = 404; res.end("no"); } });
+  await new Promise(r => front.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => front.close());
+  const other = http.createServer((_q, res) => res.end("private"));
+  await new Promise(r => other.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => other.close());
+  const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: space, upstream: { port: /** @type {any} */ (other.address()).port },
+    ingress: { hooks: () => null, share: () => null, appsSuffix: `.${NAME}`, apps: () => ({ port: /** @type {any} */ (front.address()).port, hosts: [APP_HOST, OWN] }) } });
+  const at = await gate.listen(); t.after(() => gate.close());
+  gate.setHostTls(OWN, own);
+
+  const k = newRouteKey(), route = routeId(k.pub);
+  const listed = new Set([OWN, "unnamed.firm.example"]);
+  const relay = createRelay({ tunnel: { resolve: async h => (listed.has(h) ? { route } : null), limits: { ttlMs: 0 } } });
+  const base = await relay.listen(); const { tls: tlsPort } = await relay.listenTunnel(); t.after(() => relay.close());
+  // the box names only the host the person pointed here; the directory lists one more that the box never named
+  const end = createTunnelEnd({ name: NAME, own: () => [OWN], port: () => at.port });
+  const link = relayLink({ url: base, route, routeKey: k, boxKey: keyPair(), admit: async () => ({ v: 1 }), onchannel: () => {}, ontunnel: (s, v) => end.accept(s, v) });
+  t.after(() => link.stop());
+  assert.equal(await link.ready(), true);
+
+  const ok = /** @type {any} */ (await visit(tlsPort, own.cert, OWN, "/s/abc"));
+  assert.equal(ok.status, 200);
+  assert.match(ok.body, /Sign at the firm/);
+  assert.equal(/** @type {any} */ (await visit(tlsPort, own.cert, OWN, "/admin")).status, 404);
+  // the firm's host with the Space's certificate would not verify: the certificate is chosen by the name, not by the relay
+  await assert.rejects(visit(tlsPort, space.cert, OWN, "/s/abc"));
+  // the directory lists a host the box never named: the box's tunnel end refuses the stream before the gate sees it
+  const unnamed = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "unnamed.firm.example", rejectUnauthorized: false }); unnamed.on("error", () => {});
+  const got = await new Promise(r => { let n = 0; unnamed.on("data", d => { n += d.length; }); unnamed.once("close", () => r(n)); });
+  assert.equal(got, 0, "no bytes of a server hello come back");
+  // the host the box dropped is refused at once
+  gate.dropHostTls(OWN);
+  await assert.rejects(visit(tlsPort, own.cert, OWN, "/s/abc"));
 });

@@ -11,6 +11,8 @@
 //   POST   /v1/names/publish         {name}                A record, the public IPv4 this request came from (a box that serves its own network gate)
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
+//   POST   /v1/names/hosts           {name, host}          list an own domain this box serves through the tunnel (CNAME at _acme-challenge.<host> proves it)
+//   DELETE /v1/names/hosts           {name, host}          unlist it
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
 //   POST   /v1/names/admin/drop      {name}               support only: take a name back from a server, or from an identity that lost its keys, so it can be claimed again; needs the ADMIN_SECRET header
@@ -228,9 +230,11 @@ function corsHeaders(request, env, op) {
 // ---- the Worker ----
 
 import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
+import { hostOps } from "./hosts.js";
 
 const ROUTES = {
   "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
+  "POST /v1/names/hosts": "hostAdd", "DELETE /v1/names/hosts": "hostRemove",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
   "POST /v1/names/admin/drop": "adminDrop", "POST /v1/names/admin/suspend": "adminSuspend",
   // the tunnel relay asks which box serves a name it was handed in a TLS hello (a shared secret, never a route key)
@@ -583,6 +587,13 @@ export class Directory {
   async op_tunnelResolve(_b, _a, _ip, q) {
     const zone = dnsFor(this.env).zone;
     const host = String(q.host || "").toLowerCase();
+    if (!host.endsWith(`.${zone}`)) {
+      // An own host (ingress v2): only a host a live tunnel box listed and proved.
+      const own = await this.ownHostRecord(host);
+      if (!own || !own.tunnel || own.suspended === true) return { route: null };
+      const r = own.kind === "space" ? (Array.isArray(own.servers) && own.servers[0]) : own.route;
+      return { route: typeof r === "string" && ROUTE_RE.test(r) ? r : null };
+    }
     const m = new RegExp(`^(?:([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\\.)?([a-z][a-z0-9-]{1,31})\\.${zone.replace(/\./g, "\\.")}$`).exec(host);
     if (!m) return { route: null };
     const v = verdict(m[2]);
@@ -636,7 +647,7 @@ export class Directory {
     }
     const dns = dnsFor(this.env);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: Boolean(rec.everPointed), ips: rec.ips || {},
-      notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
+      notices: rec.notices || [], hosts: rec.hosts || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
   }
 
   /**
@@ -680,4 +691,4 @@ export class Directory {
   }
 }
 
-Object.assign(Directory.prototype, idOps);
+Object.assign(Directory.prototype, idOps, hostOps);

@@ -82,16 +82,28 @@ export default {
     const fromWink = meta => { if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("the name directory's DNS calls are the Wink module's"), { code: "denied" }); };
     const myName = () => { const n = ctx.config.name; if (!n) throw Object.assign(new Error("this box has no name yet"), { code: "no_name" }); return String(n); };
     ctx.tool("names.directory.acme", {
-      description: "Put an ACME DNS-01 challenge value under this box's name (Wink module only).",
-      input: obj({ token: { type: "string" } }, ["token"]),
+      description: "Put an ACME DNS-01 challenge value under this box's name, or under its own-domain label with own: true (Wink module only).",
+      input: obj({ token: { type: "string" }, own: { type: "boolean" } }, ["token"]),
       internal: true,
-      run: async ({ token }, meta) => { fromWink(meta); return dir.acme(myName(), String(token)); },
+      run: async ({ token, own }, meta) => { fromWink(meta); return own === true ? dir.acmeOwn(String(token)) : dir.acme(myName(), String(token)); },
     });
     ctx.tool("names.directory.acme-clear", {
-      description: "Clear this box's ACME challenge record (Wink module only).",
-      input: obj(),
+      description: "Clear this box's ACME challenge record, or its own-domain one with own: true (Wink module only).",
+      input: obj({ own: { type: "boolean" } }),
       internal: true,
-      run: async (_, meta) => { fromWink(meta); return dir.acmeClear(myName()); },
+      run: async (i, meta) => { fromWink(meta); return i && i.own === true ? dir.acmeOwnClear() : dir.acmeClear(myName()); },
+    });
+    ctx.tool("names.directory.host-add", {
+      description: "List an own domain this box serves through the tunnel; the directory checks the CNAME proof (Wink module only).",
+      input: obj({ host: { type: "string" } }, ["host"]),
+      internal: true,
+      run: async ({ host }, meta) => { fromWink(meta); return dir.hostAdd(myName(), String(host)); },
+    });
+    ctx.tool("names.directory.host-remove", {
+      description: "Unlist an own domain this box served through the tunnel (Wink module only).",
+      input: obj({ host: { type: "string" } }, ["host"]),
+      internal: true,
+      run: async ({ host }, meta) => { fromWink(meta); return dir.hostRemove(myName(), String(host)); },
     });
     ctx.tool("names.directory.publish", {
       description: "Point this box's name at the public IPv4 the directory sees it at (Wink module only). With apps: true, *.<name> points there too (the box has an app module installed).",

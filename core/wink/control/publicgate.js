@@ -32,7 +32,9 @@ const DAY = 86_400_000;
  *   name: () => string | null,                  the box's claimed name ("alex"), or null
  *   domain?: string,                            default vyre.run
  *   dir: string,                                where certificates live
- *   directory: { acme(name: string, token: string): Promise<any>, acmeClear(name: string): Promise<any>, publish(name: string, o?: { apps?: boolean, via?: string, share?: boolean }): Promise<any> },
+ *   directory: { acme(name: string, token: string): Promise<any>, acmeClear(name: string): Promise<any>, publish(name: string, o?: { apps?: boolean, via?: string, share?: boolean }): Promise<any>,
+ *     acmeOwn?(token: string): Promise<any>, acmeOwnClear?(): Promise<any>, hostAdd?(host: string): Promise<any>, hostRemove?(host: string): Promise<any> },
+ *   hosts?: () => string[] | Promise<string[]>,  the person's own domains this box serves (sign.firm.com): each gets its own certificate by DNS-01 through the CNAME at _acme-challenge.<host>, and is listed with the directory
  *   upstream: { port: number },                 the Headscale the loopback gate already fronts
  *   listen?: { host?: string, port?: number },  default 0.0.0.0 and config port
  *   acme?: "production" | "staging" | string,   a name from acme.DIRECTORIES or a directory URL (a test CA)
@@ -89,6 +91,60 @@ export function createPublicGate(o) {
     return { cert: r.cert, key: r.key, expires: r.expires, renewed: true, apps: withApps };
   }
 
+  /** The own hosts and where each stands: "waiting" (the DNS record is not there yet), "getting-cert", "live", "failed". @type {Map<string, { state: string, why: string | null, expires?: number }>} */
+  const hostSt = new Map();
+  /** Hosts the directory has been told about this run (it answers a repeat at once). @type {Set<string>} */
+  const listed = new Set();
+  let hostTimer = /** @type {any} */ (null);
+
+  /** The certificate of one own host: the one on disk if it is good for a while, else a fresh one by DNS-01 under this box's own-domain label (the CNAME at the host points there). @param {string} host */
+  async function ensureHostCert(host) {
+    const have = D.certs.load(o.dir, host);
+    if (have && !D.acme.needsRenewal(have.cert, now(), renewDays)) return { ...have, renewed: false };
+    log(`wink net: getting a certificate for ${host}`);
+    const r = await D.acme.issue({
+      names: [host], directory: acmeUrl(), accountKey: D.certs.accountKey(o.dir, accountWhich()),
+      ...(have ? { certKey: have.key } : {}),
+      dns: { set: async (/** @type {string} */ _f, /** @type {string} */ value) => { await /** @type {any} */ (o.directory).acmeOwn(value); return host; }, clear: async () => { await /** @type {any} */ (o.directory).acmeOwnClear(); } },
+      ...(D.waitDns ? { waitDns: D.waitDns } : {}), log: m => log(`wink net: ${m}`),
+    });
+    D.certs.save(o.dir, host, { cert: r.cert, key: r.key });
+    return { cert: r.cert, key: r.key, expires: r.expires, renewed: true };
+  }
+
+  /**
+   * Bring the own hosts the person named in line: list each with the directory (which reads the CNAME proof live; no certificate is ordered before it holds), get its certificate, serve it by SNI.
+   * A host that is no longer named is unlisted and its certificate dropped from the gate. One host's trouble never stops the others, and a waiting one is looked at again in five minutes. Never throws.
+   */
+  async function syncHosts() {
+    if (!gate || !o.hosts || !o.directory.hostAdd) return;
+    /** @type {string[]} */ let want = [];
+    try { want = (await o.hosts()).map(h => String(h).toLowerCase()); } catch { return; }
+    for (const host of want) {
+      if (stopped || !gate) return;
+      try {
+        if (!listed.has(host)) { hostSt.set(host, { state: "waiting", why: "the directory is checking the DNS record" }); await o.directory.hostAdd(host); listed.add(host); }
+        hostSt.set(host, { state: "getting-cert", why: null });
+        const c = await ensureHostCert(host);
+        gate.setHostTls(host, { cert: c.cert, key: c.key });
+        hostSt.set(host, { state: "live", why: null, ...(c.expires ? { expires: c.expires } : {}) });
+      } catch (e) {
+        const code = String(/** @type {any} */ (e).code || "");
+        hostSt.set(host, { state: code === "not_proven" ? "waiting" : "failed", why: String((e && /** @type {Error} */ (e).message) || e).slice(0, 300) });
+        log(`wink net: own host ${host}: ${hostSt.get(host)?.why}`);
+      }
+    }
+    for (const host of [...hostSt.keys()]) {
+      if (want.includes(host) || !gate) continue;
+      gate.dropHostTls(host);
+      hostSt.delete(host);
+      if (listed.delete(host) && o.directory.hostRemove) await o.directory.hostRemove(host).catch(() => {});
+    }
+    if (hostTimer) clearTimeout(hostTimer);
+    hostTimer = null;
+    if (!stopped && [...hostSt.values()].some(x => x.state !== "live")) { hostTimer = setTimeout(() => { syncHosts().catch(() => {}); }, 300_000); hostTimer.unref && hostTimer.unref(); }
+  }
+
   /** Publish the name's address when the port is known to answer from outside (or the person said so). Never throws. */
   async function publishIfReady() {
     const name = o.name();
@@ -126,6 +182,7 @@ export function createPublicGate(o) {
       } else if (c.renewed) gate.setTls({ cert: c.cert, key: c.key });
       set("up");
       await publishIfReady();
+      await syncHosts();
     } catch (e) {
       set("failed", String((e && /** @type {Error} */ (e).message) || e).slice(0, 300));
       log(`wink net: public gate: ${st.why}`);
@@ -146,6 +203,7 @@ export function createPublicGate(o) {
     return {
       state: st.state, why: st.why, since: st.since,
       name: fqdn, port: at ? at.port : null, expires: expires || null,
+      hosts: [...hostSt].map(([host, v]) => ({ host, ...v })),
       pin: gate && gate.pin ? gate.pin : null, published: Boolean(published), ingress: Boolean(o.ingress), apps: wantApps && certApps && publishedApps,
     };
   }
@@ -165,13 +223,17 @@ export function createPublicGate(o) {
       wantApps = w;
       await publishIfReady();
     },
+    /** The person added, changed or removed an own domain: look again now. */
+    hostsChanged() { return syncHosts(); },
+    /** The own hosts that are served now (a certificate held), for the signing link and the apps' front. */
+    liveHosts() { return [...hostSt].filter(([, v]) => v.state === "live").map(([h]) => h); },
     /** The https origin public links and webhooks use (https://<name>.vyre.run:<port>), or null until the gate is up with a certificate AND the name points here. */
     ingressBase() { return o.ingress && gate && fqdn && at && published ? `https://${fqdn}:${at.port}` : null; },
     /** The address devices dial, or null while there is none (no name, no certificate yet). */
     controlUrl() { return gate && fqdn && at ? `https://${fqdn}:${at.port}` : null; },
     pin() { return gate && gate.pin ? gate.pin : null; },
     port() { return at ? at.port : null; },
-    async stop() { stopped = true; if (timer) clearTimeout(timer); set("stopped"); if (gate) { const g = gate; gate = null; await g.close(); } told(); },
+    async stop() { stopped = true; if (timer) clearTimeout(timer); if (hostTimer) clearTimeout(hostTimer); set("stopped"); if (gate) { const g = gate; gate = null; await g.close(); } told(); },
   };
 }
 
