@@ -416,7 +416,7 @@ export function createRunner(o) {
      */
     previewRequest(session, job) {
       const h = live.get(session);
-      if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here"), { code: "not_found" }));
+      if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here: ask the chat to start its dev server first, then try the preview again"), { code: "not_found" }));
       const port = Number(job.port);
       if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535"));
       if (!h.preview.dir && !ownsPort(h, port)) return Promise.reject(new Error("the dev server on that port did not answer (not_this_chat's)"));
