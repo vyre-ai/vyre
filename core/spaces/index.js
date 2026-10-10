@@ -1436,7 +1436,7 @@ export default {
       } catch { /* no joined spaces */ }
       return out;
     };
-    tool("spaces.records.status", "Whether the records of each space on this device are ready, and when not, in plain words how far the first start is.", obj(), () => recordsStatus(K));
+    tool("spaces.records.status", "Whether the records of each space on this device are ready, and when not, in plain words how far the first start is.", obj(), async (i, meta) => recordsStatus(K, (await listSpacesRaw(i, meta)).map((/** @type {any} */ r) => r.id)));
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
 
     /**
