@@ -71,8 +71,9 @@ export class UsedBy {
     const apps = await this.answer(this.ctx.call("appmods.list", {}));
     for (const a of (apps && Array.isArray(apps.apps) ? apps.apps : [])) if (name.startsWith(`app-${a.name}-`)) add("app", String(a.name), `the app ${a.name} (${a.state})`, a.installed == null ? null : Number(a.installed));
 
-    const flows = await this.answer(this.ctx.call("flows.credential-uses", { name }));
-    for (const f of (flows && Array.isArray(flows.uses) ? flows.uses : [])) add("flow", String(f.id), `the Flow ${String(f.name || f.id)}`);
+    // a Flow names a Connection (an api-credential item) by its name; Flows answers which Flows use it, as the person looking
+    const flows = await this.answer(this.ctx.call("flows.connections", { connection: name }, { relay: true }));
+    for (const c of (flows && Array.isArray(flows.connections) ? flows.connections : [])) for (const f of (Array.isArray(c.flows) ? c.flows : [])) add("flow", String(f.id), `the Flow ${String(f.label || f.id)}${f.active === false ? " (off)" : ""}`);
 
     try { for (const l of (await this.v.links.list({ item: name }, meta)).links) add("record", String(l.to), "a record it is linked to"); } catch { /* no kernel: no record links */ }
 
