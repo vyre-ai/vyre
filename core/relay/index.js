@@ -545,19 +545,36 @@ export default {
       await link?.ready();
       const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: publishableRelay(settings().url), route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
       const mac = ticketMac(s.secret, record);
-      const status = link ? await link.registerSetup({ loc: s.loc, record, mac: mac.toString("base64url"), exp: s.exp }) : null;
+      const regArgs = { loc: s.loc, record, mac: mac.toString("base64url"), exp: s.exp };
+      const status = link ? await link.registerSetup(regArgs) : null;
       s.registered = status === 200;
       if (status === 409 && setup === s) {
         s.state = "contested";
         dropSetupDevices();
         ctx.events.emit("setup.contested", {});
-      }
+      } else if (link && !s.registered && status !== null) void keepRegistering(s, regArgs, status);
       return setupStatus();
     }
 
+    let stopping = false;
+    const nap = (/** @type {number} */ ms) => new Promise(r => { const t = setTimeout(r, ms); t.unref?.(); });
+    /** A busy relay (429) or one that is briefly down (5xx, no answer) is "wait a minute", not a refusal: the offer is registered again with a growing pause for as long as the code's hour lasts. @param {any} s @param {any} args @param {number} first */
+    async function keepRegistering(s, args, first) {
+      if (first === 409 || (first >= 400 && first < 500 && first !== 429 && first !== 408)) return;
+      let wait = Number(ctx.config && ctx.config.relay && ctx.config.relay.setupRetryMs) || 3000;
+      while (!stopping && setup === s && s.live && !s.registered && s.state !== "contested" && now() < s.exp) {
+        await nap(wait); wait = Math.min(wait * 2, 60_000);
+        if (stopping || setup !== s) return;
+        const st = await link?.registerSetup(args).catch(() => 0);
+        s.registered = st === 200;
+        if (st === 409 && setup === s) { s.state = "contested"; dropSetupDevices(); ctx.events.emit("setup.contested", {}); return; }
+      }
+    }
+    /** Why the setup code the install line carried was not used (a stamp that is not within the hour, or the relay refusing it): the status says so, so the installer and the person are not left waiting. @type {string | null} */
+    let bootSetupFailure = null, bootSetupRetrying = false;
     const setupStatus = () => {
       const s = setup;
-      if (!s || !s.live) return { state: "none" };
+      if (!s || !s.live) return bootSetupFailure ? (bootSetupRetrying ? { state: "none", retrying: true, why: bootSetupFailure } : { state: "none", failed: true, why: bootSetupFailure }) : { state: "none" };
       return { state: s.state, registered: s.registered, ticket: s.ticket === "minted", expiresAt: s.exp, ownerExists: personExists(),
         words: s.words(k().box.pub).join(" ") };
     };
@@ -1419,8 +1436,21 @@ export default {
     if (!seam.env) { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
     if (bootCode) {
       const at = bootAt > 1e12 ? bootAt : bootAt * 1000, age = Date.now() - at;
-      if (!(Number.isFinite(at) && at > 0 && age >= -5 * 60_000 && age <= SETUP_TTL)) ctx.log("relay: the setup code on this box has no valid stamp within the last hour and was not used");
-      else beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
+      if (!(Number.isFinite(at) && at > 0 && age >= -5 * 60_000 && age <= SETUP_TTL)) { bootSetupFailure = "the code on the install line is older than an hour (or has no valid time), so it was not used; make a new install line in the app"; ctx.log("relay: the setup code on this box has no valid stamp within the last hour and was not used"); }
+      else void (async () => {
+        // a refusal that cannot change (this box has an owner) ends at once with its reason; anything else (a busy or briefly unreachable relay) is tried again with a growing pause until the code's hour is over
+        let wait = Number(ctx.config && ctx.config.relay && ctx.config.relay.setupRetryMs) || 3000;
+        for (;;) {
+          try { await beginSetup(String(bootCode)); bootSetupFailure = null; bootSetupRetrying = false; return; } catch (err) {
+            const e = /** @type {any} */ (err);
+            const final = !e || e.code === "denied" || e.code === "unsupported" || stopping || Date.now() - at + wait > SETUP_TTL;
+            ctx.log(`relay: setup code not used${final ? "" : " yet, trying again"}: ${e && e.message}`);
+            if (final) { bootSetupRetrying = false; bootSetupFailure = `the relay or this box refused the setup code: ${e && e.message}`; return; }
+            bootSetupRetrying = true; bootSetupFailure = `the relay is busy or not answering (${e && e.message}); trying again`;
+            await nap(wait); wait = Math.min(wait * 2, 60_000);
+          }
+        }
+      })();
     }
 
     // Taking a device's presence key away (presence.remove) takes the device away too: its open
@@ -1437,6 +1467,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { stopping = true; try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };
