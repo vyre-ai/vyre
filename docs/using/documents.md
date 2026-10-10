@@ -28,7 +28,7 @@ If the signer declines instead, Documents says so at once: the Document is filed
 
 ## Waiting for a signature
 
-A document you sent that nobody has signed shows in Needs you as a quiet row: "Dana Harlow has not signed Engagement letter", with the address it went to. Nothing pushes for it. It goes away when the signature arrives, the signer declines, or the request lapses. Its answer is `documents.signing.remind`, which emails the signer their link again (the same one yes as any send; add a short note if you like). `documents.signing.waiting` returns the same list to an assistant. The signer's link and code are never on the row.
+A document you sent that nobody has signed shows in Needs you as a quiet row: "Dana Juniper has not signed Engagement letter", with the address it went to. Nothing pushes for it. It goes away when the signature arrives, the signer declines, or the request lapses. Its answer is `documents.signing.remind`, which emails the signer their link again (the same one yes as any send; add a short note if you like). `documents.signing.waiting` returns the same list to an assistant. The signer's link and code are never on the row.
 
 ## Sign from a stage
 

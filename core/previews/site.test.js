@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { siteOf } from "./site.js";
 import { libs, bareImports } from "./jsx.js";
 import { headlessChrome } from "../../test/headless-chrome.js";
+import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const file = (/** @type {string} */ p, /** @type {string} */ c) => ({ path: p, content: Buffer.from(c) });
 const PAGE = [
@@ -72,7 +73,7 @@ test("opened in a real browser, served as a static host serves it, the page draw
   t.after(() => fs.rmSync(profile, { recursive: true, force: true }));
   // the server and the browser share this process, so the browser runs as a child we wait for, never a blocking call
   const run = (/** @type {string[]} */ args) => new Promise(ok => execFile(headlessChrome(), args, { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
-  const dom = await run(["--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${port}/`]);
+  const dom = await run([...CHROME_SAFE, "--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${port}/`]);
   assert.match(dom, /Northwind Bakery/);
   assert.match(dom, /3 loaves today/);
   assert.match(dom, /id="vyre-problem"[^>]*><\/div>/, "no problem message on the page");

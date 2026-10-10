@@ -273,7 +273,7 @@ driving the page each time. `chrome_op` in Claude Code (or your assistant) does 
 
 A site that answers with a plain web page (a court's docket, a registry, a county record search) is
 taught the same way: tell `chrome_op learn` the text of the first row, one piece per field (`page:
-{ number: "24-CV-1001", caption: "Harlow v. Northwind" }`). Vyre finds the rows of the page by their
+{ number: "24-CV-1001", caption: "Juniper v. Northwind" }`). Vyre finds the rows of the page by their
 structure, keeps that as the operation's recipe, and reads every later page the same way, so the same
 search runs from a Flow with no model. If the site says "no results", that is an empty answer; if the
 page's structure changed, that is a change to repair.
