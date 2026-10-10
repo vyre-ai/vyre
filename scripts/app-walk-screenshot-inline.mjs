@@ -90,6 +90,9 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await shot("s1-screenshot-inline", 6000);
   const inline = await pg.evaluate(() => [...document.querySelectorAll("img")].some((i) => String(i.src).startsWith("data:image/png")) || [...document.querySelectorAll("[style*=background-image]")].some((e) => /data:image\/png/.test(e.getAttribute("style") || "")));
   must(inline, "the screenshot is not shown inline in the chat");
+  const seen = await pg.locator("body").innerText();
+  must(!/mcp__|chrome_screenshot|\bimage\b$/m.test(seen), "no internal word (a tool's own name) shows in the chat");
+  must(/Screenshot of example\.com/.test(seen), "the picture is named for its page");
   await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(failed ? 1 : 0);
