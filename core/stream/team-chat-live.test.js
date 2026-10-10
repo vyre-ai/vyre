@@ -31,12 +31,13 @@ async function world(t) {
 }
 
 test("a member speaks in a team chat with an assistant and the assistant answers there, in the team's chat and not the home's", { timeout: 150_000 }, async t => {
-  const { w, as } = await world(t);
+  const { w, as, firm } = await world(t);
   const made = await as(ANA, "create", { title: "Team huddle", people: [BEN], agents: ["assistant"] });
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   await as(ANA, "send", { chat: made.chat, text: "hello team, please answer" });
-  let lastSeen = "";
-  const got = await until(async () => { const c = lastSeen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return /hello team/.test(c) && /echo|hello/i.test(c.replace(/hello team, please answer/g, "")) ? c : null; }, "the assistant's answer in the team's chat").catch(async e => { const th = await w.tool("threads.list", {}).catch((/** @type {any} */ x) => ({ error: x.message })); const db = w.d.registry.deps.db; const rows = (/** @type {string} */ q) => { try { return JSON.stringify(db.prepare(q).all()).slice(0, 700); } catch (x) { return String(x); } }; throw new Error(`${e.message} :: LOG ${/** @type {any} */ (w).lines.filter((/** @type {string} */ l) => /stream|thread|chat|kernel|session/i.test(l)).slice(-12).join(" | ").slice(0, 1800)} :: ${lastSeen.slice(0, 600)} :: threads ${JSON.stringify(th.data || th.error).slice(0, 500)} :: members ${rows("SELECT grp, who, thread, asker, answer, kind FROM stream_groups_members")} :: outbox ${rows("SELECT uuid, grp, who, done FROM stream_groups_outbox")}`); });
+  let lastSeen = "", probe = "";
+  try { await w.d.registry.deps.kernelSession({ thread: "t-probe", agent: null, chat: made.chat, asker: ANA, space: (await as(ANA, "get", { chat: made.chat })).space || firm.space, probe: true }); probe = "probe ok"; } catch (e) { probe = `probe failed: ${/** @type {any} */ (e).code} ${/** @type {any} */ (e).message}`; }
+  const got = await until(async () => { const c = lastSeen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return /hello team/.test(c) && /echo|hello/i.test(c.replace(/hello team, please answer/g, "")) ? c : null; }, "the assistant's answer in the team's chat").catch(async e => { const th = await w.tool("threads.list", {}).catch((/** @type {any} */ x) => ({ error: x.message })); const db = w.d.registry.deps.db; const rows = (/** @type {string} */ q) => { try { return JSON.stringify(db.prepare(q).all()).slice(0, 700); } catch (x) { return String(x); } }; throw new Error(`${e.message} :: ${probe} :: LOG ${/** @type {any} */ (w).lines.filter((/** @type {string} */ l) => /stream|thread|chat|kernel|session/i.test(l)).slice(-12).join(" | ").slice(0, 1800)} :: ${lastSeen.slice(0, 600)} :: threads ${JSON.stringify(th.data || th.error).slice(0, 500)} :: members ${rows("SELECT grp, who, thread, asker, answer, kind FROM stream_groups_members")} :: outbox ${rows("SELECT uuid, grp, who, done FROM stream_groups_outbox")}`); });
   assert.match(got, /hello team/);
   const home = JSON.stringify((await w.tool("work.chat.list", {})).data);
   assert.ok(!home.includes(String(made.chat)), "the home's own chats never list the team's chat");
