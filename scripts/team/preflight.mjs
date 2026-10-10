@@ -271,8 +271,14 @@ if (!STATIC) {
 }
 
 console.log("");
-for (const w of warns) console.log(`warn ${w}`);
-if (!fails.length) { console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`); process.exit(0); }
+if (!fails.length) {
+  for (const w of warns) console.log(`warn ${w}`);
+  console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`);
+  process.exit(0);
+}
+// The cause first: what is red because of this branch, then the notes (base reds are listed under their own heading so they never read as the reason).
 for (const f of fails) console.log(`FAIL ${f.rule}: ${f.msg}\n`);
 console.log(`preflight: ${fails.length} problem(s). Rules: team/FOUNDATION.md.`);
+if (warns.length) console.log("\nNotes (not blocking you):");
+for (const w of warns) console.log(`warn ${w.replace(/^base red \(already red on ([^ ]+) without your change; owned by release's red list, not blocking you\)/, "already red on the base, not blocking you ($1)")}`);
 process.exit(1);
