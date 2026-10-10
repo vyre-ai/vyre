@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(proof): the install proof's name reservation retries once on a fresh connection and names the cause of a failed fetch; CI twice read "plain: reserve a name on the setup page: fetch failed" right after the records server was torn down, with the stand-in directory alive and answering (it passed in two of three reruns on a test box).
 - fix(update): the updater waits up to 180 s (was 30) for the signed modules to report running, because a module that needs the Records store cannot start until the store does and Records take minutes after a swap (v0.3.0 -> v0.3.1 failed this way on a Records box; the modules themselves now report running while they wait, this is the second line of defence).
 - test(update): test/box-updater-nonroot.test.js fails when any write to root's updater folders ($UPD_PRIV, $UPD_ROOT) in box/vyre can stop the person's own `vyre update` (no `|| true`, no sudo, not a root-only function). v0.3.0 stopped Vyre and then died on a bare `rm -f release.swapped`.
 - ci(release-verify): the update step is the gate: a plain `vyre update` as a normal user with the default wait, then every module must be running (no sudo, no longer wait; if it fails the release fails).
