@@ -107,6 +107,11 @@
         "name": "previews.thumb",
         "effect": "read",
         "reach": "person"
+      },
+      {
+        "name": "previews.site",
+        "effect": "read",
+        "reach": "modules"
       }
     ]
   },
