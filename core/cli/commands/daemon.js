@@ -33,9 +33,17 @@ export default [
     },
   },
   {
-    name: "status", order: 12, usage: "vyre status [--json]", summary: "is it running, and what is it running",
-    async run() {
+    name: "status", order: 12, usage: "vyre status [--json] [--ready]", summary: "is it running, and what is it running",
+    async run(/** @type {string[]} */ args = []) {
       const h = await request("GET", "/v1/health");
+      // --ready is what the installer and the updater wait on: vyred itself answering, nothing else. The full status also asks search and memory, which can take minutes to answer on a first start
+      // while the index and the Records store come up; that is not "Vyre did not start".
+      if (Array.isArray(args) && args.includes("--ready")) {
+        if (h.error) { out(`  vyred ${beacon("not answering yet")}`); return EXIT.UNREACHABLE; }
+        const m = h.data.modules || {};
+        out(`  vyred ${signal("answering")} ${dim(`· ${label(h.data)} · ${m.running || 0} modules running${m.failed ? `, ${m.failed} failed` : ""}${h.data.finishing ? ` · ${h.data.finishing}` : ""}`)}`);
+        return 0;
+      }
       if (h.error) {
         if (json()) return failTool(h.error);
         out(`  vyred ${beacon("not running")} ${dim("· vyre up to start it")}`);
@@ -43,12 +51,16 @@ export default [
       }
       const d = h.data;
       // A first index, or the first model download, is the one slow thing a fresh install does.
-      const recall = progressLine((await call("recall.status")).data);
+      // Neither question may hold `vyre status` up: on a first start search and memory answer only after the index and the Records store are up, which can take minutes. Three seconds each, then
+      // the line says "starting" and the rest of the status is printed.
+      const [recallRes, memRes] = await Promise.all([call("recall.status", {}, { timeout: 3000 }), call("memory.stats", {}, { timeout: 3000 }).catch(() => null)]);
+      const slow = (/** @type {any} */ r) => Boolean(r && r.error && r.error.code === "timeout");
+      const recall = slow(recallRes) ? "search index: starting" : progressLine(recallRes.data);
       // What memory knows about the user, and the model pass's spend; absent when memory is.
-      const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
-      const mem = memoryLine(personal);
+      const personal = memRes?.data?.personal;
+      const mem = slow(memRes) ? "memory: starting" : memoryLine(personal);
       if (json()) {
-        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}), ...(readSpace() ? { space: readSpace() } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
+        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem && personal ? { memory: personal } : {}), ...(slow(memRes) ? { memory_note: "starting" } : {}), ...(readSpace() ? { space: readSpace() } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
           { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
           { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
           ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
