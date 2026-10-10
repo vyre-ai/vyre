@@ -87,7 +87,7 @@ export function cardModel(i) {
     } else {
       // a to-do that belongs to no stage or record has nothing to be "due with": it just waits for you
       const where = task.stage || rec;
-      why = `${madeBy && madeBy.id !== i.me && madeBy.family === "person" ? `${madeBy.name} assigned this to you. ` : ""}${where ? `Due with ${where}.` : "It is waiting for you."}`;
+      why = `${madeBy && madeBy.id !== i.me && madeBy.family === "person" ? `${madeBy.name} assigned this to you. ` : ""}${where ? `Due with ${where}.` : task.source === "flow_step" ? "A Flow is waiting for you." : "It is waiting for you."}`;
       actions = [{ id: "done", label: "Mark done", kind: "primary" }, { id: "open", label: "Open", kind: "secondary" }];
     }
   } else {

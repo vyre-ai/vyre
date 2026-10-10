@@ -97,6 +97,11 @@ test("a template is a draft until its owner puts it live; test mode shows every 
   const moved = await until(async () => { const r = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data; return r.template_stage === "Drafting" ? r : null; }, "the project to move to Drafting");
   assert.equal(moved.template_stage, "Drafting");
   await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).some((/** @type {any} */ x) => x.title === "Draft the trust" && x.stage === "Drafting"), `the next stage's task to be made (${JSON.stringify((await d.kernel.gateway.ask.list(ownerChain, {})).map((/** @type {any} */ x) => [x.title, x.stage, x.state]))} ${/** @type {any} */ (d).testLogs.filter((/** @type {string} */ l) => /stage\./.test(l)).join(' | ')} ${JSON.stringify(host.stages.entries().map((/** @type {any} */ e) => [e.stage, e.advanced, e.tasks.length]))})`);
+  // what a template project leaves behind reads as words: no "[object Object]", no "undefined", in its record, tasks, team records or timeline
+  const hygiene = (/** @type {any} */ v) => JSON.stringify(v).match(/\[object Object\]|"undefined"|:undefined\b|\bNaN\b/);
+  assert.equal(hygiene((await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data), null, "the project record");
+  assert.equal(hygiene(await d.kernel.gateway.ask.list(ownerChain, {})), null, "the tasks");
+  assert.equal(hygiene((await d.kernel.gateway.records.query(ownerChain, "team-member", { page: { limit: 50 } })).rows), null, "the team records");
   // J2, the timeline steps: the project's story says each move in plain lines, newest first, and none of them is an id or an event name
   const story = (await call("work.timeline", { record: started.project })).entries;
   const lines = story.map((/** @type {any} */ e) => e.line);

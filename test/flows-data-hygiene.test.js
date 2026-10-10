@@ -41,7 +41,13 @@ test("what Flows leave in records, tasks and the log holds no [object Object] an
   scan("tasks", await d.kernel.gateway.ask.list(admin, {}));
   scan("runs", await call("flows.runs", { id: outer.id }));
   scan("health", await call("flows.health", { id: outer.id }));
-  scan("timeline", (await call("work.timeline", { record: `vyre://${space}/flow-run/${started.run || started.id}` })) || {});
+  const runId = String(started.run || started.id);
+  scan("run page", await call("flows.run", { run: runId }));
+  scan("canvas", await call("flows.graph", { id: outer.id }));
+  scan("card", await call("flows.card", { id: outer.id, version: 1 }));
+  scan("explain", await call("flows.timeline", { run: runId }));
+  scan("practice", await call("flows.simulate", { id: outer.id, since: Date.now() - 60_000, until: Date.now() + 60_000 }));
+  scan("timeline", (await call("work.timeline", { record: `vyre://${space}/flow-run/${runId}` })) || {});
   scan("log", d.kernel.log.read({}).map((/** @type {any} */ e) => ({ type: e.type, subject: e.subject, data: e.data })));
   assert.deepEqual(found, [], "a value reads as words");
 });
