@@ -20,7 +20,14 @@ const SKIP = unavailable() || workspaceUnavailable() || "";
 const LINUX = process.platform === "linux";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
-const procState = (/** @type {number} */ pid) => { try { const t = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return t.slice(t.lastIndexOf(")") + 2, t.lastIndexOf(")") + 3); } catch { return ""; } };
+/** The scheduler state ("T" stopped, "S" and "R" running) of every process on this box whose command line mentions `needle`: the fake agent of one world. */
+const statesOf = (/** @type {string} */ needle) => {
+  const out = [];
+  for (const pid of fs.readdirSync("/proc").filter(n => /^\d+$/.test(n))) {
+    try { if (!fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").includes(needle)) continue; const t = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); out.push(t.slice(t.lastIndexOf(")") + 2, t.lastIndexOf(")") + 3)); } catch { /* gone */ }
+  }
+  return out;
+};
 
 /** The runner module as a Mac runs it, reaching a home through a call we can cut. */
 async function world(/** @type {import("node:test").TestContext} */ t, over = {}) {
@@ -46,7 +53,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, over = {}
   t.after(async () => { seams.delete(root); await h.stop(); fs.rmSync(agentDir, { recursive: true, force: true }); });
   const person = { caller: "cli" };
   const run = (/** @type {string} */ tool, /** @type {any} */ input) => tools.get(tool).run(input, person);
-  return { r, chat, net, ctx, run, emit: (/** @type {string} */ type) => ctx.events.emit(type, {}), handlers, book: r.home.book };
+  return { r, chat, net, ctx, run, agent: path.join(agentDir, "agent.js"), emit: (/** @type {string} */ type) => ctx.events.emit(type, {}), handlers, book: r.home.book };
 }
 
 test("a session started on this computer is beaten for, and a hand-over the person asked for in the chat is done at the next beat", { skip: SKIP || false, timeout: 120_000 }, async t => {
@@ -60,25 +67,33 @@ test("a session started on this computer is beaten for, and a hand-over the pers
   w.book.askRelease("s1", "you");
   await waitFor(() => w.book.get("s1").where === "server", 15_000);
   assert.deepEqual([w.book.get("s1").reason, w.book.get("s1").epoch], ["you", 2]);
-  await waitFor(() => w.ctx.kernel && true);
   assert.deepEqual((await w.run("runner.here", {})).sessions, [], "it is gone from this computer");
 });
 
-test("a home that cannot be reached freezes the sessions after two missed beats; the home takes them after a lapse; reached again, the computer ends what the home took", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
-  const w = await world(t);
+test("a home that cannot be reached freezes the sessions after two missed beats; a short outage thaws them and they are still this computer's", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
+  const w = await world(t, { lapseMs: 30_000 });
   await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
-  const pid = Number((await w.run("runner.here", {})).sessions.length ? 1 : 0) && w.ctx; void pid;
+  await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x !== "T"), 10_000);
   w.net.cut = true;
-  const rows = () => w.run("runner.here", {});
-  await waitFor(async () => (await rows()).sessions[0]?.state === "paused" || true, 1000);
-  // two missed beats: frozen. The process id is read from the runner's own list through the module's info (a test seam: the sandbox child's group).
-  await sleep(1000);
+  await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x === "T"), 10_000);
+  assert.equal(w.book.get("s1").where, "mac", "the home has not taken it yet");
+  w.net.cut = false;
+  await waitFor(() => statesOf(w.agent).every(x => x !== "T"), 10_000);
+  assert.equal(w.book.get("s1").where, "mac");
+  assert.equal(w.book.get("s1").epoch, 1, "nothing moved");
+});
+
+test("a home that cannot be reached for a lapse takes the sessions; reached again, the computer ends what the home took and writes nothing", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const w = await world(t);   // lapse 1.5 s
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  w.net.cut = true;
   await waitFor(() => w.book.lapsed().length === 1, 15_000);
   await w.r.home.sweep();
-  assert.equal(w.book.get("s1").where, "server", "the home took it after the lapse");
-  assert.equal(w.book.get("s1").reason, "offline");
+  assert.deepEqual([w.book.get("s1").where, w.book.get("s1").reason, w.book.get("s1").epoch], ["server", "offline", 2]);
+  assert.deepEqual((await w.run("runner.here", {})).sessions.map((/** @type {any} */ x) => x.thread), [w.chat], "this computer still holds it, frozen, not knowing");
   w.net.cut = false;
-  await waitFor(async () => (await rows()).sessions.length === 0, 15_000);
+  await waitFor(async () => (await w.run("runner.here", {})).sessions.length === 0, 15_000);
+  if (LINUX) await waitFor(() => statesOf(w.agent).length === 0, 10_000);
 });
 
 test("the Mac's sleep notice hands every session over before the lid shuts, and waking checks in at once", { skip: SKIP || false, timeout: 120_000 }, async t => {
