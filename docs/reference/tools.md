@@ -13849,6 +13849,7 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
   - `apps` list of string
   - `description` string
   - `details` object
+    - `address` string
     - `count` integer
     - `credential` string
     - `expires` integer or string
@@ -14262,6 +14263,7 @@ Add or change an item by merging fields: only the fields given are replaced, `re
   - `name` string, required
   - `description` string
   - `details` object
+    - `address` string
     - `count` integer
     - `credential` string
     - `expires` integer or string
