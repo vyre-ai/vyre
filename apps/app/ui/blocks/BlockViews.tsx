@@ -62,7 +62,7 @@ export function ListBlock({ k, b, h }: P) {
   return (
     <View className="gap-s2">
       {b.props?.title ? <SectionLabel>{b.props.title}</SectionLabel> : null}
-      {groups.length === 1 && !groups[0].name ? card(groups[0].rows) : groups.map((g) => <View key={g.name}>{g.name ? <SectionLabel>{g.name}</SectionLabel> : null}{card(g.rows)}</View>)}
+      {groups.length === 1 && !groups[0].name ? card(groups[0].rows) : groups.map((g) => <View key={g.name}>{g.name ? <SectionLabel>{g.name}</SectionLabel> : null}{card(g.rows)}{h.slot?.(k, `after:${g.name}`)}</View>)}
       {more(typeof c(b).more === "number" ? c(b).more : undefined)}
     </View>
   );

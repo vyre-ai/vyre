@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- refactor(app): Settings home is one list block (R031-58). Its groups, icons, descriptions and the devices count are data a screen draws through BlockScreen; each row opens its page; the Mac's "make this Mac a server" card sits in the block's `after:Devices` slot. Same pixels as before (before and after pictures in team/0.3.1/shots/design/settings-blocks). test/key-screens.test.js counts settings/index.tsx as drawn from blocks.
 - fix(app): Settings gives every place its own icon (a download arrow stood for Spending limits, Backups and Updates; a link for Connections and Outside agents; a shield for four). logic.test.js keeps them unique and in the family.
 - fix(app): an owner or doer the kernel knows only by its id (per_l47gpa4r2zy6cn6jmyzi5r...) reads as "You" for the signed-in person and "Someone" for another, in the Projects table and every actor cell, never as the id. The records store names unnamed actors; the actor cell says "You" for its own person.
 - fix(app): Spaces and members adds a space from a button that says Add a space, not a lone plus.

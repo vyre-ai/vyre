@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "a
 const ROUTES = path.join(ROOT, "app", "u");
 
 /** Routes drawn from blocks. Each must reach BlockScreen through its imports. */
-const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^records\/\[type\]\.tsx$/, /^tags\/\[tag\]\.tsx$/];
+const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^records\/\[type\]\.tsx$/, /^tags\/\[tag\]\.tsx$/, /^settings\/index\.tsx$/];
 
 /** Hand-written, with why. [pattern, reason]. Moving one means rebuilding it as a screen (data) and deleting the hand-written file. */
 const HAND = /** @type {[RegExp, string][]} */ ([
@@ -19,7 +19,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^install\//, "first-run flow with device pairing: a wizard of its own, not a data screen"],
   [/^chats\//, "the conversation: a live stream with a composer; chat has its own renderer and the glance card (ChatCard) sits beside it"],
   [/^glass\/|^wink\/|^setup\//, "a live device or screen stream, a pairing flow"],
-  [/^settings\//, "settings pages built on the hub's setting rows; they become screens when the settings hub describes itself as blocks"],
+  [/^settings\/(?!index\.tsx$)/, "the settings pages behind the hub: forms and lists of their own; the hub itself (settings/index.tsx) is one list block"],
   [/^templates(\/\[id\])?\.tsx$/, "the project template studio (a tree of stages and tasks with its own editing): the projects team owns it; it moves with the template design in 0.3.2"],
   [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|project\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
