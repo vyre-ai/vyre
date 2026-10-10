@@ -70,7 +70,8 @@ function fieldBuilder(kind) {
     if (f.visible_if !== undefined && f.required) bad(`defineField.${kind}`, "A field that is only sometimes shown cannot be required always: use required_if");
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
     if (kind === "link") {
-      f.to = name(opts.to, "defineField.link.to");
+      // no `to`: a link to any record of the Space (the Project's credentials name a Vault login by its address)
+      if (opts.to !== undefined) f.to = name(opts.to, "defineField.link.to");
       if (opts.many !== undefined) { if (bool(opts.many, "defineField.link.many")) f.many = true; }
       if (opts.inverse !== undefined) {
         onlyKeys(opts.inverse, ["name", "label"], "defineField.link.inverse");
