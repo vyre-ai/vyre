@@ -399,15 +399,17 @@ export default {
       input: obj({ name: str, folder: str, preview: str, project: str }, ["name"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
-        // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path
+        // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path. The share sheet's "anyone with the link" is the same press:
+        // the previews module carries the person's own call (relay, only for this tool; previews.share takes it only from a person, and previews.folder below checks that person may open the preview).
+        const byPerson = isPerson(meta) || Boolean(meta && meta.caller === "module:previews" && i.preview);
         if (!!i.folder === !!i.preview) throw refuse("name the folder to publish, or the preview to publish, not both and not neither", "bad_input");
         if (i.preview) {
-          if (!isPerson(meta)) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
+          if (!byPerson) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
           const f = await call("previews.folder", { id: String(i.preview) }, { relay: true });
           if (f.missing) throw refuse("this server has no previews to publish from", "no_previews");
           i = { ...i, folder: String(f.data.root) };
         }
-        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta) });
+        const no = folderRefusal(String(i.folder || ""), { person: byPerson });
         if (no) throw refuse(no.message, no.code);
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
@@ -454,6 +456,7 @@ export default {
           if (hold.action === "grant_secret") {
             const s = (task.plan || {}).secret || {};
             const r = await p.pub.grantSecret(chain, hold.deployment, { ref: s.ref, name: s.name, use: s.use, task: task.id });
+            await restartForGrant(space, r.deployment, s.use);
             return { ...out, deployment: shown(r.deployment) };
           }
           const r = await serial(p, () => p.pub[hold.action](chain, hold.deployment, { task: task.id }));
@@ -525,6 +528,12 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return b.pub.removeDomain(b.chain, i.host); },
     });
 
+    /** A secret granted to a live server for running is in its environment only from its next start: start it again now, so the person sees it work at once (a build-only secret changes nothing running). @param {any} space @param {any} deployment @param {string[]|undefined} use */
+    const restartForGrant = async (space, deployment, use) => {
+      if (!deployment || deployment.stage !== "Production" || !deployment.runtime || deployment.runtime.kind !== "image") return;
+      if (Array.isArray(use) && use.length && !use.includes("runtime")) return;
+      await runnerFor(space).start(deployment);
+    };
     ctx.tool("publish.secret.grant", {
       callers: WITH_MODELS,
       description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
@@ -534,6 +543,7 @@ export default {
         const b = await begin(i, meta, await warmDecider(sp, i.task));
         const r = await b.pub.grantSecret(b.chain, i.deployment, { ref: i.ref, name: i.name, use: i.use, task: i.task });
         if (r.held) return { held: true, task: r.task, plan: r.plan };
+        await restartForGrant(b.space, r.deployment, i.use);
         return { deployment: shown(r.deployment) };
       },
     });

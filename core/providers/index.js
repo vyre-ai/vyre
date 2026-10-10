@@ -9,7 +9,7 @@ export default {
       description: "Every session provider on this machine with its accounts and the models it offers; pickers build themselves from it.",
       input: { type: "object", properties: {} },
       run: async () => {
-        const r = await ctx.call("sessions.providers.snapshot", {});
+        const r = await ctx.call("sessions.providers.snapshot", {}, { relay: true });
         if (r.error) return [];
         // The picker lists what the registry has seen LIVE (core/models: each provider's own list, asked through the inference door, and the lists sessions report); a provider the registry knows nothing
         // of yet keeps the models its sessions reported, as before (0.3.3 G13).

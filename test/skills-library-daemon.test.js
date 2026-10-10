@@ -119,6 +119,9 @@ test("a plugin with code is approved only against exactly what it declares; its 
   { const sv = await call("mcp.servers", {}); assert.ok((Array.isArray(sv) ? sv : sv.servers || []).some((/** @type {any} */ s) => s.name === "p-briefcase-cases"), JSON.stringify(sv).slice(0, 200)); }
   assert.ok(ids(await call("skills.list", { level: "personal" })).includes("personal/briefcase/case-law"), "and its skill is in the list");
 
+  // a person's personal skills go to that person's sessions only (G03): another person's turn gets none of the owner's
+  { const other = await asModule("skills.materialise", { ai: "claude", manifest: PLUGIN_LAYOUT.manifest, person: "per_" + "b".repeat(26) }); assert.ok(!other.dir || !fs.existsSync(path.join(other.dir, "skills", "case-law", "SKILL.md")), "another person's session is not given the owner's personal skill"); }
+
   // materialised for each AI
   for (const ai of ["claude", "codex", "grok"]) {
     const m = await asModule("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest });

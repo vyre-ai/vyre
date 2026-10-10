@@ -57,7 +57,7 @@ export function createDeferredStore(o) {
         if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");
-        for (const f of ready.splice(0)) { try { await f(); } catch (e) { log(`something waiting for the record store failed: ${/** @type {Error} */ (e).message}`); } }
+        for (const f of ready.splice(0)) { const t0 = Date.now(); try { await f(); log(`phase waiting work after the store joined: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } catch (e) { log(`something waiting for the record store failed: ${/** @type {Error} */ (e).message}`); } }
       } finally { attaching = false; }
     },
     features: () => ({ aggregate: true, search: true, changes: true, cursor_paging: true, attr_filter: true }),

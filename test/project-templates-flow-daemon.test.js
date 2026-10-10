@@ -49,7 +49,7 @@ test("a Flow step starts a project when a record reaches a stage; the project is
   await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).find((/** @type {any} */ x) => x.title === "Gather documents" && x.record === proj.urn), "its first task");
 });
 
-test("a template is saved from a project that ran one, a Kit's library template installs as a draft, and a free-flow project has nothing to save", { timeout: 180_000 }, async t => {
+test("a template is saved from a project that ran one, a Kit's library template installs as a draft, and a free-flow project with no tasks gives a draft of one empty working stage", { timeout: 180_000 }, async t => {
   const { call, owner } = await boot(t);
   await call("work.template.define", { body: TEMPLATE });
   await call("work.template.golive", { template: "tpl_intake-to-retained", version: 1 });
@@ -60,7 +60,9 @@ test("a template is saved from a project that ran one, a Kit's library template 
   assert.deepEqual([got.stages.map((/** @type {any} */ s) => s.name), got.roles], [["Intake", "Done"], [{ role: "researcher", agent: "research" }]]);
   assert.match(got.stages[0].tasks[0].brief, /Goal: Gather documents for \{record\.name\}/, "the brief it ran with is kept");
   const free = await call("work.project.create", { name: "Plain chats" });
-  await assert.rejects(() => call("work.template.from-project", { project: free.slug }), /did not start from a template/);
+  const fromFree = await call("work.template.from-project", { project: free.slug });
+  assert.equal(fromFree.state, "draft", "a free-flow project gives a draft to refine in the studio");
+  assert.deepEqual((await call("work.template.get", { template: fromFree.template, version: fromFree.version })).body.stages.map((/** @type {any} */ x) => x.name), ["Working", "Done"]);
   const lib = (await call("work.template.library")).templates;
   assert.ok(lib.some((/** @type {any} */ x) => x.id === "law-firm/estate-plan" && x.stages === 5), JSON.stringify(lib));
   const inst = await call("work.template.install", { id: "law-firm/estate-plan" });
