@@ -56,7 +56,7 @@ test("app helper: another app's, and a Space's, rules are never touched by app-d
   const r = await ready(t);
   // a second app: the real DocuSeal line and compose under another name and hook port
   const { composeFile } = await import("../core/appmods/host-plan.js");
-  const first = r.catalogLine().trim();
+  const first = r.catalogLine().trim().split("\n").find((/** @type {string} */ l) => l.startsWith("documents ")) || "";
   r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "documents-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
   r.flag("hostplan-compose-documents-two", composeFile("documents").replaceAll("vyre-app-documents", "vyre-app-documents-two"));
   await r.run(["space-helper", "install"]);
@@ -178,7 +178,7 @@ test("app helper: an install over a running watcher restarts it, so the watcher 
 test("app helper: purge-app keeps an image another app that still has a folder here runs", opts, async t => {
   const r = await ready(t);
   const { composeFile } = await import("../core/appmods/host-plan.js");
-  const first = r.catalogLine().trim();
+  const first = r.catalogLine().trim().split("\n").find((/** @type {string} */ l) => l.startsWith("documents ")) || "";
   r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "documents-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
   r.flag("hostplan-compose-documents-two", composeFile("documents").replaceAll("vyre-app-documents", "vyre-app-documents-two"));
   await r.run(["space-helper", "install"]);
