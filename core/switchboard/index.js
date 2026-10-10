@@ -1975,10 +1975,9 @@ export class Switchboard {
     /** @type {ReturnType<typeof receiptsOf> | null} */ let receipts = null;
     /** @type {string[]} */ let facts = [];
     /** @type {string[]} */ let waiting = [];
-    // The receipts and the ledger are OFF unless VYRE_MANAGED_CONTEXT=on (lead ruling, 9 Oct, after token proof round 5): no valid long-session run has shown they help (the long task is one turn, and a
-    // rollover only happens between turns, so none fired). They come back on by default when a multi-turn run shows a seed with them beats one without.
-    const managed = process.env.VYRE_MANAGED_CONTEXT === "on";
-    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET === "on"))) {
+    // The receipts and the ledger are ON unless VYRE_MANAGED_CONTEXT=off (0.3.3 G12; they were opt-in after the 9 Oct token proof, and the lead ruled them on for every person). The rollover sheet is on the same way: VYRE_ROLLOVER_SHEET=off.
+    const managed = process.env.VYRE_MANAGED_CONTEXT !== "off";
+    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET !== "off"))) {
       if (managed) receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
