@@ -9,7 +9,7 @@ import path from "node:path";
 import http from "node:http";
 import os from "node:os";
 import { spawn, execFile } from "node:child_process";
-import { findChrome } from "../core/previews/thumb.js";
+import { headlessChrome } from "./headless-chrome.js";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
@@ -69,8 +69,7 @@ test("a React page in a folder goes live on one yes, as the pane showed it, with
   assert.match(html, /import\("\/App\.js"\)/);
   assert.ok(!written.some(f => fs.readFileSync(path.join(sites, f)).includes("left-out-of-the-site")), "the .env value is in no published file");
 
-  // opened in a real headless browser, served the way a static host serves it, the published files draw the page (skipped where there is no chrome-headless-shell)
-  if (!/headless/.test(String(findChrome()))) return;
+  // opened in a real headless browser, served the way a static host serves it, the published files draw the page
   const siteDir = path.join(sites, path.dirname(written.find(f => f.endsWith("index.html")) || ""));
   const MIME = /** @type {Record<string, string>} */ ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript" });
   const srv = http.createServer((req, res) => {
@@ -84,7 +83,7 @@ test("a React page in a folder goes live on one yes, as the pane showed it, with
   t.after(() => srv.close());
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-live-chrome-"));
   t.after(() => fs.rmSync(profile, { recursive: true, force: true }));
-  const dom = await new Promise(ok => execFile(String(findChrome()), ["--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`], { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
+  const dom = await new Promise(ok => execFile(headlessChrome(), ["--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`], { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
   assert.match(String(dom), /Northwind Bakery/);
   assert.match(String(dom), /3 loaves today/);
 });
