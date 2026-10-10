@@ -54,7 +54,9 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   assert.equal(run.state, "done");
 
   // a schedule: due now (its last run was two minutes ago), the tick runs it once and the run names it
+  // (the runner remembers when it last looked at a schedule, and the timer's early look at a new Flow has already started that memory at "now": set both, as a person's clock running two minutes on would)
   await host().flows.store.putSchedule(b.id, Date.now() - 120_000);
+  host().flows.runner.lastFire.set(b.id, Date.now() - 120_000);
   await host().flows.tick();
   const sched = await until(async () => { const r = (await d.registry.call("flows.runs", { id: b.id }, "cli", await ownerMeta())).data; return r.length ? r : null; }, "the scheduled run");
   // the run exists the moment it starts; wait for it to finish (a loaded box takes a while)

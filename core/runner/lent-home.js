@@ -73,6 +73,7 @@ export function createLentHome(o) {
   /** The pipes of lent spawns (contracts/lent-spawn.md): a chat's agent process on a lender, as the SDK on this home sees it. */
   const pipes = o.pipes || createPipes({ now });
   /** The key each computer lent under, as it last said it (in `status`): the Offers are made for the computer and its key. @type {Map<string, string>} */ const keys = new Map();
+  /** The thread each spawned session was opened under (`spawn({ thread })`): the key of the tool socket the daemon holds for it. A row older than the rule has a session id that is not its thread id, so Vyre's tools are routed by this, never by the session. @type {Map<string, string>} */ const threads = new Map();
   /** Sessions placed for a new chat that no lender has started yet. @type {Set<string>} */ const reserved = new Set();
   /** The ready computers waiting on the home for something to do (`wait`), one each. @type {Map<string, { t: any, res: (a: any) => void }>} */ const waiters = new Map();
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
@@ -116,7 +117,7 @@ export function createLentHome(o) {
     if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
-    lent.delete(String(session)); owed.add(String(session));
+    lent.delete(String(session)); threads.delete(String(session)); owed.add(String(session));
     pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
     kickResume(String(session));
@@ -298,10 +299,12 @@ export function createLentHome(o) {
     /**
      * A chat's agent process on this person's computer, for the Agent SDK on this home (`sandboxSpawn`): a ChildProcess whose bytes ride `lent.pipe`. The computer is the person's own that beat lately with nothing holding
      * it back, or the one already running the session. With none ready it fails as a spawn that never started.
-     * @param {{ session: string, chat?: string | null, person: string, command?: string, args?: string[], signal?: AbortSignal }} i
+     * `thread` is the id the daemon opened the chat's tool socket under; Vyre's tools are routed by it, while `session` stays the key of the book, the checkpoints and the transcript.
+     * @param {{ session: string, thread?: string | null, chat?: string | null, person: string, command?: string, args?: string[], signal?: AbortSignal }} i
      */
     spawn(i) {
       const session = String(i && i.session), person = String(i && i.person);
+      if (i && i.thread) threads.set(session, String(i.thread));
       const device = pickLender(person, session);
       const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
       // a spawn that never started leaves no row saying the chat is on a computer it never reached
@@ -353,11 +356,11 @@ export function createLentHome(o) {
       if (method === "GET" ? p !== "/v1/tools" : !/^\/v1\/tools\/[A-Za-z0-9._%-]{1,140}$/.test(p)) throw err("bad_input", "a lent computer asks for a tool: POST /v1/tools/<name>, or GET /v1/tools");
       const body = method === "GET" ? "" : typeof i.body === "string" ? i.body : "{}";
       if (body.length > 128 * 1024) throw err("bad_input", "that request is too large");
-      const r = await o.http(String(i.session), method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body);
+      const r = await o.http(threads.get(String(i.session)) || lent.get(String(i.session))?.chat || String(i.session), method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body);
       if (!r) throw err("unavailable", "this session has no socket open on this home");
       return { status: r.status, body: r.body };
     },
-    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },
