@@ -70,6 +70,7 @@ export const PERSON_ONLY = new Map([
   ["spaces.host-here", "hosts a space on this server: the owner's own act"],
   ["spaces.retire-here", "takes back a space on this server: the owner's own act"],
   ["spaces.devices.lend.status", "the person's own devices"],
+  ["spaces.members.computers", "an owner's or an admin's own act on the Space"],
   ["spaces.devices.remove", "the person's own devices"],
   ["spaces.devices.restore", "the person's own devices"],
   ["spaces.devices.enrol", "the person's own devices"],

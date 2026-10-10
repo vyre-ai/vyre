@@ -111,6 +111,13 @@
         "projectIsRecord": true
       },
       {
+        "name": "work.chat.serve",
+        "summary": "a team member's own chat call on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "write",
+        "crossSpace": "records.read"
+      },
+      {
         "name": "work.chat.list",
         "summary": "the chats you may see: title, project, who, when, status, where it lives; open on the ones you are in",
         "reach": "anyone",
