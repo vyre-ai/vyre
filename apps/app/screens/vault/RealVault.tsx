@@ -2,27 +2,33 @@
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Menu, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
 import { usePhone } from "../places/Page";
-import { Footnote, Frame, Sec } from "../places/Frame";
+import { Frame, Sec } from "../places/Frame";
 import { REVEAL_MS, generatePassword, strengthWords } from "./logic.js";
 import { grantReal, listReal, putReal, revealHeldReal, revealReal, revokeReal, stateReal, unlockPersonalReal, unlockReal, usesReal } from "./real";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
 import ImportPage from "./ImportPage";
-import { DevicesPage, EditSheet, ItemHistory, PassesPage, SharedPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
+import { DevicesPage, EditSheet, ItemHistory, SharingPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
 import { vaultMore } from "./more";
 import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
-import { searchItems, NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
+import { searchItems, NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, slugName, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type Filter, type ListRow, type NewItem, type RealItem, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
+const FILTERS: [Filter | "Held", string][] = [["All", "All"], ["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "On records"]];
+const SECTIONS: ["items" | "sharing" | "browsers" | "health", string][] = [["items", "Items"], ["sharing", "Sharing"], ["browsers", "Browsers"], ["health", "Health"]];
+/** What an empty list says, by what the person is looking at. */
+const nothingHere = (tab: Filter, any: boolean, blocked: boolean) =>
+  any ? `No ${{ All: "items", Login: "logins", Key: "keys", Card: "cards" }[tab]} in the vault.` : blocked ? "Add items in Vyre on your phone." : "Add one with the Add button, or bring them in from another app.";
+
 export default function RealVault() {
   const phone = usePhone();
-  const [tab, setTab] = useState<Tab | "Held">("Login");
+  const [tab, setTab] = useState<Filter | "Held">("All");
   const [sharing, setSharing] = useState<Share | null>(null);
   const records = useRecordsWorld();
   const held = records.data ? heldFields(records.data.types, records.data.byType) : [];
@@ -41,11 +47,11 @@ export default function RealVault() {
   const [fieldErr, setFieldErr] = useState<Partial<Record<"name" | "username" | "secret" | "url", string>>>({});
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState<NewItem | null>(null);
-  const [health, setHealth] = useState<{ total: number; line: string } | null>(null);
+  const [health, setHealth] = useState<ReturnType<typeof healthSummary> | null>(null);
   const [gen, setGen] = useState<{ length: string; symbols: boolean }>({ length: "20", symbols: true });
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const [section, setSection] = useState<"items" | "passes" | "shared" | "devices" | "health" | "import">("items");
+  const [section, setSection] = useState<"items" | "sharing" | "browsers" | "health" | "import">("items");
   const [editing, setEditing] = useState(false);
   const [ssh, setSsh] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});
@@ -125,27 +131,26 @@ export default function RealVault() {
           <View className="flex-row flex-wrap items-center gap-s2">
             <Text size="title" strong>{cur.name}</Text><Chip>{kindWord(cur.kind)}</Chip>
             {cur.unverified ? <Chip tone="warn">Not verified</Chip> : null}
-            {cur.rotate ? <Chip tone="warn">Rotate</Chip> : null}
+            {cur.rotate ? <Chip tone="warn">Replace soon</Chip> : null}
           </View>
           <Text tone="label" numberOfLines={1}>{cur.line}</Text>
         </View>
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
-          <Text size="caption" strong tone="label">The values</Text>
           {cur.fields.length ? cur.fields.map((f) => {
             const on = shown?.key === `${cur.id}/${f}`;
             return (
               <View key={f} className="min-h-control flex-row items-center justify-between gap-s2">
                 <View className="min-w-0 flex-1 gap-s1">
-                  <Text size="caption" tone="label">{f}</Text>
+                  <Text size="caption" tone="label">{f.charAt(0).toUpperCase() + f.slice(1)}</Text>
                   {on ? <Text mono size="headline" selectable>{shown!.value}</Text> : <SealedMask label={`${cur.name} ${f}`} />}
                 </View>
                 {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? <Text size="caption" tone="label">Reveal in Vyre on your phone</Text> : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}
               </View>
             );
           }) : <Text tone="muted">This item has no fields.</Text>}
-          {shown?.key.startsWith(`${cur.id}/`) ? <Text size="caption" tone="label">Shown for 30 seconds, then masked again.</Text> : null}
+          {shown?.key.startsWith(`${cur.id}/`) ? <Text size="caption" tone="label">Shown for 30 seconds, then hidden again.</Text> : null}
         </View>
-        <Sec title="Used, without being seen">
+        <Sec title="Recent use">
           {(() => {
             const u = usesLine(uses[cur.id] ?? [], Date.now());
             return u.length ? (
@@ -155,21 +160,21 @@ export default function RealVault() {
             ) : <Text tone="muted">{uses[cur.id] ? "Not used in the last day." : "Loading."}</Text>;
           })()}
         </Sec>
-        <Sec title="Who has it">
+        <Sec title="Shared with">
           {cur.grants.length ? (
             <Card flush>
               {cur.grants.map((g, i) => (
                 <View key={g.who + (g.project ?? "")}>{i ? <Divider /> : null}
-                  <Row dense title={g.who} sub={g.project ? `Use only, in ${g.project}.` : "Use only. It never sees the value."}
+                  <Row dense title={g.who} sub={g.project ? `Can use it in ${g.project}. Never sees it.` : "Can use it. Never sees it."}
                     end={<Button kind="holdText" size="sm" label="Remove" onPress={() => remove(cur, g.who)} />} />
                 </View>
               ))}
             </Card>
-          ) : <Text tone="muted">Only you. No module or assistant can use this item until you share it.</Text>}
-          {claimBlocked() ? null : <View className="self-start pt-s2"><Button kind="ghost" size="sm" icon="plus" label="Share with a module or assistant" onPress={() => { setProblem(""); setSharing({ module: "", project: "" }); }} /></View>}
+          ) : <Text tone="muted">Only you. Nothing else can use this until you give it access.</Text>}
+          {claimBlocked() ? null : <View className="self-start pt-s2"><Button kind="ghost" size="sm" icon="plus" label="Give access" onPress={() => { setProblem(""); setSharing({ module: "", project: "" }); }} /></View>}
         </Sec>
         <ItemHistory name={cur.id} />
-        {claimBlocked() ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Change" onPress={() => setEditing(true)} /></View>}
+        {claimBlocked() ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Edit" onPress={() => setEditing(true)} /></View>}
       </View>
     </Card>
   ) : null;
@@ -180,24 +185,30 @@ export default function RealVault() {
     return <Frame title={cur.name} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
   }
 
+  const ready = !err && rows && !locked;
+  const startAdd = (kind: NewItem["kind"]) => { setProblem(""); setFieldErr({}); setAdding({ kind, name: "", username: "", secret: "", url: "" }); };
+  const addMenu = ready && section === "items" && !claimBlocked() ? (
+    <Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add" />}
+      items={[{ label: "Login", onPress: () => startAdd("login") }, { label: "API key", onPress: () => startAdd("api-key") }, { label: "Secret", onPress: () => startAdd("secret") }, { label: "SSH key", onPress: () => setSsh(true) }, { label: "Bring in from another app", onPress: () => { hide(); setSection("import"); } }]} />
+  ) : null;
+  const slug = adding ? slugName(adding.name) : "";
+
   return (
-    <Frame title="Vault" sub="Logins, keys and cards.">
-      <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
-      {!err && rows && !locked && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={[["items", "Items"], ["passes", "Passes"], ["shared", "Shared"], ["devices", "Devices"], ["health", "Health"]]} /> : null}
-      {!err && rows && !locked && section === "passes" ? <PassesPage rows={rows} reload={load} openItem={openFrom} /> : null}
-      {!err && rows && !locked && section === "shared" ? <SharedPage rows={rows} reload={load} openItem={openFrom} /> : null}
-      {!err && rows && !locked && section === "devices" ? <DevicesPage rows={rows} reload={load} openItem={openFrom} /> : null}
-      {!err && rows && !locked && section === "health" ? <WatchtowerPage rows={rows} reload={load} openItem={openFrom} /> : null}
-      {!err && rows && !locked && section === "import" ? <View className="gap-s3">
+    <Frame title="Vault" sub="Assistants use these and never see them." actions={addMenu}>
+      {ready && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={SECTIONS} fill={phone} /> : null}
+      {ready && section === "sharing" ? <SharingPage rows={rows!} reload={load} openItem={openFrom} /> : null}
+      {ready && section === "browsers" ? <DevicesPage rows={rows!} reload={load} openItem={openFrom} /> : null}
+      {ready && section === "health" ? <WatchtowerPage rows={rows!} reload={load} openItem={openFrom} /> : null}
+      {ready && section === "import" ? <View className="gap-s3">
         <View className="self-start"><Button kind="ghost" size="sm" icon="chevron-left" label="Vault" onPress={() => setSection("items")} /></View>
         <Text size="title" strong accessibilityRole="header">Bring in passwords and keys</Text>
         {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Import")}</Text> : <ImportPage reload={load} />}
       </View> : null}
       {section !== "items" ? null : <>
-      {!err && rows && !locked && health && health.total ? <Card><View className="flex-row items-center gap-s3"><View className="min-w-0 flex-1"><Text strong>Health</Text><Text size="secondary" tone="label">{health.line}</Text></View><Button kind="primary" size={phone ? "md" : "sm"} label="Fix" onPress={() => { hide(); setSection("health"); }} /></View></Card> : null}
-      {!err && rows && !locked ? <Field label="Search the vault" value={query} onChangeText={(q) => { hide(); setQuery(q); setSel(null); }} placeholder="A name, a site or a kind" /> : null}
-      <Tabs<Tab | "Held"> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held fields"]]} />
-      {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
+      {ready ? <Field name="Search the vault" value={query} onChangeText={(q) => { hide(); setQuery(q); setSel(null); }} placeholder="Search the vault" /> : null}
+      {ready && health && health.total ? <Card flush><Row dense lead={<IconTile name="shield" tone="warn" />} title={health.title} sub={health.detail} chevron onPress={() => { hide(); setSection("health"); }} /></Card> : null}
+      <Tabs<Filter | "Held"> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={FILTERS} />
+      {ready && personal === "locked" ? <Card><View className="gap-s3">
         <Text strong>Your personal vault is locked</Text>
         {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Unlock it")}</Text> : <>
           <Text tone="muted">{presenceText("Enter its password and confirm with Face ID.")}</Text>
@@ -206,7 +217,6 @@ export default function RealVault() {
           <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} disabled={busy || !pw} onPress={doUnlockPersonal} /></View>
         </>}
       </View></Card> : null}
-      {!err && rows && !locked ? (claimBlocked() ? <Text size="caption" tone="label">{ON_PHONE.replace("Do this", "Add items")}</Text> : <View className="self-start"><View className="flex-row flex-wrap gap-s2"><Button kind="primary" icon="plus" label="Add an item" onPress={() => { setProblem(""); setAdding({ kind: "login", name: "", username: "", secret: "", url: "" }); }} /><Button kind="ghost" label="Make an SSH key" onPress={() => setSsh(true)} /><Button kind="ghost" label="Import" onPress={() => { hide(); setSection("import"); }} /></View></View>) : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
       {!err && rows && locked ? (
@@ -221,9 +231,9 @@ export default function RealVault() {
         ) : <Card flush><ErrorState title="The vault has not answered" reason="Try again in a moment." retry={load} /></Card>
       ) : null}
       {tab === "Held" ? (
-        records.error && !records.data ? <Card flush><EmptyState title="Held fields did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
+        records.error && !records.data ? <Card flush><EmptyState title="Records did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
         : records.loading && !records.data ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card>
-        : <><Text size="caption" tone="label">A held field is a sealed value on a record, such as a tax ID. The Vault keeps the value; the record keeps only a reference, and an assistant sees that it is on file, not what it says.</Text><Card flush>
+        : <><Text size="caption" tone="label">Some fields on a record, such as a tax ID, are kept here instead. The record shows that one is on file, and an assistant sees the same, never the value.</Text><Card flush>
             {held.length ? heldByRecord(held).map((g, gi) => (
               <View key={g.urn}>{gi ? <Divider /> : null}
                 <Row dense title={g.title} sub={g.typeLabel} />
@@ -233,10 +243,10 @@ export default function RealVault() {
                       : claimBlocked() ? <Text size="caption" tone="label">Reveal in Vyre on your phone</Text> : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => revealHeld(h)} />} />
                 ))}
               </View>
-            )) : <EmptyState title="No sealed fields" body="Seal a field on a record and its value moves into the Vault." />}
+            )) : <EmptyState title="Nothing kept here yet" body="Mark a field on a record as sealed and its value moves into the Vault." />}
           </Card></>
       ) : null}
-      {tab !== "Held" && !err && rows && !locked ? (
+      {tab !== "Held" && ready ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
           <View className={phone ? "" : "min-w-0 flex-1"}>
             <Card flush>
@@ -245,7 +255,7 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : claimBlocked() ? "No items yet. Add items in Vyre on your phone." : "No items yet. Use Add an item, or bring them in from 1Password, LastPass or a browser under Import."} />}
+              )) : <EmptyState title={query.trim() ? "Nothing matches" : "Nothing here yet"} body={query.trim() ? "Try a name, a site or a kind." : nothingHere(tab, rows!.length > 0, claimBlocked())} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
@@ -254,22 +264,23 @@ export default function RealVault() {
       </>}
       {editSheet}
       <SshSheet open={ssh} onClose={() => setSsh(false)} onMade={load} />
-      <Sheet open={!!sharing} onClose={() => setSharing(null)} title={cur ? `Share ${cur.name}` : "Share"}>
+      <Sheet open={!!sharing} onClose={() => setSharing(null)} title={cur ? `Give access to ${cur.name}` : "Give access"}>
         {sharing && cur ? (
           <View className="gap-s3">
-            <Field label="Who" value={sharing.module} onChangeText={(module) => setSharing({ ...sharing, module })} placeholder="mail" help="A module or assistant by name. Use name/watcher for one watcher." />
+            <Field label="Assistant or app" value={sharing.module} onChangeText={(module) => setSharing({ ...sharing, module })} placeholder="mail" help="Its name as it appears in Vyre." />
             <Field label="Only in this project (optional)" value={sharing.project} onChangeText={(project) => setSharing({ ...sharing, project })} />
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <Button kind="primary" label={busy ? "Sharing" : "Share with Face ID"} onPress={busy ? () => {} : () => doShare(cur)} />
-            <Text size="caption" tone="label">Use only. It never sees the value, and you can take it back under Who has it.</Text>
+            <Button kind="primary" label={busy ? "Sharing" : "Give access"} onPress={busy ? () => {} : () => doShare(cur)} />
+            <Text size="caption" tone="label">It can use the item and never sees the value. You can take access back at any time.</Text>
           </View>
         ) : null}
       </Sheet>
-      <Sheet open={!!adding} onClose={() => { setAdding(null); setFieldErr({}); }} title="Add to the vault">
+      <Sheet open={!!adding} onClose={() => { setAdding(null); setFieldErr({}); }} title={adding ? { login: "New login", "api-key": "New API key", secret: "New secret" }[adding.kind] : "New item"}>
         {adding ? (
           <View className="gap-s3">
             <Segmented label="Kind" value={adding.kind} onChange={(kind) => setAdding({ ...adding, kind })} options={NEW_KINDS} />
-            <Field label="Name" error={fieldErr.name} value={adding.name} onChangeText={(name) => { setFieldErr((e) => ({ ...e, name: undefined })); setAdding({ ...adding, name }); }} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"} />
+            <Field label="Name" error={fieldErr.name} value={adding.name} onChangeText={(name) => { setFieldErr((e) => ({ ...e, name: undefined })); setAdding({ ...adding, name }); }} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"}
+              help={slug && slug !== adding.name.trim() ? `Saved as ${slug}.` : undefined} />
             {adding.kind === "login" ? <Field label="Username" error={fieldErr.username} value={adding.username} onChangeText={(username) => { setFieldErr((e) => ({ ...e, username: undefined })); setAdding({ ...adding, username }); }} /> : null}
             <Field label={adding.kind === "login" ? "Password" : "Value"} error={fieldErr.secret} value={adding.secret} onChangeText={(secret) => { setFieldErr((e) => ({ ...e, secret: undefined })); setAdding({ ...adding, secret }); }} kind="password" />
             {adding.kind === "login" ? (
@@ -284,8 +295,8 @@ export default function RealVault() {
             ) : null}
             {adding.kind === "login" ? <Field label="Web address (optional)" error={fieldErr.url} value={adding.url} onChangeText={(url) => { setFieldErr((e) => ({ ...e, url: undefined })); setAdding({ ...adding, url }); }} placeholder="https://drive.juniper.example" /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <Button kind="primary" label={busy ? "Saving" : "Save with Face ID"} onPress={busy ? () => {} : doAdd} />
-            <Text size="caption" tone="label">The box asks you to approve this save. Assistants never see the value.</Text>
+            <Button kind="primary" label={busy ? "Saving" : "Save"} onPress={busy ? () => {} : doAdd} />
+            <Text size="caption" tone="label">Assistants use it and never see the value.</Text>
           </View>
         ) : null}
       </Sheet>

@@ -60,7 +60,7 @@ test("the waiting line names who asked and what", { skip: !strip }, async () => 
   const { pickPending, waitingLine, whoAsked } = await import("./more-model.ts");
   const w = pickPending({ grants: [{ id: "g", name: "Gmail", module: "watch", watcher: "intake", by: "agent:kit" }], passes: [{ id: "p", holder: "theo", items: ["Gmail", "Drive"], mode: "sealed", by: "mcp:claude" }] });
   assert.equal(waitingLine(w[0]), "kit asked to let watch/intake use Gmail");
-  assert.equal(waitingLine(w[1]), "Claude asked to share Gmail, Drive with theo, sealed");
+  assert.equal(waitingLine(w[1]), "Claude asked to share Gmail, Drive with theo, as a copy");
   assert.equal(whoAsked(""), "An agent");
 });
 
@@ -96,14 +96,14 @@ test("create, revoke, offboard: tool names, the ticket, and what to rotate", { s
   assert.deepEqual(await s.revokePass("p1"), ["Stripe"]);
   assert.deepEqual(await s.offboard("dana"), { ended: 2, rotate: ["Stripe"] });
   assert.deepEqual(b.seen.map((x) => x.tool), ["vault.pass.create", "vault.pass.revoke", "vault.offboard"]);
-  assert.equal(revokedLine("dana", ["Stripe"]), "Ended. Replace Stripe: they kept a sealed copy.");
+  assert.equal(revokedLine("dana", ["Stripe"]), "Ended. Replace Stripe: they kept a copy.");
   assert.equal(revokedLine("dana", []), "Ended. dana cannot use it any more.");
 });
 
 test("lines for a pass and a device", { skip: !strip }, async () => {
   const { pickPasses, passLine, expiryWord, pickDevices, deviceLines } = await import("./more-model.ts");
   const [p1, p2, h1] = pickPasses({ passes: [{ id: "p1", holder: "dana", person: "Dana", items: ["Stripe", "Gmail"], note: "Read reports", expires: "2026-10-31T00:00:00Z" }, { id: "p2", holder: "theo", status: "pending", mode: "sealed" }], held: [{ id: "h1", owner: "kit" }] });
-  assert.deepEqual(passLine(p1), { title: "To dana, Dana", sub: "Stripe, Gmail, Read reports", state: "Relayed, until 31 oct" });
+  assert.deepEqual(passLine(p1), { title: "To dana, Dana", sub: "Stripe, Gmail, Read reports", state: "Stays on your server, until 31 Oct" });
   assert.equal(passLine(p2).state, "Waiting, no end date");
   assert.equal(passLine(h1).title, "From kit");
   assert.equal(expiryWord(null), "No end date");
@@ -243,8 +243,8 @@ test("health on the home: a count and the biggest reasons in one line, nothing w
   const { healthSummary } = await import("./more-model.ts");
   const h = { checked: 5, counts: { weak: 1, reused: 2, "2fa-available": 3 }, items: [
     { name: "A", kind: "login", reasons: ["weak", "reused"], group: "g" }, { name: "B", kind: "login", reasons: ["reused"], group: "g" }, { name: "C", kind: "login", reasons: ["2fa-available"], group: "" }] };
-  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused." });
-  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "" });
+  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused.", title: "2 items need a look", detail: "1 weak, 2 reused" });
+  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "", title: "", detail: "" });
   assert.equal(healthSummary({ checked: 1, counts: { old: 1 }, items: [{ name: "Z", kind: "login", reasons: ["old"], group: "" }] }).line, "1 item needs attention: 1 old.");
 });
 

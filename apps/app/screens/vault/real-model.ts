@@ -20,7 +20,7 @@ export const kindWord = (kind: string): string => KIND_WORD[kind] ?? kind;
 
 /** The line under a name: what the person wrote, else where it is used, else the kind. */
 export function lineOf(r: ListRow): string {
-  const host = r.hosts[0] ?? (r.url ? r.url.replace(/^https?:\/\//, "").split("/")[0] : "");
+  const host = (r.hosts[0] ?? (r.url ?? "")).replace(/^https?:\/\//, "").split("/")[0];
   return r.description || host || kindWord(r.kind);
 }
 
@@ -31,7 +31,9 @@ export function toItem(r: ListRow): RealItem {
   };
 }
 
-export const itemsOf = (rows: ListRow[], tab: Tab): RealItem[] => rows.filter((r) => tabOf(r.kind) === tab).map(toItem);
+/** What the list can show: every item, or one kind's. */
+export type Filter = Tab | "All";
+export const itemsOf = (rows: ListRow[], tab: Filter): RealItem[] => rows.filter((r) => tab === "All" || tabOf(r.kind) === tab).map(toItem);
 
 /**
  * Find items by what the person remembers: part of the name, the note, the site it is for, or the kind ("card", "api key"). Every word typed must match somewhere; names first, then the rest, each in
@@ -109,10 +111,14 @@ export const NEW_KINDS: [NewItem["kind"], string][] = [["login", "Login"], ["api
 /** The host of a link the person typed, lower case, or "" when it is not one. */
 export const hostOf = (url: string): string => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(url.trim()); return m ? m[1].toLowerCase() : ""; };
 
+/** The vault's own name for what the person typed: a name is letters, digits, dot, dash and underscore, so spaces become dashes and anything else is dropped ("Juniper Drive" is saved as Juniper-Drive). */
+export const slugName = (typed: string): string => typed.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").replace(/^[^A-Za-z0-9]+/, "").slice(0, 128);
+
 /** What is wrong with a new item, field by field, in words the person can act on: every required field that is empty, shown under that field (never left to the browser's own bubble). */
 export function putProblems(n: NewItem): Partial<Record<"name" | "username" | "secret" | "url", string>> {
   const out: Partial<Record<"name" | "username" | "secret" | "url", string>> = {};
   if (!n.name.trim()) out.name = "Give it a name.";
+  else if (!slugName(n.name)) out.name = "Start the name with a letter or a number.";
   if (n.kind === "login" && !n.username.trim()) out.username = "Type the username.";
   if (!n.secret) out.secret = n.kind === "login" ? "Type the password." : "Type the value.";
   if (n.kind === "login" && n.url.trim() && !hostOf(n.url)) out.url = "That is not a web address.";
@@ -123,7 +129,7 @@ export function putProblems(n: NewItem): Partial<Record<"name" | "username" | "s
 export function putInput(n: NewItem): { input: Record<string, unknown> } | { error: string } {
   const first = Object.values(putProblems(n))[0];
   if (first) return { error: first };
-  const name = n.name.trim();
+  const name = slugName(n.name);
   if (n.kind === "login") {
     const host = hostOf(n.url);
     return { input: { name, kind: "login", fields: { username: n.username.trim(), password: n.secret }, ...(host ? { url: n.url.trim(), hosts: [host] } : {}) } };
