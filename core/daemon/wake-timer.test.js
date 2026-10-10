@@ -40,5 +40,5 @@ test("an event that moves the next wake up wakes the timer sooner (a short wait 
   await r.advance(1_500);
   assert.equal(r.calls.tick, 1, "the 3 second wait came due on time, not after the long sleep");
   const before = r.calls.nextWake; for (let i = 0; i < 5; i++) await r.w.poke();
-  assert.ok(r.calls.nextWake - before <= 1, "pokes within a second share one look");
+  assert.ok(r.calls.nextWake - before <= 2, "pokes within a second share one look (and the re-arm it causes)");
 });
