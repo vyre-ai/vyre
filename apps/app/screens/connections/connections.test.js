@@ -298,3 +298,13 @@ test("one list of what is connected: apps and MCP servers together, each with a 
   assert.equal(all.find((c) => c.label === "Acme")?.words, "the key was refused (401)");
   assert.deepEqual(unifyConnected([], []), []);
 });
+
+test("connections list: the line under a connection says how it is doing in plain words, and what it is", { skip: !strip }, async () => {
+  const { connectedLine, connectedKind } = await import("./any-app.ts");
+  const c = (/** @type {any} */ o) => ({ key: "k", kind: "api", label: "Acme", where: "api.acme.example", status: "ok", words: "connected", ...o });
+  assert.equal(connectedLine(c({})), "Working: connected");
+  assert.equal(connectedLine(c({ status: "bad", words: "the key was refused (401)" })), "Needs attention: the key was refused (401)");
+  assert.equal(connectedLine(c({ status: "idle", words: "not used yet" })), "Idle: not used yet");
+  assert.equal(connectedKind(c({ kind: "mcp" })), "MCP server");
+  assert.equal(connectedKind(c({ kind: "api" })), "App");
+});
