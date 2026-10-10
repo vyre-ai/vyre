@@ -24,7 +24,7 @@ import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
-import { runBoxOperation, checkBoxOperation } from "./siteops.js";
+import { runBoxOperation, checkBoxOperation, healBoxOperation } from "./siteops.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
@@ -161,7 +161,7 @@ export default {
     ctx.tool("chrome.op.run", {
       internal: true, callers: ["module"],
       description: "Run one learned operation of a site in an agent's own Chrome on this box, for the connectors module: { agent, site, name, inputs, approved?, check? } -> the operation's answer (ok, class, data, next). Never called directly.",
-      input: obj({ agent: str, site: str, name: str, inputs: { type: "object" }, approved: { type: "boolean" }, check: { type: "boolean" } }, ["agent", "site", "name"]),
+      input: obj({ agent: str, site: str, name: str, inputs: { type: "object" }, approved: { type: "boolean" }, check: { type: "boolean" }, heal: { type: "boolean" } }, ["agent", "site", "name"]),
       run: async (i, meta) => {
         if (!meta || meta.caller !== "module:connectors") throw Object.assign(new Error("only the connectors module runs a site's operation here"), { code: "denied" });
         const agent = String(i.agent || "");
@@ -173,8 +173,24 @@ export default {
         await mayAct(agent, "chrome.op.run");
         const { cdp, sessionId } = await session(agent);
         if (i.check === true) return checkBoxOperation({ cdp, sessionId, op: entry.op });
-        const res = await runBoxOperation({ cdp, sessionId, op: entry.op, inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, approved: i.approved === true });
+        const inputs = i.inputs && typeof i.inputs === "object" ? i.inputs : {};
+        let res = await runBoxOperation({ cdp, sessionId, op: entry.op, inputs, approved: i.approved === true });
         act_(meta, agent, "op", res.ok === true, res.ok ? undefined : String(res.reason || res.class), { summary: `${entry.name} on ${bareUrl(origin)}` });
+        // Reactive repair, reads only: the stored template is always tried first; a drift relearns the operation from what the page sends, and the repair is kept (as a new version) only after a replay answers.
+        if (!res.ok && res.class === "drift" && entry.kind === "read" && i.heal !== false) {
+          const h = /** @type {any} */ (await healBoxOperation({ cdp, sessionId, op: entry.op, inputs }));
+          if (h.outcome === "healed" && h.operation) {
+            await ctx.call("memory.site.put", { origin, target: "origin", patch: { key: origin, ops: [{ name: entry.name, kind: entry.kind, op: h.operation, outcome: "ok" }] } }).catch(() => null);
+            const again = await runBoxOperation({ cdp, sessionId, op: h.operation, inputs, approved: false });
+            if (again.ok) {
+              await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "ok" }).catch(() => null);
+              act_(meta, agent, "op", true, undefined, { summary: `${entry.name} repaired on ${bareUrl(origin)}` });
+              return { ...again, healed: true };
+            }
+          }
+          await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "miss" }).catch(() => null);
+          return { ...res, heal: { outcome: h.outcome, reason: h.reason }, version: entry.version, next: "could not repair automatically: teach it again with chrome_op learn" };
+        }
         // the store's own count: a success raises the trust, a drift counts a miss (never an auth or rate failure: those are not the operation's fault)
         if (res.ok) await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "ok" }).catch(() => null);
         else if (res.class === "drift") await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "miss" }).catch(() => null);
