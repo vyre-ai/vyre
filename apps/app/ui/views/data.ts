@@ -21,5 +21,5 @@ export function useRecordEvents(urn: string | undefined) {
 
 /** The env every field renderer on a screen gets: who the actors are, what a link points at, the clock, where a link goes. */
 export function useFieldEnv(world: RecordsWorld | undefined, open: (urn: string) => void): FieldEnv {
-  return useMemo(() => ({ actors: world?.actors ?? [], links: world ? linkIndex(world.types, world.byType) : {}, now: Date.now(), open }), [world, open]);
+  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? linkIndex(world.types, world.byType) : {}, now: Date.now(), open }), [world, open]);
 }
