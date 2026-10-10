@@ -16,7 +16,7 @@
 // and change a permission is for. That goes into the ask's row (threads.asks), redacted and
 // capped, never into an event.
 
-import { rememberTool, screenshotsOf } from "../sessions/drivers/claude-shots.js";
+import { rememberTool, screenshotsOf } from "../../lib/claude-shots.js";
 import { redact } from "../transcripts/sanitize.js";
 import { receiptOf, argsOf } from "../../lib/receipt.js";
 import { vyreSteps } from "../../lib/vyre-steps.js";
