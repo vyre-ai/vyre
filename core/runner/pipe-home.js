@@ -77,6 +77,8 @@ export function createPipes(o = {}) {
     for (const k of ["startTimer", "killTimer", "waitTimer"]) { const t = /** @type {any} */ (p)[k]; if (t) { clearT(t); /** @type {any} */ (p)[k] = null; } }
     if (p.drain) { const d = p.drain; p.drain = null; d(); }
     wake(p);
+    // the lender's last call may still be on its way and should hear "closed"; after a minute the entry is forgotten
+    const forget = setT(() => { if (table.get(p.session) === p) table.delete(p.session); }, 60_000); forget.unref?.();
     const proc = p.proc;
     proc.exitCode = how.code; proc.signalCode = how.signal;
     if (how.moved) proc.moved = how.moved;
