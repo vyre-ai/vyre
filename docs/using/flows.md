@@ -56,6 +56,10 @@ A **run another Flow** step names a Flow that is already switched on in this spa
 
 A Flow that sends something now and something else days later (a document out for signature, then the signed copy) asks you once. The later step says `with: "<the earlier step>"`, and the question for the earlier step names both in plain words: "Send for signature, and then email Dana the signed copy with this same yes?". Your yes covers both, and the signed copy goes out when the time comes with no second question. Vyre only saves this when the earlier send's tool says it covers the later one, and only for a step after it on the same path (not inside a loop, not in another branch). If you say no to the first, the second never goes. A step that does not say `with` asks for itself.
 
+### How long a finished run keeps its details
+
+A finished run keeps every step it took for 90 days. After that it shrinks to one line, "Welcome the client: done", with the Flow, the record, when it started and how it ended; its step-by-step details go. Change the number in Settings, Flows, "Keep the details of a finished run for (days)" (your assistant can change it too). A run still going, one waiting for a person, and a failed one that needs a person are never shortened, and neither is a run whose lane is still going. Nothing is deleted outright, and the log of what happened stays as it was.
+
 ### Try it on last week
 
 Before you switch on a change, Vyre replays the last week through it. Nothing is done: every action is a stand-in. When the Flow has really run that week, you see the two side by side: "In that time it really ran 12 times. This version would run 12 times: 11 the same, 1 different, 0 new, 0 it would not run." A different run says which steps it did and which this version would do. Ask your assistant to try a Flow on last week, or look at the line on the approval card.

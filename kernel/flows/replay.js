@@ -32,7 +32,7 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * @param {any[]} real the Flow's real runs @param {{ since?: number, until?: number }} window
  */
 export function compareHistory(sim, real, window) {
-  const inWindow = real.filter(r => !r.dry && !r.parent && (window.since === undefined || r.started_at >= window.since) && (window.until === undefined || r.started_at <= window.until));
+  const inWindow = real.filter(r => !r.dry && !r.parent && !r.pruned && (window.since === undefined || r.started_at >= window.since) && (window.until === undefined || r.started_at <= window.until));
   /** @type {Map<string, any>} */ const then = new Map();
   for (const r of inWindow) { const k = keyOf(r.trigger); if (k) then.set(k, r); }
   let same = 0;
