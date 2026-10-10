@@ -361,9 +361,9 @@ async function startLocked(opts, root, p, release) {
           // a chat that began on this server moves to a computer of the person's: its whole sealed turns (the server's own checkpoint store) become the session's transcript at the home, and the computer seeds its agent home from it
           adopt: async (/** @type {string} */ space, /** @type {{ thread: string, person: string, chat?: string | null }} */ i) => {
             const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
-            if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here"), { code: "not_found" });
+            if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" });
             const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread }, "module:vyred", { door: true })).data);
-            if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move"), { code: "unavailable" });
+            if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move: send the chat a message here first, then move it"), { code: "unavailable" });
             const port = ownHostOf()?.port(space);
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });

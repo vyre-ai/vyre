@@ -86,7 +86,7 @@ export function lentPlacements(registry, extra = {}) {
     /** A loopback port of this box that leads to `port` on the computer running the chat's program (preview-home.js). */
     openPreview: async (/** @type {string} */ space, /** @type {{ thread: string, port: number, person: string }} */ i) => {
       const h = homeOf(space); const hit = h ? h.book.find(i.thread, i.person) : null;
-      if (!h || !hit || hit.where !== "mac") throw Object.assign(new Error("that chat does not run on one of your computers"), { code: "not_found" });
+      if (!h || !hit || hit.where !== "mac") throw Object.assign(new Error("that chat does not run on one of your computers (runner.places shows where your chats run)"), { code: "not_found" });
       return h.openPreview({ session: hit.session, port: i.port, person: i.person, ...(typeof i.viewer === "function" ? { viewer: i.viewer } : {}) });
     },
     /** The folders the person's ready computers offer to chats. */
