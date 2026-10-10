@@ -418,6 +418,19 @@ export default {
         return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
+    ctx.tool("work.project.members", {
+      description: "Who is on a Project's team: each assistant or person with the role it fills, from the project's team records ({ members: [{ agent, role }] }). Read under the caller's own chain: a Project the caller may not read is not found.",
+      input: obj({ project: { type: "string", description: "The Project's record id, address or short name" } }, ["project"]),
+      callers: ["cli", "local", "deck", "capsule", "device"],
+      run: async (input, extra) => {
+        const k = kernelOf(), chain = await chainOf(extra);
+        const rec = await hubOf().projectOf(String(input.project || ""));
+        const mine = rec ? await k.records.get(chain, "project", rec.id).catch(() => null) : null;
+        if (!rec || !mine) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
+        const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 200 } }).catch(() => ({ rows: [] }))).rows || [];
+        return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || "") }; }).filter((/** @type {any} */ m) => m.agent) };
+      },
+    });
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
