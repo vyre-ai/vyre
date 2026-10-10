@@ -11,6 +11,8 @@ import { INVITE_ROLES, ROLE_HELP, acceptKind, inviteInput, newVaultInput, person
   type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
+/** A small button is 36 high, and a phone needs 44: the same button, medium there. */
+const useSmall = (): "sm" | "md" => (useUiTheme().phone ? "md" : "sm");
 const err = (e: unknown) => e as { code?: string; message?: string };
 const say = (e: unknown, done: string) => refusalWord(err(e), done);
 
@@ -19,6 +21,7 @@ type Props = { rows: ListRow[]; reload: () => void; openItem: (name: string) => 
 // ---- Shared by you ----
 
 export function PassesPage({ rows, reload }: Props) {
+  const sm = useSmall();
   const [d, setD] = useState<{ passes: Pass[]; pending: Pending[]; reveals: Reveal[] } | null>(null);
   const [problem, setProblem] = useState("");
   const [sharing, setSharing] = useState<string[] | null>(null);
@@ -32,7 +35,7 @@ export function PassesPage({ rows, reload }: Props) {
   const passRow = (p: Pass) => {
     const l = passLine(p);
     return <Row key={p.id} dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")}
-      end={<Button kind="holdText" size="sm" label={p.direction === "from" ? "Remove" : p.state === "waiting" ? "Cancel" : "Stop sharing"} onPress={() => vaultMore.revokePass(p.id).then((rot) => { showToast(revokedLine(p.holder, rot)); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} />;
+      end={<Button kind="holdText" size={sm} label={p.direction === "from" ? "Remove" : p.state === "waiting" ? "Cancel" : "Stop sharing"} onPress={() => vaultMore.revokePass(p.id).then((rot) => { showToast(revokedLine(p.holder, rot)); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} />;
   };
   return (
     <View className="gap-s3 pt-s2">
@@ -44,8 +47,8 @@ export function PassesPage({ rows, reload }: Props) {
               <View key={x.id}>{i ? <Divider /> : null}
                 <Row title={<Text>{revealLine(x)}</Text>} sub={
                   <View className="flex-row gap-s2 pt-s1">
-                    <Button size="sm" label="Allow once" onPress={() => act(() => vaultMore.allowReveal(x.id), "Allowed. They can take it once.")} />
-                    <Button kind="ghost" size="sm" label="Decline" onPress={() => act(() => vaultMore.declineReveal(x.id), "Declined. Nothing was sent.")} />
+                    <Button size={sm} label="Allow once" onPress={() => act(() => vaultMore.allowReveal(x.id), "Allowed. They can take it once.")} />
+                    <Button kind="ghost" size={sm} label="Decline" onPress={() => act(() => vaultMore.declineReveal(x.id), "Declined. Nothing was sent.")} />
                   </View>} />
               </View>
             ))}
@@ -60,8 +63,8 @@ export function PassesPage({ rows, reload }: Props) {
               <View key={x.id}>{i ? <Divider /> : null}
                 <Row title={<Text>{waitingLine(x)}</Text>} sub={
                   <View className="flex-row gap-s2 pt-s1">
-                    <Button size="sm" label="Approve" onPress={() => act(() => vaultMore.approve(x.id), "Approved.")} />
-                    <Button kind="ghost" size="sm" label="Deny" onPress={() => act(() => vaultMore.deny(x), "Denied. Nothing was shared.")} />
+                    <Button size={sm} label="Approve" onPress={() => act(() => vaultMore.approve(x.id), "Approved.")} />
+                    <Button kind="ghost" size={sm} label="Deny" onPress={() => act(() => vaultMore.deny(x), "Denied. Nothing was shared.")} />
                   </View>} />
               </View>
             ))}
@@ -72,8 +75,8 @@ export function PassesPage({ rows, reload }: Props) {
         <View className="gap-s2">
           <Text tone="muted" size="secondary">Let another person's Vyre, or an outside agent, use an item. They use it and never see the value.</Text>
           <View className="flex-row flex-wrap gap-s2">
-            <Button kind="primary" size="sm" icon="plus" label="Share an item" disabled={!rows.length} onPress={() => setSharing([])} />
-            <Button kind="ghost" size="sm" label="Someone left" onPress={() => setOffboarding(true)} />
+            <Button kind="primary" size={sm} icon="plus" label="Share an item" disabled={!rows.length} onPress={() => setSharing([])} />
+            <Button kind="ghost" size={sm} label="Someone left" onPress={() => setOffboarding(true)} />
           </View>
           {given.length ? <Card flush>{given.map((p, i) => <View key={p.id}>{i ? <Divider /> : null}{passRow(p)}</View>)}</Card>
             : <Text tone="muted">Nothing shared yet. Nobody else can use anything in this vault.</Text>}
@@ -100,11 +103,12 @@ function PickChip({ on, label, onPress }: { on: boolean; label: string; onPress:
 
 /** One line to give an outsider: a button that copies it, over the line itself in a code box, collapsed to one row. */
 function CopyLine({ label, line, extra }: { label: string; line: string; extra?: string }) {
+  const sm = useSmall();
   const { color } = useUiTheme();
   const text = extra ? `${line}\n${extra}` : line;
   return (
     <View className="gap-s2">
-      <Button kind="secondary" size="sm" icon="copy" label={label} onPress={() => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); }} />
+      <Button kind="secondary" size={sm} icon="copy" label={label} onPress={() => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); }} />
       <View style={{ borderRadius: 8, borderWidth: 1, borderColor: color["edge-strong"], paddingHorizontal: 10, paddingVertical: 8 }}>
         <Text mono selectable size="caption" numberOfLines={1}>{line}</Text>
       </View>
@@ -262,6 +266,7 @@ export function SharingPage(p: Props) {
 // ---- Shared with you ----
 
 function SharedPage({ reload }: Props) {
+  const sm = useSmall();
   const [held, setHeld] = useState<Pass[] | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [problem, setProblem] = useState("");
@@ -275,9 +280,9 @@ function SharedPage({ reload }: Props) {
         <View className="gap-s2">
           {held.length ? <Card flush>{held.map((p, i) => {
             const l = passLine(p);
-            return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
+            return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size={sm} label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
           })}</Card> : <Text tone="muted">Nothing shared with you yet. When someone shares an item, it shows up here and your assistants can use it. The value stays with them.</Text>}
-          <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Accept a share" onPress={() => setAccepting(true)} /></View>
+          <View className="self-start"><Button kind="ghost" size={sm} icon="plus" label="Accept a share" onPress={() => setAccepting(true)} /></View>
         </View>
       </Sec>
       <AcceptSheet open={accepting} onClose={() => setAccepting(false)} onDone={() => { load(); reload(); }} />
@@ -291,6 +296,7 @@ function SharedPage({ reload }: Props) {
 
 /** The vaults shared with others and the people Vyre shares with, from names only. Reading is here; the buttons that change a shared vault say "Coming in this release" until trust's vault contract lands. */
 export function SharedVaultsSection() {
+  const sm = useSmall();
   const [vaults, setVaults] = useState<SharedVault[] | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [making, setMaking] = useState(false);
@@ -309,19 +315,19 @@ export function SharedVaultsSection() {
               <View className="gap-s2">
                 <Text size="secondary" tone="label">{vaultLine(v)}</Text>
                 {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`}
-                  end={!mine || m.role === "owner" ? null : <Menu trigger={<Button kind="ghost" size="sm" label="Manage" />} items={[
+                  end={!mine || m.role === "owner" ? null : <Menu trigger={<Button kind="ghost" size={sm} label="Manage" />} items={[
                     ...INVITE_ROLES.filter(([r]) => r !== m.role).map(([r, l]) => ({ label: `Make ${l.toLowerCase()}`, onPress: () => void act(() => vaultMore.memberRole(v.name, m.name, r), `${m.name} is now ${l.toLowerCase()} in ${v.name}.`) })),
                     { label: "Take out of the vault", danger: true, onPress: () => void act(() => vaultMore.memberRemove(v.name, m.name), (r) => removedLine(m.name, v.name, r as string[])) },
                   ]} />} />)}
                 {mine ? <View className="flex-row flex-wrap gap-s2">
-                  <Button kind="ghost" size="sm" icon="plus" label="Invite" onPress={() => setInviting(v.name)} />
-                  <Button kind="ghost" size="sm" label="Change the keys" onPress={() => void act(() => vaultMore.rotateVault(v.name), `New keys for ${v.name}.`)} />
+                  <Button kind="ghost" size={sm} icon="plus" label="Invite" onPress={() => setInviting(v.name)} />
+                  <Button kind="ghost" size={sm} label="Change the keys" onPress={() => void act(() => vaultMore.rotateVault(v.name), `New keys for ${v.name}.`)} />
                 </View> : <Text size="caption" tone="label">Only an admin can add people or change the keys.</Text>}
               </View>
             </Card>
           );
         }) : <Text size="secondary" tone="label">No shared vaults yet. A shared vault lets a group keep items together.</Text>}
-        <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="New shared vault" onPress={() => setMaking(true)} /></View>
+        <View className="self-start"><Button kind="ghost" size={sm} icon="plus" label="New shared vault" onPress={() => setMaking(true)} /></View>
         {people.length ? <><Text strong size="secondary">People you share with</Text><Card flush>{people.map((p, i) => <View key={p.name}>{i ? <Divider /> : null}<Row dense title={p.name} sub={personLine(p)} /></View>)}</Card></> : null}
       </View>
       <NewVaultSheet open={making} onClose={() => setMaking(false)} onDone={load} />
@@ -490,6 +496,7 @@ function AddEmergencySheet({ open, onClose, onDone }: { open: boolean; onClose: 
 // ---- Browsers ----
 
 export function DevicesPage(_: Props) {
+  const sm = useSmall();
   const [list, setList] = useState<Device[] | null>(null);
   const [problem, setProblem] = useState("");
   const load = useCallback(() => { vaultMore.devices().then((x) => { setList(x); setProblem(""); }).catch((e) => setProblem(say(e, "loaded"))); }, []);
@@ -501,10 +508,10 @@ export function DevicesPage(_: Props) {
       {list.length ? <Card flush>{list.map((d, i) => {
         const l = deviceLines(d, Date.now());
         return <View key={d.id}>{i ? <Divider /> : null}<Row dense title={d.name} sub={[l.sub, l.sessions].filter(Boolean).join(". ")}
-          end={d.revoked ? null : <Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokeDevice(d.id).then(() => { showToast(`${d.name} can no longer fill logins.`); load(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
+          end={d.revoked ? null : <Button kind="holdText" size={sm} label="Remove" onPress={() => vaultMore.revokeDevice(d.id).then(() => { showToast(`${d.name} can no longer fill logins.`); load(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
       })}</Card> : <Text tone="muted">No browsers yet. A paired browser fills your logins for you.</Text>}
       <Text size="caption" tone="label">It fills only on the site an item is for, and only while the vault is open.</Text>
-      <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Pair a browser" onPress={comingSoon} /></View>
+      <View className="self-start"><Button kind="ghost" size={sm} icon="plus" label="Pair a browser" onPress={comingSoon} /></View>
     </View>
   );
 }
@@ -512,6 +519,7 @@ export function DevicesPage(_: Props) {
 // ---- Health ----
 
 export function WatchtowerPage({ openItem }: Props) {
+  const sm = useSmall();
   const [h, setH] = useState<Health | null>(null);
   const [problem, setProblem] = useState("");
   const [caps, setCaps] = useState<{ breach: "ask" | "off" } | null>(null);
@@ -540,8 +548,8 @@ export function WatchtowerPage({ openItem }: Props) {
         <Text strong size="secondary">Known breaches</Text>
         <Text size="secondary" tone="muted">Compares your passwords with public lists of leaked ones. Only a short fingerprint of each leaves your server, never a password, and the match is made here.</Text>
         {caps && caps.breach !== "ask"
-          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><View className="self-start"><Button kind="secondary" size="sm" label="Turn on" onPress={comingSoon} /></View></View>
-          : <View className="self-start"><Button kind="primary" size="sm" label={checking ? "Checking" : "Check now"} disabled={checking} onPress={check} /></View>}
+          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><View className="self-start"><Button kind="secondary" size={sm} label="Turn on" onPress={comingSoon} /></View></View>
+          : <View className="self-start"><Button kind="primary" size={sm} label={checking ? "Checking" : "Check now"} disabled={checking} onPress={check} /></View>}
         {breach ? <><Text>{breach.line}</Text>{breach.names.map((n) => <Row key={n} dense title={n} onPress={() => openItem(n)} />)}</> : null}
       </View>
     </View>
