@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text, LoadingState } from "@vyre/ui";
 import { ChatScreen } from "../../src/chat/ChatScreen";
+import { ensurePersistent } from "../../src/state/persistent-chat";
 import { Frame } from "../places/Frame";
 import { ENGINEER, engineerRefusal, findEngineer, mayTalk, proposals, stateOf, type Agent } from "./assistant-model";
 import { listAgents, listFlowRows, listKitRows, listTaskRows, myRole, sayToEngineer } from "./assistant";
@@ -21,6 +22,8 @@ export function RealEngineer() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [roleErr, setRoleErr] = useState("");
+  // The conversation is the pinned @Engineer chat (R031-94, 0.3.3 G25): the same one Settings opens and the chats list shows, never a thread of this page's own.
+  const [chat, setChat] = useState<string | null>(null);
   const load = useCallback(() => {
     setErr("");
     myRole().then((r) => { setRole(r); setRoleErr(""); }).catch((e) => { setRole(null); setRoleErr(said(e)); });
@@ -28,6 +31,12 @@ export function RealEngineer() {
     Promise.all([listFlowRows().catch(() => []), listKitRows().catch(() => []), listTaskRows().catch(() => [])]).then(([f, k, t]) => setWaiting(proposals(f, k, t)));
   }, []);
   useEffect(load, [load]);
+  useEffect(() => {
+    if (role === null || !mayTalk(role)) return;
+    let live = true;
+    void ensurePersistent("engineer").then((r) => { if (!live) return; if ("chat" in r) setChat(r.chat); else setErr(r.say); }).catch((e) => { if (live) setErr(said(e)); });
+    return () => { live = false; };
+  }, [role]);
   // What is waiting is read when the page opens, when you come back, and once a minute while it is open: never faster.
   useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
 
@@ -50,11 +59,11 @@ export function RealEngineer() {
     </View>
   ) : null;
 
-  if (state === "ready" && agent?.thread) {
+  if (chat) {
     return (
       <View style={{ flex: 1, minHeight: 0 }}>
         {cards ? <View className="p-s3">{cards}</View> : null}
-        <ChatScreen sessionId={agent.thread} title="@Engineer" onBack={() => router.push("/u/flows" as never)} onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } } as never)} />
+        <ChatScreen sessionId={chat} title="@Engineer" onBack={() => router.push("/u/flows" as never)} onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } } as never)} />
       </View>
     );
   }

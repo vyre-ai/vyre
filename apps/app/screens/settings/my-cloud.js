@@ -74,9 +74,9 @@ export function reportLines(r) {
   const moved = planLines({ counts: r?.moved ? { records: r.moved.records, chats: r.moved.chats, memory: r.moved.memory } : {} });
   const notMoved = (Array.isArray(r?.notMoved) ? r.notMoved : []).filter((/** @type {any} */ n) => n && typeof n.what === "string").map((/** @type {any} */ n) => `${n.what}: ${n.why || "it did not move"}`);
   const notes = (Array.isArray(r?.notes) ? r.notes : []).filter((/** @type {any} */ n) => n && typeof n.what === "string").map((/** @type {any} */ n) => `${n.what}: ${n.why || ""}`.trim());
-  const after = r?.frozen ? "Personal now points to My Cloud and is read-only. Nothing was deleted."
-    : notMoved.length ? "Personal is unchanged. Try again once the items above are sorted out."
-    : r?.not_frozen_because ? `Personal is unchanged: ${r.not_frozen_because}` : "Personal is unchanged.";
+  const after = r?.frozen ? "My Home now points to My Cloud and is read-only. Nothing was deleted."
+    : notMoved.length ? "My Home is unchanged. Try again once the items above are sorted out."
+    : r?.not_frozen_because ? `My Home is unchanged: ${r.not_frozen_because}` : "My Home is unchanged.";
   return { moved, notMoved, after, notes };
 }
 
