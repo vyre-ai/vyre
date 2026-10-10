@@ -7,6 +7,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import http from "node:http";
 import net from "node:net";
@@ -71,9 +72,13 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
 
   const dep = (await call("publish.create", { name: "northwind", source: { kind: "folder", ref: src }, build: { image: "dockerfile" } })).deployment;
   assert.equal(dep.stage, "Draft");
-  // BLOCKED (owner: trust): a deployment's runtime secret is a kernel grant minted by Publish, and on a real daemon the mint is refused for the address of a created Space (`publish may not make that
-  // grant`: the primary kernel's mint, a hosted Space's credential address). Until that is fixed the secret steps of this journey cannot run here; appmods reading the files Publish writes is tested in
-  // core/appmods/module.test.js, and the missing-secret refusal and the revoke restart in lib/publish and core/publish tests.
+  // the secret: a real one is held for the person; their yes makes the kernel grant the Vault answers on
+  const put = await as("vault.put", { name: "greeting-key", kind: "secret", description: "test", value: "live-secret-xyz" });
+  assert.ok(!put.error, JSON.stringify(put.error));
+  const grant = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key", name: "GREETING_PHRASE", use: ["runtime"] });
+  assert.equal(grant.held, true, JSON.stringify(grant));
+  await decide(grant.task);
+  assert.ok(!fs.existsSync(path.join(root, "publish", spaceId, "secrets", dep.id, "GREETING_PHRASE")), "no secret file is written before the yes to go live");
   // preview builds the image with the real rootless BuildKit; nothing runs yet
   const t0 = Date.now();
   const pv = await call("publish.preview", { deployment: dep.id });
@@ -100,7 +105,7 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   const got = JSON.parse(hit.body);
   assert.equal(got.root, "root-read-only", "the root cannot be written");
   assert.equal(got.data, "data-writable", "and the data volume can");
-  assert.equal(got.key, null, "no secret was granted, so none is in the process");
+  assert.equal(got.key, crypto.createHash("sha256").update("live-secret-xyz").digest("hex").slice(0, 8), "the granted secret reached the process as GREETING_PHRASE");
   assert.equal(got.cookie, "theme=dark", "the visitor's cookie, never Vyre's");
   assert.deepEqual(got.vyre, []);
   assert.deepEqual([got.method, got.url], ["GET", "/hello?a=1"]);
@@ -119,8 +124,16 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.equal(ins.Config.User, "node");
   assert.deepEqual(ins.HostConfig.Binds || [], [`${names.volume("data")}:/data`].filter(() => false).concat(ins.HostConfig.Binds || []));
   assert.ok(!(ins.Mounts || []).some((/** @type {any} */ m) => m.Type === "bind"), "nothing of the server is mounted");
-  // the env file the container started from is gone
+  // the secret's file in Publish's folder is private; the env file the container started from is gone
+  const secretFile = path.join(root, "publish", spaceId, "secrets", dep.id, "GREETING_PHRASE");
+  assert.equal(fs.statSync(secretFile).mode & 0o777, 0o600);
   assert.ok(!fs.existsSync(path.join(root, "appmods", d.kernel.id.space, "northwind", "env")), "the env file is deleted after the start");
+
+  // taking the secret away starts the server again without it
+  await call("publish.secret.revoke", { deployment: dep.id, name: "GREETING_PHRASE" });
+  const after = JSON.parse(/** @type {any} */ (await visit("GET", "/")).body);
+  assert.equal(after.key, null, "the revoked secret is not in the new process");
+  assert.ok(!fs.existsSync(secretFile));
 
   // retire takes the server down; the host stops answering and the data stays
   await call("publish.retire", { deployment: dep.id });
