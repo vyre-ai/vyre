@@ -2,9 +2,9 @@
 // each person's Chats; @Engineer is in Settings for the owner only. Daemon world: a box takes the owner's and the joiner's yes only from a hardware key.
 import assert from "node:assert/strict";
 import path from "node:path";
-import crypto from "node:crypto";
 import { createApp } from "../lib/proof/app.mjs";
-import { createRing, holdersOf } from "../../lib/chat-keys.js";
+import { startChat } from "./lib/chat.mjs";
+import { whenStoreIsUp } from "./lib/store.mjs";
 
 const NAMES = ["Ada Lovelace", "Grace Hopper", "Edith Clarke"];
 
@@ -109,24 +109,3 @@ export default {
     if (bob) bob.close();
   },
 };
-/**
- * A chat as the app starts it: its device makes the chat's key ring (a chat with a person in it is never in the clear), then work.chat.create takes the id and the ring.
- * @param {any} w @param {string} title
- */
-async function startChat(w, title, agents = /** @type {string[]} */ ([])) {
-  const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
-  const id = `chat_${crypto.randomUUID()}`;
-  const ring = createRing(id, holdersOf([{ device: "dev_journey", agree: dev.getPublicKey().toString("base64url") }]));
-  const made = await whenStoreIsUp(w, "work.chat.create", { title, id, ring: ring.doc, people: [], agents });
-  return String(made.chat || id);
-}
-/** Retry a call while the space's record store is still starting (it answers unavailable until its database is up). @param {any} w @param {string} tool @param {any} input */
-async function whenStoreIsUp(w, tool, input) {
-  const end = Date.now() + 6 * 60_000;
-  for (;;) {
-    try { return await w.call(tool, input); } catch (e) {
-      if (!(/** @type {any} */ (e).code === "unavailable") || Date.now() > end) throw e;
-      await new Promise(r => setTimeout(r, 5000));
-    }
-  }
-}
