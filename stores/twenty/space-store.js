@@ -233,7 +233,7 @@ export function createStoreFor(cfg) {
       if (got !== LATE) return got;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
       w.reason = "the record store is still starting"; w.running = true; w.starting = true;
-      if (!w.store) w.store = createDeferredStore({ reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
+      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
@@ -255,7 +255,7 @@ export function createStoreFor(cfg) {
       if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
       w.attempts++; w.reason = String(err && err.message || e);
-      if (!w.store) w.store = createDeferredStore({ reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
       waiting.set(space, w);
       const wait = backoff(w.attempts);
       writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
