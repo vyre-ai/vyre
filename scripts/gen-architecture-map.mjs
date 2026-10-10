@@ -91,6 +91,8 @@ export const MODULES = {
   "core/about": ["memory", "A few lines on who the user is, handed to every session at its start."],
   "core/agents": ["sessions", "The assistant and the agents a person makes."],
   "core/appearance": ["ui", "The theme, the colour scheme and the design tokens as settings."],
+  "core/comms": ["outside", "One way to send a text or an email: it asks the Gate once, uses the person's own mail account or Twilio from the Vault, and logs it on the client."],
+  "core/documents": ["work", "Word templates filled from records, PDFs, documents sent for signature and their signed copies filed on the client."],
   "core/appmods": ["outside", "Open-source apps (Documents first) run as containers on a server, from a pinned catalog."],
   "core/approvals": ["identity", "Approve on your phone: a paired phone signs a request's exact words."],
   "core/apps": ["system", "The Android app served from the server, signed with the owner's own key."],
