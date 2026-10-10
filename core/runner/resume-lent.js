@@ -42,17 +42,18 @@ export function createResumeLent(o) {
     }
     if (lines.length !== cp.seq) throw err("unavailable", `the lender's transcript holds ${lines.length} lines and its checkpoint says ${cp.seq}`);
     // the provider's own file, whole: a temp file in the same folder, fsynced, renamed in
-    const dir = path.dirname(tg.file);
-    fsx.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const tmp = path.join(dir, `.${path.basename(tg.file)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+    fsx.mkdirSync(path.dirname(tg.file), { recursive: true, mode: 0o700 });
+    // the real paths (a temp folder on a Mac is behind a link): the seal pins the file to its folder by them
+    const dir = fsx.realpathSync(path.dirname(tg.file)), file = path.join(dir, path.basename(tg.file)), root = fsx.realpathSync(tg.root);
+    const tmp = path.join(dir, `.${path.basename(file)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
     const fd = fsx.openSync(tmp, "w", 0o600);
     try { fsx.writeSync(fd, lines.join("\n") + "\n"); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
-    fsx.renameSync(tmp, tg.file);
+    fsx.renameSync(tmp, file);
     // the server's own store learns the same turn, so a later recover() lands here and not before it
     const port = o.port ? o.port(i.space) : null;
     let turn = Number(cp.turn) || 0;
     if (port) {
-      const seal = createTurnSeal({ port, session: tg.native, file: tg.file, root: tg.root });
+      const seal = createTurnSeal({ port, session: tg.native, file, root });
       const done = await seal.seal({ state: tg.cwd ? { cwd: tg.cwd } : {} });
       turn = done.turn;
     }
