@@ -378,3 +378,18 @@ test("after a restart the assistant has no session token: its reply waits, shows
   assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "chat.text-done" && f.author === "assistant:kit"));
   assert.equal(w.kernelMsgs().length, 2);
 });
+
+test("a record the sender named is a card for the assistants only in a chat where the sender is the one person", async t => {
+  const w = await world(t);
+  await w.k.gateway.records.define(w.chains.owner, { add_types: [CONTACT] });
+  await w.k.gateway.records.create(w.chains.owner, "contact", { name: "Dana Whitfield", age: 52, status: "open" });
+  const ask = async (/** @type {string[]} */ people) => {
+    const chat = await w.C.create(w.chains.owner, { people, assistants: ["kit"] });
+    const before = w.threads().started.length;
+    ok(await w.as("owner")("stream.send", { chat: chat.id, text: "What is Dana Whitfield's status?", to: ["assistant:kit"], cwd: "/tmp" }));
+    await w.idle();
+    return String((w.threads().started[before] || {}).prompt || "");
+  };
+  assert.match(await ask([]), /Vyre record card/, "alone with the assistants: the card is there");
+  assert.doesNotMatch(await ask([CAROL]), /Vyre record card/, "with another person: the assistants (and so they) never get what only the sender may read");
+});
