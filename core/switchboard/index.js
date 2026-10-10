@@ -51,7 +51,7 @@ import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
-import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
+import { findSession, sessionInfo, openElsewhere, transcriptPlace, workTranscript } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
@@ -4810,6 +4810,33 @@ export default {
         if (!t) return null;
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
+    });
+    // Where the transcript of a chat belongs on THIS server, whether or not the file exists yet: the loader that carries a chat on from a computer of the person's (core/runner/resume-lent.js) writes it there.
+    // Only a Claude thread this Switchboard has. On the packaged box the file belongs to the thread's account (its own uid and HOME): the answer then names the account, and only the spawner may place the file.
+    ctx.tool("threads.transcript-target", {
+      description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of or a provider that keeps no such file. On the packaged box it also names the account (uid) whose HOME holds the file.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["thread"], properties: { thread: str } },
+      run: async i => {
+        const id = String(i.thread);
+        const rec = sb.record(sb.threadOfNative(id) || id);
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const thread = String(rec.id || id), native = sb.nativeOf(thread);
+        let folders = sb.deps.transcripts || [], account;
+        if (process.env.VYRE_SUPERVISOR === "docker") {
+          const acct = await sb.accountFor({ provider: "claude", account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
+          const home = acct && acct.uid != null && sb.deps.accountHome ? sb.deps.accountHome(acct) : null;
+          if (!home) return null;
+          folders = [path.join(home, ".claude", "projects")]; account = Number(acct.uid);
+        }
+        const at = transcriptPlace(folders, String(rec.cwd || ""), native);
+        return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}), ...(account !== undefined ? { account } : {}) } : null;
+      },
+    });
+    // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).
+    ctx.tool("threads.work-transcript", {
+      description: "The file where the provider keeps a session's transcript inside a runner's workspace, for the folder the session will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["work", "cwd", "session"], properties: { work: str, cwd: str, session: str } },
+      run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session)) }; },
     });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],

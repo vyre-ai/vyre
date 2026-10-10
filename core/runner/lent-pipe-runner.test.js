@@ -7,6 +7,9 @@ import "./testing/require-sandbox.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
+import net from "node:net";
+import { encodeClientFrame } from "../../lib/ws.js";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
@@ -15,6 +18,8 @@ import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { createFolders } from "./folders.js";
+import { workTranscript } from "../switchboard/adopt.js";
 import { start } from "../daemon/index.js";
 import { openThreadSocket, lentRequest } from "../daemon/threadsock.js";
 import { tempHome } from "../../test/helpers.js";
@@ -38,14 +43,14 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
     paths: { root }, config: { role: "local", name: "Office Mac" },
     events: { emit: (/** @type {string} */ type) => { for (const f of handlers.get(type) || []) f({ type }); }, on: (/** @type {string} */ type, /** @type {any} */ f) => { handlers.set(type, [...(handlers.get(type) || []), f]); return () => handlers.set(type, (handlers.get(type) || []).filter((/** @type {any} */ x) => x !== f)); } },
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
-    call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: { devices: [] } }),
+    call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : name === "threads.work-transcript" ? { data: { file: workTranscript(input.work, input.cwd, input.session) } } : { data: { devices: [] } }),
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call: (/** @type {string} */ name, /** @type {any[]} */ args) => remote.call(name, args) }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }), ...(o.enrolled ? { lentTo: async () => [SPACE] } : {}) }) },
   };
   seams.set(root, { heartbeatMs: o.heartbeatMs || 150, beatTimeoutMs: 400, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; fs.rmSync(agentDir, { recursive: true, force: true }); });
   const run = (/** @type {string} */ tool, /** @type {any} */ input) => tools.get(tool).run(input, { caller: "cli" });
-  return { r, run, book: r.home.book, say: (/** @type {string} */ type) => ctx.events.emit(type, {}) };
+  return { r, root, run, book: r.home.book, say: (/** @type {string} */ type) => ctx.events.emit(type, {}) };
 }
 
 test("a chat spawned for a lender runs in the lender's sandbox with the SDK's flags, turns go down and answers come up, and the runner's own checkpoint is taken at the end of the turn", { skip: SKIP || false, timeout: 120_000 }, async t => {
@@ -175,6 +180,13 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   // and what the session may not do on the box, it may not do from the Mac
   const reveal = await viaLender("vault.reveal", { name: "x" });
   assert.equal(reveal.error && reveal.error.code, "denied");
+  // trust row 20: the lender picks the caller label at its door; either label a model session can carry is a model at the home, so a person's act is refused or only filed, never run
+  for (const label of ["mcp", "harness"]) {
+    for (const [tool, input] of [["vault.grant", { name: "x", module: "y" }], ["vault.pass.accept", { pass: "x" }], ["comms.send", { via: "email", to: "a@example.com", subject: "s", body: "b" }]]) {
+      const r = JSON.parse(/** @type {any} */ (await lentRequest("s_real", "POST", `/v1/tools/${tool}`, { "x-vyre-caller": label }, JSON.stringify(input))).body);
+      assert.ok(r.error || (r.data && (r.data.pending || r.data.filed)), `${tool} as ${label}: refused or only filed, not run: ${JSON.stringify(r).slice(0, 200)}`);
+    }
+  }
   // a send is held for the person exactly as it is on the box: nothing is sent from the Mac either, and what the model is told is the same
   const sendArgs = { via: "email", to: "a@example.com", subject: "hi", body: "hello" };
   const sentFromMac = await viaLender("comms.send", sendArgs), sentOnBox = await onBox("comms.send", sendArgs);
@@ -182,6 +194,29 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   assert.equal(sentOnBox.error && sentOnBox.error.code, "held_for_approval");
   const waiting = /** @type {any} */ ((await d.registry.call("approvals.pending", {}, "deck")).data).approvals.map((/** @type {any} */ a) => a.id);
   assert.ok(waiting.includes(sentFromMac.error.approval), "the card waits at the home, for the person: " + JSON.stringify(waiting));
+  proc.kill();
+});
+
+test("a chat that began on the server moves to the Mac: its whole turns are written into the computer's own agent home before the program starts, where its resume looks", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const turns = [JSON.stringify({ type: "user", n: 1 }), JSON.stringify({ type: "assistant", n: 2 })];
+  // no computer ready, or nothing whole to move: refused in words, nothing written
+  await assert.rejects(() => Promise.resolve(w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: [] })), (/** @type {any} */ e) => e.code === "unavailable");
+  const placed = await w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: turns });
+  assert.equal(placed.where, "mac");
+  assert.equal(w.book.get("s_moved").where, "mac", "the chat has a place on the computer, kept until its next turn");
+  await assert.rejects(() => Promise.resolve(w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: turns })), (/** @type {any} */ e) => e.code === "conflict");
+  // the chat's next turn starts the program there
+  const proc = w.r.home.spawn({ session: "s_moved", person: BOB, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("seedcheck s_moved\n");
+  const got = JSON.parse(await waitFor(() => out.find(l => l.includes("\"seedcheck\"")), 20_000));
+  assert.equal(got.found, true, "the program finds its history where its resume looks");
+  assert.equal(got.text, turns.join("\n") + "\n");
   proc.kill();
 });
 
@@ -222,4 +257,106 @@ test("the lid shuts: the chat on the Mac moves to the server, and a chat started
   const err = await new Promise(res => late.on("error", res));
   assert.equal(/** @type {any} */ (err).code, "lent_unavailable", "it fails as a spawn that never started, so the box runs it");
   assert.equal(w.book.get("s_second") ?? null, null, "and no row says it is on the Mac");
+});
+
+test("a chat given a folder of the computer works IN it, is placed only on the computer that has it, never goes to the server, and waits there when the lid shuts", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t, { canResume: () => true });
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "lp-folder-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const folder = fs.realpathSync(dir);
+  const approved = createFolders(path.join(w.root, "runner", "folders.json")).add(folder, "Acme site");
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  // the home hears the folder by id and label, from the computer's heartbeat
+  const offered = await waitFor(() => { const f = w.r.home.foldersOf(BOB); return f.length ? f : null; }, 20_000);
+  assert.deepEqual(offered.map((/** @type {any} */ f) => [f.id, f.label]), [[approved.id, "Acme site"]]);
+  assert.ok(!JSON.stringify(offered).includes(folder), "no path reaches the home");
+  // an id no computer holds: the chat does not start (and does not start on the server instead)
+  assert.throws(() => w.r.home.spawn({ session: "s_nofolder", person: BOB, folder: "fld_000000000000", args: [] }), (/** @type {any} */ e) => e.code === "folder_unavailable");
+  const proc = w.r.home.spawn({ session: "s_folder", person: BOB, folder: approved.id, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("turn hello\n");
+  await waitFor(() => out.some(l => l.includes("did hello")), 20_000);
+  assert.match(fs.readFileSync(path.join(folder, "notes.txt"), "utf8"), /hello/, "the program wrote into the person's folder itself");
+  const row = w.book.get("s_folder");
+  assert.deepEqual([row.where, row.folder], ["mac", approved.id]);
+  // nothing sends it to the server: not the person's move, not a lapse, not a condition
+  assert.throws(() => w.book.askRelease("s_folder", "you", BOB), (/** @type {any} */ e) => e.code === "conflict" && /stays there/.test(e.message));
+  assert.equal(w.book.toServer("s_folder", "offline").why, "bound");
+  // the lid shuts: the chat is held still, not handed over; it carries on when the computer is heard again
+  w.say("link.sleeping");
+  await sleep(1500);
+  assert.equal(w.book.get("s_folder").where, "mac", "still the computer's");
+  proc.stdin.write("turn later\n");
+  await sleep(1500);
+  assert.ok(!out.some(l => l.includes("did later")), "held still while the lid is shut");
+  w.say("link.woke");
+  await waitFor(() => out.some(l => l.includes("did later")), 30_000);
+  proc.kill();
+});
+
+test("a dev server the chat starts on the computer can be previewed from the home: the box gets a loopback port, each request is run against the server inside the sandbox, nothing else is reachable", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const proc = w.r.home.spawn({ session: "s_dev", person: BOB, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("serve 4311\n");
+  await waitFor(() => out.some(l => l.includes("\"serving\"")), 20_000);
+  const ask = (/** @type {number} */ port, /** @type {string} */ method, /** @type {string} */ path0, /** @type {string} */ body = "") => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, method, path: path0, headers: { host: "pv-1.example.test", "content-length": String(Buffer.byteLength(body)) } }, res => { let b = ""; res.on("data", d => { b += d; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+    req.on("error", reject); req.end(body);
+  });
+  // only the chat's own person, and only while it runs on a computer
+  await assert.rejects(() => w.r.home.openPreview({ session: "s_dev", port: 4311, person: "per_carol" }), (/** @type {any} */ e) => e.code === "not_found");
+  await assert.rejects(() => w.r.home.openPreview({ session: "s_dev", port: 80, person: BOB }), (/** @type {any} */ e) => e.code === "bad_input");
+  const bridge = await w.r.home.openPreview({ session: "s_dev", port: 4311, person: BOB });
+  assert.equal((await w.r.home.openPreview({ session: "s_dev", port: 4311, person: BOB })).port, bridge.port, "one bridge for one port");
+  const a = /** @type {any} */ (await ask(bridge.port, "GET", "/hello?x=1"));
+  assert.equal(a.status, 200);
+  assert.equal(a.body, "dev:GET:/hello?x=1:localhost:4311:", "the server in the sandbox answered, and heard its own host name");
+  assert.equal(a.headers["x-dev"], "yes");
+  const b = /** @type {any} */ (await ask(bridge.port, "POST", "/save", "name=kit"));
+  assert.equal(b.body, "dev:POST:/save:localhost:4311:name=kit");
+  // a port nothing listens on is a 502 in words, not a hang
+  const dead = await w.r.home.openPreview({ session: "s_dev", port: 4399, person: BOB });
+  const c = /** @type {any} */ (await ask(dead.port, "GET", "/"));
+  assert.equal(c.status, 502);
+  assert.match(c.body, /did not answer/);
+  // a server on the person's own loopback that is NOT the chat's (a dev database, the daemon, Docker) is not reachable through a preview, request or tunnel, on a Mac as much as on Linux (rows 27)
+  const outside = http.createServer((q, r) => r.end("secret-of-the-person")); await new Promise(r => outside.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => outside.close());
+  const outPort = /** @type {any} */ (outside.address()).port;
+  const stray = await w.r.home.openPreview({ session: "s_dev", port: outPort, person: BOB });
+  const d = /** @type {any} */ (await ask(stray.port, "GET", "/"));
+  assert.equal(d.status, 502, "a request naming a port the chat does not serve is refused");
+  assert.ok(!String(d.body).includes("secret-of-the-person"));
+  const leak = await new Promise(resolve => { const k = net.connect(stray.port, "127.0.0.1"); let got = ""; k.on("data", x => { got += x; }); k.on("close", () => resolve(got)); k.on("error", () => resolve(got)); k.on("connect", () => k.write("GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")); setTimeout(() => { k.destroy(); resolve(got); }, 4000); });
+  assert.ok(!String(leak).includes("secret-of-the-person"), "a tunnel naming such a port carries nothing from it");
+  // hot reload: a WebSocket through the bridge reaches the dev server's socket in the sandbox and talks both ways, in order
+  const ws = await new Promise((resolve, reject) => {
+    const c = net.connect(bridge.port, "127.0.0.1");
+    let raw = Buffer.alloc(0); /** @type {string[]} */ const texts = []; let upgraded = false;
+    const want = (/** @type {number} */ n, /** @type {() => boolean} */ ok) => new Promise(r => { const tm = setInterval(() => { if (ok()) { clearInterval(tm); r(undefined); } }, 20); setTimeout(() => { clearInterval(tm); r(undefined); }, n); });
+    c.on("data", d => {
+      raw = Buffer.concat([raw, d]);
+      if (!upgraded) { const i = raw.indexOf("\r\n\r\n"); if (i < 0) return; upgraded = true; texts.push(raw.subarray(0, raw.indexOf("\r\n")).toString()); raw = raw.subarray(i + 4); }
+      while (raw.length >= 2) { const len = raw[1] & 0x7f; if (raw.length < 2 + len) break; texts.push(raw.subarray(2, 2 + len).toString()); raw = raw.subarray(2 + len); }
+    });
+    c.on("error", reject);
+    c.on("connect", async () => {
+      c.write("GET /hmr?x=1 HTTP/1.1\r\nHost: pv-1.example.test\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+      await want(10_000, () => texts.length >= 2);
+      for (const m of ["one", "two", "three"]) c.write(encodeClientFrame(Buffer.from(m), 1));
+      await want(10_000, () => texts.length >= 5);
+      c.destroy(); resolve(texts);
+    });
+  });
+  assert.match(String(ws[0]), /^HTTP\/1\.1 101/);
+  assert.deepEqual(ws.slice(1), ["hello:/hmr?x=1", "echo:one", "echo:two", "echo:three"], "the dev server's hello, then every message echoed once and in order");
+  // the program ending closes the previews
+  assert.equal(w.r.home.hasPreview("s_dev"), true);
+  proc.kill();
+  await waitFor(() => !w.r.home.hasPreview("s_dev"), 10_000);
 });

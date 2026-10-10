@@ -134,7 +134,7 @@ export function createPipes(o = {}) {
    * @param {{ session: string, chat?: string | null, title?: string | null, computer?: string | null, person: string, device: string | null, command: string, args?: string[], signal?: AbortSignal }} i (`device` null: no computer is ready)
    */
   function spawn(i) {
-    /** @type {P} */ const p = /** @type {any} */ ({ session: i.session, chat: i.chat || null, title: typeof i.title === "string" && i.title ? i.title.slice(0, 120) : null, person: i.person, command: i.command, args: lenderArgs(i.args), device: i.device || "", state: "starting", epoch: null,
+    /** @type {P} */ const p = /** @type {any} */ ({ session: i.session, chat: i.chat || null, title: typeof i.title === "string" && i.title ? i.title.slice(0, 120) : null, folder: typeof i.folder === "string" && /^fld_[0-9a-f]{12}$/.test(i.folder) ? i.folder : null, person: i.person, command: i.command, args: lenderArgs(i.args), device: i.device || "", state: "starting", epoch: null,
       downSeq: 0, down: [], ackDown: 0, downBytes: 0, drain: null, end: false, kill: null, upTaken: 0, waiter: null, waitTimer: null, startTimer: null, killTimer: null, closed: false });
     const old = table.get(i.session);
     if (old && old.state !== "ended") finish(old, { code: null, signal: "SIGHUP" });
@@ -231,7 +231,7 @@ export function createPipes(o = {}) {
     /** The sessions waiting for a lender, for the heartbeat answer to `device`: it starts them. */
     wants(/** @type {string} */ device) { return [...table.values()].filter(p => p.state === "starting" && p.device === device && !p.claimed).map(p => ({ do: "start", session: p.session, ...(p.chat ? { chat: p.chat } : {}), pipe: true })); },
     /** What the home's definition of this session becomes when the lender that was asked starts it: the SDK's flags in place of the Space's bare program. Null when nobody spawned it here for this computer. */
-    pending(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); return p && p.state === "starting" && p.device === device ? { command: p.command, args: p.args, chat: p.chat, title: /** @type {any} */ (p).title || null } : null; },
+    pending(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); return p && p.state === "starting" && p.device === device ? { command: p.command, args: p.args, chat: p.chat, title: /** @type {any} */ (p).title || null, folder: /** @type {any} */ (p).folder || null } : null; },
     /** The lender took the session: it is not asked again. */
     claimed(/** @type {string} */ session, /** @type {string} */ device) { const p = table.get(session); if (p && p.device === device) /** @type {any} */ (p).claimed = true; },
     has(/** @type {string} */ session) { const p = table.get(session); return Boolean(p && p.state !== "ended"); },

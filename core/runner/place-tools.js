@@ -90,6 +90,37 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
+  ctx.tool("runner.folders.available", {
+    description: "The folders of your computers a chat can be given, each { id, label, device, computer }: only computers that are ready now. A chat given one works in it on that computer and stays there. Input: space (optional).",
+    input: obj({ space: str }),
+    run: async (i, meta) => {
+      const { person } = await who(meta, i.space);
+      const p = placements(), nameOf = await names();
+      const spaces = i.space ? [i.space] : p.spaces();
+      return { folders: spaces.flatMap((/** @type {string} */ sp) => (typeof p.foldersOf === "function" ? p.foldersOf(sp, person) : []).map((/** @type {any} */ f) => ({ id: f.id, label: f.label, device: f.device, computer: nameOf(f.device), space: sp }))) };
+    },
+  });
+
+  ctx.tool("runner.preview", {
+    description: "Preview the dev server a chat started on its computer: the chat's program runs on one of your computers, and this gives the server there a preview card here. Input: thread, port (1024 to 65535), title (optional), space (optional). Answers { preview } with the card's id.",
+    input: obj({ thread: str, port: { type: "integer" }, title: str, space: str }, ["thread", "port"]),
+    run: async (i, meta) => {
+      const thread = threadOf(i);
+      const { person } = await who(meta, i.space);
+      const p = placements();
+      if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server", "unavailable");
+      const space = i.space || (p.spaces().find((/** @type {string} */ sp) => p.find(sp, thread, person)) || p.spaces()[0]);
+      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      /** the preview this bridge is for, known once previews.open answers: a header the front made for another preview is not this one's (trust row 44) */
+      /** @type {{ id: string | null }} */ const mine = { id: null };
+      let bridge; try { bridge = await p.openPreview(space, { thread, port: Number(i.port), person, viewer: async (/** @type {string} */ header) => { if (!mine.id) return false; const r = /** @type {any} */ (await ctx.call("previews.viewer-ok", { header, preview: mine.id })); return Boolean(r && r.data && r.data.ok === true); } }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot be previewed now"), /** @type {any} */ (e).code === "bad_input" ? "bad_input" : /** @type {any} */ (e).code === "quota" ? "quota" : "not_found"); }
+      const r = /** @type {any} */ (await ctx.call("previews.open", { title: String(i.title || "Preview").slice(0, 80), port: bridge.port, thread }));
+      if (r && r.error) throw refuse(String(r.error.message || "the preview could not be opened"), "unavailable");
+      mine.id = r && r.data && typeof r.data.id === "string" ? r.data.id : null;
+      return { preview: r && r.data && (r.data.id || r.data.preview || r.data) };
+    },
+  });
+
   ctx.tool("runner.why-not", {
     description: "Why a chat's session is not running on a computer: one reason code, or null when it runs where it was meant to. Input: thread.",
     input: obj({ thread: str, space: str }, ["thread"]),
@@ -110,7 +141,15 @@ export function registerPlaceTools(ctx, d) {
     const hit = find(thread, i.space, person);
     if (!hit) {
       if (i.to === "server") return answer(null);
-      throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
+      // a chat that began on the server: its whole turns go to a ready computer of the person's, which carries it on from there
+      const p0 = placements();
+      if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
+      const space = i.space || p0.spaces()[0];
+      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!(await mineChat((await who(meta, space)).chain, thread))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      try { await p0.adopt(space, { thread, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
+      const placed = find(thread, space, person);
+      return answer(placed ? placed.row : null);
     }
     if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
     const p = placements();

@@ -24,6 +24,7 @@ import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
 import { createPipes } from "./pipe-home.js";
+import { createPreviews } from "./preview-home.js";
 import { within, withinOrThrow } from "../../lib/within.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
@@ -36,9 +37,12 @@ export const BEAT_MAX = 100;
 /** A file is at most 100 MB (the checkpoint's own cap) in chunks of CHUNK_BYTES: an upload that says it has more chunks than that is refused before anything is written. */
 const MAX_CHUNKS = Math.ceil(100 * 1024 * 1024 / CHUNK_BYTES) + 2;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
-const MAX_UPLOADS = 8;
+/** Unfinished uploads one session of one computer may hold; and the most the home keeps across everyone. */
+const MAX_UPLOADS = 8, MAX_UPLOADS_ALL = 256;
 /** A computer that beat this lately, and said it was well, is one a chat may be started on (three heartbeats). */
 const LENDER_FRESH_MS = 15_000;
+/** A place kept for a chat moved from the server waits for its next turn this long. */
+const ADOPT_MS = 6 * 3600_000;
 /** A place written for a new chat is taken back when no spawn follows this soon. */
 const RESERVE_MS = 30_000;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -53,7 +57,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number,
  *   canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null,
- *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
+ *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   canResume: can the server carry a session on right now (the loader that turns a lent transcript into a chat exists)? When it cannot, the server takes no session from a lender: a move answers `unavailable` and the lender keeps
  *   running it, because a session taken with nothing to continue it is a session lost. Unset: yes.
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
@@ -75,6 +79,8 @@ export function createLentHome(o) {
   const pipes = o.pipes || createPipes({ now });
   /** The key each computer lent under, as it last said it (in `status`): the Offers are made for the computer and its key. @type {Map<string, string>} */ const keys = new Map();
   /** The thread each spawned session was opened under (`spawn({ thread })`): the key of the tool socket the daemon holds for it. A row older than the rule has a session id that is not its thread id, so Vyre's tools are routed by this, never by the session. @type {Map<string, string>} */ const threads = new Map();
+  /** Previews of dev servers on lenders' computers: one loopback bridge per session and port (preview-home.js). */
+  const previews = createPreviews();
   /** Tool calls that outlast one wire call (lent.http answers `{ pending }` after HTTP_FIRST_MS and the lender asks again with the ticket): ticket -> { session, p, at }. A call is kept at most CALL_MAX_MS. @type {Map<string, { session: string, p: Promise<any>, result: any, at: number }>} */ const calls = new Map();
   const HTTP_FIRST_MS = o.httpFirstMs ?? 20_000, CALL_MAX_MS = o.callMaxMs ?? 30 * 60_000, MAX_PENDING = 8;
   const dropCalls = (/** @type {string} */ session) => { for (const [k, c] of calls) if (c.session === session) calls.delete(k); };
@@ -87,20 +93,27 @@ export function createLentHome(o) {
     if (!got.r) throw err("unavailable", "this session has no socket open on this home");
     return { status: got.r.status, body: got.r.body };
   };
+  /** A chat that began on the server and is moving to a computer: its transcript is already in the store; the lender writes it into its own agent home before the program starts (spec.seed). session -> { native, count }. @type {Map<string, { native: string, count: number }>} */ const seeds = new Map();
   /** Sessions placed for a new chat that no lender has started yet. @type {Set<string>} */ const reserved = new Set();
   /** The ready computers waiting on the home for something to do (`wait`), one each. @type {Map<string, { t: any, res: (a: any) => void }>} */ const waiters = new Map();
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
   const nudge = (/** @type {string} */ device) => { const x = waiters.get(device); if (!x) return; clearTimeout(x.t); waiters.delete(device); x.res({ directives: directivesFor(device) }); };
   /** The ready computer of this person's to start a session on, or null: it beat lately and said nothing holds it back, both Offers stand, and the server could take the session back if the lid closed. The computer already running the session wins. */
-  const pickLender = (/** @type {string} */ person, /** @type {string} */ session) => {
+  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null) => {
     const row = SESSION.test(session) ? book.get(session) : null;
-    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)));
+    // a chat given a folder of a computer runs on the computer that has that folder, and needs no server to carry it on: it never goes there
+    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && (!folder || (l.folders || []).some(f => f.id === folder)));
+    if (folder) {
+      if (!SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server")) return null;
+      if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
+      return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
+    }
     // A chat is not started on a computer while the server could not carry it on if the lid closed: it would sit frozen on a sleeping Mac. It fails as a spawn that never started and runs on the box.
     if (!canResume() || !SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server" && !row.allowMac)) return null;
     if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
     return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
   };
-  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean }>} */ const lenders = new Map();
+  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean, folders?: { id: string, label: string }[] }>} */ const lenders = new Map();
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw err("not_found", "not found");
@@ -130,7 +143,8 @@ export function createLentHome(o) {
     if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
-    lent.delete(String(session)); threads.delete(String(session)); dropCalls(String(session)); owed.add(String(session));
+    lent.delete(String(session)); dropCalls(String(session)); owed.add(String(session));   // the thread stays until the server has carried the chat on (resumeOwed): the loader needs it
+    previews.close(String(session));
     pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
     kickResume(String(session));
@@ -151,9 +165,9 @@ export function createLentHome(o) {
     try { await store.drain(session); } catch { /* the store answers for itself */ }
     // a continuation that hangs is given half a minute and told again at the next sweep
     try {
-      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
+      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
       // only what was owed at THIS take-over: a later one of the same session is owed its own
-      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); }
+      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); threads.delete(session); }
     } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
@@ -189,7 +203,7 @@ export function createLentHome(o) {
     transcript: (/** @type {number} */ from, /** @type {number} */ limit) => store.getTranscript(HOME, session, from, limit),
     file: (/** @type {string} */ rel, /** @type {number} */ version) => store.getFile(HOME, session, rel, version),
   });
-  const sweep = () => { while (uploads.size > MAX_UPLOADS) { const k = uploads.keys().next().value; const u = uploads.get(k); uploads.delete(k); try { fs.rmSync(u.dir, { recursive: true, force: true }); } catch {} } };
+  const sweep = () => { while (uploads.size > MAX_UPLOADS_ALL) { const k = uploads.keys().next().value; const u = uploads.get(k); uploads.delete(k); try { fs.rmSync(u.dir, { recursive: true, force: true }); } catch {} } };
 
   return {
     store,
@@ -197,6 +211,8 @@ export function createLentHome(o) {
     book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
+    /** The folders the person's computers that beat lately offer to chats: [{ device, id, label }] (ids and labels only; the paths stay on the computers). @param {string} person */
+    foldersOf(person) { return [...lenders].filter(([, l]) => l.person === person && now() - l.at <= LENDER_FRESH_MS).flatMap(([device, l]) => (l.folders || []).map(f => ({ device, id: f.id, label: f.label }))); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
     rows() { return [...lent].map(([session, v]) => ({ session, device: v.device, ...(v.chat ? { chat: v.chat } : {}) })); },
     /** The id this home gives the computer that is calling, and the person: read from what the transport proved, never from the request. A lender lends under this id (the Offers are made for it) and presents it when it runs a session. @param {any} chain */
@@ -219,7 +235,7 @@ export function createLentHome(o) {
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       // A chat spawned on this computer (lent spawn): the SDK's flags replace the Space's bare program, and the runner pumps the process's bytes through `lent.pipe`.
       const asked = pipes.pending(String(i.session), w.device);
-      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function" };
+      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(asked.folder ? { folder: asked.folder } : {}) };
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
       // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
@@ -247,7 +263,7 @@ export function createLentHome(o) {
       // Nothing of a session that is running well elsewhere is touched until the book has said this computer may have it: the refusals above and the book's own (a second computer, a session on the server) leave its
       // credentials and its row as they were.
       const before = book.get(String(i.session));
-      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null });
+      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null, ...(asked && asked.folder ? { folder: asked.folder } : {}) });
       if (asked) pipes.claimed(String(i.session), w.device);
       if (o.leases && i.lease) {
         try { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
@@ -265,7 +281,8 @@ export function createLentHome(o) {
       if (o.leases && typeof o.leases.borrowed === "function") { try { o.leases.borrowed({ thread: chat || (asked && asked.chat) || String(i.session), session: String(i.session), member: w.person, device: w.device, limit: cap || null, epoch: row.epoch }); } catch { /* a record, never a gate */ } }
       const title = (asked && asked.title) || (chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null);
       const { credentialRoutes, ...visible } = spec;
-      return { ...visible, network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
+      const seed = seeds.get(String(i.session)); if (seed) seeds.delete(String(i.session));
+      return { ...visible, ...(seed ? { seed } : {}), network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
     },
     /**
      * The lender is alive. Each session it still runs is checked against the book: one whose epoch is not current (it moved, or the home restarted without it) is listed in `fenced`, and the lender stops it
@@ -287,7 +304,9 @@ export function createLentHome(o) {
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);
-      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true });
+      // the folders this computer's person approved for chats, by id and label only (never a path): a chat that is to work in one is placed on the computer that has it
+      const folders = i && Array.isArray(i.folders) ? i.folders.slice(0, 32).filter((/** @type {any} */ f) => f && /^fld_[0-9a-f]{12}$/.test(String(f.id))).map((/** @type {any} */ f) => ({ id: String(f.id), label: String(f.label || "").slice(0, 60) })) : [];
+      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true, folders });
       return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: directivesFor(w.device) };
     },
     /**
@@ -306,6 +325,25 @@ export function createLentHome(o) {
      * The lender's side of a lent spawn: bytes of the process it runs for a chat, up; bytes for its stdin, down. A long poll (contracts/lent-spawn.md). Fenced like every write: an old epoch is `conflict`.
      * @param {any} chain @param {{ session: string, epoch: number, up?: any[], exit?: any, ack?: number, wait_ms?: number }} i
      */
+    /**
+     * The lender's pull for a preview (lent.preview): the answers it has, and the requests waiting for it. Fenced like every write.
+     * @param {any} chain @param {{ session: string, epoch: number, replies?: any[], wait_ms?: number }} i
+     */
+    async preview(chain, i) {
+      writer(chain, i && i.session, i && i.epoch);
+      return previews.poll(String(i.session), i);
+    },
+    /**
+     * A loopback port of this box that leads to `port` on the computer running the chat's program, for the previews module to put behind the front. Only the chat's own person, and only while the chat runs on a computer.
+     * @param {{ session: string, port: number, person: string, viewer?: (header: string) => Promise<boolean> }} i
+     * @returns {Promise<{ port: number }>}
+     */
+    hasPreview(/** @type {string} */ session) { return previews.has(String(session)); },
+    async openPreview(i) {
+      const row = book.get(String(i.session));
+      if (!row || row.where !== "mac" || row.person !== String(i.person)) throw err("not_found", "that chat does not run on one of your computers");
+      return previews.open(String(i.session), Number(i.port), typeof i.viewer === "function" ? i.viewer : undefined);
+    },
     async pipe(chain, i) {
       const w = writer(chain, i && i.session, i && i.epoch);
       return pipes.poll(String(i.session), i.epoch, w.device, i);
@@ -319,10 +357,14 @@ export function createLentHome(o) {
     spawn(i) {
       const session = String(i && i.session), person = String(i && i.person);
       if (i && i.thread) threads.set(session, String(i.thread));
-      const device = pickLender(person, session);
-      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
+      const folder = i && typeof i.folder === "string" ? i.folder : null;
+      const device = pickLender(person, session, folder);
+      // a chat given a folder runs only on the computer that has it: with that computer away it does not start on the server instead
+      if (folder && !device) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer");
+      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
       // a spawn that never started leaves no row saying the chat is on a computer it never reached
       proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && reserved.delete(session) && !lent.has(session)) book.forget(session); });
+      proc.on("close", () => previews.close(session));   // the program ended: its previews close with it
       if (device) nudge(device);
       return proc;
     },
@@ -335,12 +377,38 @@ export function createLentHome(o) {
       const session = String(i && i.session), person = String(i && i.person);
       const had = SESSION.test(session) ? book.get(session) : null;
       if (had) return had.where === "mac" && had.person === person ? { where: "mac", device: had.device, epoch: had.epoch } : { where: "box" };
-      const device = pickLender(person, session);
-      if (!device) return { where: "box" };
-      const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null });
+      const folder = i && typeof i.folder === "string" ? i.folder : null;
+      const device = pickLender(person, session, folder);
+      if (!device) { if (folder) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer"); return { where: "box" }; }
+      const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null, ...(folder ? { folder } : {}) });
       reserved.add(session);
       const t = setTimeout(() => { if (reserved.delete(session) && !lent.has(session)) book.forget(session); }, RESERVE_MS); t.unref?.();
       return { where: "mac", device, epoch: row.epoch };
+    },
+    /**
+     * A chat that began on the server moves to one of the person's computers (runner.move to a computer): its whole turns so far are put in the store as the session's transcript, the book lends the session
+     * to a ready computer, and the computer writes that transcript into its own Claude home before it starts the program (the spec's `seed`). Nothing is moved from the server's own disk: the server's copy stays.
+     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[] }} i
+     * @returns {{ where: "mac", device: string, epoch: number }}
+     */
+    async adopt(i) {
+      const session = String(i && i.session), person = String(i && i.person);
+      if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
+      if (book.get(session)) throw err("conflict", "that chat already has a place");
+      const device = pickLender(person, session);
+      if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
+      const lines = Array.isArray(i.lines) ? i.lines : [];
+      if (!lines.length) throw err("unavailable", "this chat has no whole turn to move yet");
+      return Promise.resolve(store.appendTranscript(HOME, session, lines.map((line, k) => ({ seq: k + 1, line: String(line) })))).then(() => {
+        const row = book.lend({ session, chat: i.chat || null, person, device, key: keys.get(device) || null });
+        seeds.set(session, { native: String(i.native), count: lines.length });
+        threads.set(session, String(i.thread));
+        reserved.add(session);
+        // the chat's next turn starts the program there (the Switchboard finds this row); until then the place is kept for hours, not seconds
+        const t = setTimeout(() => { if (reserved.delete(session) && !lent.has(session)) { book.forget(session); seeds.delete(session); } }, ADOPT_MS); t.unref?.();
+        nudge(device);
+        return { where: "mac", device, epoch: row.epoch };
+      });
     },
     /**
      * The nudge: held up to `wait_ms` until the home has something for this computer to do (a chat to start), so a ready computer is told at once and not at its next heartbeat. The same directives the heartbeat carries.
@@ -377,14 +445,14 @@ export function createLentHome(o) {
       // a tool call (POST /v1/tools/<name>) or the list of tools the session may use (GET /v1/tools): nothing else of vyred is reachable from a lent computer
       if (method === "GET" ? p !== "/v1/tools" : !/^\/v1\/tools\/[A-Za-z0-9._%-]{1,140}$/.test(p)) throw err("bad_input", "a lent computer asks for a tool: POST /v1/tools/<name>, or GET /v1/tools");
       const body = method === "GET" ? "" : typeof i.body === "string" ? i.body : "{}";
-      if (body.length > 128 * 1024) throw err("bad_input", "that request is too large");
+      if (Buffer.byteLength(body) > 128 * 1024) throw err("bad_input", "that request is too large");   // bytes, not characters (a multibyte body reaches four times the length)
       if ([...calls.values()].filter(c => c.session === session).length >= MAX_PENDING) throw err("unavailable", "this chat already has several tool calls running; wait for one to finish");
       const run = Promise.resolve(o.http(threads.get(session) || lent.get(session)?.chat || session, method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body)).then(r => ({ r }), e => ({ e }));
       const ticket = newPrefixedId("call"), c = { session, p: run, at: now0 };
       calls.set(ticket, c);
       return await settle(session, ticket, c);
     },
-    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    async stop(chain, i) { mine(chain, i && i.session); previews.close(String(i.session)); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },
@@ -402,6 +470,7 @@ export function createLentHome(o) {
       if (bytes.length > CHUNK_BYTES) throw err("too_large", "that chunk is too large");
       const key = `${w2(chain)}|${s}|${c.upload}`;
       let u = uploads.get(key);
+      if (!u && [...uploads.keys()].filter(k => k.startsWith(`${w2(chain)}|${s}|`)).length >= MAX_UPLOADS) throw err("quota", "this session already has the most unfinished uploads it may have: finish one first");   // a session's own cap, so one computer's uploads never push out another's
       if (!u) { const dir = path.join(o.root, ".uploads", crypto.randomBytes(8).toString("hex")); fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); u = { dir, total: c.total, next: 0 }; uploads.set(key, u); sweep(); }
       if (c.index !== u.next || c.total !== u.total) throw err("gap", "a chunk is missing or repeated");
       fs.appendFileSync(path.join(u.dir, "data"), bytes, { mode: 0o600 }); u.next++;

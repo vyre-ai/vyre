@@ -27,7 +27,7 @@ const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating" | "paused",
- *   reason: string | null, resume?: boolean, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
+ *   reason: string | null, resume?: boolean, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, folder?: string | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
  *   facts?: { cpuPercent?: number, memoryMb?: number, turn?: number } }} Row
  * @typedef {{ load(): { rows: Row[], owners: Record<string, string> }, save(state: { rows: Row[], owners: Record<string, string> }): void }} Store
  */
@@ -94,7 +94,7 @@ export function createPlacementBook(o = {}) {
     /**
      * The lender starts (or resumes) a session on its computer. A session now on the server comes back only when the person asked for it (`bringBack`), and never while pinned to the server.
      * Answers the row, with a new epoch: everything the lender writes from now on names it.
-     * @param {{ session: string, chat?: string | null, person: string, device: string, key?: string | null }} i
+     * @param {{ session: string, chat?: string | null, person: string, device: string, key?: string | null, folder?: string | null }} i
      */
     lend(i) {
       const session = String(i.session);
@@ -107,7 +107,7 @@ export function createPlacementBook(o = {}) {
       if (had && had.where === "server" && !had.allowMac) throw bad("this session runs on the server now: bring it back to the computer from its chat first", "conflict");
       const t = now();
       /** @type {Row} */ const r = { session, chat: i.chat || (had && had.chat) || null, person: i.person, device: i.device, key: i.key || null, where: "mac", state: "here", reason: null, since: t, epoch: (had ? had.epoch : 0) + 1,
-        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false, ask: null };
+        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false, ask: null, folder: i.folder || (had ? had.folder : null) || null };
       rows.set(session, r); save();
       if (had && had.where === "server") moved(r, "server", "mac", "you");
       return copy(r);
@@ -164,7 +164,7 @@ export function createPlacementBook(o = {}) {
     grace() { const t = now(); let n = 0; for (const r of rows.values()) if (r.where === "mac") { r.beat = t; n++; } return n; },
 
     /** The sessions on a computer that has not been heard from for the lapse: they are the server's to take. @returns {Row[]} */
-    lapsed() { const t = now(); return [...rows.values()].filter(r => r.where === "mac" && t - r.beat > lapse).map(copy); },
+    lapsed() { const t = now(); return [...rows.values()].filter(r => r.where === "mac" && !r.folder && t - r.beat > lapse).map(copy); },
 
     /**
      * Record a move to the server. `auto` is a move the computer's own condition asked for (not the person, not a vanished computer): at most one per cooldown for a session. The epoch rises, so the old
@@ -176,6 +176,8 @@ export function createPlacementBook(o = {}) {
       const r = rows.get(String(session));
       if (!r) return { changed: false, why: "unknown" };
       if (r.where === "server") return { changed: false, why: "there", row: copy(r) };
+      // a chat working in a folder of the computer has nowhere else to go: its files are only there
+      if (r.folder) return { changed: false, why: "bound", row: copy(r) };
       const t = now();
       if (opt.auto && r.movedAt !== null && t - r.movedAt < cooldown) return { changed: false, why: "cooldown", row: copy(r) };
       r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.ask = null; r.facts = undefined; r.resume = true;
@@ -189,6 +191,7 @@ export function createPlacementBook(o = {}) {
       if (!REASONS.includes(reason)) throw bad("that reason is not one the chat knows", "bad_input");
       const live = /** @type {Row} */ (rows.get(r.session));
       if (live.where !== "mac") return copy(live);
+      if (live.folder) throw bad("This chat works in a folder on that computer, so it stays there.", "conflict");
       live.state = "moving"; live.ask = { do: "release", reason, at: now() }; save();
       return copy(live);
     },
@@ -233,5 +236,5 @@ export function createPlacementBook(o = {}) {
 /** The place a row stands for, in the shape `runner.placement` answers (the contract: team/contracts/runner.md). @param {Row | null} r @param {{ computer?: string | null }} [x] */
 export function placementOf(r, x = {}) {
   if (!r) return { where: "server", computer: null, state: "server", reason: null, since: null, offer: null, pinned: false, pin: null };
-  return { where: r.where, computer: r.where === "mac" ? x.computer ?? null : null, state: r.state, reason: r.reason, since: r.since, offer: r.offer, pinned: r.pin !== null, pin: r.pin, epoch: r.epoch };
+  return { where: r.where, computer: r.where === "mac" ? x.computer ?? null : null, state: r.state, reason: r.reason, since: r.since, offer: r.offer, pinned: r.pin !== null, pin: r.pin, epoch: r.epoch, ...(r.folder ? { bound: true } : {}) };
 }

@@ -12,11 +12,14 @@
 
 import { HARNESS_MARK } from "./pipe-home.js";
 import { withinOrThrow } from "../../lib/within.js";
+import { writeInside } from "./safefs.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import net from "node:net";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
 import { driverFor, SLOWER_LINE, SWAP_LINE, SIZES_LINE, swapInfo } from "./workspace.js";
@@ -24,11 +27,11 @@ import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { openVyreDoor } from "./vyre-door.js";
-import { createSessionSync, restore } from "./sync.js";
+import { createSessionSync, restore, ROOTS } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
-import { signalTree, pidsUnder } from "./proctree.js";
+import { signalTree, pidsUnder, portIsSessions } from "./proctree.js";
 import { endOrphans, startedOf } from "./orphans.js";
 export { endOrphans };
 
@@ -79,7 +82,7 @@ export async function reconcile(o) {
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, handoverMs?: number, requestServer?: (session: string, reason?: string) => Promise<{ moved?: boolean } | void> | { moved?: boolean } | void, usage?: ReturnType<typeof createUsage>,
  *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
- *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
+ *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number, portOwner?: (pid: number, port: number) => boolean,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
 export function createRunner(o) {
@@ -91,9 +94,13 @@ export function createRunner(o) {
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
   const usage = o.usage || createUsage({ platform });
+  /** Is this loopback port served only by the session's own processes? (A Mac preview connects from outside the sandbox, so it asks first.) */
+  const ownsPort = (/** @type {any} */ h, /** @type {number} */ port) => (o.portOwner || ((pid, n) => portIsSessions(pid, n)))(Number(h.child.pid), port);
   /** Sessions being started now: a second start of the same session while the first is under way is refused, so no child is ever left untracked. @type {Set<string>} */ const starting = new Set();
   /** Why every session here is frozen right now ("pause": the person's Pause all; "offline": this computer cannot reach the Space's server and must not run ahead of it). Empty: they run. @type {Set<string>} */
   const frozen = new Set();
+  /** Sessions working in a folder of this computer are held still while a condition that would send others to the server holds (lid, switched off, unplugged): they have nowhere to go. */
+  let boundHeld = false;
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
@@ -192,7 +199,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, folder?: string, preview?: boolean, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
@@ -208,6 +215,16 @@ export function createRunner(o) {
     const ws = await open();
     const work = workOf(ws), state = stateOf(ws);
     let resumed = null, routes = s.routes, labels = s.labels || { trust: "external" };
+    // A chat that began on the server and moves here: the Space's store holds its whole turns as the session's transcript, and this computer writes them into its own agent home before the program starts, in the
+    // folder the program will see as its own, so the program's resume finds them. The first checkpoint after the next turn then covers them like any other line.
+    if (!s.resume && s.seed && o.sync && typeof o.sync.getTranscript === "function") {
+      const lines = await o.sync.getTranscript(s.session, 1);
+      if (lines.length) {
+        const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
+        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native)) : null;
+        if (file) writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
+      }
+    }
     if (s.resume) {
       resumed = await restore({ space: o.sync, session: s.session, work, state, verify: o.verifyState });   // required: no verifier, no resume
       if (resumed) {
@@ -218,13 +235,16 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), ...(s.folder ? { roots: ROOTS.filter(r => r.dir !== "files") } : {}), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;
+    // A preview of a dev server the session starts (preview-home.js): Linux binds a private folder in for the shim's socket; a Mac lets the session listen on loopback
+    const previewDir = s.preview && platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".pv") : undefined;
+    if (previewDir) fs.mkdirSync(previewDir, { recursive: true, mode: 0o700 });
     const where = await eg.listen(sock ? { socket: sock } : {});
     // A chat's session reaches Vyre's tools through the home (lent.http): its Vyre MCP server speaks to this door as VYRE_SOCKET
     const door = s.vyre && typeof s.vyre.call === "function" ? await openVyreDoor({ socket: path.join(os.tmpdir(), `vyre-door-${crypto.randomBytes(6).toString("hex")}.sock`), call: s.vyre.call }) : null;
@@ -249,7 +269,7 @@ export function createRunner(o) {
         if (s.vyre.plugin) { args = args.map(x => (x === HARNESS_MARK ? s.vyre.plugin : x)); penv = { ...env, VYRE_SOCKET: sock, VYRE_THREAD: s.session }; }
       }
       args = dropMark(args);
-      return plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
+      return plan({ platform, space: o.space, launcher, internet, workspace: work, ...(s.folder ? { folder: s.folder } : {}), ...(s.preview ? { preview: previewDir ? { dir: previewDir } : {} } : {}), command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
     };
     let p, doorUsed = door;
     try { p = planWith(door); }
@@ -264,7 +284,7 @@ export function createRunner(o) {
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
     try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: startedOf(Number(child.pid)) || undefined, session: s.session }), { mode: 0o600 }); } catch { /* the sweep at the next start has nothing to read */ }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, chat: s.chat || null, child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
+    const h = { session: s.session, chat: s.chat || null, bound: Boolean(s.folder), preview: s.preview ? { dir: previewDir } : null, child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -298,7 +318,7 @@ export function createRunner(o) {
       if (!h.stopped) await finish(h);
       resolve({ code, signal: sig });
     }));
-    if (frozen.size) signal(h, "SIGSTOP");
+    if (frozen.size || (boundHeld && h.bound)) signal(h, "SIGSTOP");
     emit({ type: "started", session: s.session, pid: child.pid });
     return { pid: child.pid, child, resumed, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session), labels: () => h.labels };
   }
@@ -312,6 +332,7 @@ export function createRunner(o) {
     try { await h.eg.close(); } catch {}
     if (h.door) { try { await h.door.close(); } catch {} }
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
+    if (h.preview && h.preview.dir) { try { fs.rmSync(h.preview.dir, { recursive: true, force: true }); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     // why it ended, for the Space's home: the person stopped it, the program finished by itself, the program died, or it was handed over / fenced (the home already knows)
     emit({ type: "stopped", session: h.session, why: h.released ? "released" : h.stopped ? h.why : h.exit && h.exit.code === 0 ? "finished" : "crashed" });
@@ -388,7 +409,51 @@ export function createRunner(o) {
     async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
     moveToServer,
     /** The sessions running here, with what each uses now. */
-    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
+    /**
+     * One request of a preview, run against the dev server in a session's sandbox (preview-home.js): the answer for the home, or an error line. A Mac reaches the server on its own loopback; Linux goes through the
+     * shim's socket, naming the port on the first line. At most one megabyte each way; the session's own server is the only thing reachable.
+     * @param {string} session @param {{ id: string, port: number, method: string, path: string, headers: Record<string, string>, body?: string }} job
+     */
+    previewRequest(session, job) {
+      const h = live.get(session);
+      if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here"), { code: "not_found" }));
+      const port = Number(job.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535"));
+      if (!h.preview.dir && !ownsPort(h, port)) return Promise.reject(new Error("the dev server on that port did not answer (not_this_chat's)"));
+      const body = job.body ? Buffer.from(String(job.body), "base64") : Buffer.alloc(0);
+      return new Promise((resolve, reject) => {
+        /** @type {any} */ const opts = { method: String(job.method || "GET"), path: String(job.path || "/"), headers: { ...job.headers, host: `localhost:${port}`, "content-length": String(body.length) }, timeout: 30_000 };
+        if (h.preview.dir) opts.createConnection = () => { const c = net.connect(path.join(h.preview.dir, "p.sock")); c.write(`PORT ${port}\n`); return c; };
+        else { opts.host = "127.0.0.1"; opts.port = port; }
+        const req = http.request(opts, res => {
+          /** @type {Buffer[]} */ const parts = []; let n = 0;
+          res.on("data", c => { n += c.length; if (n > 1024 * 1024) { res.destroy(); reject(new Error("the answer is too large for a preview")); } else parts.push(c); });
+          res.on("end", () => { /** @type {Record<string, string>} */ const hd = {}; for (const [k, v] of Object.entries(res.headers)) if (typeof v === "string") hd[k] = v; else if (Array.isArray(v)) hd[k] = v.join(", "); resolve({ status: res.statusCode || 502, headers: hd, body: Buffer.concat(parts).toString("base64") }); });
+          res.on("error", reject);
+        });
+        req.on("timeout", () => req.destroy(new Error("the dev server did not answer in time")));
+        req.on("error", e => reject(new Error(`the dev server on that port did not answer (${/** @type {any} */ (e).code || e.message})`)));
+        req.end(body);
+      });
+    },
+    /**
+     * A tunnel to the dev server in a session's sandbox (a WebSocket upgrade of a preview): raw bytes both ways, as the shim's socket on Linux (naming the port first) or loopback on a Mac. `io.data` gets the
+     * server's bytes, `io.end` its end. Null when the session has no preview here.
+     * @param {string} session @param {{ port: number }} job @param {{ data: (b: Buffer) => void, end: () => void }} io
+     */
+    previewTunnel(session, job, io) {
+      const h = live.get(session);
+      const port = Number(job.port);
+      if (!h || !h.preview || !Number.isInteger(port) || port < 1024 || port > 65535) return null;
+      if (!h.preview.dir && !ownsPort(h, port)) return null;   // a Mac has no shim: only a port this chat's own processes listen on, never the person's other loopback services
+      const c = h.preview.dir ? net.connect(path.join(h.preview.dir, "p.sock")) : net.connect(port, "127.0.0.1");
+      if (h.preview.dir) c.write(`PORT ${port}\n`);
+      let over = false;
+      const fin = () => { if (!over) { over = true; io.end(); } };
+      c.on("data", d => io.data(d)); c.on("end", fin); c.on("close", fin); c.on("error", () => { try { c.destroy(); } catch { /* gone */ } fin(); });
+      return { write: b => { try { c.write(b); } catch { /* gone */ } }, end: () => { try { c.end(); } catch { /* gone */ } } };
+    },
+    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, ...(h.bound ? { bound: true } : {}), pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
     /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
     pause() { freeze("pause"); },
     resume() { thawAll("pause"); },
@@ -397,6 +462,8 @@ export function createRunner(o) {
     get frozenNow() { return frozen.size > 0; },
     /** This computer cannot reach the Space's server: its sessions wait where they are rather than run ahead of the server, which takes them after a lapse. @param {string} why */
     freeze(why) { freeze(why); },
+    /** Hold the sessions that work in a folder of this computer still, or let them run again. */
+    holdBound(on) { if (boundHeld === Boolean(on)) return; boundHeld = Boolean(on); for (const h of live.values()) if (h.bound && !h.moving && (boundHeld || !frozen.size)) signal(h, boundHeld ? "SIGSTOP" : "SIGCONT"); },
     thaw(why) { thawAll(why); },
     get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */

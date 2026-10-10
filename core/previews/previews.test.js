@@ -323,6 +323,17 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
   const direct = (/** @type {Record<string, string>} */ headers) => new Promise(resolve => { const body = JSON.stringify({ op: "caps", args: {} }); const r = http.request({ host: "127.0.0.1", port: Number(new URL(o.data.origin).port), method: "POST", path: "/__vyre/api", headers: { host: `pv-${id}.localhost`, "content-type": "application/json", "x-page-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...headers } }, res => resolve(res.statusCode)); r.end(body); });
   assert.equal(await direct({}), 401, "no viewer, no bridge");
   assert.equal(await direct({ "x-vyre-viewer": "eyJ3IjoiZXZpbCJ9.forged" }), 401, "a local process cannot say who it is");
+  // the runner module can ask whether a header is the front's (the preview of a chat on a person's computer gates its bridge on it, trust row 32); nobody else can, and a forged one is no
+  const { viewerHeader } = await import("../appmods/proxy.js");
+  const real = viewerHeader(o.data.viewerKey, { w: "per_owner", r: "owner" }, Date.now(), `pv-${id}`);
+  assert.equal(/** @type {any} */ (await call("previews.viewer-ok", { header: real, preview: id }, "module:runner")).data.ok, true);
+  // a header the front made for preview A is no good for preview B, here or at B's own /__vyre bridge (trust row 44)
+  const other = viewerHeader(o.data.viewerKey, { w: "per_owner", r: "owner" }, Date.now(), "pv-00000000");
+  assert.equal(/** @type {any} */ (await call("previews.viewer-ok", { header: other, preview: id }, "module:runner")).data.ok, false, "made for another preview");
+  assert.equal(/** @type {any} */ (await call("previews.viewer-ok", { header: viewerHeader(o.data.viewerKey, { w: "per_owner", r: "owner" }), preview: id }, "module:runner")).data.ok, false, "made for none");
+  assert.equal(await direct({ "x-vyre-viewer": other }), 401, "the preview's own bridge refuses it too");
+  assert.equal(/** @type {any} */ (await call("previews.viewer-ok", { header: "eyJ3IjoiZXZpbCJ9.forged", preview: id }, "module:runner")).data.ok, false);
+  assert.ok(/** @type {any} */ (await call("previews.viewer-ok", { header: real, preview: id }, "module:appmods")).error, "another module is refused");
   assert.equal((await call("previews.open", { title: "Plain", path: path.join(dir, "plain.html") })).data.preview.source, "files");
 });
 

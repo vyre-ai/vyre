@@ -47,6 +47,20 @@ export function findSession(folders, id) {
 }
 
 /**
+ * Where a session's transcript is (the file that exists, wherever it sits) or will be (a new one under the first projects folder, in the folder named for `cwd`).
+ * @param {string[]} folders @param {string} cwd @param {string} id @returns {{ file: string, root: string } | null}
+ */
+export function transcriptPlace(folders, cwd, id) {
+  const known = findSession(folders, id);
+  if (known) return { file: known.file, root: path.dirname(path.dirname(known.file)) };
+  if (!SESSION_ID.test(id) || !folders[0] || !cwd) return null;
+  return { file: path.join(folders[0], String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`), root: folders[0] };
+}
+
+/** Where the provider keeps a session's transcript INSIDE a runner's workspace (the agent's home is `<work>/home`), for the folder `cwd` the session sees. @param {string} work @param {string} cwd @param {string} id */
+export const workTranscript = (work, cwd, id) => path.join(work, "home", ".claude", "projects", String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
+
+/**
  * The folder a session ran in and its name, from the start of its transcript (the first lines
  * carry cwd; the folder name cannot be decoded). Reads at most 512 KB.
  * @param {string} file
