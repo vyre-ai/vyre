@@ -2757,7 +2757,7 @@
     {"kind":"env","name":"VYRE_IMAGE","definedIn":"box/compose.yml","page":null,"mentions":[{"page":"releases/checklist.md","line":34,"anchor":"what-the-released-composeyml-must-look-like-pulled-boxes"},{"page":"using/box-care.md","line":267,"anchor":"run-the-installer-by-hand"},{"page":"using/box-care.md","line":278,"anchor":"run-the-installer-by-hand"}]},
     {"kind":"env","name":"VYRE_INSTALL_MAIN","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_INSTALLER","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_KERNEL","definedIn":"scripts/token-proof-world.mjs","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_KERNEL","definedIn":"scripts/live-providers.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_KERNEL_FILE_KEY","definedIn":"core/daemon/host-guard.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_KERNEL_PATH_RULE","definedIn":"scripts/app-walk-chat-files-shots.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_KERNEL_PROOF","definedIn":"core/cli/commands/daemon.js","page":"reference/config.md#environment-variables","mentions":[]},
