@@ -10,8 +10,6 @@ const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = [
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
-/** A model working a team chat's turn may READ the Space's Drive, as the member who spoke (the daemon's edge defaults `space` to the chat's); writing and restoring stay the person's own. */
-const READ_CALLERS = [...CALLERS, "mcp"];
 /** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
@@ -19,7 +17,7 @@ export const MAX_UPLOAD = 8 * 1024 * 1024;
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
-  const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: /^files\.drive\.space\.(list|read)$/.test(name) ? READ_CALLERS : CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+  const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
     if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
     return fn(i || {}, d, d.gateway.drive);
