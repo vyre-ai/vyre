@@ -60,5 +60,5 @@
       }
     }
   },
-  "teaches": {}
+  "teaches": { "tips": [{ "id": "own-address", "text": "Send signers to your own address, like sign.yourfirm.com. Ask your assistant to set it up: you add two records at your domain and Vyre does the rest.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.3.3", "docs": "using/documents.md#your-own-address-for-signing-pages" }] }
 }
