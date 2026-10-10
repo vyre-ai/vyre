@@ -6,6 +6,7 @@
 // Nothing here replaces a Vyre part. The people's clicks are the app modules called directly, as scripts/lib/proof does.
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../../lib/proof/app.mjs";
@@ -23,7 +24,9 @@ export async function bringUp(o) {
   const dir = path.join(o.out, `world-${o.kind}`);
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const S = (/** @type {string} */ n) => `world (${o.kind}): ${n}`;
-  const hostIp = process.env.PROOF_HOST_IP || "";
+  // A box in a container reaches this runner's stand-ins at the address of Docker's bridge (its gateway), unless the runner says otherwise.
+  const bridge = () => { try { return String(spawnSync("docker", ["network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}"], { encoding: "utf8" }).stdout || "").trim(); } catch { return ""; } };
+  const hostIp = process.env.PROOF_HOST_IP || (o.kind === "box" ? bridge() : "");
   const ins = await startStandins({ out: dir, ...(o.kind === "box" ? { host: "0.0.0.0", ...(hostIp ? { publicHost: hostIp } : {}) } : {}) });
   const person = `journey${Math.random().toString(36).slice(2, 7)}`;
   const mac = createApp({ label: "Journey Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
