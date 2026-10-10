@@ -317,7 +317,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const timeline = (await d.registry.call("records.events", { record: contact.urn }, "cli", await ownerMeta())).data;
   assert.ok(JSON.stringify(timeline).includes("last_signed_at") || JSON.stringify(timeline).includes(String(docs[0].urn || "x")), `the Contact's timeline has it: ${JSON.stringify(timeline).slice(0, 400)}`);
 
-  // R032-05 with the real engine and a real mail account: a matter enters the stage, the person says yes once to the signing request and its e-mail, the signer signs, the matter moves on, and the signed copy is e-mailed on the second yes.
+  // R032-05 with the real engine and a real mail account: a matter enters the stage, the person says yes once to the signing request and its e-mail, the signer signs, the matter moves on, and the signed copy is e-mailed on that same yes.
   const mailbox = await startFakeMail(t, { user: "alex@harlow.example", password: "hunter2-hunter2" });
   const conn = await cli("vault.connect", { module: "mail", need: "imap", label: "alex", fields: { imap_host: "127.0.0.1", imap_port: String(mailbox.imap.port), smtp_host: "127.0.0.1", smtp_port: String(mailbox.smtp.port), username: "alex@harlow.example", password: "hunter2-hunter2", from: "alex@harlow.example", security: "tls" } });
   assert.ok(conn.data && conn.data.item, JSON.stringify(conn));
@@ -354,11 +354,13 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   // the matter moves on by itself, and the signed copy goes out on the second yes
   await until(async () => (await d.kernel.gateway.records.get(admin, "matter", matter.id)).data.stage === "Signed", "the matter to move to Signed");
   assert.equal((await d.kernel.gateway.records.get(admin, "matter", matter.id)).data.signature_submission, String(submissionId));
-  await sayYes("documents.send-signed");
-  await until(() => mailbox.sent.length === 2, "the signed copy's e-mail reached the mail server");
+  // the signed copy rides the yes to the request (`with`): no second question, the e-mail follows the signature on the one yes
+  await until(() => mailbox.sent.length === 2, "the signed copy's e-mail reached the mail server, with no second yes");
+  const secondAsk = (await d.kernel.gateway.ask.list(admin, { state: ["needs_check"] })).filter(/** @param {any} x */ x => x.form && x.form.kind === "held_act");
+  assert.deepEqual(secondAsk.map(/** @param {any} x */ x => x.form.action), [], "nothing is waiting for a second yes");
   const copy = /\/signed\/[A-Za-z0-9_.-]+/.exec(decode(mailbox.sent[1]));
   assert.ok(copy, `the second e-mail carries the signed copy's link: ${decode(mailbox.sent[1])}`);
   const pdf2 = /** @type {any} */ (await new Promise((resolve, reject) => { const r = http.request({ host: "127.0.0.1", port: bridgePort, path: copy[0], method: "GET", headers: { host: H } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(c) })); }); r.on("error", reject); r.end(); }));
   assert.equal(pdf2.status, 200); assert.equal(pdf2.body.subarray(0, 5).toString(), "%PDF-", "the e-mailed link opens the signed PDF");
-  console.log("R032-05 end to end: two yeses, two e-mails, the matter moved on");
+  console.log("R032-05 end to end: one yes, two e-mails, the matter moved on");
 });

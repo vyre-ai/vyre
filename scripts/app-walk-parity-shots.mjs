@@ -75,6 +75,8 @@ server.on("upgrade", (req, client, head) => {
   });
   up.on("error", () => client.destroy()); client.on("error", () => up.destroy());
 });
+// a second chat: the turn is sent while the page is open (status frames are live only), a turn that used two of Vyre tools, which offers "Turn this into a Flow"
+const chat2 = await d.kernel.gateway.grants.chats.create(ownerChain, {});
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const SIZES = [["1440", { width: 1440, height: 900 }], ["390", { width: 390, height: 844 }]];
 let failed = 0;
@@ -83,6 +85,7 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   const ctx = await browser.newContext({ viewport, colorScheme: scheme, serviceWorkers: "block" });
   const pg = await ctx.newPage();
   pg.setDefaultTimeout(10000);
+  if (process.env.DEBUGWS) pg.on("websocket", (ws) => ws.on("framereceived", (f) => { try { const m = JSON.parse(String(f.payload)); console.log("ws:", m.type, JSON.stringify(m.data || {}).slice(0, 90)); } catch { /* binary */ } }));
   pg.on("pageerror", (e) => console.log("page error:", String(e.message).slice(0, 200)));
   const shot = async (name, ms = 2500) => { await pg.waitForTimeout(ms); const text = (await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200); console.log(`${name}-${label}-${scheme}:`, text); await pg.screenshot({ path: path.join(OUT, `${name}-${label}-${scheme}.png`) }); };
   await pg.goto(`${BASE}/u/now`, { waitUntil: "domcontentloaded" }); await pg.waitForTimeout(5000);
@@ -122,6 +125,16 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   must(ms >= 0 && ms < 500, `the sent message took ${ms} ms to show in the thread`);
   await shot("p4-instant-send", 300);
   await pg.unroute("**/v1/tools/stream.send");
+  // "Turn this into a Flow": the line under a turn that used two of Vyre tools has the button; pressing it asks the assistant, in the thread
+  await pg.goto(`${BASE}/u/chats/${chat2.id}`, { waitUntil: "domcontentloaded" });
+  await pg.waitForTimeout(4000);
+  const sent2 = await door("stream.send", { chat: chat2.id, text: "tooluse2 mcp__vyre__work_call mcp__vyre__records_create", message: `m-2-${label}-${scheme}`, surface: "deck" });
+  if (sent2.error) console.log("send2:", sent2.error.message);
+  await pg.getByText("Turn this into a Flow", { exact: true }).first().waitFor({ timeout: 20000 }).catch(() => must(false, "no Turn this into a Flow button after a turn with two Vyre tool calls"));
+  await shot("c7-turn-into-flow", 800);
+  await pg.getByText("Turn this into a Flow", { exact: true }).first().click().catch(() => must(false, "the button cannot be pressed"));
+  await pg.getByText("Turn what you just did into a Flow", { exact: false }).first().waitFor({ timeout: 8000 }).catch(() => must(false, "pressing the button did not ask the assistant"));
+  await shot("c7-asked", 1500);
   await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(failed ? 1 : 0);

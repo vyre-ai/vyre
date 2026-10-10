@@ -132,6 +132,10 @@ Tap the plus in the box and choose Attach a file or Attach a photo, or drop a fi
 
 After a turn that edited files, the line under it ("2 files, 1 min") opens the changes. Each file there has Undo: it puts that one file back as it was before the turn. Undo only works while the file still holds what the turn left, so your own later edits are never overwritten; if the file changed since, nothing is touched and it says so. A file the session created is removed again. The session is told on its next message, so it does not build on what you took out. Vyre keeps the earlier versions until it restarts, and only for files inside the session's folder.
 
+## Turn what it did into a Flow
+
+When a turn used two or more of Vyre's own tools (it wrote records, made tasks, sent mail), the line under it says so ("3 actions") and has a button, Turn this into a Flow. It asks the assistant to make a draft Flow from the calls it just made and to say what is left for you to fill in. The draft is an ordinary one: you read it, test it and approve it before it can run.
+
 ## Records you name
 
 When your message names a client, matter or other record exactly, such as "What case type is Dana Whitfield's matter?", the session is shown a short card of that record beside your words, so it need not stop to look it up. The card has the key fields and nothing sealed: a sealed field appears only as a placeholder the session can use in an action but never read. It only appears when the name is the record's whole title and no other record has it, and it is not repeated for the same record for twenty messages. The session can still look up anything the card leaves out. You can turn cards off in Settings (Cards for records you name).

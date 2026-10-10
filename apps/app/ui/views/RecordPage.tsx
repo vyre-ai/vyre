@@ -33,7 +33,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -152,7 +152,8 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
           </View>
         ) : null}
       </Card>
-      <Card title="Timeline" actions={<Text size="caption" tone="label">Every change, who and why</Text>}>
+      {story}
+      <Card title="Changes" actions={<Text size="caption" tone="label">Every field change, who and why</Text>}>
         {events.length ? events.map((e) => {
           const l = timelineLine(e);
           return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;

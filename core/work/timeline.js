@@ -59,7 +59,8 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
         out.push({ type: "chat", kind: "chat", id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, mine, shared: d.shared === true, field: x.field, ...(mine ? { chat: String(d.chat) } : {}) });
         continue;
       }
-      out.push({ type: x.type, kind: kindOf(x.type, d), id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, field: x.field });
+      // a Flow run says which run and which Flow it was, so a screen can open its page (contracts/flow-runs.md: additive)
+      out.push({ type: x.type, kind: kindOf(x.type, d), id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, field: x.field, ...(x.type === "flow-run" && d.run_id ? { run: String(d.run_id), ...(d.flow_id ? { flow: String(d.flow_id) } : {}) } : {}) });
     }
     // the stages a project moved through: a stage's first task is made when the project enters it, so the earliest task of each stage dates the move (the stage engine keeps no history of its own)
     const entered = new Map();

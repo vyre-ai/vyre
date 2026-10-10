@@ -78,7 +78,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     yes ask to=role:partner title="Send the welcome email?"
 - assign: to, title, record, output, how, template, checker, await, skills
     task assign to=teammate:paralegal title="Draft the engagement letter" output={kind: draft}
-- call: action, resource, input, with
+- call: action, resource, input, with, approve
     mail call action=email.send resource=vyre://space/email/outbox input={to: `trigger.email`, subject: Welcome}
 - stage: type, record, to
     move stage type=matter record=`steps.make.record.id` to=Active
@@ -88,7 +88,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     kind classify input=`trigger.message` labels=["new client", "existing client", spam]
 - extract: input, fields
     facts extract input=`trigger.message` fields=[{name: phone, kind: text}]
-- service: connector, method, path, query, headers, body, drive, connection, operation, input
+- service: connector, method, path, query, headers, body, drive, connection, operation, input, approve
     crm service connection=orbit-crm operation=customers.list input={limit: 1}
 - fn: language, source, hash, inputs, outputs, needs
     calc fn language=js inputs={a: 1, b: `trigger.amount`} outputs=[total] source=<<<

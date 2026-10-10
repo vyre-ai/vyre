@@ -145,6 +145,7 @@
         "name": "documents.send",
         "label": "Send a document for signature",
         "outward": true,
+        "recipients": ["email"],
         "inputs": {
           "template_id": "number",
           "email": "string",
@@ -162,6 +163,7 @@
         "name": "documents.send-signed",
         "label": "Email the signer their signed copy",
         "outward": true,
+        "recipients": ["email"],
         "inputs": {
           "slug": "string",
           "email": "string",

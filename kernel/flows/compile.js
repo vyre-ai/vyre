@@ -12,6 +12,7 @@ import { parse, roots, stepRefs } from "./expr.js";
 import { decorate } from "./places.js";
 import { secretsIn } from "./no-secrets.js";
 import { checkRides } from "./rides.js";
+import { boundsOf, sendsOf } from "./standing.js";
 
 /**
  * What the compiler knows about a Space.
@@ -280,6 +281,7 @@ function compileRaw(flow, cat) {
   }
   visit(flow.steps, "steps", baseScope, new Set());
   checkRides(flow.steps, cat, errors);
+  { const sends = sendsOf(flow, cat); if (sends.length) /** @type {any} */ (effects).sends = { steps: sends, ...boundsOf(flow, cat) }; }
   walkSteps(flow.steps, (/** @type {any} */ st) => { if (st.kind === "call" && st.with !== undefined) { const o = effects.outward.find((/** @type {any} */ x) => x.step === st.id); if (o) o.with = st.with; } });
   // Flow-level failure path: any step may have run before it, and it reads the error
   if (Array.isArray(flow.on_failure)) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); visit(flow.on_failure, "on_failure", new Set([...baseScope, "error"]), all); }
