@@ -684,7 +684,7 @@ Outside agents: Dots, Muse, Hermes, ChatGPT or your own Claude Code elsewhere re
 - Tools: [9](tools.md#outside), 3 of them only for other modules
 - Emits: [6 events](events.md#outside)
 - Shows on: no surface
-- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory/*","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
+- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
 
 ## planner
 
