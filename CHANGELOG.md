@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(flows): a real-daemon check that what Flows leave behind reads as words: after a run with lanes, a sub-flow, an ask, a task for a person and a failure, no record, task, health line, timeline or logged event holds "[object Object]" or "undefined" (test/flows-data-hygiene.test.js).
 - feat(switchboard): when a chat's process ends because the chat moved to the server (the lent process carries `moved`), the session starts again on the server with `resume` and a turn that was cut is sent again from its start; a finished turn is not repeated, and a failure ends the thread saying why (`carryOn` in lib/lent-placement.js; the drivers hand `moved` to `onExit`). The lender's last whole turn is the chat's transcript here through link's resume loader. Test: core/sessions/lent-spawn.test.js.
 - feat(work): `work.chat.title { chat }` -> `{ title }` (internal, modules only): a chat's name, up to 120 characters, for any chat id, so the home names a lent chat on its computer's list however the chat was started. Test: core/work/chat-title.test.js.
 - fix(app): Now and the calendar no longer list every chat as an event ("5:54 am New chat, Chat: Started" and "Chat: Last active" under Today, and "Next 9:56 am New chat" on a phone). A chat's start and last turn are when something happened, not when something is due (apps/app/screens/calendar/logic.js; red first in logic.test.js).
