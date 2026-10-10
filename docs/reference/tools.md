@@ -3728,7 +3728,7 @@ A module offers a sender of its own: `name` in its namespace (<module>, <module>
 
 ### `gate.reject`
 
-The user discards a held item. Nothing is sent.
+The user discards a held item. Nothing is sent. The module that offered the item's sender may also take its own item back.
 
 - Input:
   - `id` string, required
@@ -6902,10 +6902,11 @@ End an outside agent: { id }. Its token opens nothing, its grants are taken back
 
 ### `outside.token`
 
-Make a new token for an outside agent: { id }. The old one stops working at once. Shown once.
+Make a new token for an outside agent: { id, days? }. The old one stops working at once. With days, the agent lasts that long from now. Shown once.
 
 - Input:
   - `id` string, required
+  - `days` number
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 - Needs a person present.
 
