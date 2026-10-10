@@ -113,7 +113,7 @@
       "runner.checkpoint",
       "runner.locked",
       "runner.deleted",
-      "runner.sealed",
+      "runner.sealed", "runner.resumed",
       "runner.seal-failed",
       "runner.moved",
       "runner.fenced"

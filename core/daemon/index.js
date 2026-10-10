@@ -41,6 +41,7 @@ import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor, lentPlacements } from "./lent-service.js";
 import { lentRequest } from "./threadsock.js";
+import { createResumeLent } from "../runner/resume-lent.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -649,14 +650,23 @@ async function startLocked(opts, root, p, release) {
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
+      // The loader that carries a chat on from a computer of the person's: a host's own (opts.resumeLent, or the registry's), else this server's (core/runner/resume-lent.js), which needs the Switchboard to say
+      // where the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
+      const ownLoader = createResumeLent({
+        target: async thread => { const r = /** @type {any} */ (await registry.call("threads.transcript-target", { thread }, "module:vyred", { door: true })); return r && r.data ? r.data : null; },
+        port: space => { try { return runnerHostOwn()?.port(space) || null; } catch { return null; } },
+        say: (type, payload) => { try { events.emit("runner", type, payload, { thread: payload && payload.thread }); } catch { /* a notice */ } },
+      });
+      const runnerHostOwn = () => (kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null);
+      const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("threads.transcript-target") && process.env.VYRE_SUPERVISOR !== "docker" ? ownLoader : undefined);
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
         emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a chat is `opts.resumeLent` (or the registry's `resumeLent`, agent-core's). Until it exists the server
         // takes no session from a computer (`canResume`): a move answers "coming in this release" and the computer keeps running the session, because a session taken with nothing to continue it is a session lost.
-        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet: start a new session on that computer instead"), { code: "unavailable" }); return f(i); },
+        resume: async (/** @type {any} */ i) => { const f = loaderOf(); if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet: start a new session on that computer instead"), { code: "unavailable" }); return f(i); },
         http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers, /** @type {string} */ body) => lentRequest(thread, method, p, headers, body),
-        canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
+        canResume: () => typeof loaderOf() === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
           // the credential is the owner of this home's own: a member who is not that person gets no model route from it

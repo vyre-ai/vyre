@@ -51,6 +51,7 @@ import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
+import { claudeTranscriptPlace } from "../sessions/drivers/claude-transcript.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
@@ -4836,6 +4837,20 @@ export default {
         }
         if (!t) return null;
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
+      },
+    });
+    // Where the transcript of a chat belongs on THIS server, whether or not the file exists yet: the loader that carries a chat on from a computer of the person's (core/runner/resume-lent.js) writes it there.
+    // Only a Claude thread this Switchboard has, and nothing on the packaged box, where the file belongs to an account's own uid and only the spawner may place one.
+    ctx.tool("threads.transcript-target", {
+      description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of, a provider that keeps no such file, or a server where the transcript is an account's own.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["thread"], properties: { thread: str } },
+      run: async i => {
+        const id = String(i.thread);
+        const rec = sb.record(sb.threadOfNative(id) || id);
+        if (!rec || (rec.provider || "claude") !== "claude" || process.env.VYRE_SUPERVISOR === "docker") return null;
+        const thread = String(rec.id || id), native = sb.nativeOf(thread), folders = sb.deps.transcripts || [];
+        const at = claudeTranscriptPlace(folders, String(rec.cwd || ""), native);
+        return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) } : null;
       },
     });
     ctx.tool("threads.origin", {

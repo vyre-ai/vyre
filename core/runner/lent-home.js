@@ -52,7 +52,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number,
  *   canResume?: () => boolean, http?: (thread: string, method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> | null,
- *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
+ *   resume?: (i: { space: string, session: string, thread?: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   canResume: can the server carry a session on right now (the loader that turns a lent transcript into a chat exists)? When it cannot, the server takes no session from a lender: a move answers `unavailable` and the lender keeps
  *   running it, because a session taken with nothing to continue it is a session lost. Unset: yes.
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
@@ -117,7 +117,7 @@ export function createLentHome(o) {
     if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
-    lent.delete(String(session)); threads.delete(String(session)); owed.add(String(session));
+    lent.delete(String(session)); owed.add(String(session));   // the thread stays until the server has carried the chat on (resumeOwed): the loader needs it
     pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
     kickResume(String(session));
@@ -138,9 +138,9 @@ export function createLentHome(o) {
     try { await store.drain(session); } catch { /* the store answers for itself */ }
     // a continuation that hangs is given half a minute and told again at the next sweep
     try {
-      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
+      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
       // only what was owed at THIS take-over: a later one of the same session is owed its own
-      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); }
+      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); threads.delete(session); }
     } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.

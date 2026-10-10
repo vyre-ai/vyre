@@ -16,7 +16,7 @@ const SESSION = "ses_a1b2c3d4e5f6", CHAT = "chat_00000000-0000-4000-8000-0000000
 /** @param {any} t @param {Record<string, any>} [opts] */
 async function world(t, opts = {}) {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", modules: { disable: ["agents", "computers"] } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", modules: { disable: ["agents", "computers", "threads"] } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, ...opts });
   asOwner(d, root);
   t.after(() => d.stop());

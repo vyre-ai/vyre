@@ -147,6 +147,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.transcript-target",
+        "reach": "modules"
+      },
+      {
         "name": "threads.lineage",
         "reach": "modules"
       },

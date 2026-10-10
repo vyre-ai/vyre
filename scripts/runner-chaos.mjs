@@ -34,6 +34,8 @@ if (role === "home") {
   const { withKernelCall } = await import("../kernel/remote/wink.js");
   const { admitPeer, socketPipe } = await import("../core/wink/node/peer-wire.js");
   const { createLentHome } = await import("../core/runner/lent-home.js");
+  const { createResumeLent } = await import("../core/runner/resume-lent.js");
+  const { createCheckpointStore } = await import("../core/runner/checkpoint-store.js");
   const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
   const used = new Set();
   const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
@@ -48,6 +50,10 @@ if (role === "home") {
   await mk(k.chains.fromFacts({ kind: "device", device_key_id: DEVICE, person: BOB, path: "direct" }), { side: "member_accepts", member: BOB, device: DEVICE, device_key: DEVICE });
   const agentDir = path.dirname(agentPath);
   const resumes = path.join(root, "resumes.jsonl");
+  // the server's side of a chat carried on from a computer: where its transcript goes, and the server's own checkpoint store
+  const placeOf = session => ({ file: path.join(root, "server-projects", "p", `${session}.jsonl`), root: path.join(root, "server-projects"), native: session, cwd: path.join(root, "server-cwd") });
+  const own = createCheckpointStore({ space: SPACE, root: path.join(root, "own-store"), authorize: async () => ({ effect: "allow" }) }).port(() => k.chains.fromFacts({ kind: "device", device_key_id: "vyred-checkpoints", person: OWNER, path: "direct" }));
+  const resumeLent = createResumeLent({ target: async thread => placeOf(thread), port: () => own });
   const chats = new Map();
   const home = createLentHome({ space: SPACE, root: path.join(root, "lent"), offers: g.offers, leases: k.gateway.leases, lapseMs: LAPSE_MS,
     // a chat's session reaches Vyre's tools through the home (lent.http): here the home answers with what it was asked
@@ -56,7 +62,12 @@ if (role === "home") {
     // the server's continuation of a session its lender gave up or lost: what the server would carry on from is recorded, whole
     resume: async i => {
       const cp = await i.view.checkpoint().catch(() => null), lines = cp ? await i.view.transcript(1, 10000).catch(() => []) : [];
-      fs.appendFileSync(resumes, JSON.stringify({ session: i.session, epoch: i.epoch, reason: i.reason, turn: cp ? cp.turn : null, seq: cp ? cp.seq : null, lines: lines.length }) + "\n");
+      // the real loader (core/runner/resume-lent.js) puts the last whole turn where the chat's next turn on the server reads it
+      let loaded = null, loadError = null;
+      try { loaded = await resumeLent({ ...i, thread: i.session }); } catch (e) { loadError = String(e.message || e); }
+      const file = placeOf(i.session).file;
+      const onDisk = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean) : [];
+      fs.appendFileSync(resumes, JSON.stringify({ session: i.session, epoch: i.epoch, reason: i.reason, turn: cp ? cp.turn : null, seq: cp ? cp.seq : null, lines: lines.length, loaded, loadError, onDisk }) + "\n");
     },
     specFor: async () => ({ command: process.execPath, args: [agentPath], env: { VYRE_AUTO_TURN_MS: "1200" }, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }) });
   home.watch(500);
@@ -360,6 +371,8 @@ else {
       check(r.length === 1 && r[0].turn === 1, `the server resumed it once, from the last whole turn (${JSON.stringify(r.map(x => x.turn))})`);
       const held = await ctl({ cmd: "transcript", session: sess });
       check(held.some(x => x.includes("did alpha")) && !held.some(x => x.includes("did beta")), "what it resumes from holds the whole turn and not the cut one");
+      check(!r[0].loadError && r[0].loaded && r[0].loaded.resumed === true, `the loader carried the chat on (${r[0].loadError || JSON.stringify(r[0].loaded)})`);
+      check(r[0].onDisk.some(x => x.includes("did alpha")) && !r[0].onDisk.some(x => x.includes("beta")) && r[0].onDisk.length === r[0].seq, `the chat's own transcript on the server holds exactly the ${r[0].seq} whole lines, none of the cut turn`);
       await sleep(1500);
       check((await ctl({ cmd: "transcript", session: sess })).length === held.length, "the lender wrote nothing after handing over");
       l.send({ cmd: "exit" });
