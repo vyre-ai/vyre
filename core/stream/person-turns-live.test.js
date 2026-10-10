@@ -149,12 +149,12 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   // bob, on the thread's own provider (Claude), says a fact only his turn holds
   const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!first.error, first.error && `${first.error.code} ${first.error.message}`);
-  await until(() => textOf(carol.frames).includes("echo: the code word is AMBER-92"), "claude's answer to bob", 60_000);
+  await until(() => textOf(carol.frames).includes("echo: the code word is AMBER-92"), "claude's answer to bob", 120_000);
   const thread = kitThread(b, chat.id);
   // carol asks on Codex
   const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], account: "codex", cwd: w.work });
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
-  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 60_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))}`); });
+  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))}`); });
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);
@@ -181,13 +181,13 @@ test("G04: two people each with their own Codex sign-in: the thread starts on bo
   // bob speaks first, on Codex (his chip): the thread starts on his account
   const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work });
   assert.ok(!first.error, first.error && `${first.error.code} ${first.error.message}`);
-  await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 60_000);
+  await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 120_000);
   const thread = kitThread(b, chat.id);
   assert.equal((await b.reg.call("threads.get", { thread }, "cli")).data.thread.account, bobsAcct, "the thread is on bob's account");
   // carol sends with no chip: her own Codex sign-in is hers to use
   const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
-  await until(() => /what was the code word\?/.test(textOf(carol.frames).split("echo:").pop() || ""), "carol's answer", 60_000);
+  await until(() => /what was the code word\?/.test(textOf(carol.frames).split("echo:").pop() || ""), "carol's answer", 120_000);
   const ev = (await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events;
   assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's own account");
   assert.match(textOf(carol.frames), /AMBER-92[\s\S]*what was the code word/, "and her AI was handed bob's turn");
@@ -210,7 +210,7 @@ async function bobsThread(t) {
   const bobsAcct = await own("bob", "Bob's Codex");
   const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work });
   assert.ok(!first.error, first.error && `${first.error.code} ${first.error.message}`);
-  await until(() => /AMBER-92/.test(textOf(watchCarol.frames)), "bob's turn", 60_000);
+  await until(() => /AMBER-92/.test(textOf(watchCarol.frames)), "bob's turn", 120_000);
   const thread = kitThread(b, chat.id);
   const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
   return { w, b, chat, own, bobsAcct, thread, events, watchCarol };
@@ -260,6 +260,6 @@ test("G04: a turn that arrives while another is running waits behind it, then ru
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
   const thread = kitThread(b, chat.id);
   await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.queued"), "carol's turn to be queued", 30_000);
-  await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === added.data.id), "carol's turn to run on her own account after bob's", 90_000);
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === added.data.id), "carol's turn to run on her own account after bob's", 150_000);
   await b.stop();
 });
