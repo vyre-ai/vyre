@@ -11,6 +11,7 @@ import { FlowCode } from "./FlowCode";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { shownWarnings, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -20,7 +21,7 @@ const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "pl
 export function RealFlow({ id }: { id: string }) {
   const router = useRouter();
   const [g, setG] = useState<Graph | null>(null);
-  const [meta, setMeta] = useState<{ version: number; hash: string; status: string } | null>(null);
+  const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; title: string } | null>(null);
   const [card, setCard] = useState<FlowCard | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [runId, setRunId] = useState<string | undefined>(undefined);
@@ -36,8 +37,8 @@ export function RealFlow({ id }: { id: string }) {
       try {
         const [graph, m, rs] = await Promise.all([graphReal(id), getReal(id), runsReal(id)]);
         if (!live) return;
-        setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status }); setRuns(rs);
-        if (m.status !== "approved") setCard(await cardReal(id, m.version));
+        setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
     })();
     return () => { live = false; };
@@ -52,7 +53,7 @@ export function RealFlow({ id }: { id: string }) {
   if (!g || !meta) return <Frame title="Flows" back="/u/flows"><LoadingState rows={3} /></Frame>;
   const nodes = painted ?? g.nodes;
   const node = nodes.find((x) => x.id === picked);
-  const waiting = meta.status !== "approved";
+  const waiting = versionWaits(meta);
 
   const approve = async () => {
     setBusy(true);
@@ -76,10 +77,10 @@ export function RealFlow({ id }: { id: string }) {
   const picked_run = runs.find((r) => r.id === runId);
 
   return (
-    <Frame back="/u/flows" title={id} sub={`${g.trigger} · v${meta.version}`}>
+    <Frame back="/u/flows" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
       <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
       {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
-      {g.warnings?.length ? <Banner tone="warn"><View className="gap-s1">{g.warnings.map((w) => <Text key={w}>{w}</Text>)}</View></Banner> : null}
+      {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}
       {waiting && card ? (
         <Sec title="Waiting for your approval">
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}

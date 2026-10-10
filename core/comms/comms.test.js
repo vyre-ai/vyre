@@ -11,7 +11,7 @@ function rig({ config = { comms: { sms: { account: AC, from: "+15555550000" } } 
   /** @type {any[]} */ const calls = [], posted = [], events = [];
   const ctx = { config, log: () => {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
     events: { emit: (/** @type {string} */ t, /** @type {any} */ p) => events.push([t, p]) },
-    vault: { fetch: async (/** @type {string} */ id, /** @type {any} */ o) => { if (id !== "twilio" || !vault || !(o.field in vault)) throw new Error("no item named twilio"); return vault[o.field]; } },
+    vault: { fetch: async (/** @type {string} */ id, /** @type {any} */ o) => { if (id !== "comms-twilio" || !vault || !(o.field in vault)) throw new Error("no item named twilio"); return vault[o.field]; } },
     call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
       calls.push([tool, input]);
       if (tool === "gate.offer") return { data: { ok: true } };
@@ -69,7 +69,7 @@ test("when the Gate releases it, one Twilio message goes to each number with the
   // no Twilio item in the Vault: nothing is sent, and the message says what to do
   const bare = rig({ vault: null });
   const e = await bare.run("comms.release", input, { caller: "module:gate" }).then(() => null, (/** @type {any} */ x) => x);
-  assert.equal(e.code, "needs_setup"); assert.match(e.message, /add an API key named twilio/);
+  assert.equal(e.code, "needs_setup"); assert.match(e.message, /connect Twilio for Comms/);
   assert.equal(bare.posted.length, 0);
   assert.deepEqual(r.events.at(-1), ["comms.sent", { id: "gi_1", via: "sms", sent: 2, failed: 0 }]);
 });
