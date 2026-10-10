@@ -204,3 +204,32 @@ test("ops.learn with the fields the person wants: the picks are found in the lea
   const out = await T(opsCap.ops["ops.call"])({ tab: 1, op: r.operation, inputs: { query: "gamma labs" } }, k.ctx);
   assert.deepEqual(Object.keys(out.data[0]).sort(), ["headline", "name"], "only what was asked for comes back");
 });
+
+test("ops.learn of a page: the page's own document is the answer, and the text of the first row per field is turned into a recipe the operation keeps", async () => {
+  reset();
+  const html = `<html><body><table class="rows"><tr><th>Case</th><th>Name</th></tr><tr class="r"><td>24-1</td><td><a href="/c/24-1">Harlow v. Northwind</a></td></tr><tr class="r"><td>24-2</td><td><a href="/c/24-2">Reyes</a></td></tr></table></body></html>`;
+  const bodies = new Map();
+  const k = makeCtx({ tabUrl: `${ORIGIN}/cases?name=x`, respond: {
+    "Network.getResponseBody": (/** @type {any} */ p) => ({ body: bodies.get(p.requestId) ?? "", base64Encoded: false }),
+    "Runtime.evaluate": () => ({ result: { value: { origin: ORIGIN, url: `${ORIGIN}/cases?name=x`, cookie: {}, local: {}, session: {} } } }),
+  } });
+  let n = 0;
+  /** @type {any} */ (k.ctx).call = async (/** @type {string} */ op, /** @type {any} */ a) => {
+    if (op === "tabs.navigate") {
+      const id = `d${++n}`;
+      bodies.set(id, html);
+      request(k, 1, { id, url: String(a.url), headers: { accept: "text/html" }, type: "Document", mime: "text/html" });
+      return { id };
+    }
+    return {};
+  };
+  await T(net.ops["net.start"])({ tab: 1 }, k.ctx);
+  const args = { tab: 1, name: "searchCases", kind: "read", trigger: { url: `${ORIGIN}/cases?name={name}` }, examples: [{ name: "Harlow" }], page: { number: "24-1", caption: "Harlow v. Northwind", url: "/c/24-1" } };
+  const r = await T(opsCap.ops["ops.learn"])(args, k.ctx);
+  assert.equal(r.ok, true, ser(r));
+  assert.equal(r.operation.response.format, "html");
+  assert.deepEqual(Object.keys(r.operation.response.html.fields).sort(), ["caption", "number", "url"]);
+  assert.equal(r.operation.response.html.fields.url.attr, "href");
+  const { readHtml } = await import("../../lib/siteops/htmlread.js");
+  assert.deepEqual(readHtml(html, r.operation.response.html).map((/** @type {any} */ x) => x.number), ["24-1", "24-2"]);
+});
