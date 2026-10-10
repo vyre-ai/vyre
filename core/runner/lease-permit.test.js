@@ -116,3 +116,12 @@ test("what the computer says about itself can only tighten: a looser claim is cl
   await c3.client.vault.lease();
   assert.equal(g3.events("lease.issued")[0].limit, null);
 });
+
+test("each chat that takes a computer is a line on the Space's log, owner-visible, next to the lease lines (so the timeline reads it)", { timeout: 120_000 }, async t => {
+  const h = await home(t);
+  h.k.gateway.leases.borrowed({ thread: "chat_1", session: "s_1", member: BOB, device: DEVICE, limit: "provider", epoch: 2 });
+  const [ev] = h.events("lease.borrowed");
+  assert.deepEqual([ev.thread, ev.session, ev.member, ev.device, ev.limit, ev.epoch], ["chat_1", "s_1", BOB, DEVICE, "provider", 2]);
+  const row = h.k.log.read({ type: "lease.borrowed" })[0];
+  assert.deepEqual([row.vis, row.subject], ["owner", `vyre://${SPACE}/lease/${DEVICE}`]);
+});
