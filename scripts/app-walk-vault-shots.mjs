@@ -64,7 +64,7 @@ const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const errors = [];
 for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "light"]) {
   if (ONLY && ONLY !== `${w}:${theme}`) continue;
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, serviceWorkers: "block", deviceScaleFactor: w > 600 ? 1 : 2 });
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, serviceWorkers: "block", reducedMotion: ROUTES.length ? "reduce" : "no-preference", deviceScaleFactor: w > 600 ? 1 : 2 });
   // The app is a native window, not a browser: stand in for the Mac shell so the screen is the one a person has (Add, Share and Reveal are there, not "on your phone").
   await ctx.addInitScript(() => { window.__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} }; });
   const pg = await ctx.newPage();
