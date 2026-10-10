@@ -48,7 +48,7 @@ test("the card: a few key fields, values cut, a sealed part as its placeholder, 
 function fakeKernel() {
   const recs = [
     { type: "contact", id: "c1", title: "Dana Whitfield" }, { type: "contact", id: "c2", title: "Sam Reyes" }, { type: "contact", id: "c3", title: "Sam Reyes" },
-    { type: "matter", id: "m1", title: "Harlow v. Harlow" }, { type: "flow-run", id: "r1", title: "Dana Whitfield" },
+    { type: "matter", id: "m1", title: "Harlow v. Harlow" }, { type: "flow-run", id: "r1", title: "Dana Whitfield" }, { type: "team-member", id: "a1", title: "Juno" },
   ];
   const seen = [];
   return {
@@ -69,6 +69,7 @@ test("a card needs an exact, unique title among records the person may read, and
   assert.match(first, /contact vyre:\/\/spc_a\/contact\/c1: Dana Whitfield/);
   assert.ok(!first.includes("flow-run"), "the kernel's own bookkeeping types are never a card");
   assert.equal(await ask("and Dana Whitfield again?"), "", "already in the model's context");
+  assert.equal(await ask("ask Juno about it", { thread: "t0" }), "", "an agent, a chat or a share is not a client");
   for (let i = 0; i < LIMITS.again - 2; i++) await ask("nothing named");
   assert.match(await ask("Dana Whitfield once more"), /Dana Whitfield/, "after 20 turns it may come back");
   assert.equal(await ask("What did Sam Reyes say?", { thread: "t2" }), "", "two records of one name: never guess");
