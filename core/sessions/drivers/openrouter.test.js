@@ -118,3 +118,21 @@ test("conform: only Vyre's own openrouter driver may skip the process and tool c
   const fails = await conform({ ...p, id: "sneaky" }, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, timeout: 500 });
   assert.ok(fails.length > 0, "a module's provider claiming process:false is checked in full");
 });
+
+test("openrouter: a picture rides the turn as an image_url part, and the kept history holds a note, not the bytes", async t => {
+  const s = await server(t);
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url });
+  const id = crypto.randomUUID(), got = [];
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+  const a = p.run({ id, resume: false, model: "x/y", env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {}, onSpawn() {} });
+  a.write({ type: "user", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: "what is this" }] } });
+  for (let i = 0; i < 100 && !got.some(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 20));
+  const sent = s.seen.at(-1).messages.at(-1).content;
+  assert.deepEqual(sent, [{ type: "text", text: "what is this" }, { type: "image_url", image_url: { url: `data:image/png;base64,${png}` } }]);
+  a.write({ type: "user", message: { role: "user", content: "and now words only" } });
+  for (let i = 0; i < 100 && got.filter(m => m.type === "result").length < 2; i++) await new Promise(r => setTimeout(r, 20));
+  const again = s.seen.at(-1).messages;
+  assert.ok(!JSON.stringify(again).includes(png), "the bytes are not sent again");
+  assert.match(again.find(m => m.role === "user").content, /what is this\n\[an image was shown with this message\]/);
+  await a.stop();
+});

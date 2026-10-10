@@ -221,3 +221,17 @@ test("listModels: the door asks the provider's driver for its model list and ans
   assert.equal((await refusal(door.listModels({ chain: svc, provider: "fake", account: {} }))).code, "not_a_sink");
   assert.deepEqual(await door.listModels({ chain: chain([["person", "per_alex"], ["service", "summaries"]]), provider: "fake", account: { id: "z" } }).then(n => n.slice(0, 1)), ["m-z"], "a declared sink may ask");
 });
+
+test("a message may carry a picture: the words are scanned, a PNG data URL goes through as it is, any other part is refused and the model is never called", async t => {
+  const w = await world(t);
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+  await w.call([{ role: "user", content: [{ type: "text", text: "Her SSN is 123-45-6789, what is in this picture" }, { type: "image_url", image_url: { url: png } }] }]);
+  const sent = w.seen[0].messages[0].content;
+  assert.equal(sent[0].text, "Her SSN is [sealed: US SSN #1], what is in this picture");
+  assert.deepEqual(sent[1], { type: "image_url", image_url: { url: png } });
+  for (const bad of [{ type: "image_url", image_url: { url: "https://evil.example/x.png" } }, { type: "image_url", image_url: { url: "data:text/html;base64,PGI+" } }, { type: "file", file: "x" }]) {
+    const r = await refusal(w.call([{ role: "user", content: [{ type: "text", text: "hi" }, bad] }]));
+    assert.equal(r.code, "budget", JSON.stringify(bad));
+  }
+  assert.equal(w.seen.length, 1, "the refused ones never reached the model");
+});

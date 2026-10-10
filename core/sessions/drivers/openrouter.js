@@ -80,9 +80,9 @@ function runChat(entry, store, o) {
   const base = String(acctBase || entry.baseUrl || BASE).replace(/\/+$/, "");
   // The model is the one the person chose (a launch's, or the routing entry's, or the one saved with the account): never a default that spends on their behalf.
   const model = String(o.model || (o.env && o.env.VYRE_API_MODEL) || entry.model || "");
-  /** @type {{ role: string, content: string }[]} */
+  /** @type {{ role: string, content: any }[]} */
   const history = o.resume ? [...(store.get(o.id) || [])] : [];
-  const queue = /** @type {string[]} */ ([]);
+  const queue = /** @type {{ text: string, images: { media_type: string, data: string }[] }[]} */ ([]);
   let busy = false, alive = true, ac = /** @type {AbortController|null} */ (null), total = 0, turn = 0, asked = false;   // asked: the person interrupted or stopped it
   const say = m => { try { o.onMessage(m); } catch {} };
   const exit = () => { if (!alive) return; alive = false; try { o.onExit(0, null, ""); } catch {} };
@@ -93,8 +93,10 @@ function runChat(entry, store, o) {
   async function pump() {
     if (busy || !alive || !queue.length) return;
     busy = true;
-    const prompt = /** @type {string} */ (queue.shift());
-    history.push({ role: "user", content: prompt });
+    const { text: prompt, images } = /** @type {{ text: string, images: { media_type: string, data: string }[] }} */ (queue.shift());
+    // A picture rides this turn only, as an image_url part (an OpenAI-compatible model that cannot see it says so); the kept history holds the words and a note, never the bytes.
+    const mine = { role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images.map(i => ({ type: "image_url", image_url: { url: `data:${i.media_type};base64,${i.data}` } }))] : prompt };
+    history.push(mine);
     const messages = [...(o.system && o.system.text ? [{ role: "system", content: String(o.system.text) }] : []), ...history.slice(-MAX_HISTORY)];
     ac = new AbortController();
     asked = false;
@@ -158,6 +160,7 @@ function runChat(entry, store, o) {
     ac = null;
     if (text) { history.push({ role: "assistant", content: text }); say({ type: "assistant", message: { id: `or-turn-${++turn}`, content: [{ type: "text", text }] } }); }
     else if (history.length && history[history.length - 1].role === "user") history.pop();   // an unanswered turn is not kept
+    if (images.length) mine.content = `${prompt}\n[${images.length === 1 ? "an image was" : `${images.length} images were`} shown with this message]`;
     store.set(o.id, history.slice(-MAX_HISTORY));
     total += cost;
     const limited = failed && /\b(429|402)\b|rate.?limit|insufficient|credit/i.test(failed.message);
@@ -173,7 +176,9 @@ function runChat(entry, store, o) {
     /** @param {any} m */
     write(m) {
       if (!alive || !m || m.type !== "user") return;
-      queue.push(textOf(m.message && m.message.content));
+      const c = m.message && m.message.content;
+      const images = Array.isArray(c) ? c.filter(b => b && b.type === "image" && b.source && /^image\/(?:png|jpeg|gif|webp)$/.test(String(b.source.media_type))).map(b => ({ media_type: String(b.source.media_type), data: String(b.source.data) })) : [];
+      queue.push({ text: textOf(c), images });
       pump();
     },
     interrupt() { asked = true; if (ac) ac.abort(); return Promise.resolve(); },

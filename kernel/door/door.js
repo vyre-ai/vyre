@@ -8,6 +8,8 @@ import { Ledger } from "../seal/ledger.js";
 import { createStreamScanner } from "./stream.js";
 
 const MAX_MESSAGES = 2000, MAX_CHARS = 2_000_000, MAX_TOOL_INPUT = 256 * 1024, MAX_TOOLS = 64;
+const IMAGE = /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]{1,8000000}$/;
+const textOf = c => (Array.isArray(c) ? c.map(p => (p && p.type === "text" ? String(p.text) : "")).join("") : String(c));
 export class DoorRefusal extends Error {
   /** @param {{ code: string, [k: string]: any }} refusal */
   constructor(refusal) { super(refusal.code); this.code = refusal.code; this.refusal = refusal; }
@@ -64,13 +66,15 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
     const last = chain.hops[chain.hops.length - 1];
     if (last.actor.kind === "service" && !sinkSet.has(last.actor.id)) refuse({ code: "not_a_sink", detail: "service is not a declared model sink" }, input);
     if (!Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > MAX_MESSAGES
-      || input.messages.reduce((n, m) => n + String(m.content).length, 0) > MAX_CHARS) refuse({ code: "budget", meter: "prompt_size" }, input);
+      || input.messages.reduce((n, m) => n + textOf(m.content).length, 0) > MAX_CHARS) refuse({ code: "budget", meter: "prompt_size" }, input);
     const driver = drivers[input.provider];
     const res = !driver ? "provider is not available" : residency({ provider: input.provider, model: input.model, chain });
     if (res) refuse({ code: "residency", detail: res }, input);
     const over = budget.reserve(input); if (over) refuse({ code: "budget", meter: over }, input);
     const session = input.session ?? `call_${crypto.randomUUID()}`, messages = [];
-    try { for (const m of input.messages) messages.push({ role: m.role, content: await scan(chain, session, String(m.content), { ...input, session }) }); } catch (e) { giveBack(input); throw e; }
+    // A message is words, or a list of parts: words are scanned, a picture (a data URL of a PNG, JPEG, GIF or WebP) goes as it is, anything else is refused.
+    const part = async (p, ctx) => (p && p.type === "text" ? { type: "text", text: await scan(chain, session, String(p.text), ctx) } : p && p.type === "image_url" && p.image_url && IMAGE.test(String(p.image_url.url)) ? { type: "image_url", image_url: { url: p.image_url.url } } : refuse({ code: "budget", meter: "prompt_part" }, input));
+    try { for (const m of input.messages) messages.push({ role: m.role, content: Array.isArray(m.content) ? await m.content.reduce(async (acc, p) => { const out = await acc; out.push(await part(p, { ...input, session })); return out; }, Promise.resolve([])) : await scan(chain, session, String(m.content), { ...input, session }) }); } catch (e) { giveBack(input); throw e; }
     return { chain, session, messages, driver };
   }
 
