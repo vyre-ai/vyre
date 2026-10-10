@@ -144,9 +144,11 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const team = [];
     for (const r of body.roles || []) if (r.agent) { try { await h.teamMember({ action: "add", project: proj.data.slug, agent: r.agent, role: r.role }); team.push({ role: r.role, agent: r.agent, ...(r.lead ? { lead: true } : {}) }); } catch (e) { log(`templates: ${r.agent} could not join ${proj.data.slug}: ${/** @type {Error} */ (e).message}`); } }
     const f = flows();
-    let entered = false;
-    if (f && f.stages) { await f.stages.enter({ urn: proj.urn, type: "project", id: proj.id, stage: first, entry: `start:${proj.id}` }); entered = true; }
-    return { project: proj.urn, slug: proj.data.slug, template: rec.data.template, version: rec.data.version, stage: first, teammates: team, ...(lead ? { lead: lead.agent } : {}), tasks_made: entered };
+    /** @type {{ made: number, skipped: { task: string, why: string }[] } | undefined} */ let entered;
+    if (f && f.stages) entered = await f.stages.enter({ urn: proj.urn, type: "project", id: proj.id, stage: first, entry: `start:${proj.id}` });
+    // `tasks_made` is how many of the first stage's tasks exist, and `tasks_skipped` says which could not be made and why (an assistant not in this space yet), so a person is never told their tasks are in Now when they are not
+    return { project: proj.urn, slug: proj.data.slug, template: rec.data.template, version: rec.data.version, stage: first, teammates: team, ...(lead ? { lead: lead.agent } : {}), tasks_made: entered ? entered.made : 0,
+      ...(entered && entered.skipped.length ? { tasks_skipped: entered.skipped } : {}) };
   }
 
   /** A draft template made from a project that ran one: the stages it was pinned to (their briefs kept as written) and the roles its team filled. */
