@@ -47,3 +47,17 @@ test("listCaller: the first person on the chain, whatever hops follow; a service
   assert.equal(await listCaller(K([service]), { caller: "deck" }), "per_owner", "so is the deck");
   assert.equal(await listCaller(K([service]), { caller: "module:x" }), null);
 });
+
+test("spaces.merge-list (what Publish and the doors ask) lists the kernel's own team Spaces for a person in them, not the home's own Space, and nothing for a stranger", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner, BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
+  const s1 = await d.kernel.spaces.host({ owner, name: "roomone" }), s2 = await d.kernel.spaces.host({ owner, name: "roomtwo" });
+  const ownerChain = s1.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000a", person: owner, path: "direct", session: "s" });
+  await s1.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { method: "stand-in" } });
+  const mergeList = async (/** @type {string} */ person) => { const r = await d.registry.call("spaces.merge-list", { person }, "module:publish", {}); return (r.data?.spaces || []).map((/** @type {any} */ x) => x.space).sort(); };
+  assert.deepEqual(await mergeList(owner), [s1.space, s2.space].sort(), "both team Spaces of the owner, and not the home's own");
+  assert.deepEqual(await mergeList(BOB), [s1.space]);
+  assert.deepEqual(await mergeList(EVE), []);
+});
