@@ -16,7 +16,7 @@ import { vaultMore } from "./more";
 import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
-import { searchItems, NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, slugName, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type Filter, type ListRow, type NewItem, type RealItem, type UseRow } from "./real-model";
+import { searchItems, NEW_KINDS, fieldWord, putProblems, personalUnlockRefusal, itemsOf, slugName, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type Filter, type ListRow, type NewItem, type RealItem, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -142,7 +142,7 @@ export default function RealVault() {
             return (
               <View key={f} className="min-h-control flex-row items-center justify-between gap-s2">
                 <View className="min-w-0 flex-1 gap-s1">
-                  <Text size="caption" tone="label">{f.charAt(0).toUpperCase() + f.slice(1)}</Text>
+                  <Text size="caption" tone="label">{fieldWord(f)}</Text>
                   {on ? <Text mono size="headline" selectable>{shown!.value}</Text> : <SealedMask label={`${cur.name} ${f}`} />}
                 </View>
                 {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? null : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}

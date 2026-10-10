@@ -21,6 +21,10 @@ export const kindWord = (kind: string): string => KIND_WORD[kind] ?? kind;
 /** A name as a person reads it: the vault keeps letters, digits, dot, dash and underscore, so "Airline-account" is shown as "Airline account". The name itself is still what every action sends. */
 export const displayName = (name: string): string => name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 
+const FIELD_WORD: Record<string, string> = { totp: "One-time code", cvc: "Security code", expiry: "Expires", number: "Number", url: "Web address", ssh_private_key: "Private key", public_key: "Public key", client_id: "Client ID", client_secret: "Client secret" };
+/** A field's name as a person reads it: "totp" is "One-time code"; anything else is the name with a capital and no underscores. */
+export const fieldWord = (f: string): string => FIELD_WORD[f] ?? (f.charAt(0).toUpperCase() + f.slice(1).replace(/[_-]+/g, " "));
+
 /** A site as a person reads it: the host, with no scheme or path. */
 export const hostWord = (h: string): string => h.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "").replace(/^www\./, "");
 

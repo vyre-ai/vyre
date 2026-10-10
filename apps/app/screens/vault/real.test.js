@@ -27,7 +27,8 @@ function box(o = {}) {
 }
 
 test("a name and a site are shown as a person reads them; the name that is sent is the vault's own", { skip: !strip }, async () => {
-  const { displayName, hostWord, lineOf, toItem } = await import("./real-model.ts");
+  const { displayName, fieldWord, hostWord, lineOf, toItem } = await import("./real-model.ts");
+  assert.deepEqual(["username", "totp", "client_secret", "password"].map(fieldWord), ["Username", "One-time code", "Client secret", "Password"]);
   assert.equal(displayName("Airline-account"), "Airline account");
   assert.equal(displayName("stripe_live--key"), "stripe live key");
   assert.equal(hostWord("https://www.Example.com/login?x=1"), "Example.com");
