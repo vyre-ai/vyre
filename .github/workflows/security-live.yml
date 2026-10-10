@@ -1,12 +1,13 @@
 # The security tests that need something a plain node job does not have, run for real (issue #128). A skip in any of them is a red run, not a green one that never ran the test.
 #   computers-isolation  a real computer container: the agent's uid cannot reach what the uid split protects (core/computers/image/isolation.test.js, through scripts/computers-proof)
 #   planner-twenty       the planner on a real, pinned Twenty (core/planner/live-twenty.test.js, through core/planner/live-twenty.sh)
+#   chrome-op-real       chrome.op.call and chrome.op.send through a paired Mac into a REAL Chrome with the real extension and native host (macOS and Linux runners; never a person's Mac)
 #   mac-sandbox          the macOS home and lent sandbox profiles on a hosted runner (VYRE_TEST_HOSTED=1; they raise permission dialogs, so never on a person's Mac)
 name: security-live
 on:
   push:
     branches: ["work/lead-031-w", "work/operations-078"]
-    paths: ["core/computers/**", "core/dockerproxy/**", "core/planner/**", "core/runner/**", "lib/sandbox/**", "stores/twenty/**", "records/**", "scripts/computers-proof/**", ".github/workflows/security-live.yml"]
+    paths: ["core/link/**", "core/connectors/**", "local/hands-chrome-mac/**", "lib/siteops/**", "test/chrome-op-real.live.test.js", "core/computers/**", "core/dockerproxy/**", "core/planner/**", "core/runner/**", "lib/sandbox/**", "stores/twenty/**", "records/**", "scripts/computers-proof/**", ".github/workflows/security-live.yml"]
   schedule:
     - cron: "17 4 * * *"
   workflow_dispatch:
@@ -63,3 +64,28 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: The macOS profile and sandbox tests
         run: node --test --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/home-network.test.js core/runner/rv2-seatbelt.test.js core/runner/hardening.test.js 2>&1 | tee "$RUNNER_TEMP/mac-sandbox.txt"
+
+  chrome-op-real:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      VYRE_NO_DIALOGS: "1"
+      VYRE_CHROME_LIVE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      # the self-signed certificate needs OpenSSL 3 (-addext); macOS ships LibreSSL first on the path
+      - if: runner.os == 'macOS'
+        run: echo "/opt/homebrew/opt/openssl@3/bin" >> "$GITHUB_PATH"
+      - name: chrome.op through a paired Mac into a real Chrome, with no skipped test
+        run: |
+          set -o pipefail
+          node --test --test-reporter=spec test/chrome-op-real.live.test.js 2>&1 | tee "$RUNNER_TEMP/chrome-op.txt"
+          grep -Eq "^ℹ skipped 0$" "$RUNNER_TEMP/chrome-op.txt" || { echo "the live test skipped"; exit 1; }
+          grep -Eq "^ℹ pass 1$" "$RUNNER_TEMP/chrome-op.txt" || { echo "the live test did not pass"; exit 1; }
