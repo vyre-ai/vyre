@@ -2132,13 +2132,14 @@ sp_pub_rec_save() {
 }
 # sp_pub_rec_load DEP: root's record back into PR_* (every field checked again) and A_* (what the app functions read). `A_HOOK=0`: a published server has no door in.
 # Each "A && B || C" below means: if A and B do not both hold, take the refusal.
-# shellcheck disable=SC2015,SC2034
+# shellcheck disable=SC2015
 sp_pub_rec_load() {
   r=$SP_PUB/$1/rec
   { [ -f "$r" ] && [ ! -L "$r" ]; } || { MSG="that server was never built here"; return 1; }
   read -r PR_NAME PR_TAG PR_ID PR_PORT PR_MEM PR_CPUS PR_PIDS PR_HPATH PR_HOK PR_HSTART PR_VERSION PR_SECRETS <"$r" || { MSG="the record of that server could not be read"; return 1; }
   sp_app_name_ok "$PR_NAME" && sp_fld 'vyre-pub/[a-z0-9-]+:[0-9a-f]{16}' "$PR_TAG" && sp_fld 'sha256:[0-9a-f]{64}' "$PR_ID" && sp_int_in "$PR_PORT" 1 65535 && sp_int_in "$PR_MEM" 64 8192 \
     && sp_fld '[0-9](\.[0-9]{1,2})?' "$PR_CPUS" && sp_int_in "$PR_PIDS" 32 4096 && sp_fld '/[A-Za-z0-9_./-]{0,80}' "$PR_HPATH" && sp_fld '[0-9]{3}(\+[0-9]{3}){0,5}' "$PR_HOK" && sp_int_in "$PR_HSTART" 1 600 \
+    && sp_fld '-|[A-Z][A-Z0-9_]{0,63}(\+[A-Z][A-Z0-9_]{0,63}){0,11}' "$PR_SECRETS" \
     || { MSG="the record of that server is not one this helper wrote"; return 1; }
   # shellcheck disable=SC2034 # the A_* variables are read by the app functions
   A_NAME=$PR_NAME; A_IMAGE=$PR_TAG; A_PORT=$PR_PORT; A_MEM=$PR_MEM; A_CPUS=$PR_CPUS; A_PIDS=$PR_PIDS; A_HOOK=0; A_SCRIPT=-; A_EXEC=-; A_OUTS=-; A_HPATH=$PR_HPATH; A_HOK=$PR_HOK; A_HSTART=$PR_HSTART
