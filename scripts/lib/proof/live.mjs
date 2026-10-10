@@ -87,6 +87,8 @@ export function startInstall(host, line, out) {
           throw new Error("`sudo vyre words` showed no four words in two minutes");
         }
         const r = await Promise.race([finished, new Promise(res => setTimeout(() => res(null), 1000))]);
+        // The installer prints the words and ends at once (it does not wait for the app), so it can end inside this second: read what it printed before calling that an end without words.
+        if (r) { const last = run.out().match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/); if (last) return last[1]; }
         if (r) throw new Error(`the installer ended before it showed four words (exit ${/** @type {any} */ (r).code}): ${tailOf(/** @type {any} */ (r).out)}`);
         if (Date.now() > end) throw new Error(`the installer showed no four words in ${Math.round(ms / 60000)} minutes: ${tailOf(run.out())}`);
       }
