@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { listWaits, shownWarnings, titleOf, versionWaits } from "./real-model.js";
+import { APPROVE_LABEL, listWaits, shownWarnings, titleOf, versionWaits } from "./real-model.js";
 
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
@@ -22,4 +22,9 @@ test("a Flow's page shows the warnings a person can act on, not the note about t
   const ws = [{ path: "caps", message: "no caps are declared, so the Flow's own steps set them" }, { path: "steps[2]", message: "drafted by a model: a destination read from records needs a person's Ask on every run" }, "plain words"];
   assert.deepEqual(shownWarnings(ws), ["drafted by a model: a destination read from records needs a person's Ask on every run", "plain words"]);
   assert.deepEqual(shownWarnings(undefined), []);
+});
+
+test("the approval button names no biometric: approving a Flow asks the device for no proof", () => {
+  assert.equal(APPROVE_LABEL, "Approve");
+  assert.doesNotMatch(APPROVE_LABEL, /Face ID|Touch ID|fingerprint|passkey/i);
 });

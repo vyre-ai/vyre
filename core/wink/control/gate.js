@@ -14,6 +14,8 @@
 //                      we trust, the one it names in one header. The gate DROPS every client-supplied
 //                      X-Forwarded-*, Forwarded, True-Client-IP, X-Real-IP and the like and writes
 //                      its own, so Headscale (trusted_proxies = the gate) logs and limits by the real address.
+//   tunnel address     a loopback peer (the tunnel end, lib/publish/tunnel.js) may begin with a PROXY v2 header (lib/publish/proxy.js) naming the visitor the relay saw. The gate then limits, blocks and
+//                      forwards that address, not 127.0.0.1, so one stranger cannot spend every client's budget. From any other peer the bytes are never read as a header.
 //   limits             header size, header and request time, a body on /key, idle time, the handshake
 //                      deadline, per-address upgrades per window, concurrent upgrades, concurrent
 //                      connections. Budgets are per address, never one global budget an outsider can spend.
@@ -37,6 +39,7 @@ import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
 import crypto from "node:crypto";
+import { decodeProxyV2, PROXY_V2_MAX } from "../../../lib/publish/proxy.js";
 
 /** The one refusal. Byte for byte the same whatever was asked. */
 export const NOT_FOUND = Buffer.from("HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 10\r\nConnection: close\r\n\r\nnot found\n");
@@ -118,6 +121,7 @@ export function parseHeadscaleLog(line) {
  *   upstream: { host?: string, port: number, tls?: boolean, pin?: string },
  *   derp?: boolean,
  *   forwarder?: { trust: string[], header: string },
+ *   proxy?: { trust?: string[] },   the peers whose connections may begin with a PROXY v2 header (default: loopback, where the tunnel end connects from)
  *   ingress?: { vaultmcp?: () => number | null | Promise<number | null>, agentsmcp?: () => number | null | Promise<number | null>, hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
  *   limits?: Partial<{ maxHeaderBytes: number, headersMs: number, requestMs: number, idleMs: number, upgradedIdleMs: number,
  *     handshakeMs: number, maxBodyBytes: number, windowMs: number, upgradesPerWindow: number, maxConcurrentUpgrades: number,
@@ -164,9 +168,18 @@ export function createGate(o) {
     emit({ type: "block", addr: addrKey(addr), ms });
   }
 
+  const proxyTrust = (o.proxy && o.proxy.trust) || ["127.0.0.0/8", "::1"];
+  /** The visitor a trusted peer named in its PROXY v2 header, by the raw socket. @type {WeakMap<import("node:net").Socket, string>} */
+  const named = new WeakMap();
+  /** The address of a connection: the one its PROXY header named, else the socket's own. A TLS socket is looked up by the raw socket under it. @param {any} sock */
+  const peerOf = sock => {
+    const hit = named.get(sock) || (sock && sock._parent ? named.get(sock._parent) : undefined);
+    return hit !== undefined ? hit : norm(sock && sock.remoteAddress);
+  };
+
   /** The address the limits and Headscale see. @param {import("node:http").IncomingMessage} req */
   function realAddr(req) {
-    const peer = norm(req.socket.remoteAddress);
+    const peer = peerOf(req.socket);
     if (fwd && inList(peer, fwd.trust)) {
       const v = req.headers[fwd.header];
       const s = Array.isArray(v) ? "" : String(v || "").trim();
@@ -356,11 +369,46 @@ export function createGate(o) {
   // With app hosts an upload may take minutes: the request timer is longer and the plain paths get their short one back per request (below).
   server.requestTimeout = o.ingress && o.ingress.apps ? L.appsRequestMs : L.requestMs;
   server.keepAliveTimeout = 1000;
-  server.maxConnections = L.maxConns;
+  // The HTTP server never listens (the front below does); its connection tracking, which enforces the header and request timers, starts on this event.
+  server.emit("listening");
+
+  // The listening socket is a plain TCP server in front of the HTTP(S) one, so a trusted peer's PROXY header is read and taken off before any TLS or HTTP byte is parsed.
+  const front = net.createServer(sock => {
+    if (!inList(norm(sock.remoteAddress), proxyTrust)) { server.emit("connection", sock); return; }
+    // Until the header names a visitor the connection is counted under the loopback address it came from, so a peer that sends nothing still spends its own share.
+    const pre = addrKey(norm(sock.remoteAddress));
+    if (bump(conns, pre, 1) > L.maxConnsPerAddr) { stats.limited++; bump(conns, pre, -1); sock.destroy(); emit({ type: "limit", addr: pre, what: "connections" }); return; }
+    let counted = true;
+    const release = () => { if (counted) { counted = false; bump(conns, pre, -1); } };
+    sock.once("close", release);
+    /** @type {Buffer} */ let got = Buffer.alloc(0);
+    const timer = setTimeout(() => { stats.timeouts++; sock.destroy(); }, L.handshakeMs);
+    timer.unref();
+    const pump = () => {
+      for (let c; (c = sock.read()) !== null;) {
+        got = Buffer.concat([got, c]);
+        const h = decodeProxyV2(got);
+        if (h.state === "more" && got.length < PROXY_V2_MAX) continue;
+        sock.removeListener("readable", pump); clearTimeout(timer);
+        if (h.state === "bad" || h.state === "more") { stats.notFound++; sock.destroy(); return; }
+        const rest = h.state === "ok" ? got.subarray(h.length) : got;
+        if (h.state === "ok" && h.addr !== null) named.set(sock, norm(h.addr));
+        if (rest.length) sock.unshift(rest);
+        release();
+        server.emit("connection", sock);
+        if (!o.tls) sock.resume();
+        return;
+      }
+    };
+    sock.on("error", () => { clearTimeout(timer); });
+    sock.on("readable", pump);
+    sock.once("close", () => clearTimeout(timer));
+  });
+  front.maxConnections = L.maxConns;
 
   server.on("connection", raw => {
     stats.accepted++;
-    const a = norm(raw.remoteAddress), k = addrKey(a);
+    const a = peerOf(raw), k = addrKey(a);
     if (isBlocked(a)) { stats.blocked++; raw.destroy(); return; }
     if (bump(conns, k, 1) > L.maxConnsPerAddr) { stats.limited++; bump(conns, k, -1); raw.destroy(); emit({ type: "limit", addr: k, what: "connections" }); return; }
     open.add(raw);
@@ -489,17 +537,18 @@ export function createGate(o) {
     listen() {
       const l = o.listen || {};
       return new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(l.port || 0, l.host || "127.0.0.1", () => {
-          const a = /** @type {net.AddressInfo} */ (server.address());
+        front.once("error", reject);
+        front.listen(l.port || 0, l.host || "127.0.0.1", () => {
+          const a = /** @type {net.AddressInfo} */ (front.address());
           resolve({ host: a.address, port: a.port });
         });
       });
     },
-    address() { const a = /** @type {net.AddressInfo|null} */ (server.address()); return a ? { host: a.address, port: a.port } : null; },
+    address() { const a = /** @type {net.AddressInfo|null} */ (front.address()); return a ? { host: a.address, port: a.port } : null; },
     close() {
       return new Promise(resolve => {
-        server.close(() => resolve(undefined));
+        front.close(() => resolve(undefined));
+        server.close(() => {}); // never listened itself: this ends its connection tracking
         for (const s of open) s.destroy();
       });
     },

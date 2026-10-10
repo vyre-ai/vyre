@@ -585,6 +585,7 @@ test("publish: quick takes a folder of ready files to live on one decision, with
   assert.equal(q.deployment.stage, "Preview");
   assert.equal(q.plan.goes_public, true, "what the person says yes to is the public plan");
   assert.match(q.logs, /^Read 1 file/);
+  assert.deepEqual(q.plan.files.paths, ["index.html"], "the plan lists what would go public");
   const q2 = await b.ok("publish.quick", { name: "bakery-two", folder: dir, project: "bakery" });
   const wrong = await b.call("publish.decide", { task: q2.task, approve: true, plan_hash: q.plan.hash });
   assert.equal(wrong.error?.code, "approval_mismatch", "a hash for another plan is refused");

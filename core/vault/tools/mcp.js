@@ -18,17 +18,24 @@ export function register({ vault, tool, internal }) {
       return { ...p, lines: mcpLines({ url: p.url, token: p.token, name: `vyre-vault-${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "pass"}` }) };
     },
     presence("Share credentials with an outside agent", ({ name, items }) => `Let ${String(name).slice(0, 60)}'s agent use ${(Array.isArray(items) ? items : []).slice(0, 6).map(i => String(i).slice(0, 40)).join(", ")} through the Vault, without ever seeing them`));
-  tool("vault.mcp.pass.list", [...people, "mobile", "tailnet", "device"], "The passes made for outside agents: who, which credentials, until when, how often they were used. Never a token.", obj({}), () => ({ passes: vault.mcp.list(), reveals: vault.mcp.reveals() }));
+  tool("vault.mcp.pass.list", [...people, "mobile", "tailnet", "device", "module"], "The passes made for outside agents: who, which credentials, until when, how often they were used. Never a token.", obj({}), () => ({ passes: vault.mcp.list(), reveals: vault.mcp.reveals() }));
   tool("vault.mcp.items", [...people, "mobile"], "The api credentials a pass can share, with the hosts each is pinned to: { items: [{ name, hosts }] }. Names and hosts, never a key.", obj({}), async () => {
     const out = [];
     for (const name of await vault.apiCredentialNames()) out.push({ name, hosts: await vault.apiCredential(name).then(c => c.config.hosts, () => []) });
     return { items: out };
   });
-  tool("vault.mcp.pass.revoke", null, "End a pass for an outside agent: its token opens nothing from now on. Needs no one.", obj({ id: str }, ["id"]), (input, { caller }) => vault.mcp.revoke(input.id, String(caller)));
+  tool("vault.mcp.pass.revoke", [...people, "mobile", "tailnet", "device", "module"], "End a pass for an outside agent: its token opens nothing from now on. Needs no one.", obj({ id: str }, ["id"]), (input, { caller }) => vault.mcp.revoke(input.id, String(caller)));
   tool("vault.mcp.reveal.allow", [...people, "mobile"], "Let an outside agent see one value, once: your fresh yes, then its next poll for that ask returns the value a single time and it is gone. Logged as vault.revealed-to-pass, never with the value.",
     obj({ id: str }, ["id"]), ({ id }, { caller }) => vault.mcp.allowReveal(id, String(caller)),
     presence("Show a value to an outside agent, once", ({ id }) => { const r = vault.mcp.reveals().find(x => x.id === id); return r ? `Show ${String(r.item).slice(0, 60)} to ${String(r.pass).slice(0, 60)}'s agent, once` : "Show a value to an outside agent, once"; }));
   tool("vault.mcp.reveal.clear", [...people, "mobile"], "Decline an outside agent's ask to see a value (it was never sent).", obj({ id: str }, ["id"]), ({ id }) => ({ cleared: vault.mcp.clearReveal(id) }));
+  // The outside-agents module serves the Vault's two tools to a registered agent that holds a pass (ext-agents contract, "The Vault pass as one kind"): only it asks.
+  const outsideOnly = (/** @type {string} */ caller) => { if (caller !== "module:outside") throw Object.assign(new Error("only the outside-agents module serves the Vault's tools to an agent"), { code: "denied" }); };
+  internal("vault.mcp.agent.tools", "The Vault tools a registered outside agent holds through its pass: { tools } (empty when it holds none). Only the outside-agents module asks.", obj({ agent: str }, ["agent"]),
+    ({ agent }, { caller }) => { outsideOnly(String(caller)); return vault.mcp.agentTools(String(agent)); });
+  internal("vault.mcp.agent.call", "One Vault tool call as a registered outside agent: { agent, tool, arguments, source } answers { content, isError? } like tools/call. Only the outside-agents module asks.",
+    obj({ agent: str, tool: str, arguments: { type: "object" }, source: str }, ["agent", "tool"]),
+    ({ agent, tool, arguments: args, source }, { caller }) => { outsideOnly(String(caller)); return vault.mcp.agentCall(String(agent), String(tool), args, String(source || "agent")); });
   // The task credential lease (core/vault/access.js lend): only the flows module, after the person's yes at the Kit install, lends; ending needs the same caller.
   const flowsOnly = (/** @type {string} */ caller, /** @type {string} */ what) => { if (caller !== "module:flows") throw Object.assign(new Error(`only the flows module ${what}`), { code: "denied" }); };
   internal("vault.connections.lend", "A task's doer may use named Connections for that task: { task, agent, connections: [ids], until }. Only the flows module asks, and only for credentials the task's approved Kit version names. Use only; anything outward is still held. Idempotent per task, agent and Connection. { lent, already }.",

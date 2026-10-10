@@ -183,7 +183,8 @@ async function upFixture(home, fixture, env = process.env) {
   const child = spawn(process.execPath, [path.join(import.meta.dirname, "fixtures", fixture)],
     { detached: true, stdio: ["ignore", fd, fd], env: { ...env, VYRE_HOME: home } });
   child.unref();
-  for (let i = 0; i < 100; i++) {
+  // A vyred takes about 10 seconds to open its socket on the shared test box (more under load), so the wait is 30 seconds, not a guess that fails half the time.
+  for (let i = 0; i < 300; i++) {
     await new Promise(r => setTimeout(r, 100));
     if (await ping(p.socket)) return { code: 0, pid: child.pid };
     if (child.exitCode !== null) break;

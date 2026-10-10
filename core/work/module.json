@@ -501,6 +501,12 @@
               "label": "Project lead (an agent of the Space; a template may name one)"
             },
             {
+              "name": "credentials",
+              "kind": "link",
+              "label": "Logins and keys it uses",
+              "many": true
+            },
+            {
               "name": "template_stage",
               "kind": "text",
               "label": "Stage it is in (a template project)"

@@ -59,7 +59,7 @@ test("@Engineer: found by name (built in, never created by the app), first messa
 test("what is waiting for a person: Flow versions not approved and Kits pending, each with where to approve", { skip: !strip }, async () => {
   const { assistantSource } = await import("./assistant-source.ts");
   const m = await import("./assistant-model.ts");
-  const b = box({ "flows.list": { data: [{ id: "a", name: "Intake", status: "approved" }, { id: "b", name: "Estate leads", status: "draft" }] }, "flows.kit.list": { data: [{ id: "estate-planning", version: 1, status: "pending" }, { id: "x", version: 1, status: "installed" }] } });
+  const b = box({ "flows.list": { data: [{ id: "a", name: "intake", label: "Intake", status: "active", active: 1 }, { id: "b", name: "estate_leads", label: "Estate leads", status: "draft", active: null }] }, "flows.kit.list": { data: [{ id: "estate-planning", version: 1, status: "pending" }, { id: "x", version: 1, status: "installed" }] } });
   const s = assistantSource(b.call);
   const cards = m.proposals(await s.flows(), await s.kits());
   assert.deepEqual(cards.map((c) => [c.title, c.sub, c.href]), [["Estate leads", "A Flow waiting for your approval", "/u/flows/b"], ["estate planning", "A Kit waiting for your yes", null]]);

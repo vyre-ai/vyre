@@ -9,6 +9,7 @@ import { newPrefixedId } from "../../lib/id.js";
 import { asPerson, ensureAgent } from "../../lib/project-reach.js";
 import { exactOrigin } from "./agents.js";
 import { hostsOf } from "./native.js";
+import { credentialUrn } from "../../kernel/contracts/index.js";
 
 /** Requests an assistant made, waiting for a person (vault.pending, vault.approve). Appended to the vault's MIGRATIONS. */
 export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
@@ -141,7 +142,7 @@ export class Access {
   deploymentMay(name, deployment) {
     const K = this.K;
     if (!K || !/^[A-Za-z0-9_.-]{1,80}$/.test(String(deployment))) return false;
-    const t = this.v.clock(), at = `vyre://${K.space}/credential/${name}`;
+    const t = this.v.clock(), at = credentialUrn(K.space, name);
     return K.vault.grantsOn(at).some((/** @type {any} */ g) => g.resource.prefix === at && g.actions.includes("vault.run") && g.source.startsWith(`publish:secret:${deployment}:`)
       && g.subject.actor && g.subject.actor.id === `deployment-${deployment}` && !(g.conditions && g.conditions.when && g.conditions.when.expires <= t));
   }
@@ -149,7 +150,7 @@ export class Access {
   /** Every deployment's use of a credential goes when the item goes. @param {string} item */
   async revokeDeployments(item) {
     const K = this.K;
-    return K ? (await K.vault.takeBack({ prefix: `vyre://${K.space}/credential/${item}`, reason: "the credential was deleted" })).length : 0;
+    return K ? (await K.vault.takeBack({ prefix: credentialUrn(K.space, item), reason: "the credential was deleted" })).length : 0;
   }
 
   /** Every lending of an item goes when the item goes. */

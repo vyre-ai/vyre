@@ -11,11 +11,11 @@ const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = [
  */
 export function register({ vault, tool }) {
   tool("vault.link", PEOPLE, "Link a vault item to a client, matter or project by its address, so its uses show on that record. Grants nothing; no value moves.",
-    obj({ item: str, to: str }, ["item", "to"]), (input, { caller }) => vault.links.link(input, caller));
+    obj({ item: str, to: str }, ["item", "to"]), (input, meta) => vault.links.link(input, meta));
   tool("vault.unlink", PEOPLE, "Take a vault item's link to a record away. The item and the record stay.",
-    obj({ item: str, to: str }, ["item", "to"]), (input, { caller }) => vault.links.unlink(input, caller));
-  tool("vault.links", [...PEOPLE, "module", "mcp"], "The records a vault item is linked to, or the items linked to a record: names and addresses, never a value.",
-    obj({ item: str, to: str }), input => vault.links.list(input));
-  tool("vault.uses.for", [...PEOPLE, "module"], "The recent uses of the items linked to one record, newest first, in plain words: which item, when, by whom. Never a value.",
-    obj({ urn: str, limit: { type: "integer", minimum: 1, maximum: 100 } }, ["urn"]), input => vault.links.usesFor(input));
+    obj({ item: str, to: str }, ["item", "to"]), (input, meta) => vault.links.unlink(input, meta));
+  tool("vault.links", PEOPLE, "The records a vault item is linked to, or the items linked to a record: names and addresses, never a value.",
+    obj({ item: str, to: str }), (input, meta) => vault.links.list(input, meta));
+  tool("vault.uses.for", ["module"], "The recent uses of the items linked to one record, newest first, in plain words: which item, when, by whom. Never a value.",
+    obj({ urn: str, limit: { type: "integer", minimum: 1, maximum: 100 } }, ["urn"]), (input, meta) => vault.links.usesFor(input, meta));
 }

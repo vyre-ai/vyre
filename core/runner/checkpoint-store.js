@@ -46,6 +46,8 @@ export function createCheckpointStore(o) {
   /** @type {Map<string, Promise<any>>} */
   const locks = new Map();
   const serial = (s, fn) => { const prev = locks.get(s) || Promise.resolve(); const next = prev.then(fn, fn); locks.set(s, next.catch(() => {})); return next; };
+  /** Resolves once every write already queued for the session has finished. */
+  const drain = s => (locks.get(s) || Promise.resolve()).then(() => {}, () => {});
 
   const K = o.key && o.key.length === 32 ? o.key : null;
   const dirOf = s => path.join(o.root, s);
@@ -242,6 +244,7 @@ export function createCheckpointStore(o) {
 
   return {
     ...api,
+    drain,
     /** The runner's sync port, bound to the chain the kernel mints for each call (`chainFn()`). */
     port(chainFn) {
       const c = () => chainFn();

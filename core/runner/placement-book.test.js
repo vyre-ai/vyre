@@ -124,3 +124,45 @@ test("pause all on the computer reads as paused in the chat, and resuming puts i
   assert.equal(b.get("s1")?.state, "moving");
   assert.deepEqual(b.directives("dev_mac").map(d => [d.do, d.session, d.reason]), [["release", "s1", "you"]]);
 });
+
+test("a session id belongs to the first person who used it, for good: forgetting the row does not free the id, a chat-shaped id is refused, and another computer cannot take a session that is running", () => {
+  const c = clock(), b = createPlacementBook({ now: c.now });
+  b.lend({ session: "s1", ...who });
+  b.forget("s1");
+  assert.equal(b.get("s1"), null);
+  assert.throws(() => b.lend({ session: "s1", person: "per_b", device: "dev_b" }), e => /** @type {any} */ (e).code === "not_found", "the id is still the first person's");
+  assert.equal(b.ownerOf("s1"), "per_a");
+  b.lend({ session: "s1", ...who });   // the owner may use it again
+  assert.throws(() => b.lend({ session: "chat_01a12319-bf9c-4ec9-ab1b-9dd9f04df6dc", ...who }), e => /** @type {any} */ (e).code === "bad_input");
+  assert.throws(() => b.lend({ session: "s1", person: "per_a", device: "dev_other" }), e => /** @type {any} */ (e).code === "conflict", "another computer of the same person cannot take a session that is running on this one");
+  c.tick(LAPSE_MS + 1);
+  assert.equal(b.lend({ session: "s1", person: "per_a", device: "dev_other" }).device, "dev_other", "but can once the first has gone quiet");
+});
+
+test("find answers only this person's rows when asked with a person: a chat id proves nothing, and two people in one chat each find their own", () => {
+  const b = createPlacementBook();
+  b.lend({ session: "sa", chat: "chat_x", person: "per_a", device: "dev_a" });
+  b.lend({ session: "sb", chat: "chat_x", person: "per_b", device: "dev_b" });
+  assert.equal(b.find("chat_x", "per_a")?.session, "sa");
+  assert.equal(b.find("chat_x", "per_b")?.session, "sb");
+  assert.equal(b.find("sa", "per_b"), null, "another person's session id finds nothing");
+  assert.equal(b.find("chat_x", "per_c"), null);
+});
+
+test("the owners and the sessions the server owes a continuation survive a restart; the old file format (rows alone) still loads", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "book-"));
+  try {
+    const file = path.join(dir, "placements.json");
+    const c = clock(), a = createPlacementBook({ now: c.now, store: fileStore(file) });
+    a.lend({ session: "s1", ...who }); a.lend({ session: "s2", ...who });
+    a.toServer("s1", "offline"); a.forget("s2");
+    const b = createPlacementBook({ now: c.now, store: fileStore(file) });
+    assert.equal(b.ownerOf("s2"), "per_a", "a forgotten session's id is still its owner's");
+    assert.deepEqual(b.pendingResume().map(r => r.session), ["s1"], "the server still owes s1 its continuation");
+    b.resumed("s1");
+    assert.deepEqual(createPlacementBook({ now: c.now, store: fileStore(file) }).pendingResume(), []);
+    fs.writeFileSync(file, JSON.stringify([{ session: "old", chat: null, person: "per_z", device: "d", key: null, where: "mac", state: "here", reason: null, since: 1, epoch: 1, offer: null, pin: null, beat: 1, movedAt: null, allowMac: false }]));
+    const old = createPlacementBook({ now: c.now, store: fileStore(file) });
+    assert.equal(old.get("old")?.where, "mac"); assert.equal(old.ownerOf("old"), "per_z");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

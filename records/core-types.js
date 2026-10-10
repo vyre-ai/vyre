@@ -238,6 +238,8 @@ export const PROJECT = {
     text("template", "Template it started from (blank when none)"),
     text("template_version", "Template version it started from"),
     text("lead", "Project lead (an agent of the Space; a template may name one)"),
+    // The logins and keys this project uses, by their address (vyre://<space>/credential/<name>): never a value. The Vault links them (vault.link) and the timeline shows their uses.
+    f("link", "credentials", "Logins and keys it uses", { many: true }),
     // A project started from a template is pinned to that version's stages (JSON, written once at start) and sits in one of them: `template_stage` is plain text so the template's own names are its stages.
     // The Flows stage module drives these two (kernel/flows/stages.js); they are the project's, never typed by hand.
     text("template_stage", "Stage it is in (a template project)"),

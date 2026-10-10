@@ -34,6 +34,7 @@ import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
 import { createNetd } from "./netd.js";
+import { tellIngressBase } from "./ingress-bases.js";
 import { createNetJoin } from "./netjoin.js";
 import { relayKeyPair } from "./directkey.js";
 import { relayUrlProblem } from "../../lib/relay-url.js";
@@ -779,7 +780,7 @@ export function createWink(inject = {}) {
       hosts: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.domain.list", {})); const d = r && r.data; return d && Array.isArray(d.domains) ? d.domains.map((/** @type {any} */ x) => String(x.host)) : []; } catch { return []; } },
       // any app module installed (running or not): the certificate and the wildcard in DNS follow this
       apps: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.list", {})); return Boolean(r && r.data && Array.isArray(r.data.apps) && r.data.apps.length); } catch { return false; } },
-      onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); Promise.resolve(ctx.call("vault.mcp.base", { base })).catch(() => {}); },
+      onIngress: (/** @type {string | null} */ base) => tellIngressBase((tool, input) => ctx.call(tool, input), base),
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
       ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
       tunnel: () => Boolean(ctx.config && ctx.config.relay && typeof ctx.config.relay.tunnel_url === "string" && ctx.config.relay.tunnel_url),

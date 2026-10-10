@@ -3,10 +3,10 @@
 //
 // When a <type> enters <out stage>: if it has not been sent yet, send it for signature (documents.send makes the request, with no e-mail from the signing engine, and emails the signer their link
 // through Comms: one act, one yes, so the final words are the person's), remember its number on the record, then WAIT for Documents to say that document was signed and move the record to
-// <signed stage>. The signed copy is filed on the client by the Documents Flow that ships with the app, and documents.send-signed emails the signer a link to it that stops working after 30 days
+// <signed stage>. The signed copy is filed on the client by the Documents Flow that ships with the app, and documents.send-signed emails the signer a link to it that does not expire unless the person set documents.signed_link_days
 // (the second and last yes). Nothing here runs anything; it only returns the definition.
 //
-// (The number is joined to text with + so a record field of kind text takes it.)
+// (The number is joined to text with + so a record field of kind text takes it. A module's event reaches a wait as the log carries it: its facts are under event.data.payload.)
 
 const NAME = /^[a-z][a-z0-9_-]{0,40}$/;
 const bad = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "bad_input" });
@@ -37,10 +37,10 @@ export function signingFlow(o) {
         { id: "send", kind: "call", action: "documents.send", resource: "vyre://space/documents", input: { template_id: o.template_id, email: { expr: mine }, ...(name ? { signer: { expr: `steps.rec.record.data.${name}` } } : {}),
           ...(o.subject ? { subject: o.subject } : {}) } },
         { id: "mark", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: { expr: `"" + steps.send.submission` } } },
-        { id: "signed", kind: "wait", event: "documents.signed", where: `"" + event.data.submission == "" + steps.send.submission`, timeout_ms: days * 86_400_000, on_timeout: "fail" },
+        { id: "signed", kind: "wait", event: "documents.signed", where: `"" + event.data.payload.submission == "" + steps.send.submission`, timeout_ms: days * 86_400_000, on_timeout: "fail" },
         { id: "move", kind: "stage", type, record: { expr: "trigger.id" }, to: o.signed_stage },
-        // the finished copy goes to the signer by a link that stops working after 30 days (they ask for a new one by replying): the link and the email are one act with one yes
-        { id: "copy", kind: "call", action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: { expr: "steps.send.slug" }, email: { expr: mine }, days: 30 } },
+        // the finished copy goes to the signer by a link that does not expire unless the person set documents.signed_link_days: the link and the email are one act with one yes
+        { id: "copy", kind: "call", action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: { expr: "steps.send.slug" }, email: { expr: mine } } },
       ], else: [] },
     ],
   };

@@ -5,7 +5,8 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { indexOf, find } from "../harness/mcp/core-tools.js";
+import crypto from "node:crypto";
+import { indexOf, find, weak, shapeFind } from "../harness/mcp/core-tools.js";
 import { agentCatalog } from "./tools-universe.js";
 
 const intents = JSON.parse(fs.readFileSync(new URL("./fixtures/tools-find-intents.json", import.meta.url), "utf8"));
@@ -77,4 +78,66 @@ test("every line of the ask table names a tool an agent has, so a renamed tool d
   assert.deepEqual(stale, []);
   const covered = [...have].filter((n) => TOOL_ASKS[n]).length;
   console.log(`ask table covers ${covered} of ${have.size} tools`);
+});
+
+// R031-00k: asks written by people who had not seen the tool list or the ranker (the author never saw a tool name; two labelers each named the tool the assistant should call first, and an ask they did not
+// agree on was dropped). dev (92) is what the ranker was tuned on; sealed (202) is scored once per change and never tuned on: its hash is pinned, so the set cannot be edited to improve the score, and the
+// score can only go up (tools-find-baseline.json holds the counts; raise them when a change earns it). Set FIND_MISSES=1 to print the misses.
+const fixture = (/** @type {string} */ n) => fs.readFileSync(new URL(`./fixtures/${n}`, import.meta.url), "utf8");
+const baseline = JSON.parse(fixture("tools-find-baseline.json"));
+/** A new tool in the catalog can take one ask from another: two asks of slack, no more. */
+const SLACK = 2;
+
+/** @param {any} catalog @param {{ id: string, intent: string, expect: string[] }[]} set */
+function scoreSet(catalog, set) {
+  const index = indexOf(catalog);
+  const have = new Set(catalog.map((/** @type {any} */ c) => c.name));
+  let n = 0, top1 = 0, top3 = 0;
+  /** @type {string[]} */ const misses = [];
+  for (const x of set) {
+    const want = new Set(x.expect.filter((e) => have.has(e)));
+    if (!want.size) continue;
+    n++;
+    const got = find(index, x.intent, 3);
+    if (got[0] && want.has(got[0].name)) top1++; else misses.push(`${x.id} ${x.intent} => ${got.map((g) => g.name).join(", ") || "nothing"} (wanted ${[...want].join(" | ")})`);
+    if (got.some((g) => want.has(g.name))) top3++;
+  }
+  return { n, top1, top3, misses };
+}
+
+for (const name of ["dev", "sealed"]) {
+  test(`tools_find on the ${name} asks: first place and first three can only go up (baseline in tools-find-baseline.json)`, async (t) => {
+    const raw = fixture(`tools-find-${name}.json`);
+    if (name === "sealed") assert.equal(crypto.createHash("sha256").update(raw).digest("hex"), fixture("tools-find-sealed.sha256").trim(), "the sealed set was edited; it may only be replaced by a new sealed set, said openly, with a new hash and a new baseline");
+    const r = scoreSet(await agentCatalog(t), JSON.parse(raw));
+    console.log(`tools_find ${name}: top-1 ${r.top1} of ${r.n} (${Math.round((100 * r.top1) / r.n)}%), top-3 ${r.top3} of ${r.n} (${Math.round((100 * r.top3) / r.n)}%)`);
+    if (process.env.FIND_MISSES) for (const m of r.misses) console.log(`  miss: ${m}`);
+    const b = baseline[name];
+    assert.ok(r.n >= b.n - 2, `only ${r.n} of ${b.n} asks are answerable now: a tool the labels name was renamed or removed`);
+    assert.ok(r.top1 >= b.top1 - SLACK, `top-1 fell from ${b.top1} to ${r.top1} of ${r.n}`);
+    assert.ok(r.top3 >= b.top3 - SLACK, `top-3 fell from ${b.top3} to ${r.top3} of ${r.n}`);
+  });
+}
+
+/** Tools land every few minutes, so a tool or two that arrived since the last bank edit are reported and tolerated; more than this means asks were not written for new tools. */
+const GRACE = 8;
+
+test("every tool an agent has carries at least three example asks, and the bank names only tools that exist (a few in flight are tolerated)", async (t) => {
+  const { ASK_BANK } = await import("../lib/tools-asks-bank.js");
+  const catalog = await agentCatalog(t);
+  const have = new Set(catalog.map((c) => c.name));
+  const stale = Object.keys(ASK_BANK).filter((k) => !have.has(k));
+  const index = indexOf(catalog);
+  const thin = index.docs.filter((d) => d.page.asks.length < 3 || !(ASK_BANK[d.page.path] && ASK_BANK[d.page.path].length >= 3)).map((d) => d.page.path);
+  console.log(`tools without three asks of their own: ${thin.length}${thin.length ? ` (${thin.slice(0, 12).join(", ")})` : ""}; bank keys that are no tool: ${stale.length}${stale.length ? ` (${stale.slice(0, 12).join(", ")})` : ""}`);
+  assert.ok(thin.length <= GRACE, `give each of these tools three or more ordinary asks in lib/tools-asks-bank.js (what a person says when it is the right tool): ${thin.join(", ")}`);
+  assert.ok(stale.length <= GRACE, `these tools were renamed or removed; rename or drop their asks in lib/tools-asks-bank.js: ${stale.join(", ")}`);
+});
+
+test("a close call names the two tools and tells the model to ask the person when their words do not settle it", async (t) => {
+  const index = indexOf(await agentCatalog(t));
+  const found = find(index, "send it", 3);
+  const s = /** @type {any} */ (shapeFind(found));
+  if (weak(found)) { assert.match(s.unsure, /Close call between \S+ and \S+/); assert.match(s.unsure, /ask them which they mean/); } else assert.equal(s.unsure, undefined);
+  assert.equal(s.tools.length, 3);
 });

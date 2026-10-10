@@ -18,7 +18,7 @@ test("outside agents: the rows keep only what is drawn, and each state is said i
   const m = await import("./outside-model.ts");
   const rows = m.agentsOf(LIST);
   assert.deepEqual(rows.map((r) => r.id), ["k3m9x2q7pw4t", "a2", "a3"], "a row with no id or name is dropped");
-  assert.deepEqual(rows.map((r) => m.endsLine(r, NOW)), ["Ends in 3 days", "Expired. Make a new token to use it again.", "Ended"]);
+  assert.deepEqual(rows.map((r) => m.endsLine(r, NOW)), ["Ends in 3 days", "Expired, so it needs a new token", "Ended"]);
   assert.deepEqual(rows.map((r) => m.usedLine(r, NOW)), ["Last connected 30 minutes ago", "Has not connected yet", "Last connected 5 days ago"]);
   assert.deepEqual(rows[0].gives.map(m.givesLine), ["contact and matter, and may ask to change them", "The memory of Harlow"]);
   assert.equal(rows[1].reach, "");
@@ -48,8 +48,12 @@ test("outside agents: the source calls the box's tools and surfaces a refusal in
   assert.equal((await o.register("Muse", "news")).token, "vext_t");
   await o.grant("x", { kind: "records", types: ["contact"] });
   await o.ungrant("x", "rc_1");
+  await o.token("x", 30);
+  assert.deepEqual(seen.at(-1), { tool: "outside.token", input: { id: "x", days: 30 } }, "a new token can keep the agent for longer");
+  await o.token("x");
+  assert.deepEqual(seen.at(-1)?.input, { id: "x" });
   await assert.rejects(o.revoke("x"), /only a person does this/);
-  assert.deepEqual(seen.map((s) => s.tool), ["outside.list", "outside.register", "outside.grant", "outside.ungrant", "outside.revoke"]);
+  assert.deepEqual(seen.map((s) => s.tool), ["outside.list", "outside.register", "outside.grant", "outside.ungrant", "outside.token", "outside.token", "outside.revoke"]);
   assert.deepEqual(seen[1].input, { name: "Muse", note: "news" });
   assert.deepEqual(seen[2].input, { id: "x", what: { kind: "records", types: ["contact"] } });
 });

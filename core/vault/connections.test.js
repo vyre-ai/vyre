@@ -170,7 +170,7 @@ async function boot(t) {
   return { root, d, pres, lines, as, inproc, events: type => d.registry.deps.events.since(0, { type, limit: 1000 }) };
 }
 
-const imapFields = pw => ({ imap_host: "imap.northwind.test", imap_port: "993", smtp_host: "smtp.northwind.test", smtp_port: "465", username: "kit", password: pw, security: "tls" });
+const imapFields = pw => ({ imap_host: "imap.northwind.test", imap_port: "993", smtp_host: "smtp.northwind.test", smtp_port: "465", username: "kit", password: pw, from: "Kit@Northwind.test", security: "tls" });
 
 test("connections: several email accounts, one list, granted per surface", async t => {
   const { d, pres, lines, as, inproc, events } = await boot(t);
@@ -196,6 +196,7 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.equal(all.length, 1);
   const vaultRow = all[0];
   assert.match(vaultRow.id, ID);
+  assert.equal(vaultRow.account, "kit@northwind.test", "the list shows the mailbox's address, not the Vault item's name (postbox-northwind)");
   assert.deepEqual({ source: vaultRow.source, ref: vaultRow.ref, provider: vaultRow.provider, auth: vaultRow.auth, surfaces: vaultRow.surfaces, state: vaultRow.state },
     { source: "vault", ref: "postbox-northwind", provider: "imap-smtp", auth: "password", surfaces: ["capsule", "chat"], state: "ready" });
   assert.deepEqual(vaultRow.capabilities, ["send_mail", "read_mail"]);
@@ -383,6 +384,18 @@ test("connections: several email accounts, one list, granted per surface", async
   for (const x of values) assert.ok(!text.includes(x), "a value leaked");
   const listing = JSON.stringify(ok(await cli("vault.connections.list")));
   for (const f of ["imap_host", "smtp_port", "username", "\"value\""]) assert.ok(!listing.includes(f), `a field name (${f}) in a listing`);
+});
+
+test("connections: a mailbox whose username is its address, and one with no address at all", async t => {
+  const { as } = await boot(t);
+  const cli = as("cli");
+  const mk = async (/** @type {string} */ label, /** @type {Record<string, string>} */ fields) => { const r = await cli("vault.connect", { module: "postbox", need: "account", label, fields }); assert.ok(!r.error, JSON.stringify(r.error)); };
+  const { from: _f, ...noFrom } = imapFields(hex(12));
+  await mk("byuser", { ...noFrom, username: "dana@northwind.test" });
+  await mk("noaddr", noFrom);
+  const rows = (await cli("vault.connections.list")).data.connections;
+  assert.equal(rows.find((/** @type {any} */ r) => r.ref === "postbox-byuser").account, "dana@northwind.test");
+  assert.equal(rows.find((/** @type {any} */ r) => r.ref === "postbox-noaddr").account, "postbox-noaddr", "with no address known, the item's name is all there is");
 });
 
 test("connections: naming an unowned item never deletes the real row, and a fake capability is never offered", async t => {

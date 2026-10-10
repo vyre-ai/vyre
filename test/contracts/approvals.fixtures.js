@@ -14,6 +14,7 @@ export const owners = {
   stuck: { task: "t_1", label: "Collect the signed retainer", reason: "Waiting on the client", since: 1760000000700 },
   health: { total: 3, rotate: 1, fix: 2 },
   eval: { model: "claude-x", label: "Claude X", state: "pending", price_known: true, total_usd: 1.5, types: ["a", "b"], at: 1760000000800 },
+  signing: { submission: 4411, signer: "Dana Harlow", email: "dana@harlow.test", template: "Engagement letter", at: 1760000000900 },
 };
 
 /** One card of each kind, as `approvals.items` lists it. `answer` names the OWNER's tool that settles the card; `fill` names the values the screen still asks the person for. */
@@ -42,9 +43,14 @@ export const cards = {
     answers: [{ label: "Rotate", open: "/u/vault" }, { label: "Fix", open: "/u/vault" }, { label: "Dismiss", tool: "vault.health.dismiss", input: { days: 7 }, fill: [] }] },
   eval: { id: "models:claude-x", kind: "eval", title: "New model Claude X: run evals?", detail: "2 evals, about $1.50 in all", at: 1760000000800, source: "models",
     answer: { tool: "models.eval-approve", input: { model: "claude-x" }, fill: ["evals"] }, decline: { tool: "models.eval-decline", input: { model: "claude-x" } } },
+  signing: { id: "documents:4411", kind: "signing", title: "Dana Harlow has not signed Engagement letter", detail: "Sent to dana@harlow.test", at: 1760000000900, source: "documents", quiet: true,
+    answer: { tool: "documents.signing.remind", input: { submission: 4411 }, fill: [] } },
   /** A yes waiting on the phone (a vault reveal, a pairing, an outward call from an agent): the queue's own card. The phone signs it (see `pending`). */
   approval: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f", kind: "approval", title: 'A device wants to show "stripe" from your vault', at: 1760000000900, source: "approvals", answer: { tool: "approvals.answer", input: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f" }, fill: ["yes"] } },
 };
+
+/** What `approvals.items` adds to every waiting card for the calling device: whether answering takes a proof (a yes, a draft that sends, access to a secret) and whether the device already has a live presence session (a covered device answers a swipe at once). `recent` cards carry none. */
+export const itemPresence = { required: true, covered: false, since: null };
 
 /** `approvals.items`, whole: the cards waiting, and the ones settled in the last ten minutes with what became of them. */
 export const itemsAnswer = { items: [cards.approval, cards.draft], recent: [{ ...cards.access, state: "settled", outcome: "settled", settled_at: 1760000001000 }] };
@@ -57,5 +63,5 @@ export const pendingCard = {
   sign: { op: "task.vault_use", space: "spc_tzw2zlaob7zz", fields: { what: "vault.reveal", fields: { name: "stripe" } } },
 };
 
-export const kinds = ["approval", "ask", "draft", "access", "run", "task", "eval", "health"];
+export const kinds = ["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing"];
 export const limits = { askMinutes: 5, openCards: 5, groupSeconds: 90, groupMax: 20, recentMinutes: 10, recentMax: 50, titleMax: 120, detailMax: 160 };
