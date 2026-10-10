@@ -45,7 +45,7 @@ import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT
 import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
-import { Links, LINKS_MIGRATION } from "./links.js";
+import { Links } from "./links.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
@@ -151,8 +151,6 @@ export const MIGRATIONS = [
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
   CONVERSIONS_MIGRATION,
-  // A credential linked to a record or a project: names and addresses, grants nothing (links.js).
-  LINKS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -1358,7 +1356,6 @@ export class Vault {
     history.dropHistory(this.dir, r.id);
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
-    this.links.drop(name);
     const gone = this.releases.dropItem(name).catch(e => this.log(`vault: what was granted of ${name} was not taken back: ${e.message}`));
     this.revoking.add(gone);
     gone.finally(() => this.revoking.delete(gone));
