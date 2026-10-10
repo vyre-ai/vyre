@@ -1856,7 +1856,7 @@ sp_in_rule() {
     done
   fi
   [ "$hk" = 0 ] || sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
-    || [ "$hk" = 0 ] || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+    || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
   sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
     || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
   for w in "-i $ifn -m comment --comment $tg -j DROP" "-i $ifn -s $sn -p tcp --dport $hk -m comment --comment $tg -j ACCEPT" "-i $ifn -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment $tg -j ACCEPT"; do
