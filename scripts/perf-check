@@ -184,7 +184,8 @@ function spawnDaemon(home, timersFile, gcFile) {
   const entry = path.join(REPO, "core", "daemon", "main.js");
   const hook = path.join(HERE, "lib", "timer-hook.mjs");
   const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
-  const child = spawn(process.execPath, ["--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
+  const prof = process.env.PERF_CPU_PROF_DIR ? ["--cpu-prof", `--cpu-prof-dir=${process.env.PERF_CPU_PROF_DIR}`, "--cpu-prof-interval=500"] : [];   // a profile of vyred's whole run, to name what a red idle CPU was doing
+  const child = spawn(process.execPath, ["--expose-gc", ...prof, `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
     env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
     stdio: ["ignore", "pipe", "pipe"],

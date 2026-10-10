@@ -63,6 +63,15 @@ jobs:
         run: npm run eval:answer
       - if: ${{ matrix.shard == 1 }}
         run: npm run perf-check
+      # When the budget is over, the same check again with a CPU profile of vyred, uploaded, so the red names what ran at idle instead of guessing (scripts/perf-check PERF_CPU_PROF_DIR).
+      - if: ${{ failure() && matrix.shard == 1 }}
+        run: PERF_CPU_PROF_DIR="$RUNNER_TEMP/cpuprof" npm run perf-check || true
+      - if: ${{ failure() && matrix.shard == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-cpuprofile
+          path: ${{ runner.temp }}/cpuprof
+          if-no-files-found: ignore
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
   # only files that pass there), so a red result means something, and it blocks: a regression cannot
   # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.

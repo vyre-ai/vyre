@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(ci): when scripts/perf-check is over budget on the first shard, the job runs it once more with a CPU profile of vyred (PERF_CPU_PROF_DIR) and uploads the profile, so the red names what ran at idle.
 - perf(kernel): a store hands out its type list as one deep-frozen list, the same until a type is defined, changed or removed (kernel/store/memory.js, stores/twenty/store.js). Every records query asks for the types three or four times and each ask cloned every type; that was most of the CPU in vyred's 60 s idle tick (flows and watchers), the sustained idle CPU red of scripts/perf-check. A caller that tries to change the list now fails loudly; copy what you need to change.
 - perf(kernel): a store hands out its type list as one deep-frozen list, the same until a type is defined, changed or removed (kernel/store/memory.js, stores/twenty/store.js). Every records query asks for the types three or four times and each ask cloned every type; that was most of the CPU in vyred's 60 s idle tick (flows and watchers), the sustained idle CPU red of scripts/perf-check. A caller that tries to change the list now fails loudly; copy what you need to change.
 - fix(gate): a held item's approver is the caller, not a `by` the caller sends (S3). fix(names): names.domain.check answers the person's surfaces and modules only; it had no caller list, so anyone could start the server's DNS lookups.
