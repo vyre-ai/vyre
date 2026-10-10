@@ -363,6 +363,7 @@ test("a text goes out on one yes through the person's own Twilio item: connected
   globalThis.fetch = /** @type {any} */ (async (/** @type {any} */ url, /** @type {any} */ init) => { posted.push({ url: String(url), auth: String((init.headers && (init.headers.authorization || init.headers.Authorization)) || (init.headers && init.headers.get && init.headers.get("authorization")) || ""), body: String(init.body || "") }); return new Response(JSON.stringify({ sid: "SM1" }), { status: 201, headers: { "content-type": "application/json" } }); });
   t.after(() => { globalThis.fetch = realFetch; });
   const input = { via: "sms", to: "+15555550199", body: "Your hearing moved to Tuesday." };
+  const dana = await w.d.kernel.gateway.records.create(w.chain, "contact", { name: "Dana Harlow", phone: "+15555550199" });
   const card = await approved(w, "comms.send", input);
   const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
@@ -371,6 +372,10 @@ test("a text goes out on one yes through the person's own Twilio item: connected
   assert.equal(posted[0].auth, `Basic ${Buffer.from(`AC${"a".repeat(32)}:0123456789abcdef0123456789abcdef`).toString("base64")}`);
   assert.deepEqual(Object.fromEntries(new URLSearchParams(posted[0].body)), { To: "+15555550199", Body: "Your hearing moved to Tuesday.", From: "+15555550123" });
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+  // and the text is logged on the client it went to
+  const logged = await until(async () => { const q = await w.d.kernel.gateway.records.query(w.chain, "communication", { page: { limit: 10 } }); return q.rows.find((/** @type {any} */ x) => x.data.kind === "text"); }, "the text was logged on the client");
+  assert.deepEqual((logged.data.contacts || []).map((/** @type {any} */ c) => c.urn), [dana.urn]);
+  assert.equal(logged.data.excerpt, "Your hearing moved to Tuesday.");
 });
 
 test("an e-mail from comms.send reaches a real mail account on one yes: the account connected from the Vault's catalog, the held message released to SMTP, nothing held twice", { timeout: 300_000 }, async t => {
@@ -409,11 +414,14 @@ test("an e-mail from comms.send reaches a firm's Gmail on one yes: the Google ac
   const added = await w.asPerson("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base });
   assert.ok(added.auth, JSON.stringify(added).slice(0, 300));
   const input = { via: "email", to: "dana@harlowlegal.com", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123" };
+  const dana = await w.d.kernel.gateway.records.create(w.chain, "contact", { name: "Dana Harlow", email: "dana@harlowlegal.com" });
   const card = await approved(w, "comms.send", input);
   const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   await until(() => fake.mail.sent.length === 1, "Gmail received the message");
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+  const logged = await until(async () => { const q = await w.d.kernel.gateway.records.query(w.chain, "communication", { page: { limit: 10 } }); return q.rows.find((/** @type {any} */ x) => x.data.kind === "email" && x.data.subject === input.subject); }, "the e-mail was logged on the client");
+  assert.deepEqual((logged.data.contacts || []).map((/** @type {any} */ c) => c.urn), [dana.urn], "and it shows on the client it went to");
   // a Flow's own question is the yes here too
   await flowStep(w, "comms.send", { via: "email", to: "jo@harlowlegal.com", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms");
   await until(() => fake.mail.sent.length === 2, "the Flow's message reached Gmail");
