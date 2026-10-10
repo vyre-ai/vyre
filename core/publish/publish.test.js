@@ -659,7 +659,8 @@ test("publish: a job goes live with one yes and no address, runs now and on its 
   t.after(() => { seams.jobTickMs = undefined; });
   const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "appmods"] });
   b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [], logs: "ok", runtime: { kind: "image", image: "sha256:" + "f".repeat(64), port: 8080, health: { path: "/", ok: [200] }, job: true } });
-  const made = await b.ok("publish.create", { name: "nightly", source: { kind: "folder", ref: "/srv/nightly" }, build: { image: "dockerfile" }, job: { every_minutes: 5, timeout_s: 120 } });
+  const folder = path.join(b.home, "nightly"); fs.mkdirSync(folder, { recursive: true });
+  const made = await b.ok("publish.create", { name: "nightly", source: { kind: "folder", ref: folder }, build: { image: "dockerfile" }, job: { every_minutes: 5, timeout_s: 120 } });
   const id = made.deployment.id;
   assert.deepEqual(made.deployment.job, { every_minutes: 5, timeout_s: 120 });
   await b.ok("publish.preview", { deployment: id });
