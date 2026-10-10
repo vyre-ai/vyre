@@ -41,11 +41,14 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean }, capOf?(q: { member: string, device: string }): "provider" | "internet" | undefined },
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
- *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
+ *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void, helloOf?(id: string): { cap?: "provider" | "internet" | null } | null },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number,
+ *   canResume?: () => boolean,
  *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
+ *   canResume: can the server carry a session on right now (the loader that turns a lent transcript into a chat exists)? When it cannot, the server takes no session from a lender: a move answers `unavailable` and the lender keeps
+ *   running it, because a session taken with nothing to continue it is a session lost. Unset: yes.
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
 export function createLentHome(o) {
@@ -85,7 +88,9 @@ export function createLentHome(o) {
     return w;
   };
   // The server takes a session: the book moves it (the lender is fenced from this moment), the lender's table entry and credential binding go, and the resume is owed until it answers.
+  const canResume = () => (typeof o.canResume === "function" ? o.canResume() === true : true);
   const takeOver = async (session, reason, opt = {}) => {
+    if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
     lent.delete(String(session)); owed.add(String(session));
@@ -102,6 +107,7 @@ export function createLentHome(o) {
   const resumeOwed = async (/** @type {string} */ session) => {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
+    if (!canResume()) return;   // still owed: told again when the loader exists
     if (!o.resume) { owed.delete(session); book.resumed(session); return; }
     // writes that passed their checks before the take-over finish first, so the server carries on from what the store really holds
     try { await store.drain(session); } catch { /* the store answers for itself */ }
@@ -150,7 +156,7 @@ export function createLentHome(o) {
   return {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
-    book, watch, sweep: sweepOnce, takeOver, view: viewOf,
+    book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
@@ -174,7 +180,9 @@ export function createLentHome(o) {
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
-      const cap = tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined);
+      // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
+      const signedCap = i.lease && o.leases && typeof o.leases.helloOf === "function" ? ((o.leases.helloOf(String(i.lease)) || {}).cap || undefined) : undefined;
+      const cap = tighterCap(tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined), signedCap);
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
       // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
@@ -227,7 +235,7 @@ export function createLentHome(o) {
         // an Offer that no longer stands ends the lending: the server takes the session instead of counting a healthy beat
         if (l && l.person === w.person && l.device === w.device) {
           if (stands(w, l.key)) l.unstood = 0;
-          else if ((l.unstood = (l.unstood || 0) + 1) >= 2) { await takeOver(sid, "switched-off"); fencedList.push(sid); continue; }   // twice running: a home that has only just started and not yet read its Offers must not take a healthy session
+          else if ((l.unstood = (l.unstood || 0) + 1) >= 2 && (await takeOver(sid, "switched-off")).changed) { fencedList.push(sid); continue; }   // twice running: a home that has only just started and not yet read its Offers must not take a healthy session
         }
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }

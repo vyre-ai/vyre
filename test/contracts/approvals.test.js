@@ -66,7 +66,7 @@ test("approvals v1: the queue on a real daemon lists a yes waiting on the phone 
   assert.equal(held.error.code, "held_for_approval");
   const again = await call("approvals.items", {});
   const hold = again.data.items.find((/** @type {any} */ c) => c.id === held.error.approval);
-  assert.equal(hold.title, "An assistant (kit) wants to run mail.send");
+  assert.equal(hold.title, "An assistant (kit) wants to send an email");
   assert.ok(!JSON.stringify(hold).includes("the words of the message"));
   assert.deepEqual(hold.presence, { required: true, covered: false, since: null }, "an outward call from an assistant is answered with a yes");
   assert.ok((await call("approvals.items", {}, "mcp")).error, "a model does not list a person's waiting cards");

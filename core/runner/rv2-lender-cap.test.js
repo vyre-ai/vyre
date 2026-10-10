@@ -107,10 +107,10 @@ test("CAP-4: a limit the lender signed survives stopping the lend and lending ag
   const r = await rig(t);
   await lendWith(r, {}, "provider");
   await unlend(r);
-  await assert.rejects(lendWith(r, {}), e => e.code === "not_allowed" && /tighter network limit/.test(e.message), "a re-lend that states no limit is refused");
-  await assert.rejects(lendWith(r, {}, "internet"), e => e.code === "not_allowed", "so is a looser one");
+  await assert.rejects(lendWith(r, {}, "internet"), e => e.code === "not_allowed" && /tighter network limit/.test(e.message), "a looser limit, stated, is a loosening and says so");
   assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "provider", "the floor stands while nothing is lent");
-  await lendWith(r, {}, "provider");                                                // the same limit again is fine
+  await lendWith(r, {});                                                            // a lend that states no limit inherits the floor (ruled 10 Oct)
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "provider", "and is held to it");
   // Seen from the lender's computer: the Space asks for the internet, the home answers with the provider only.
   const c = r.as(BOB, "dev_floor"); await c.vault.lease();
   assert.equal((await c.spec({ session: "s1" })).network, "provider");
@@ -121,18 +121,26 @@ test("CAP-5: only a loosening the lender signs lowers the floor, and the proof b
   await lendWith(r, {}, "provider");
   await unlend(r);
   const o = { member: BOB, device: "dev_floor", device_key: "KEY_LAPTOP" };
-  // A proof made for the plain lend does not carry a loosening.
-  await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: true }, { presence: proof("grants.offer", { lend: { ...o, network_cap: "internet" } }, LEND) }), e => /wrong_payload|presence|proof/i.test(String(e.code) + e.message));
+  // A looser limit that does not say it is a loosening is refused, and a bad flag is a bad input.
+  await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet" }, {}), e => e.code === "not_allowed" && /tighter network limit/.test(e.message));
   assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "provider");
   await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: "yes" }, {}), e => e.code === "bad_input");
-  // Signed with the loosening, it goes through and the floor starts again from there.
-  await lendWith(r, { loosen: true }, "internet");
+  // The member's own loosening of a computer they lent before needs no proof beyond their own act (ruled 10 Oct: asking is approving), and the floor starts again from there.
+  await r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: true }, {});
   assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "internet");
   await unlend(r);
-  await assert.rejects(lendWith(r, {}), e => e.code === "not_allowed", "internet is now the floor: no limit is looser than it");
+  await lendWith(r, {});                                                             // no limit stated inherits what the floor is now
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "internet");
+  await unlend(r);
   await lendWith(r, {}, "provider");                                                 // tighter is always allowed
   await unlend(r);
   await assert.rejects(lendWith(r, {}, "internet"), e => e.code === "not_allowed");
+  // A computer whose member the OWNER removed is a new grant when it is lent again: that lend takes the member's proof, and a loosening in it is bound by the proof
+  await lendWith(r, {}, "provider");                                                 // lent now, so the removal is what ends it
+  await r.g.removeMember(r.owner, { person: BOB }, { presence: proof("grants.role", { remove: BOB }, `vyre://${SPACE}/member/${BOB}`) });
+  const role = { person: BOB, role: "member" };
+  await r.g.setRole(r.owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: true }, { presence: proof("grants.offer", { lend: { ...o, network_cap: "internet" } }, LEND) }), e => /wrong_payload|presence|proof/i.test(String(e.code) + e.message), "a proof made for the plain lend does not carry a loosening");
 });
 
 test("CAP-6: the hello's limit is the tightest of the Space, the lender's acceptance and what the runner signed; a runner can only ask for less", async t => {
@@ -161,6 +169,8 @@ test("HELLO-1: where the home asks for a signed hello, the lease request carries
   assert.ok(lease.id && lease.key, "the lease came back after the computer signed the challenge");
   assert.equal(r.k.gateway.leases.helloOf(lease.id).cap, "provider", "the home kept what was signed: the lender's limit, the runner version and the protocol");
   assert.deepEqual(Object.keys(r.k.gateway.leases.helloOf(lease.id)).sort(), ["cap", "device", "device_key", "eid", "protocol", "runner_version"]);
+  // and the home holds the session to it, though the start that follows says nothing about a limit: the Space asks for the internet, the lender's key signed provider
+  assert.equal((await c.spec({ session: "s_signed" })).network, "provider");
 });
 
 test("HELLO-2: no hello, no signer, a hello for another computer, or a replayed proof gets no key", async t => {
