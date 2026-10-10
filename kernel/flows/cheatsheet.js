@@ -63,6 +63,7 @@ export function cheatsheet() {
   out.push("", "## Lanes, other Flows, schedules");
   out.push("- `parallel`: lanes (2 to 8 `branch` steps) run together; the next step waits for all and reads any lane's step as `steps.<id>` (lanes cannot read each other). A failed lane fails the step; a retry reruns only it.");
   out.push("- `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.");
+  out.push("- `call` step `with=<earlier send step>`: this send rides that step's yes (one question names both; the earlier tool must list this one in its `covers`; same path, not out of a loop or lane).");
   out.push("- A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.");
   out.push("", "## If it can fail");
   out.push(`- timeout_ms ${POLICY_LIMITS.timeoutMin}-${POLICY_LIMITS.timeoutMax}; retry false | {attempts 1-${POLICY_LIMITS.attempts}, backoff_ms n | [n...], on [${RETRY_CODES.join(", ")}]}. Defaults: ${Object.entries(POLICY).map(([k, p]) => `${k} ${ms(/** @type {any} */ (p).timeout_ms)} x${/** @type {any} */ (p).attempts}`).join(", ")}; other kinds do not retry. A refusal is never retried.`);

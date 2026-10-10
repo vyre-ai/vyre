@@ -70,7 +70,7 @@ export function createFlowsHost(o) {
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
       // A registered tool its module lists in flow.steps is an action a call step may name: read runs at once, outward is held for a yes first. `tool: true` says the runner
       // does not ask the kernel's action table about it: the person's approval is the yes, and the tool's own module gates the rest. Its typed fields ride along for the editor.
-      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true, inputs: t.inputs, outputs: t.outputs };
+      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true, inputs: t.inputs, outputs: t.outputs, ...(t.covers && t.covers.length ? { covers: t.covers } : {}) };
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
       const triggers = o.flowTriggers ? o.flowTriggers() : [];
@@ -85,19 +85,23 @@ export function createFlowsHost(o) {
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
-      call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string }} */ opts = {}) => {
+      call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string, ride?: { run: string, step: string, with: string } }} */ opts = {}) => {
         const tool = o.flowTools ? (o.flowTools() || []).find((/** @type {any} */ t) => t.name === action) : null;
         if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run (flows.cheatsheet lists the steps)`), { code: "denied" });
         if (!o.callFlow) throw Object.assign(new Error("this home has no way to run a module's tool from a Flow"), { code: "unavailable" });
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });
         if (tool.risk === "outward") {
-          if (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true })) {
+          // A step that rides an earlier step's yes (`with`) is covered when the person's approved question for that earlier step, in this run, listed it (action and resource) among the steps it asks for
+          // (kernel/flows/rides.js): the question was frozen with the task and read in full by the person. The yes is not spent here again; each rider has a receipt of its own below.
+          const ride = opts.ride, form = ride && k.tasks && typeof k.tasks.kitApproval === "function" ? (k.tasks.kitApproval(String(opts.approval)) || {}).form : null;
+          const rides = ride && form && form.kind === "held_act" && form.run === ride.run && form.step === ride.with && Array.isArray(form.rides) && form.rides.some((/** @type {any} */ r) => r.step === ride.step && r.action === action && r.resource === resource);
+          if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
             throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
           }
         }
         const session = await k.surfaces.open(personChain(person.actor.id), { ttl_ms: 60_000 });
-        const r = await o.callFlow(action, input, { token: session.token, ...(tool.risk === "outward" && opts.approval ? { task: opts.approval } : {}) });
+        const r = await o.callFlow(action, input, { token: session.token, ...(tool.risk === "outward" && opts.approval ? { task: opts.ride ? `${opts.approval}-r-${opts.ride.step}` : opts.approval } : {}) });
         if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code)), { code: r.error.code || "failed" });
         return r ? r.data : null;
       },

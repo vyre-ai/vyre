@@ -61,6 +61,8 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+/** What publish.quick says while the box has no public door. */
+const PUBLIC_LATER = "Public once the public door is on. Until then the address works on your own devices only.";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
@@ -105,7 +107,7 @@ export default {
       return { list: async (/** @type {string} */ source) => (ctx.kernel && ctx.kernel.mint ? ctx.kernel.mint.list({ source }) : []), make: (/** @type {any} */ i) => mint().make(i), end: (/** @type {any} */ q) => mint().end(q) };
     };
     /** @param {string} space */
-    const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space);
+    const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space, () => (ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : undefined));
 
     // Records from before secrets were grants move now, once. If a move fails the record stays readable as it is (reads add the old list) and the next start tries again; Publish still starts.
     for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {
@@ -222,6 +224,27 @@ export default {
       };
     }
 
+    // ---- a built server runs as an app module (team/contracts/builder.md): Publish writes its granted runtime secrets as files, appmods runs the container ----
+    /** @param {{ id: string, name: string }} space */
+    function runnerFor(space) {
+      const names = (/** @type {any} */ d) => (d.secrets || []).filter((/** @type {any} */ s) => s.use.includes("runtime")).map((/** @type {any} */ s) => s.name);
+      return {
+        async start(/** @type {any} */ d) {
+          const files = secretsFor(space.id);
+          // each value is released by the Vault to Publish only on this deployment's live grant, and written where only the apps module reads it, mode 0600
+          for (const s of (d.secrets || [])) if (s.use.includes("runtime")) await files.writeFile(path.join(files.dir, d.id, s.name), await files.read(s.ref, { deployment: d.id }), { mode: 0o600 });
+          const r = await call("appmods.publish.install", { deployment: { id: d.id, space: space.id, name: d.name, version: d.version, runtime: d.runtime, secrets: names(d) } });
+          if (r.missing) throw refuse("this server has no apps module to run a site's server", "no_runner");
+          return r.data;
+        },
+        async remove(/** @type {any} */ d) {
+          await call("appmods.publish.remove", { deployment: d.id });
+          const files = secretsFor(space.id);
+          for (const s of (d.secrets || [])) await files.removeFile(path.join(files.dir, d.id, s.name));
+        },
+      };
+    }
+
     // ---- one publisher per space, built on first use ----
     /** @type {Map<string, { pub: any, ledger: ReturnType<typeof ledgerFor>, lock: Promise<any> }>} */
     const publishers = new Map();
@@ -260,6 +283,7 @@ export default {
         },
         names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
         builder,
+        runner: runnerFor(space),
         // The checked files of a static build go into a fresh folder under the space's publish folder (private, 0700); `publish.edge` hands the box the copy into the site volume.
         site: { write: async (/** @type {string} */ _id, /** @type {any[]} */ files) => {
           const sites = path.join(publishDir(space.id), "sites");
@@ -370,7 +394,10 @@ export default {
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
         const held = await b.pub.goLive(b.chain, made.id, {});
-        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+        // until the public door (names.status listening) is on, the address a yes makes live is reachable on the person's own devices only: say so, in the same answer as the yes
+        const door = await call("names.status", {}).catch(() => ({ data: null }));
+        const open = Boolean(door.data && door.data.listening === true);
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan, public: open, ...(open ? {} : { note: PUBLIC_LATER }) };
       },
     });
     ctx.tool("publish.rollback", {
@@ -501,6 +528,8 @@ export default {
         const r = await b.pub.revokeSecret(b.chain, i.deployment, i.name);
         const files = secretsFor(b.space.id);
         await files.removeFile(path.join(files.dir, i.deployment, i.name));
+        // a live server is started again without it: the container's environment is made at start, so taking the file away alone would leave the secret in the running process
+        if (r.deployment.stage === "Production" && r.deployment.runtime && r.deployment.runtime.kind === "image") await runnerFor(b.space).start(r.deployment);
         return { deployment: shown(r.deployment) };
       },
     });

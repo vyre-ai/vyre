@@ -55,7 +55,13 @@ export default {
       throw refuse("a task moves to working, stuck, skipped or ready", "bad_input");
     });
     /** The Deck's evidence ({ note: { text, sources } }) in the kernel's own shape ({ note: text, sources }); anything already in the kernel's shape passes as it is. @param {any} e */
-    const evidence = e => (e && typeof e === "object" && e.note && typeof e.note === "object" ? { ...e, note: String(e.note.text || ""), sources: Array.isArray(e.note.sources) ? e.note.sources : [] } : e);
+    // The app hands a note as { note: { text, sources } } and a decision as { decision: { answer, reason } }; the kernel's checks read them flat.
+    const evidence = e => {
+      let out = e;
+      if (out && typeof out === "object" && out.note && typeof out.note === "object") out = { ...out, note: String(out.note.text || ""), sources: Array.isArray(out.note.sources) ? out.note.sources : [] };
+      if (out && typeof out === "object" && out.decision && typeof out.decision === "object") { const { decision, ...rest } = out; out = { ...rest, answer: decision.answer, reason: decision.reason }; }
+      return out;
+    };
     tool("tasks.submit", "The doer hands in what it made. The kernel checks the output and moves the task on (to needs_check or done).", obj({ space: str, id: str, evidence: { type: "object" } }, ["id", "evidence"]), async (i, d) => ({ task: await asks(d).complete(d.chain, String(i.id), evidence(i.evidence)) }));
     return { async stop() {} };
   },

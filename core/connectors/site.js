@@ -22,13 +22,13 @@ const STATUS_OF = /** @type {Record<string, number>} */ ({ input: 400, auth: 401
  */
 export function lightFor(cls, host, reason, agent = "") {
   switch (cls) {
-    case "ok": return { light: "green", words: "connected" };
-    case "auth": return { light: "red", words: `sign in to ${host} again in the browser Vyre uses${agent ? ` (${agent}'s computer: open its screen and sign in once)` : ""}` };
-    case "blocked": return { light: "red", words: `${host} is challenging the browser: a person has to clear it once` };
-    case "rate": return { light: "red", words: `${host} says to slow down` };
-    case "drift": return { light: "red", words: `${host} changed and the operation could not be repaired: teach it again` };
-    case "no_browser": return reason && /^needs your Chrome/.test(reason) ? { light: "red", words: reason } : { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre Computer${host ? ` and sign in to ${host}` : ""}` };
-    default: return { light: "red", words: `the last call did not work${reason ? `: ${String(reason).slice(0, 120)}` : ""}` };
+    case "ok": return { light: "green", words: "connected", cls: "ok" };
+    case "auth": return { light: "red", words: `sign in to ${host} again in the browser Vyre uses${agent ? ` (${agent}'s computer: open its screen and sign in once)` : ""}`, cls };
+    case "blocked": return { light: "red", words: `${host} is challenging the browser: a person has to clear it once`, cls };
+    case "rate": return { light: "red", words: `${host} says to slow down`, cls };
+    case "drift": return { light: "red", words: `${host} changed and the operation could not be repaired: teach it again`, cls };
+    case "no_browser": return reason && /^needs your Chrome/.test(reason) ? { light: "red", words: reason, cls } : { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre Computer${host ? ` and sign in to ${host}` : ""}`, cls };
+    default: return { light: "red", words: `the last call did not work${reason ? `: ${String(reason).slice(0, 120)}` : ""}`, cls: "error" };
   }
 }
 
@@ -148,7 +148,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     emit("connectors.site-ran", { id, op: op.name, rung, class: cls });
     if (cls !== "held") {
       const l = lightFor(cls, host, res && res.reason, rung === "box" ? agent : "");
-      made.touch(id, l.light, l.words);
+      made.touch(id, l.light, l.words, l.cls);
       emit("connectors.connection-checked", { id, light: l.light });
       if (cls === "auth") emit("connectors.site-needs-signin", { id, site: decl.base_url, host, rung, ...(rung === "box" && agent ? { agent } : {}) });
     }
@@ -173,11 +173,11 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     // on a box the browser that holds the login is an agent's computer (the Connection's agent); a Mac is asked only when a call needs it, never to "check"
     /** @type {{ agent?: string }} */ const form = (() => { try { return JSON.parse(row.form || "{}"); } catch { return {}; } })();
     const agent = typeof form.agent === "string" ? form.agent : "";
-    if (role === "box" && !agent) return { light: "red", words: `no agent's computer is named to hold the login for ${host}: name one when you connect it, or run it from your Mac` };
+    if (role === "box" && !agent) return { light: "red", words: `no agent's computer is named to hold the login for ${host}: name one when you connect it, or run it from your Mac`, cls: "no_browser" };
     const res = await pageRung(/** @type {string} */ (decl.base_url), first.site.name, {}, false, true, role === "box" ? agent : "");
     if (res && res.class === "no_browser") return lightFor("no_browser", host);
-    if (res && res.onSite === false) return { light: "red", words: `open ${host} in Chrome first` };
-    return res && res.ok ? { light: "green", words: "signed in and ready" } : lightFor("auth", host);
+    if (res && res.onSite === false) return { light: "red", words: `open ${host} in Chrome first`, cls: "no_browser" };
+    return res && res.ok ? { light: "green", words: "signed in and ready", cls: "ok" } : lightFor("auth", host);
   }
 
   return { run, check };
@@ -291,6 +291,22 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
     description: "The website Connections, one row each: { sites: [{ id, title, subtitle (what the light says, or the host), light, site, operations }] }. What the Websites view lists.",
     input: obj({}, []),
     run: async () => ({ sites: siteRows().map(({ r, d }) => siteRow(r, d)) }),
+  });
+
+  /** The classes of a red light that only a person can clear: the login ran out, the site wants a person's check, or no browser holds the login. */
+  const NEEDS_PERSON = new Set(["auth", "blocked", "no_browser"]);
+  ctx.tool("connectors.site.attention", {
+    effect: "read", callers: [...people, "module", "mcp", "harness"],
+    description: "Website Connections that wait for a person (login out, security check, no browser): { sites: [{ id, host, class, words, agent? }] }.",
+    input: obj({}, []),
+    run: async () => ({ sites: siteRows().filter(({ r }) => r.light === "red").map(({ r, d }) => {
+      /** @type {any} */ const form = (() => { try { return JSON.parse(r.form || "{}"); } catch { return {}; } })();
+      const cls = form.last && form.last.class ? String(form.last.class) : "";
+      if (!NEEDS_PERSON.has(cls)) return null;
+      const host = new URL(d.base_url).hostname;
+      const stopped = cls === "blocked" && governor ? Boolean(governor.usage(r.id, settingsOf(host, form.governor)).stopped) : false;
+      return { id: r.id, title: r.label, host, site: d.base_url, class: cls, words: r.reason || "", ...(typeof form.agent === "string" && form.agent ? { agent: form.agent } : {}), ...(stopped ? { stopped: true } : {}), at: r.checked_at || 0 };
+    }).filter(Boolean) }),
   });
 
   ctx.tool("connectors.site.rows", {

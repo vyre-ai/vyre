@@ -16,7 +16,7 @@ A template is a Word file in your Drive under `Templates/`, with `{placeholders}
 
 `documents.generate` fills a template from values and from records you name by reference (`records: { client: <record> }`, so `{client.name}` fills from the record's field). It answers the path, version, size, hash and format. The same input makes the same file. If a value is missing, blank, or a list has nothing to repeat, nothing is made and the error names every one of them; Vyre never guesses.
 
-The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; elsewhere a PDF says plainly that it needs the Records server, and the Word file is still made.
+The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; on any other server, install "PDF converter" from Apps (the same converter, pinned, with no way out of your server), and Documents finds it by itself. With neither, a PDF says plainly what it needs, and the Word file is still made.
 
 ## Send for signature
 
@@ -33,6 +33,8 @@ A document you sent that nobody has signed shows in Needs you as a quiet row: "D
 ## Sign from a stage
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
+
+The signer is either on the record (`email_field`, and `name_field` for the name) or is the Contact the record links to (`contact_field`, such as a project's `client`). With a Contact, Documents reads the address and the name from the Contact itself, so a Kit's own types (a client, a project) work as they are: the Flow needs no e-mail field and no field to remember the request in, and the stage's one run per entry is what sends it once. A Contact with no e-mail address is said plainly and nothing is sent. `documents.send` and `documents.send-signed` take `contact` in place of `email` the same way.
 
 ## Signing pages
 

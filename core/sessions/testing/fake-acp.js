@@ -32,7 +32,7 @@ const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan
 
 async function prompt(id, blocks) {
   // FAKE_ACP_LOG gets every prompt as the blocks it arrived in, so a test can see what rode ahead of the person's words.
-  log({ prompt: blocks.map(b => b.text || "") });
+  log({ prompt: blocks.map(b => b.text || ""), types: blocks.map(b => b.type) });
   // The environment brief and the role ride in a block of their own at the head of a process's first prompt (core/sessions/environment.js): the commands below are read from the blocks after it, and "echo" says it all.
   const t = (blocks.length > 1 && String(blocks[0].text || "").startsWith("[Vyre environment]") ? blocks.slice(1) : blocks).map(b => b.text || "").join("");
   cancelled = false;
@@ -130,7 +130,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
     clientCaps = m.params.clientCapabilities || {};
     log({ launch: process.argv.slice(2), home: process.env.HOME || null, grokImports: [process.env.GROK_CLAUDE_MCPS_ENABLED || null, process.env.GROK_CURSOR_MCPS_ENABLED || null], clientCaps });
     // FAKE_ACP_AUTH: like the real codex-acp and Grok, session/new answers "Authentication required" (-32000) until authenticate {methodId} was called.
-    return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: process.env.FAKE_ACP_AUTH ? [{ id: "api-key", name: "API Key" }, { id: "chat-gpt", name: "ChatGPT" }, ...(clientCaps && clientCaps.auth && clientCaps.auth._meta && clientCaps.auth._meta.gateway ? [{ id: "gateway", name: "Custom model gateway" }] : [])] : [] } });
+    return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true, ...(process.env.FAKE_ACP_IMAGE ? { promptCapabilities: { image: true } } : {}) }, authMethods: process.env.FAKE_ACP_AUTH ? [{ id: "api-key", name: "API Key" }, { id: "chat-gpt", name: "ChatGPT" }, ...(clientCaps && clientCaps.auth && clientCaps.auth._meta && clientCaps.auth._meta.gateway ? [{ id: "gateway", name: "Custom model gateway" }] : [])] : [] } });
   }
   if (m.method === "authenticate") {
     log({ authenticate: m.params && m.params.methodId, gateway: m.params && m.params._meta && m.params._meta.gateway ? { baseUrl: m.params._meta.gateway.baseUrl, headers: Object.keys(m.params._meta.gateway.headers || {}), providerName: m.params._meta.gateway.providerName } : undefined });

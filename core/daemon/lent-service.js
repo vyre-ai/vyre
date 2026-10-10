@@ -30,12 +30,13 @@ const defaultSpec = account => ({
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
  * `emit(type, payload)` is told when a session moves (thread.moved); `resume(i)` is the server's continuation of a session a lender gave up or lost; `titleOf(space, chat)` names a chat for the lender's list. Each Space's
  * home watches its lenders' heartbeats from the moment it is made, and `stop()` ends the watching.
- * @param {{ root: string, emit?: (type: string, payload: any) => void, resume?: (i: any) => any, titleOf?: (space: string, chat: string) => Promise<string | null> | string | null, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, keyOf?: (kernel: any, space: string) => Buffer | null, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
+ * @param {{ root: string, emit?: (type: string, payload: any) => void, resume?: (i: any) => any, canResume?: () => boolean, titleOf?: (space: string, chat: string) => Promise<string | null> | string | null, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, keyOf?: (kernel: any, space: string) => Buffer | null, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {
   /** @type {Map<string, () => void>} */ const subs = new Map();
   /** @type {Map<string, any>} the service each Space has now, for the home's own view of what is lent */ const live = new Map();
+  /** @type {Map<string, any>} the kernel each live service was made for */ const liveK = new Map();
   const factory = (/** @type {string} */ space, /** @type {any} */ k) => {
     const g = k && k.gateway;
     if (!g || !g.grants || !g.grants.offers) return null;
@@ -49,12 +50,14 @@ export function lentServiceFor(o) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work: ask the owner of this home to set up storage for that space"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release"].map(n => [n, refuse])));
     }
-    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
+    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
     const old = live.get(space); if (old && typeof old.stopWatching === "function") old.stopWatching();
-    live.set(space, made); made.stopWatching = made.watch();
+    live.set(space, made); liveK.set(space, k); made.stopWatching = made.watch();
     return made;
   };
+  /** The service for this Space's kernel: the one already made, or a new one. A Space's book is read from disk once; two services for one Space would each keep their own copy of it. @param {string} space @param {any} k */
+  factory.ensure = (space, k) => (live.has(space) && liveK.get(space) === k ? live.get(space) : factory(space, k));
   /** The sessions lent for a Space and the chat each belongs to (never on the wire). @param {string} space */
   factory.rows = space => { const l = live.get(space); return l && typeof l.rows === "function" ? l.rows() : []; };
   /** The home of a Space, or null: the place tools reach its book through the daemon's runner host. @param {string} space */
@@ -77,5 +80,7 @@ export function lentPlacements(registry) {
     find: (/** @type {string} */ space, /** @type {string} */ id, /** @type {string} */ person) => { const h = homeOf(space); return h ? h.book.find(id, person) : null; },
     askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason, /** @type {string} */ person) => book(space).askRelease(session, reason, person),
     bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).bringBack(session, person),
+    /** Can the server carry a session on from a computer now? A home that does not say, can. */
+    resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }

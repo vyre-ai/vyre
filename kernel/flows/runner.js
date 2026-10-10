@@ -27,6 +27,8 @@ import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
+import { createPruner, KEEP_DAYS } from "./prune.js";
+import { ridesOf, cardTitle } from "./rides.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
@@ -150,6 +152,8 @@ export class FlowRunner {
     /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
     /** @type {Map<string, { key: string, at: number, bad?: string }>} the last replay of a Flow's saved test cases, for the health line */ this.testMemo = new Map();
     /** The Space's holidays (setting flows.holidays), for schedules that keep business hours. @type {string[]} */ this.holidays = [];
+    /** Old finished runs shrink to one line (setting flows.runs_keep_days; kernel/flows/prune.js). */
+    this.keepMs = KEEP_DAYS * 86_400_000; this.pruneAt = -Infinity; this.pruner = createPruner({ store: this.store, now: () => this.now(), locked: (id, fn) => this.#locked(id, fn) });
     /** Parallel lanes and sub-flows: runs that start runs and wait for them (kernel/flows/joins.js). */
     this.joins = createJoins({
       store: this.store, now: () => this.now(), locked: (id, fn) => this.#locked(id, fn), detach: id => this.#detach(id), resumeLocked: (id, r) => this.#resumeLocked(id, r), retry: id => this.retry(id),
@@ -388,6 +392,7 @@ export class FlowRunner {
     set("stuck_ms", await pick("flows.stuck_minutes", 60_000, 1, 1440));
     set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
     set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
+    { const keep = await pick("flows.runs_keep_days", 86_400_000, 1, 3650); if (keep !== undefined) this.keepMs = keep; }
     const cap = await pick("flows.retry_attempts", 1, 1, 8);
     if (cap !== undefined) this.retryCap = cap;
     try { this.holidays = holidaysFrom(await /** @type {any} */ (this.settingsFn)("flows.holidays")); } catch { /* keep the list it had */ }
@@ -623,6 +628,7 @@ export class FlowRunner {
    */
   async tick() {
     await this.#refreshSettings();
+    if (this.now() - this.pruneAt >= 3_600_000) { this.pruneAt = this.now(); await this.prune().catch(() => 0); }
     const now = this.now();
     const cat = await this.catalogFn();
     const work = [];
@@ -859,6 +865,7 @@ export class FlowRunner {
    * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
    */
   async retry(runId, opts = {}) {
+    { const up = await this.joins.retryTarget(runId); if (up) return this.retry(up, opts); }
     // Retry on a run that waits for a Chrome means: try now, do not wait for the Mac to say it is back.
     { const w = await this.store.getRun(runId); if (w && w.state === "waiting" && w.attention && w.attention.kind === "device") return this.#resume(runId, { event: null }); }
     return this.#locked(runId, async () => {
@@ -1123,7 +1130,7 @@ export class FlowRunner {
         case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
         case "wait": out = await this.#wait(ctx, s, key, val); break;
         case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-        case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
+        case "call": { const rides = ridesOf(ctx.flow, s.id, ctx.cat), ride = s.with ? ctx.dry ? "dry" : this.#rideOf(ctx, s) : undefined; out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
           if (ctx.dry) return { dry: true };
           if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
           // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
@@ -1131,9 +1138,9 @@ export class FlowRunner {
           if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
           // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
           const input = val(s.input);
-          const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
+          const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }), ...(ride ? { ride: { run: ctx.run.id, step: s.id, with: s.with } } : {}) } : {}) });
           return draftAs ? { draft: true, via: draftAs, result: r } : r;
-        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
+        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }), rides, ride }); break; }
         case "classify": out = await this.#classify(ctx, s, key, val); break;
         case "extract": out = await this.#extract(ctx, s, key, val); break;
         case "service": out = await this.#service(ctx, s, key, val); break;
@@ -1313,11 +1320,18 @@ export class FlowRunner {
 
   // ------------------------------------------------------------------ authority
 
+  /** The approved task of the earlier send a step rides (`with`), or nothing when that step asked nobody: then this step asks for itself. @param {any} ctx @param {any} s @returns {string | undefined} */
+  #rideOf(ctx, s) {
+    // A run that has read content from outside, or a Flow a model drafted, is asked about every send: what the later send says or goes to may come from that content, which the earlier yes never saw.
+    if (ctx.run.tainted || ctx.flow.authorship === "model") return undefined;
+    const e = ctx.run.steps[`${s.with}?ask`]; return e && e.status === "done" && typeof e.task === "string" ? e.task : undefined;
+  }
+
   /**
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
    * the act and the caller records "done" after, so a crash in between replays the act with the same idempotency key.
    * @param {any} ctx @param {any} s @param {string} key @param {{ action: string, resource: string }} need
-   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string, bind?: string }} [info]
+   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string, bind?: string, rides?: { step: string, action: string, resource: string, line: string }[], ride?: string }} [info]
    */
   async #effect(ctx, s, key, need, act, info = {}) {
     const run = ctx.run;
@@ -1334,7 +1348,7 @@ export class FlowRunner {
       await this.#mark(ctx, askKey, { status: approved ? "done" : "failed", output: { outcome: res.task && res.task.outcome }, answered: { by: res.task ? (res.task.checked_by ?? res.task.by ?? (res.task.checker && res.task.checker.id) ?? (res.task.doer && res.task.doer.id) ?? null) : null, at: this.now() } });
       if (!approved) throw new StepFail("refused", `a person said no to step ${s.id}`);
     }
-    const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
+    const approvedTask = (info.ride && info.ride !== "dry" ? info.ride : undefined) || (run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined);
     // An approved act is the task's DOER's to carry out (the approval is a single-use authority for exactly that act, given to the doer: the Flows service under the approver): the run presents the approval
     // as the doer, and this check only looks at it (peek): the act's own gate below it spends the one use.
     const doerChain = approvedTask && this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
@@ -1356,7 +1370,7 @@ export class FlowRunner {
       throw new StepFail(d.reason || "denied", `not allowed: ${d.reason}`);
     }
     if (effect === "ask" && !approvedTask) {
-      if (ctx.dry) { ctx.dryAsks = (ctx.dryAsks || 0) + 1; }
+      if (ctx.dry) { if (!info.ride) ctx.dryAsks = (ctx.dryAsks || 0) + 1; }
       else {
         const why = forced ? (run.tainted ? "it started from content outside this Space" : "a model drafted this Flow") : "it needs a person's yes";
         // A held act is a task the Flow's own service does (it asks) and a person CHECKS: the person's approve or reject is the answer, with their presence, as for any approval. An always-ask
@@ -1364,11 +1378,12 @@ export class FlowRunner {
         const namedChecker = alwaysAsk && alwaysAsk.approver ? (alwaysAsk.approver.person ? { kind: "person", id: alwaysAsk.approver.person, space: run.space } : alwaysAsk.approver.role ? { role: alwaysAsk.approver.role } : null) : null;
         const doerChain = this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
         const reason = alwaysAsk ? (d.rule && d.rule.label) || "a rule of this space asks every time" : why;
-        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`,
+        const task = await this.k.ask.request(chain, { title: cardTitle(ctx.view.flow.label || ctx.view.flow.name, labelOf(ctx.cat, need.action), info.rides || []),
           ...(doerChain ? { doer: { kind: "service", id: "flows", space: run.space }, checker: namedChecker || run.approver } : { doer: namedChecker && namedChecker.kind ? namedChecker : run.approver }),
           output: { kind: "decision" }, source: "flow_step",
           form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: reason, trigger_source: run.trigger.kind, input: info.input ?? null,
             ...(info.bind ? { bind: info.bind } : {}),
+            ...(info.rides && info.rides.length ? { rides: info.rides } : {}),
             ...(alwaysAsk ? { rule: alwaysAsk.rule, waivable: false, ...(alwaysAsk.approver && alwaysAsk.approver.role ? { approver_role: alwaysAsk.approver.role } : {}) } : {}) } }, { idem: `${run.id}:${askKey}` });
         if (doerChain) {
           // the Flow's service asks: it does the task (a yes with its reason), which puts it in front of the checker; a replay finds it already started
@@ -1902,6 +1917,8 @@ export class FlowRunner {
   async getRun(id) { return this.store.getRun(id); }
   /** @param {{ flow?: string, state?: string, limit?: number }} [f] */
   async listRuns(f) { return this.store.listRuns(f); }
+  /** Shrink the finished runs older than the Space's keep days to one line each; how many shrank. @returns {Promise<number>} */
+  async prune() { return this.pruner.sweep(this.keepMs); }
 }
 
 // ---------------------------------------------------------------------- helpers

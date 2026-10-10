@@ -28,6 +28,24 @@ A site gets the keys it needs from the [Vault](vault.md), one at a time, and onl
 
 With a GitHub account connected (see [Connectors](connectors.md)), ask for a new repo for the folder: it is made under your account or an organisation you belong to, private unless you say public, and the folder goes there as the first commit.
 
+## A React page
+
+A folder with a React page (`index.jsx`, `index.tsx`, `App.jsx` or `App.tsx`, and no `index.html`) publishes the way the Preview pane shows it: the same page, the same libraries, nothing to build first. Publish compiles the files, puts the libraries the page uses beside them, and writes a plain site. A page can import only the libraries Vyre provides; if it imports another, Publish names it and builds nothing.
+
+## An app with a server, from a Dockerfile
+
+A folder with a `Dockerfile` at its top can be published as a running app. Create the deployment with `"build": { "image": "dockerfile" }` (add `"port": 8080` unless the Dockerfile has an `EXPOSE` line). Preview builds the image on this server; nothing runs yet. Going live asks once, and the plan you say yes to names the server, its port, and that it has no way out to the internet. Your yes starts it as one of this server's apps, on its own address (`<name>.<your server's name>.vyre.run`), where anyone can reach it.
+
+What it gets and does not get:
+- Secrets: grant a Vault secret to the deployment (`publish.secret.grant` with `"use": ["runtime"]`, your yes) and it is in the app's environment under the name you gave. Taking the grant away restarts the app without it.
+- A place to keep data: the folder `/data` survives restarts and new versions. Make it writable by the user your app runs as in the Dockerfile (`RUN mkdir /data && chown node /data`). Everything else in the app is read-only except `/tmp`.
+- Limits: 512 MB of memory, half a CPU and 256 processes, the same hardening as Vyre's own apps (no extra privileges, no capabilities), and no way to reach anything outside its own network. Nothing of yours is mounted into it.
+- Visitors: your app sees each visitor's own cookies and headers, never your Vyre sign-in. Its cookies stay on its own address.
+- The build: it runs in a locked-down builder, not on the server itself. It may start from official images (node, python, nginx and the like) and from registries you allow in the setting `builder.from`; a Dockerfile that names another base, or its own build frontend (`# syntax=`), is refused. The build can reach the internet to fetch packages. The folder is read like any folder: `.env`, keys and `.git` are not in it.
+- A new version replaces the running one; if it does not answer its health check, the old one is started again and nothing goes live. Rolling back starts the previous image. Retiring removes the app and keeps its data.
+
+Servers that run their apps through the Linux installer's host helper cannot run your own image yet; Publish says so. Sites made of files are not affected.
+
 ## Not here yet
 
-This server builds a folder of ready files. A site that needs a build command (a framework, a bundler), a build from a repo or a Drive folder, and apps with a server need the container builder, which is not installed here yet; Publish says so in those words when you ask. Serving the site on the public internet also depends on the server's public door being set up.
+This server builds a folder of ready files, and an app from a folder with a Dockerfile. A site that needs a build command (a framework, a bundler) and a build from a repo or a Drive folder need the container builder for those, which is not installed here yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.

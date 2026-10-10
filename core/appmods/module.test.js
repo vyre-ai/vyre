@@ -28,6 +28,7 @@ async function world(t, opt = {}) {
     let body = ""; q.on("data", d => { body += d; });
     q.on("end", () => {
       if (q.url === "/file/abc/nda.pdf") return void r.writeHead(200, { "content-type": "application/pdf" }).end(PDF);
+      if (q.url === "/health") return void r.writeHead(200, { "content-type": "application/json" }).end('{"status":"up"}');
       if (q.url === "/api/submissions" && q.method === "POST") {
         seen.api = seen.api || []; seen.api.push({ token: q.headers["x-auth-token"] || "", body });
         if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
@@ -434,6 +435,98 @@ test("appmods.signing.waiting: only the app's own module asks, a stopped app has
   assert.ok((await w.cli("appmods.signing.waiting", { name: "documents" })).error, "nor a person at the terminal");
   await w.cli("appmods.stop", { name: "documents" });
   assert.deepEqual((await ask()).data, { requests: [] }, "a stopped app has none");
+});
+
+test("the PDF converter is a service: it installs like any app, modules reach it through appmods.origin, and it has no public host, no screens and nothing on the front", async t => {
+  const w = await world(t);
+  const card = await w.model("appmods.card", { name: "pdf" });
+  assert.equal(card.error, undefined, JSON.stringify(card.error));
+  assert.deepEqual(card.data.reaches, ["nothing outside this server"]);
+  const r = await w.cli("appmods.install", { name: "pdf" });
+  assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "pdf", state: "running", connection: null, kit: "object" }, JSON.stringify(r));
+  const env = w.log.find(l => l[0] === "up");
+  assert.equal(env[2], "pdf");
+  assert.deepEqual(env[4], [], "it needs no key of its own");
+  assert.match((await w.d.registry.call("appmods.origin", { name: "pdf" }, "module:documents")).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/, "Documents finds it");
+  assert.ok((await w.cli("appmods.origin", { name: "pdf" })).error, "a person at the terminal does not");
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, [], "no public host: nothing to put in a certificate or in DNS");
+  assert.deepEqual((await w.cli("appmods.screens")).data.screens, []);
+  assert.equal((await w.web("GET", "/health", { headers: { host: "pdf.localhost:9999" } })).status, 404, "the apps' front does not serve it");
+  assert.equal((await w.web("GET", "/", { headers: { host: "pdf.localhost:9999" } })).status, 404);
+  assert.ok((await w.cli("appmods.open", { name: "pdf", origin: "http://localhost:9999" })).error, "there is no screen to open");
+  // installed next to the signing app, only the signing app has a host
+  await w.cli("appmods.install", { name: "documents" });
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, ["documents.localhost"]);
+});
+
+test("a published server: only Publish runs it, from the secrets Publish wrote, replaced by the next version, open on its own host, and gone with its deployment", async t => {
+  const w = await world(t);
+  const SP = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  const IMG = "sha256:" + "a".repeat(64);
+  const dep = (/** @type {any} */ over = {}) => ({ id: DEP, space: SP, name: "northwind", version: 1, runtime: { kind: "image", image: IMG, port: 8080, health: { path: "/", ok: [200, 302, 404] } }, secrets: ["API_KEY"], ...over });
+  const asPublish = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:publish") => w.d.registry.call(tool, input, caller);
+  const secretsAt = path.join(w.root, "publish", SP, "secrets", DEP);
+  // nobody else runs a site's server: not a person, not another module, not a model
+  for (const caller of ["module:comms", "module:documents"]) assert.equal((await asPublish("appmods.publish.install", { deployment: dep() }, caller)).error.code, "denied", caller);
+  assert.equal((await w.model("appmods.publish.install", { deployment: dep() })).error.code, "no_such_tool", "a model does not even see it");
+  assert.ok((await w.cli("appmods.publish.install", { deployment: dep() })).error, "nor a person at the terminal");
+  // a secret Publish has not written is said, and nothing runs
+  const missing = await asPublish("appmods.publish.install", { deployment: dep() });
+  assert.equal(missing.error.code, "no_secret");
+  assert.match(missing.error.message, /API_KEY is not granted to this site yet/);
+  assert.deepEqual(w.log.filter(l => l[0] === "up"), []);
+  fs.mkdirSync(secretsAt, { recursive: true }); fs.writeFileSync(path.join(secretsAt, "API_KEY"), "k-live-123", { mode: 0o600 });
+  // names that are not the deployment's to take
+  for (const name of ["documents", "pdf", "www"]) assert.equal((await asPublish("appmods.publish.install", { deployment: dep({ name }) })).error.code, "bad_input", name);
+  assert.equal((await asPublish("appmods.publish.install", { deployment: dep({ space: "../etc" }) })).error.code, "bad_input");
+  assert.equal((await asPublish("appmods.publish.install", { deployment: dep({ runtime: { kind: "static" } }) })).error.code, "bad_input");
+  const r = await asPublish("appmods.publish.install", { deployment: dep() });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.state, "running");
+  assert.match(r.data.url, /^http:\/\/northwind\.localhost/);
+  const up = w.log.filter(l => l[0] === "up").at(-1);
+  assert.deepEqual([up[2], up[3], up[4]], ["northwind", undefined, ["API_KEY"]], "started with the secret by name, no webhook door");
+  assert.ok(!JSON.stringify([r, w.lines, w.log]).includes("k-live-123"), "the value is in no answer, log or line");
+  assert.equal((await w.cli("appmods.status", { name: "northwind" })).data.state, "running");
+  // it is not an app the owner installs or removes by hand, and it is not in the catalog
+  assert.ok(!(await w.model("appmods.catalog")).data.apps.some((/** @type {any} */ a) => a.name === "northwind"));
+  assert.match((await w.cli("appmods.remove", { name: "northwind" })).error.message, /Publish runs/);
+  // open on its own host: a stranger reaches the site with no ticket, and the apps' list of hosts carries it for the gate
+  assert.ok((await w.cli("appmods.hosts")).data.hosts.includes("northwind.localhost"));
+  const H = { host: "northwind.localhost:9999" };
+  const hit = await w.web("GET", "/anything", { headers: { ...H, cookie: "vyre_app=FORGED; mine=1" } });
+  assert.notEqual(hit.status, 404, "an open site is served to a stranger");
+  const seen = w.seen.reqs.filter((/** @type {any} */ q) => q.url === "/anything").at(-1);
+  assert.equal(seen.cookie, "mine=1");
+  // the next version replaces the running one (the old container goes, the data stays)
+  w.log.length = 0;
+  fs.mkdirSync(path.join(w.root, "publish", SP, "secrets", "dep_fedcba9876543210"), { recursive: true }); fs.writeFileSync(path.join(w.root, "publish", SP, "secrets", "dep_fedcba9876543210", "API_KEY"), "k-live-456", { mode: 0o600 });
+  const v2 = await asPublish("appmods.publish.install", { deployment: dep({ id: "dep_fedcba9876543210", version: 2, runtime: { kind: "image", image: "sha256:" + "b".repeat(64), port: 8080 } }) });
+  assert.equal(v2.error, undefined, JSON.stringify(v2.error));
+  assert.deepEqual(w.log.map(l => l[0]).filter(x => x === "down" || x === "up"), ["down", "up"]);
+  assert.deepEqual(w.log.find(l => l[0] === "down")[1], { data: false });
+  // stop, then remove with the deployment
+  assert.equal((await asPublish("appmods.publish.stop", { deployment: "dep_fedcba9876543210" })).data.state, "stopped");
+  assert.equal((await w.web("GET", "/anything", { headers: H })).status, 404, "a stopped site is not served");
+  assert.equal((await asPublish("appmods.publish.stop", { deployment: "dep_nothere" })).data.state, "none");
+  assert.equal((await asPublish("appmods.publish.remove", { deployment: "dep_fedcba9876543210" })).data.removed, true);
+  assert.equal((await w.cli("appmods.list")).data.apps.some((/** @type {any} */ a) => a.name === "northwind"), false);
+  assert.ok(!(await w.cli("appmods.hosts")).data.hosts.includes("northwind.localhost"));
+  assert.equal((await asPublish("appmods.publish.remove", { deployment: "dep_fedcba9876543210" })).data.removed, false, "twice is nothing");
+});
+
+test("a published server survives a restart of the daemon: the manifest is kept and the site is still known", async t => {
+  const w = await world(t);
+  const SP = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  fs.mkdirSync(path.join(w.root, "publish", SP, "secrets", DEP), { recursive: true });
+  const r = await w.d.registry.call("appmods.publish.install", { deployment: { id: DEP, space: SP, name: "northwind", version: 1, runtime: { kind: "image", image: "sha256:" + "a".repeat(64), port: 8080 }, secrets: [] } }, "module:publish");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  await w.d.stop();
+  const lines = [];
+  const d2 = await start({ root: w.root, presence: present, log: m => lines.push(m) });
+  t.after(() => d2.stop());
+  assert.equal((await call("appmods.status", { name: "northwind" }, { root: w.root, caller: "cli" })).data.state, "running");
+  assert.ok(!lines.some(l => /not loaded/.test(l)));
 });
 
 test("Needs you: a document nobody has signed is one quiet card from the real approvals queue, naming the signer with no link on it, and it closes when the app stops listing it", async t => {

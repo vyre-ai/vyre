@@ -81,6 +81,8 @@ export function createLentClient(o) {
     },
     /** Hand a session to the server after its final checkpoint. */
     release: async ({ session, reason }) => { let r; try { r = await o.invoke("lent.release", [{ session, epoch: epochs.get(session), reason }]); } catch (e) { fence(session, e); throw e; } if (r && r.moved) epochs.delete(session); return r; },
+    /** The bytes of a chat's process on this computer, up and down, in one long call (contracts/lent-spawn.md). A fenced session is stopped here like any other write. */
+    pipe: async ({ session, up, exit, ack, wait_ms }) => { try { return await o.invoke("lent.pipe", [{ session, epoch: epochs.get(session), ...(up && up.length ? { up } : {}), ...(exit ? { exit } : {}), ack, ...(Number.isInteger(wait_ms) ? { wait_ms } : {}) }]); } catch (e) { fence(session, e); throw e; } },
     /** Told when the home fences a session of this computer. */
     onFenced: fn => { fencedFns.add(fn); return () => { fencedFns.delete(fn); }; },
   };

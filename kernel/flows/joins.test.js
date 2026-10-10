@@ -160,6 +160,29 @@ test("parallel: retrying the parent sends the failed lane round again and keeps 
   assert.equal((await kids(w, id)).length, 2, "no third run was made");
 });
 
+test("parallel: retrying the failed lane itself finishes the parent too", async () => {
+  const holders = {};
+  const w = await world({ ports: { roles: (_s, role) => holders[role] || (role === "manager" ? [BOB] : role === "attorney" ? [ALEX, BOB] : []) } });
+  const { id } = await install(w, flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("good", [{ id: "m", kind: "create", type: "matter", set: { client: "Once" } }]),
+    lane("late", [{ id: "q", kind: "ask", to: "role:member", title: "Sign off?" }]),
+  ] }, { id: "after", kind: "create", type: "payment", set: { amount: 1 } }]));
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [parent] = await roots(w, id);
+  assert.equal(parent.state, "failed");
+  const bad = (await kids(w, id)).find(r => r.state === "failed");
+  holders.member = [ALEX];
+  await w.runner.retry(bad.id);
+  await settle(w);
+  w.kernel.completeTask(taskOf(w, "Sign off?").id, { outcome: "approved" });
+  await settle(w);
+  const done = await w.runner.getRun(parent.id);
+  assert.equal(done.state, "done", `the parent finished (${done.state}) ${JSON.stringify(done.error)}`);
+  assert.equal(mine(w, "payment").length, 1);
+  assert.equal((await w.runner.attention()).length, 0, "nothing is left to ask about");
+});
+
 test("parallel: replaying the parent after a restart starts no lane twice", async () => {
   const w = await world();
   const { id } = await install(w, flowOf([{ id: "p", kind: "parallel", steps: [
@@ -337,6 +360,33 @@ test("sub-flow: a Flow the approver may not run is refused by the same check as 
   assert.equal(mine(w, "payment").length, 0, "the other Flow never ran");
 });
 
+test("sub-flow, through the real kernel's authorize (no pushed rule): an approver who holds flows.run runs the other Flow; one who does not is refused", async () => {
+  const CARLA = { kind: "person", id: "per_carla", space: SPACE };
+  for (const holds of [true, false]) {
+    const w = await world();
+    w.kernel.addActor(CARLA);
+    const g = w.kernel.gatewayGrants.get("gr_person_per_carla");
+    if (!holds) g.actions = g.actions.filter(a => a !== "flows.run");
+    assert.equal(g.actions.includes("flows.run"), holds);
+    await install(w, { format: 1, name: "inner_work", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "c", kind: "create", type: "payment", set: { amount: 9 } }] }, ALEX);
+    const { id } = await install(w, flowOf([{ id: "s", kind: "subflow", flow: "inner_work" }]), CARLA);
+    w.kernel.inbound("payment.received", {});
+    await settle(w);
+    const [run] = await roots(w, id);
+    const asked = w.kernel.authorizeCalls.filter(c => c.action === "flows.run" && c.resource.includes("/flow/"));
+    assert.ok(asked.length >= 1, "the real authorize was asked for flows.run on the other Flow");
+    if (holds) {
+      assert.equal(run.state, "done", JSON.stringify(run.error));
+      assert.equal(mine(w, "payment").length, 1, "the other Flow ran");
+    } else {
+      assert.notEqual(run.state, "done", "the run did not get through");
+      assert.ok(["paused", "failed"].includes(run.state), `a refusal stops the run (${run.state})`);
+      assert.equal(mine(w, "payment").length, 0, "the other Flow never ran");
+      assert.equal((await kids(w, id)).length, 0, "no sub-flow run was started");
+    }
+  }
+});
+
 test("the schema: a lane belongs inside a parallel step, a parallel step has two to eight lanes, and the lines form round-trips", () => {
   const base = steps => checkFlow({ format: 1, name: "t", authorship: "human", trigger: { on: "manual" }, steps });
   assert.match(JSON.stringify(base([lane("solo", [{ id: "m", kind: "create", type: "matter", set: {} }])])), /lane of a parallel step/);
@@ -388,7 +438,9 @@ test("the canvas draws lanes side by side under the parallel step, each named, a
   const byId = Object.fromEntries(g.nodes.map(n => [n.id, n]));
   assert.deepEqual([byId.review.label, byId.draft.label], ["review", "draft"], "a lane is named by the author's word for it");
   assert.equal(byId.look.label, "Give a task to a person");
-  assert.equal(byId.s.label, "Run the Flow inner_note");
+  assert.equal(byId.s.label, 'Run the Flow "inner note"', "with no label to hand, the name reads as words");
+  const labelled = graph(flow, { ...w.cat, flows: { inner_note: "Write the inner note" } });
+  assert.equal(labelled.nodes.find(n => n.id === "s").label, 'Run the Flow "Write the inner note"', "and the Flow's own label when the Space has it");
   assert.deepEqual(g.edges.filter(e => e.from === "p").map(e => [e.to, e.kind]), [["review", "lane"], ["draft", "lane"]]);
   assert.ok(byId.review.lane !== byId.draft.lane && byId.review.lane > byId.p.lane, "the lanes sit side by side to the right of the parallel step");
   const named = graph(flow, { ...w.cat, people: { ["per_" + "a".repeat(26)]: "Alex Rivera" } });

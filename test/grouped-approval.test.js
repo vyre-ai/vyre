@@ -54,7 +54,7 @@ test("three outward calls from one assistant are three cards in one group, each 
   const p = await pending(reg);
   assert.equal(p.approvals.length, 3);
   assert.deepEqual(p.groups.map((/** @type {any} */ g) => [g.id, g.size]), [[held[0].group, 3]]);
-  assert.match(p.groups[0].line, /3 calls of mail\.send: Northwind, Oakline, Brightwell/);
+  assert.match(p.groups[0].line, /send an email, 3 times: Northwind, Oakline, Brightwell/);
   const first = p.approvals.find((/** @type {any} */ c) => c.request.fields.to === "Northwind");
   assert.deepEqual(first.words.map((/** @type {any} */ w) => w.field), ["to", "subject", "body"], "every text field, in order");
   assert.equal(first.words.find((/** @type {any} */ w) => w.field === "body").text, MAILS[0].body, "the whole long body, not the 200 characters the card's fields hold");

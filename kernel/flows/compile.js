@@ -10,6 +10,8 @@ import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
 import { decorate } from "./places.js";
+import { secretsIn } from "./no-secrets.js";
+import { checkRides } from "./rides.js";
 
 /**
  * What the compiler knows about a Space.
@@ -136,6 +138,7 @@ export function compileFlow(flow, cat) {
 /** @param {any} flow @param {Catalog} cat @returns {ReturnType<typeof compileFlow>} */
 function compileRaw(flow, cat) {
   /** @type {any[]} */ const errors = checkFlow(flow);
+  for (const x of secretsIn(flow)) errors.push({ path: x.path, message: `this looks like ${x.kind}: a Flow never holds a key, a password or a token. Put it in the Vault and name the Connection instead (the Vault uses it; the Flow only names it)` });
   // A "Call a service" step that names a Connection is written out as the service step it stands for before anything reads it; what is stored is the written-out Flow (connection-step.js).
   if (!errors.length) {
     const ex = expandConnections(flow, cat);
@@ -276,6 +279,8 @@ function compileRaw(flow, cat) {
     });
   }
   visit(flow.steps, "steps", baseScope, new Set());
+  checkRides(flow.steps, cat, errors);
+  walkSteps(flow.steps, (/** @type {any} */ st) => { if (st.kind === "call" && st.with !== undefined) { const o = effects.outward.find((/** @type {any} */ x) => x.step === st.id); if (o) o.with = st.with; } });
   // Flow-level failure path: any step may have run before it, and it reads the error
   if (Array.isArray(flow.on_failure)) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); visit(flow.on_failure, "on_failure", new Set([...baseScope, "error"]), all); }
   if (flow.returns !== undefined) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); checkValueNames(flow.returns, "returns", new Set(baseScope), all); }
@@ -303,7 +308,7 @@ function compileRaw(flow, cat) {
 /**
  * @typedef {{
  *   reads: string[], writes: string[],
- *   outward: { step: string, action: string, risk: string, destination_constant: boolean }[],
+ *   outward: { step: string, action: string, risk: string, destination_constant: boolean, with?: string }[],
  *   services: { step: string, connector: string, method: string, path: string, outward: boolean, files: { way: string, path: string, version: string|null }[] }[],
  *   code: { step: string, hash: string|null, needs: string[], outputs: string[] }[],
  *   asks: number, assigns: { step: string, to: string, checker: string|null, output: string }[],

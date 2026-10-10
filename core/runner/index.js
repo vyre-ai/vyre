@@ -11,6 +11,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { createLenderHost } from "./lender-host.js";
 import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
+import { startPump } from "./pipe-pump.js";
 import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
 import { BEAT_MAX } from "./lent-home.js";
@@ -101,6 +102,7 @@ export default {
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
     const runners = new Map();
+    /** The pump of each chat process on this computer (lent spawn), until the home has heard it end. @type {Map<string, { done: Promise<void> }>} */ const pumps = new Map();
     const emit = (space, e) => {
       try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {}
       if (e.type === "stopped") endOnHome(space, e.session, e.why);
@@ -109,7 +111,8 @@ export default {
     // it. The program died: the home takes it at once from the last whole turn (reason crash). Handed over or fenced: the home already knows.
     const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
       const p = lenders.get(space)?.ports; if (!p) return;
-      if (why === "stopped" || why === "finished") Promise.resolve(p.stop?.(session)).catch(() => {});
+      // a chat's process (lent spawn) says how it ended through its pump first, so the SDK hears the exit it really had; the home forgetting the session comes after
+      if (why === "stopped" || why === "finished") { const pump = pumps.get(session); Promise.race([pump ? pump.done : null, new Promise(res => { const t = setTimeout(res, 10_000); t.unref?.(); })]).then(() => p.stop?.(session)).catch(() => {}); }
       else if (why === "crashed") Promise.resolve(p.requestServer?.(space, session, "crash")).catch(() => {});
     };
     const forSpace = async space => {
@@ -172,6 +175,8 @@ export default {
         }
         throw e;
       }
+      // A chat's process (lent spawn, contracts/lent-spawn.md): its bytes ride `lent.pipe` between the SDK on the home and this sandbox. The pump ends itself once the home has heard the process end.
+      if (spec.pipe === true && typeof p.pipe === "function" && h.child) { const pump = startPump({ child: h.child, session, pipe: i => p.pipe(i), isFrozen: () => r.frozenNow, onFenced: () => { r.fence(session).catch(() => {}); }, onKill: () => { r.stop(session).catch(() => {}); } }); pumps.set(session, pump); pump.done.finally(() => { if (pumps.get(session) === pump) pumps.delete(session); }); }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
     };
     ctx.tool("runner.start", {
@@ -202,7 +207,7 @@ export default {
       },
     });
     /** What the place tools need from this module (place-tools.js); `moveThread` is added by them. @type {any} */
-    const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
+    const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, platform: seam.platform || process.platform, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
     registerPlaceTools(ctx, placeDeps);
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
@@ -374,7 +379,7 @@ export default {
         (async () => {
           try {
             if (d.do === "release" && r) await r.moveToServer(d.session, d.reason || "you");
-            else if (d.do === "start" && enabledNow()) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
+            else if (d.do === "start" && enabledNow()) await startSession(space, { session: d.session, resume: d.pipe !== true, ...(d.chat ? { chat: d.chat } : {}) });
           } catch { /* asked again at a later beat */ } finally { asked.delete(key); }
         })();
       }

@@ -10,7 +10,23 @@ const bad = (m, path) => checkAppModule(m).some(p => p.path === path);
 
 test("the DocuSeal manifest in the catalog passes, and the catalog loads it", () => {
   assert.deepEqual(checkAppModule(documents()), []);
-  assert.deepEqual([...loadCatalog().keys()], ["documents"]);
+  assert.deepEqual([...loadCatalog().keys()], ["documents", "pdf"]);
+});
+
+const pdf = () => JSON.parse(fs.readFileSync(new URL("./catalog/pdf.json", import.meta.url), "utf8"));
+
+test("the PDF converter is a service: pinned like the Records server's, no way out, no screens, no public host; a service cannot also be a signing app or have a login", () => {
+  assert.deepEqual(checkAppModule(pdf()), []);
+  assert.equal(pdf().app.service, true);
+  assert.equal(pdf().app.image.split("@")[1], fs.readFileSync(new URL("../../lib/spaces/home-unit.js", import.meta.url), "utf8").match(/gotenberg\/gotenberg:[0-9.]+@(sha256:[0-9a-f]{64})/)[1], "the one converter image the Records unit also runs");
+  assert.equal(pdf().app.egress, undefined, "it may reach nothing");
+  let m = pdf(); m.app.service = "yes"; assert.ok(bad(m, "app.service"));
+  m = pdf(); m.app.signing = documents().app.signing; assert.ok(bad(m, "app.signing"));
+  m = pdf(); m.app.login = documents().app.login; assert.ok(bad(m, "app.login"));
+  m = pdf(); m.app.public = ["/manifest.json"]; assert.ok(bad(m, "app.public"));
+  m = pdf(); m.screens = [{ id: "home", label: "Home", path: "/" }]; assert.ok(bad(m, "screens"));
+  const ports = [...loadCatalog().values()].map(x => x.app.hookPort);
+  assert.equal(new Set(ports).size, ports.length, "hook ports are unique across the catalog");
 });
 
 test("an image must be pinned by digest: a bare tag, a latest tag and a short digest are refused", () => {

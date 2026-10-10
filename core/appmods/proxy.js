@@ -222,7 +222,9 @@ export function createHostProxy(o) {
     }
     const exact = ["GET", "HEAD"].includes(method) && Array.isArray(app.public) && app.public.includes(url.pathname);
     const signing = Boolean(sign && sign.open(method, url.pathname));
-    const open = exact || signing;
+    // A server Publish made, once live, answers everyone on every route with its own cookies and nothing of Vyre's: the owner's ticket cookie is removed below (passCookies) and the app has no sign-in here
+    const wide = app.open === true;
+    const open = exact || signing || wide;
     // Anyone without a ticket on a SIGNING route is a signer, not the owner: the app sees them as it sees a stranger, never as the install's admin. (The few static paths in `public` are served as before.)
     const stranger = signing && !exact && !ticketed;
     if (!open && !ticketed) return plain(404, "not found");
@@ -234,6 +236,8 @@ export function createHostProxy(o) {
         /** @type {Record<string, string>} */ const h = {};
         for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !k.startsWith("x-vyre-") && typeof v === "string") h[k] = v;
         const jar = jars.get(mh.name);
+        // an open server's visitors send their own credentials to the site they are using; nothing of Vyre's is ever in the header (the owner's session is the cookie this front removes)
+        if (wide && typeof req.headers.authorization === "string") h.authorization = req.headers.authorization;
         if (stranger) {
           // only the signer's own cookies for the app; never the install's session, never ours; an uncompressed answer so a page can be dressed
           const c = signerCookies(req.headers.cookie);
@@ -242,7 +246,7 @@ export function createHostProxy(o) {
         } else if (jar && jar.size) h.cookie = cookieHeader(jar);
         // A preview is a whole app of its own on its own origin: its cookies are its own, so they go through (never Vyre's session cookie, which is only this proxy's).
         if (app.passCookies) { const mine = String(req.headers.cookie || "").split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) h.cookie = mine; else delete h.cookie; }
-        if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > (stranger ? PUBLIC_BODY : MAX_BODY)) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
+        if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > (stranger || (wide && !ticketed) ? PUBLIC_BODY : MAX_BODY)) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
         if (req.headers["transfer-encoding"]) h["transfer-encoding"] = String(req.headers["transfer-encoding"]);
         // A preview's own dev server answers only to its own address (Vite's allowed hosts, a framework's host check): it is sent that, and told the host the person is on.
         if (app.viewerKey) { const w = o.tickets.whoOf(sid ? sid[1] : undefined); if (w) h["x-vyre-viewer"] = viewerHeader(app.viewerKey, w); else delete h["x-vyre-viewer"]; }
@@ -256,6 +260,8 @@ export function createHostProxy(o) {
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
       if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
+      // an open server's cookies stay on its own host: a Domain attribute would reach the other apps' hosts and Vyre's own
+      if (wide && out["set-cookie"]) out["set-cookie"] = [].concat(/** @type {any} */ (out["set-cookie"])).map(handOn);
       if (stranger) {
         // the signer's cookies go back to the signer, not into the install's jar
         const sc = r.headers["set-cookie"];

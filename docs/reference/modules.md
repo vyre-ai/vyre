@@ -20,8 +20,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 25 | 9 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 28 | 9 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 16 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
@@ -37,7 +37,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`comms`](#comms) | `core/comms` | `box` | 2 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
@@ -70,7 +70,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`previews`](#previews) | `core/previews` | `box` | 20 | 6 | cli |
+| [`previews`](#previews) | `core/previews` | `box` | 21 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 21 | 6 | capsule, cli, deck |
@@ -155,7 +155,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [25](tools.md#appmods)
+- Tools: [28](tools.md#appmods)
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
@@ -172,7 +172,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#approvals), 4 of them only for other modules
+- Tools: [16](tools.md#approvals), 6 of them only for other modules
 - Emits: [1 events](events.md#approvals)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -355,7 +355,7 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [39](tools.md#connectors), 3 of them only for other modules
+- Tools: [40](tools.md#connectors), 3 of them only for other modules
 - Emits: [14 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
@@ -728,7 +728,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/previews`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [20](tools.md#previews)
+- Tools: [21](tools.md#previews)
 - Emits: [6 events](events.md#previews)
 - Shows on: cli
 - Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`

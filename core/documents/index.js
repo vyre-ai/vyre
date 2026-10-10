@@ -88,7 +88,7 @@ export function registerDocuments(ctx) {
       }
       const { buffer, used } = fill(tbytes, values);
       const format = i.format === "pdf" ? "pdf" : "docx";
-      const out = format === "pdf" ? await toPdf(buffer, { url: cfg().pdf || process.env.VYRE_DOCUMENTS_PDF }) : buffer;
+      const out = format === "pdf" ? await toPdf(buffer, { url: await converter() }) : buffer;
       const sha256 = crypto.createHash("sha256").update(out).digest("hex");
       const scope = i.project ? SLUG(String(i.project)) : "general";
       const title = String(i.name || tname).replace(/\s+/g, " ").trim().slice(0, 100);
@@ -103,6 +103,13 @@ export function registerDocuments(ctx) {
   /** How long a link to a signed copy lasts when the call names no days: the setting documents.signed_link_days, and with it off, for good (a link to a signed contract is one the client keeps in their mail). @returns {number | undefined} */
   const linkDays = () => { const n = Number(cfg().signed_link_days); return Number.isInteger(n) && n >= 1 ? n : undefined; };
   const daysFor = (/** @type {any} */ i) => (i.days !== undefined ? i.days : linkDays());
+
+  /** Where the PDF converter is: the address in the setting, else the Records server's, else the PDF converter app when it is installed and running here. */
+  const converter = async () => {
+    const set = cfg().pdf || process.env.VYRE_DOCUMENTS_PDF;
+    if (set) return set;
+    try { const r = await ctx.call("appmods.origin", { name: "pdf" }); return r && !r.error && r.data && typeof r.data.origin === "string" ? r.data.origin : undefined; } catch { return undefined; }
+  };
 
   ctx.tool("documents.signed-link", {
     description: "A link to a signed copy: { slug, days? }. Lasts until revoked unless days is given. Whoever holds it can open the file.",
@@ -138,18 +145,36 @@ export function registerDocuments(ctx) {
     return r.data;
   };
   const address = (/** @type {any} */ i) => { const e = String(i.email || "").trim(); if (!e) throw refuse("email is the signer's address, such as dana@example.com", "bad_input"); return e; };
+  /**
+   * Who signs: the address given, else the Contact the call names (a link value, a record reference or the Contact's id), read under the caller's own grants. A Flow on a record whose person is a
+   * linked Contact passes the link as it is and needs no e-mail field on its own record.
+   * @param {any} d @param {any} i @returns {Promise<{ email: string, name?: string }>}
+   */
+  const signerOf = async (d, i) => {
+    if (String(i.email || "").trim()) return { email: address(i), ...(i.signer ? { name: String(i.signer) } : {}) };
+    const raw = i.contact && typeof i.contact === "object" ? i.contact.urn ?? i.contact.id : i.contact;
+    if (raw === undefined || raw === null || raw === "") throw refuse("name who signs: email, or contact (the Contact record)", "bad_input");
+    const s = segments(String(raw));
+    const id = s ? (s.length === 3 && s[1] === "contact" ? s[2] : "") : (/^[A-Za-z0-9_-]{1,80}$/.test(String(raw)) ? String(raw) : "");
+    if (!id) throw refuse("contact is a Contact record", "bad_input");
+    const rec = await d.gateway.records.get(d.chain, "contact", id);
+    if (!rec) throw refuse("that Contact is not there, or is not yours to see", "not_found");
+    const email = String((rec.data && rec.data.email) || "").trim();
+    if (!email) throw refuse(`${(rec.data && rec.data.name) || "that Contact"} has no e-mail address yet: add one to the Contact, then send again`, "bad_input");
+    return { email, ...(i.signer ? { name: String(i.signer) } : rec.data && rec.data.name ? { name: String(rec.data.name) } : {}) };
+  };
 
   ctx.tool("documents.send", {
-    description: "Send a document for signature: { template_id, email, signer?, subject?, note? }. Makes the signing request and emails the signer their link; one yes.",
-    input: obj({ space: str, template_id: { type: "integer" }, email: str, signer: str, subject: str, note: str }, ["template_id", "email"]),
+    description: "Send a document for signature: { template_id, email or contact, signer?, subject?, note? }. Makes the request and emails the signer their link; one yes.",
+    input: obj({ space: str, template_id: { type: "integer" }, email: str, contact: {}, signer: str, subject: str, note: str }, ["template_id"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      await door.open(i || {}, meta);
-      const email = address(i);
+      const d = await door.open(i || {}, meta);
+      const { email, name } = await signerOf(d, i);
       const text = String(i.note || "").trim();
       if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");
       const note = text ? `${text}\n\n` : "";
-      const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) })
+      const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(name ? { signer: name } : {}) })
         .catch((/** @type {any} */ e) => { throw e && e.code === "not_found" ? refuse("Documents is not running on this server: install or start it from Apps, then send again", "unavailable") : e; });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
@@ -193,12 +218,13 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes. Lasts until revoked unless days.",
-    input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
+    description: "Email the signer their signed copy: { slug, email or contact, days? }. Makes the link and emails it; one yes. No end unless days.",
+    input: obj({ space: str, slug: str, email: str, contact: {}, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      await door.open(i || {}, meta);
-      const email = address(i), slug = String(i.slug || "");
+      const d = await door.open(i || {}, meta);
+      const { email } = await signerOf(d, i);
+      const slug = String(i.slug || "");
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw refuse("slug is the signer's code from the signing request", "bad_input");
       const asked = daysFor(i);
       const link = await use("appmods.signed.link", { name: "documents", slug, ...(asked !== undefined ? { days: asked } : {}) });
@@ -211,8 +237,8 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.signing.flow", {
-    description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field?, name_field?, submission_field?, wait_days?, subject? }. Creates nothing.",
-    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
+    description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, wait_days? }. Creates nothing.",
+    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, contact_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),
   });

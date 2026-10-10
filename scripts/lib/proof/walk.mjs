@@ -292,11 +292,12 @@ export async function walkTerminal(w) {
 
 /**
  * The update walk (--update): an app with its own identity pairs a server that is the OLD release (v0.2.12 by default, installed by that release's own installer with the app's install line), then asks for the update from the app. The steps are in updateSteps.
- * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, out: string, update: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string } }} w
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, out: string, update: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string }, label?: string, after?: (a: { mac: any, srv: () => any, S: (n: string) => string, back: string }) => Promise<void> }} w
+ *   label: the prefix on every step (default "update"). after: more steps on the updated server, run before it is taken down (J8 restarts it with no one at the keyboard).
  */
 export async function walkUpdate(w) {
   const { run, ins, update } = w;
-  const tag = "update";
+  const tag = w.label || "update";
   const S = (/** @type {string} */ n) => `${tag}: ${n}`;
   const dir = path.join(w.out, tag);
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
@@ -330,6 +331,7 @@ export async function walkUpdate(w) {
       assert.ok(await mac.callTool("system.info"), "system.info answered");
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
     await updateSteps({ w: { update, out: w.out }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
+    if (w.after) await w.after({ mac, srv: () => srv, S, back: S("the host's unit installs the candidate and the server comes back as it") });
   } finally {
     try { if (srv) await srv.stop(); } catch { /* gone */ }
   }

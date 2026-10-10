@@ -138,11 +138,12 @@ export class MemoryFlowStore {
   async putRun(run) { this.runs.set(run.id, structuredClone(run)); }
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const r = this.runs.get(id); return r ? structuredClone(r) : null; }
-  /** @param {{ flow?: string, state?: string, limit?: number }} [f] @returns {Promise<Run[]>} */
+  /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} [f] @returns {Promise<Run[]>} */
   async listRuns(f = {}) {
     let rows = [...this.runs.values()];
     if (f.flow) rows = rows.filter(r => r.flow === f.flow);
     if (f.state) rows = rows.filter(r => r.state === f.state);
+    if (f.before !== undefined) rows = rows.filter(r => r.started_at < /** @type {number} */ (f.before));
     rows.sort((a, b) => b.started_at - a.started_at);
     return structuredClone(rows.slice(0, f.limit || 200));
   }
@@ -321,11 +322,12 @@ export class RecordsFlowStore {
   }
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const f = (await this.#find("flow-run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }
-  /** @param {{ flow?: string, state?: string, limit?: number }} [f] @returns {Promise<Run[]>} */
+  /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} [f] @returns {Promise<Run[]>} */
   async listRuns(f = {}) {
     /** @type {any[]} */ const and = [];
     if (f.flow) and.push({ field: "flow_id", op: "eq", value: f.flow });
     if (f.state) and.push({ field: "state", op: "eq", value: f.state });
+    if (f.before !== undefined) and.push({ field: "started_at", op: "lt", value: f.before });
     const r = await this.k.records.query(this.chain, "flow-run", { filter: and.length ? { and } : undefined, sort: [{ field: "started_at", dir: "desc" }], page: { limit: f.limit || 200 } });
     return r.rows.map((/** @type {any} */ x) => JSON.parse(x.data.body));
   }

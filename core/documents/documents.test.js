@@ -121,6 +121,37 @@ test("a PDF needs the converter: refused in plain words without one, filed as a 
   assert.equal(w.files.get(out.path)[0].subarray(0, 4).toString(), "%PDF");
 });
 
+test("with no address set, a PDF is made by the PDF converter app when it is installed and running, found by Documents through appmods.origin, and the setting still wins", async t => {
+  allowLoopbackForTests(true);
+  /** @type {string[]} */ const hit = [];
+  const mk = (/** @type {string} */ who) => http.createServer((req, res) => { req.resume(); req.on("end", () => { hit.push(who); res.writeHead(200, { "content-type": "application/pdf" }); res.end(Buffer.from("%PDF-1.7 " + "x".repeat(2000))); }); });
+  const app = mk("app"), set = mk("setting");
+  await new Promise(r => app.listen(0, "127.0.0.1", () => r(undefined))); await new Promise(r => set.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { app.close(); set.close(); allowLoopbackForTests(false); });
+  const origin = `http://127.0.0.1:${/** @type {any} */ (app.address()).port}`;
+  /** @type {any[]} */ const asked = [];
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "spaces.self") return {}; asked.push([tool, input]); return tool === "appmods.origin" && input.name === "pdf" ? { data: { origin } } : { error: { code: "not_found", message: "x" } }; };
+  const w = rig({ call });
+  await w.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  const out = await w.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" });
+  assert.match(out.path, /\.pdf$/);
+  assert.deepEqual(hit, ["app"]);
+  assert.deepEqual(asked.filter(a => a[0] === "appmods.origin"), [["appmods.origin", { name: "pdf" }]]);
+  // the address a person set is used and the app is not asked
+  asked.length = 0; hit.length = 0;
+  const own = rig({ call, config: { documents: { pdf: `http://127.0.0.1:${/** @type {any} */ (set.address()).port}` } } });
+  await own.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  await own.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" });
+  assert.deepEqual(hit, ["setting"]);
+  assert.equal(asked.some(a => a[0] === "appmods.origin"), false);
+  // the app is not installed or not running: the same plain refusal, and it says where to get one
+  const none = rig({ call: async tool => (tool === "spaces.self" ? {} : { error: { code: "not_found", message: "that app is not running" } }) });
+  await none.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  const e = await code(none.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" }));
+  assert.equal(e.code, "no_pdf_engine");
+  assert.match(e.message, /install the PDF converter app from Apps/);
+});
+
 test("the signing Flow comes back ready to define, and a bad ask is said", async () => {
   const r = rig();
   const out = await r.run("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12 });
@@ -265,4 +296,39 @@ test("documents.signing.waiting lists what nobody has signed without the link or
   assert.equal((await code(r.run("documents.signing.remind", { submission: 4411, note: "x".repeat(1001) }))).code, "bad_input");
   assert.ok(!seen.some(s => s.tool === "comms.send"), "nothing was sent for either");
   assert.equal((await code(rig({ chain: null }).run("documents.signing.remind", { submission: 4411 }))).code, "denied");
+});
+
+test("documents.send and send-signed take the signer from a Contact: its address and name, read under the caller's grants; a Contact with no address, or one that is not there, is said", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const contacts = { "c-1": { data: { name: "Dana Harlow", email: "dana@harlow.test" } }, "c-2": { data: { name: "Sam Poe" } } };
+  const r = rig({ records: Object.fromEntries(Object.entries(contacts).map(([id, v]) => [`contact/${id}`, v])), call: async (tool, input) => {
+    if (tool === "spaces.self") return {};
+    seen.push({ tool, input });
+    return tool === "appmods.signing.request" ? { data: { submission: 9, slug: "abc", url: "https://documents.harlow.vyre.run/sign/9/abc" } } : tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/0.abc.sig", expires: null } } : { data: { held: "gi_1" } };
+  } });
+  // the three ways a link reaches a tool: the urn, the link as a record holds it ({ urn }), and the bare id
+  for (const contact of ["vyre://spc_x/contact/c-1", { urn: "vyre://spc_x/contact/c-1" }, "c-1"]) {
+    seen.length = 0;
+    await r.run("documents.send", { template_id: 12, contact });
+    assert.equal(seen[0].input.email, "dana@harlow.test", JSON.stringify(contact));
+    assert.equal(seen[0].input.signer, "Dana Harlow");
+    assert.equal(seen[1].input.to, "dana@harlow.test");
+  }
+  seen.length = 0;
+  await r.run("documents.send", { template_id: 12, contact: "c-1", signer: "D. Harlow" });
+  assert.equal(seen[0].input.signer, "D. Harlow", "a name given wins");
+  seen.length = 0;
+  await r.run("documents.send-signed", { slug: "abc", contact: "c-1" });
+  assert.equal(seen[1].input.to, "dana@harlow.test");
+  // an address given still wins over a Contact, and neither is said
+  seen.length = 0;
+  await r.run("documents.send", { template_id: 12, email: "x@y.test", contact: "c-1" });
+  assert.equal(seen[0].input.email, "x@y.test");
+  assert.match((await code(r.run("documents.send", { template_id: 12 }))).message, /name who signs/);
+  assert.match((await code(r.run("documents.send", { template_id: 12, contact: "c-2" }))).message, /Sam Poe has no e-mail address yet/);
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "c-404" }))).code, "not_found");
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "vyre://spc_x/client/c-1" }))).code, "bad_input", "only a Contact");
+  const before = seen.length;
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "c-404" }))).code, "not_found");
+  assert.equal(seen.length, before, "nothing was asked of the app or sent for a Contact that is not there");
 });

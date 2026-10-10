@@ -113,6 +113,7 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
     if (ONLY.length && !ONLY.some((w) => name.includes(w))) continue;
     const pg = await ctx.newPage();
     const problems = [];
+    try {
     pg.on("pageerror", (e) => problems.push(`page error: ${String(e).slice(0, 120)}`));
     await pg.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" }).catch((e) => problems.push(`did not open: ${String(e).slice(0, 80)}`));
     await pg.waitForTimeout(3500);
@@ -127,6 +128,45 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
       await pg.waitForTimeout(3500);
       if (!(await pg.getByText("Run now", { exact: true }).count())) problems.push("approving the draft did not make it runnable");
     }
+    if (name === "now" && wide === "wide") {
+      // a to-do is done from its card: the card goes away (the phone's cards sit under a swipe layer that a browser's pointer cannot press through; the apps are native, so only the wide pass presses)
+      const done = pg.getByText("Mark done", { exact: true });
+      const before = await done.count();
+      if (before) {
+        await done.first().click({ timeout: 8000 }).catch((e) => problems.push(`Mark done could not be pressed: ${String(e.message || e).replace(/\s+/g, " ").slice(0, 200)}`));
+        await pg.waitForTimeout(3000);
+        if ((await pg.getByText("Mark done", { exact: true }).count()) >= before) problems.push("Mark done left the to-do on Now");
+      }
+    }
+    if (name === "projects" && wide === "wide") {
+      // a person makes a plain project: New, then Project
+      await pg.getByLabel("New", { exact: true }).first().click({ timeout: 8000 }).catch(() => problems.push("no New button on Projects"));
+      await pg.waitForTimeout(1500);
+      const item = pg.getByText("New project", { exact: true }).first();
+      if (await item.count()) {
+        await item.click({ timeout: 8000 }).catch((e) => problems.push(`New project could not be chosen: ${String(e.message || e).split("\n")[0].slice(0, 100)}`));
+        await pg.waitForTimeout(3500);
+        if (!pg.url().includes("/u/project/")) problems.push(`New project did not open a project (${pg.url().slice(-50)})`);
+        else { await pg.waitForTimeout(4000); await pg.screenshot({ path: path.join(OUT, "project-new-wide.png"), fullPage: true }); const t = (await pg.locator("body").innerText()).replace(/\s+/g, " "); console.log("new project page:", t.slice(0, 300)); if (/no short name/i.test(t)) problems.push("a new project has no short name chats can be filed under"); }
+      } else problems.push(`the New menu has no New project: ${(await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200)}`);
+    }
+    if (name === "flows") {
+      // the switch on a Flow pauses it and turns it on again
+      const sw = pg.getByRole("switch").first();
+      if (await sw.count()) {
+        const was = await sw.getAttribute("aria-checked");
+        await sw.click().catch(() => {}); await pg.waitForTimeout(2000);
+        const now = await pg.getByRole("switch").first().getAttribute("aria-checked");
+        if (was === now) problems.push("the Flow switch did not change");
+        await pg.getByRole("switch").first().click().catch(() => {}); await pg.waitForTimeout(1500);
+      } else problems.push("the Flows list has no switch");
+    }
+    if (name === "project-free") {
+      // a chat started from a project belongs to it
+      await pg.getByText("New chat", { exact: true }).first().click().catch(() => problems.push("no New chat on a project"));
+      await pg.waitForTimeout(3000);
+      if (!/\/u\/chats\//.test(pg.url())) problems.push(`New chat did not open a chat (${pg.url().slice(-60)})`);
+    }
     if (name === "template") {
       // a person starts a project from the template: name it, press Start, land on its page
       await pg.screenshot({ path: path.join(OUT, `template-${wide}-start.png`), fullPage: true });
@@ -139,6 +179,7 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
     if (text.replace(/My Cloud|Now|Chat|Projects|Contacts|Drive|More|Search|Settings|You/g, "").trim().length < 12) problems.push("blank page");
     for (const [re, what] of BAD) { const m = re.exec(text); if (m) problems.push(`shows ${what}: "${text.slice(Math.max(0, m.index - 30), m.index + 40)}"`); }
     await pg.screenshot({ path: path.join(OUT, `${name}-${wide}.png`), fullPage: false });
+    } catch (e) { problems.push(`the browser tab failed: ${String(e.message || e).split("\n")[0].slice(0, 100)} (a loaded box can crash a tab; run it again)`); }
     console.log(problems.length ? `WRONG ${name} ${wide} (${route}): ${problems.join(" | ")}` : `OK    ${name} ${wide}`);
     if (problems.length) wrong++;
     await pg.close();

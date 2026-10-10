@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createApp } from "./app.mjs";
+import { startChat } from "../../journeys/lib/chat.mjs";
 
 export const LIVE = Object.freeze({ names: "https://names.vyre.run", relay: "wss://relay.vyre.run" });
 const strip = (/** @type {string} */ s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "");
@@ -200,6 +201,17 @@ export async function walkLive(w) {
       for (let i = 0; i < 48; i++) { try { await mac.callTool("records.me", {}); return `up after ${i * 10} s`; } catch (e) { last = String(/** @type {Error} */ (e).message); await new Promise(r => setTimeout(r, 10_000)); } }
       throw new Error(`the record store was not up after 8 minutes: ${last}`);
     }, { needs: [called] });
+    await run.step(R("first chat: the assistant's own chat is made the way the app makes it and listed as the pinned one"), async () => {
+      const w = { call: (/** @type {string} */ t, /** @type {any} */ i) => mac.callTool(t, i) };
+      const have = await mac.callTool("work.chat.persistent", { kind: "assistant" });
+      assert.equal(have.allowed, true, "the owner may have an assistant chat");
+      const chat = have.chat || await startChat(w, "Assistant");
+      if (!have.chat) await mac.callTool("work.chat.pin", { kind: "assistant", chat });
+      const list = await mac.callTool("work.chat.list", {});
+      const row = (list.chats || []).find((/** @type {any} */ c) => (c.chat || c.id) === chat);
+      assert.equal(row && row.pinned, "assistant", "the Chats list marks it pinned");
+      return chat;
+    }, { needs: [called] });
     await run.step(R("create a team space on the server (named in the app, signed with the identity)"), async () => {
       const label = `team${person.slice(-6)}`;
       names.push(label); keep();
@@ -264,6 +276,21 @@ export async function walkLive(w) {
     }, { needs: [called] });
     mac.close();
     const mac2Needs = ["server: uninstall (keep nothing)"];
+    if (expectVersion) {
+      // The second install is the install line a new person gets: it must serve the release under test. The release is published before vyre.run is deployed (a person approves that), so wait for it.
+      const SERVED = "vyre.run serves the release under test to a new install";
+      await run.step(SERVED, async () => {
+        const end = Date.now() + 90 * 60_000;
+        let v = "";
+        for (;;) {
+          try { v = (await (await fetch("https://vyre.run/box/VERSION", { headers: { "user-agent": "vyre-live-walk" } })).text()).trim(); } catch { v = ""; }
+          if (v === expectVersion) return v;
+          if (Date.now() > end) throw new Error(`vyre.run still serves ${v || "nothing"} after 90 minutes`);
+          await new Promise(r => setTimeout(r, 60_000));
+        }
+      }, { needs: ["server: uninstall (keep nothing)"] });
+      mac2Needs.push(SERVED);
+    }
     // the same person adds the same server again, now without Records: a fresh code, a fresh install line
     const called2 = await server("plain", P, mac2Needs);
     void called2;

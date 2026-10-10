@@ -13,6 +13,9 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
+  "appmods.publish.install": "runs the owner's own built image as a site's server; module-only (Publish), called inside the held decision that makes the site public (deploy.publish is the outward act and carries the person's yes; a nested outward call would need a second card for the same act)",
+  "appmods.publish.stop": "stops a site's server; module-only (Publish), taking a site down needs no yes",
+  "appmods.publish.remove": "removes a site's server and keeps its data; module-only (Publish), taking a site down needs no yes",
   "vault.mcp.agent.call": "the Vault's own tool call as an outside agent: a read runs, anything that changes something outside is held for the person by the same relay as vault.request; only the outside-agents module asks",
   "previews.share": "chooses which people inside the Space (me, the project, everyone) may open a preview; nothing leaves the Space",
   "previews.reply": "the person types the answer a stuck run asked for, on its card; it goes to the person's own agent and nowhere else",
