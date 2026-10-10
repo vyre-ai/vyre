@@ -10,6 +10,15 @@ status: draft
 
 Flows orchestrate. Documents makes and files. Comms delivers. One job each.
 
+## Set it up once
+
+1. Install Documents from Apps. It is the signing app on your own server; installing it is one yes from the owner.
+2. Make a template in the Documents screen (a Word file with the signer's fields). Templates for filling documents are separate Word files in the Drive, below.
+3. Connect the mail account the signer's e-mail comes from (Vault, Connections). Texts also need a Twilio account.
+4. For a signer outside your network, set the public address of an edge in Settings (see Signing pages). Without it, only your own devices open a signing page.
+
+Then Send for signature in the Documents screen, or ask your assistant.
+
 ## Make a document
 
 A template is a Word file in your Drive under `Templates/`, with `{placeholders}` where the record's words go: `{client.name}`, `{matter.fee}`. Add one with `documents.template.add` (a Word file up to 10 MB; it answers the placeholders and loops it found); the Drive keeps every version and a document remembers which version made it.
