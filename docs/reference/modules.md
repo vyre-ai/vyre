@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 7 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -45,7 +45,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 21 | 7 | capsule, cli, deck |
@@ -155,7 +155,8 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Runs on: `box`
 - Requires: `vault`
 - Tools: [20](tools.md#appmods)
-- Emits: [6 events](events.md#appmods)
+- Emits: [7 events](events.md#appmods)
+- Listens for: `vault.item-changed`
 - Shows on: cli
 - Needs daemon: `flowsHost`
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
@@ -443,8 +444,8 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [33](tools.md#github), 6 of them only for other modules
-- Emits: [8 events](events.md#github)
+- Tools: [35](tools.md#github), 6 of them only for other modules
+- Emits: [9 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

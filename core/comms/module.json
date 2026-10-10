@@ -12,7 +12,7 @@
       {
         "name": "comms.send",
         "outward": true,
-        "covers": ["mail.send"],
+        "covers": ["mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       },

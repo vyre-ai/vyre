@@ -1101,10 +1101,6 @@
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
-  "presence.session.open": {
-   "module": "presence",
-   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
-  },
   "previews.get": {
    "module": "previews",
    "reason": "read-only: one preview by title, state and who may open it; for a person it also shows the folder and port, never a ticket"
@@ -2272,6 +2268,226 @@
   "documents.send-signed": {
    "module": "documents",
    "reason": "held: outward, so the registry holds it as a card for the person's yes before a link to a signed copy exists or an email leaves; under the caller's own chain (callers list, gate, check)"
+  },
+  "agents.spawn": {
+   "module": "agents",
+   "reason": "callers list plus a check in the body: it needs the verified agent and thread behind the call, so a plain mcp or harness session with neither is denied; a helper cannot start helpers, at most SUB_MAX run at once, and it gets the parent's own tools and projects or fewer"
+  },
+  "agents.versions": {
+   "module": "agents",
+   "reason": "read-only: an agent's versions and who approved them; guard() refuses non-assistant agent labels"
+  },
+  "brand.draft": {
+   "module": "brand",
+   "reason": "read-only: builds a draft profile from HTML the caller passes in and saves nothing; saving is the separate brand.set"
+  },
+  "brand.get": {
+   "module": "brand",
+   "reason": "read-only: the space's saved brand profile (names, colors, fonts, logos), no secrets"
+  },
+  "brand.resolve": {
+   "module": "brand",
+   "reason": "read-only: the brand defaults worked out from the saved profile; changes nothing"
+  },
+  "design.catalogue": {
+   "module": "design",
+   "reason": "read-only: the design language's blocks as text; no space data"
+  },
+  "design.css": {
+   "module": "design",
+   "reason": "read-only: the custom CSS that is switched on; no secrets"
+  },
+  "design.css.propose": {
+   "module": "design",
+   "reason": "check in the body: only the Engineer's agent claim or a person may file it (anyone else is denied), the CSS must pass the linter, and it stays a pending proposal until the screen's owner says yes with before and after"
+  },
+  "design.propose": {
+   "module": "design",
+   "reason": "held for the owner: the screen is validated and kept as a pending proposal, and nothing on any screen changes until the screen's owner says yes (design.decide is a person's)"
+  },
+  "design.screens": {
+   "module": "design",
+   "reason": "read-only: the space's own screens as saved"
+  },
+  "design.validate": {
+   "module": "design",
+   "reason": "read-only: checks a screen the caller passes in against the design language and returns problems; stores nothing"
+  },
+  "flows.attention": {
+   "module": "flows",
+   "reason": "read-only: the runs that need a person; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused), except the approvals module that lists its own queue"
+  },
+  "flows.cancel": {
+   "module": "flows",
+   "reason": "person check: personOf() requires a chain of exactly one hop that is a person, so an assistant or a plain session cannot cancel a run; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "flows.cheatsheet": {
+   "module": "flows",
+   "reason": "read-only: the Flows language as one generated page; no space data; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.connections": {
+   "module": "flows",
+   "reason": "read-only: which Flows use which Connections and their health, never a credential; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.control": {
+   "module": "flows",
+   "reason": "read-only: the Space's switch and how many runs are held; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.describe": {
+   "module": "flows",
+   "reason": "read-only: a Flow or a run in a few lines; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.diff": {
+   "module": "flows",
+   "reason": "read-only: what changed between two versions of a Flow; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.from-chat": {
+   "module": "flows",
+   "reason": "stores a draft Flow only, never approved: runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused), and approving a Flow is a person's own with a presence proof"
+  },
+  "flows.health": {
+   "module": "flows",
+   "reason": "read-only: how a Flow is doing; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.kit.test": {
+   "module": "flows",
+   "reason": "read-only: tries a Kit on a sample or a real record with nothing sent; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.patch": {
+   "module": "flows",
+   "reason": "stores a new draft only and nothing runs until a person approves it (approve is a person's own with a presence proof); runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused), and the base version must match so a stale patch is refused"
+  },
+  "flows.test.list": {
+   "module": "flows",
+   "reason": "read-only: the saved test cases of a Flow; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "flows.test.run": {
+   "module": "flows",
+   "reason": "simulation only, nothing done for real; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused), and the cases run as the person at the head of the chain"
+  },
+  "flows.test.save": {
+   "module": "flows",
+   "reason": "saves a test case only; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused), and an assistant may add a case but cannot change an existing one (refused as not_allowed), so only a person changes one"
+  },
+  "flows.timeline": {
+   "module": "flows",
+   "reason": "read-only: a run read back step by step with secrets hidden; runs under the caller's own kernel chain, which must begin with a person (a session token or the person's own surface; a plain mcp or harness call is refused)"
+  },
+  "models.eval-queue": {
+   "module": "models",
+   "reason": "read-only: the approved evals waiting for a runner; recording a score (models.eval-record) is a person's own"
+  },
+  "models.evals": {
+   "module": "models",
+   "reason": "read-only: the evals proposed for new models; approving one (models.eval-approve) is a person's own"
+  },
+  "models.get": {
+   "module": "models",
+   "reason": "read-only: one model's entry from the registry"
+  },
+  "models.list": {
+   "module": "models",
+   "reason": "read-only: every model Vyre knows, with public price and capability data"
+  },
+  "models.refresh": {
+   "module": "models",
+   "reason": "rate limit check: at most once a minute, takes no input, and only re-reads the providers' public lists into the registry; it spends nothing and starts no eval"
+  },
+  "models.status": {
+   "module": "models",
+   "reason": "read-only: when each model source was last read and what failed"
+  },
+  "sessions.harness.get": {
+   "module": "sessions",
+   "reason": "read-only: what each harness could do when a session last started; no credentials"
+  },
+  "skills.approve": {
+   "module": "skills",
+   "reason": "person and owner check: the callers list leaves out the plain mcp and harness, approval needs a chain of exactly one person hop (an assistant is refused), and mayApprove() allows only the level's owner or an admin; a plugin with code also needs the ack hash"
+  },
+  "skills.draft": {
+   "module": "skills",
+   "reason": "writes a draft only: it needs a chain that carries a person (need() refuses a call with none), and nothing uses the skill until the level's owner approves it"
+  },
+  "skills.rollback": {
+   "module": "skills",
+   "reason": "person and owner check: the callers list leaves out the plain mcp and harness, a rollback needs a chain of exactly one person hop, and mayApprove() allows only the level's owner or an admin"
+  },
+  "skills.versions": {
+   "module": "skills",
+   "reason": "read-only: the versions in the library; need() refuses a call that carries no person"
+  },
+  "vault.health.summary": {
+   "module": "vault",
+   "reason": "read-only: counts of items needing attention, never a name or a value; callers list in code (surfaces and modules, no model caller)"
+  },
+  "views.show": {
+   "module": "views",
+   "reason": "read-only: draws a module's screen as a small card; the module's own tool runs as the caller, so a model reaches only what a model may reach, and any action in the card opens the full screen where views.act and its preview-then-token path apply"
+  },
+  "work.chat.link": {
+   "module": "work",
+   "reason": "chat membership check: only someone in the chat may link it (a chat that is not theirs is not_found), the record must be one the caller can read, and it runs under the caller's own kernel chain"
+  },
+  "work.chat.persistent": {
+   "module": "work",
+   "reason": "read-only: the caller's own pinned chat id; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "work.chat.pin": {
+   "module": "work",
+   "reason": "person check: personOf() needs a person's chain, only a chat the caller is in (kernel chats.mine) can be pinned, the Engineer kind is for an owner or an admin, and a second chat of a kind is refused"
+  },
+  "work.file.list": {
+   "module": "work",
+   "reason": "read-only: the files of a chat, and only for someone in the chat; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "work.file.share": {
+   "module": "work",
+   "reason": "chat membership check: the file must be in a chat whose people include the caller (otherwise not_found), the share is a record written under the caller's own kernel chain, and it opens that one file to the project's members"
+  },
+  "work.file.unshare": {
+   "module": "work",
+   "reason": "own-scope check: only the shares the caller made can be taken back (the kernel refuses the rest, an admin may take back any), and it only takes access away; it runs under the caller's own kernel chain"
+  },
+  "work.link.suggest": {
+   "module": "work",
+   "reason": "read-only: which records a text names, at most three, each one the caller may read; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "work.start-project": {
+   "module": "work",
+   "reason": "person check: personOf() needs a person's chain, and every record, teammate and task it makes is authorized by the kernel under that chain; it sends nothing outward"
+  },
+  "work.template.define": {
+   "module": "work",
+   "reason": "writes a draft only: personOf() needs a person's chain, only the template's owner or an admin adds a version to someone else's (an assistant may add a draft for its person), and going live is the owner's yes"
+  },
+  "work.template.from-project": {
+   "module": "work",
+   "reason": "writes a draft only, read from a project the caller can read under the caller's own kernel chain; going live is the owner's yes"
+  },
+  "work.template.get": {
+   "module": "work",
+   "reason": "read-only: one template version, read under the caller's own kernel chain"
+  },
+  "work.template.install": {
+   "module": "work",
+   "reason": "writes a draft only: a library template becomes a draft version through define(), so personOf() needs a person's chain and going live is the owner's yes"
+  },
+  "work.template.library": {
+   "module": "work",
+   "reason": "read-only: the templates the Kits ship in the repository; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "work.template.list": {
+   "module": "work",
+   "reason": "read-only: the templates of this Space, read under the caller's own kernel chain"
+  },
+  "work.template.test": {
+   "module": "work",
+   "reason": "read-only: tries a template version with nothing created, sent or changed, read under the caller's own kernel chain"
+  },
+  "work.timeline": {
+   "module": "work",
+   "reason": "read-only: tasks, files, messages, documents and chats that link to a record or project, each only if the caller may read it; a chat shows by title only to its people or when shared; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
   }
  }
 }

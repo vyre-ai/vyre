@@ -212,6 +212,12 @@ The token is stored as a [vault](vault.md) item named `github-<name>` and is nev
 Disconnecting removes that item and the account. It does not revoke the token at GitHub, so
 remove it at github.com/settings/applications if you want it gone entirely.
 
+**A new repo for a folder.** Ask for a repo for a site or a project folder and Vyre makes it under
+your account, or under an organisation you belong to, private unless you say public, and sends the
+folder there as its first commit. It asks for your yes first, because it creates something on
+GitHub. Files that look like secrets (an `.env`, a private key) are left out, and a folder with a
+token inside is stopped before anything is made on GitHub, with the file and line named.
+
 Commits a session makes carry your identity: your GitHub name, and your public GitHub email or,
 without one, GitHub's `<id>+<login>@users.noreply.github.com` address. Each commit also ends with a
 `Vyre-Session: <id>` line, so you can see which session wrote what. This is an audit aid, not a

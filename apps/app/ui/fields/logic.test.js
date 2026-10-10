@@ -96,7 +96,7 @@ test("the short kind names map to the kernel's", () => {
   assert.equal(normalizeKind("money"), "money");
 });
 
-import { linkHref, linkLabel } from "./logic.js";
+import { actorName, linkHref, linkLabel } from "./logic.js";
 test("a url field opens only http and https addresses", () => {
   assert.equal(linkHref("https://meet.example.com/x?y=1"), "https://meet.example.com/x?y=1");
   assert.equal(linkHref("  http://a.example "), "http://a.example/");
@@ -105,4 +105,14 @@ test("a url field opens only http and https addresses", () => {
   assert.equal(linkHref("meet.example.com"), null);
   assert.equal(linkHref(null), null);
   assert.equal(linkLabel("https://meet.example.com/x/"), "meet.example.com/x");
+});
+
+test("an actor cell reads as You, a name, or a plain word, never as the kernel's id", () => {
+  const env = { me: "per_me0000000000", actors: [{ id: "per_dana00000000", name: "Dana Smith" }] };
+  assert.equal(actorName({ actor: { id: "per_me0000000000" } }, env), "You");
+  assert.equal(actorName("per_dana00000000", env), "Dana Smith");
+  assert.equal(actorName({ actor: { id: "per_zzzzzzzzzzzz", name: "Lee Park" } }, env), "Lee Park");
+  assert.equal(actorName("per_zzzzzzzzzzzz", env), "Someone");
+  assert.equal(actorName("Kit", env), "Kit", "a name typed by hand is the text itself");
+  assert.equal(actorName("", env), "");
 });

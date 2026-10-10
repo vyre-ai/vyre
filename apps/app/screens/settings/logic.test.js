@@ -1,6 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import { AUTONOMY, BUDGET_STEPS, budgetLine, money, overLine, settingsGroups, toggleAccount, usedPercent, usedShare } from "./logic.js";
 
@@ -56,4 +57,12 @@ test("settings hides what a role cannot use", () => {
   assert.ok(!hrefs("temp").includes("/u/memory"));
   assert.ok(hrefs("member").includes("/u/memory"));
   assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
+});
+
+test("every place in Settings has its own icon, and each one is in the family", () => {
+  const rows = settingsGroups("Juniper Studio").flatMap((g) => g.rows);
+  const icons = rows.map((r) => r[3]);
+  assert.equal(new Set(icons).size, icons.length, `two places share an icon: ${icons.filter((x, i) => icons.indexOf(x) !== i).join(", ")}`);
+  const family = fs.readFileSync(new URL("../../src/ui/icons.generated.ts", import.meta.url), "utf8");
+  for (const icon of icons) assert.ok(family.includes(`"${icon}"`), `${icon} is not an icon of the family`);
 });

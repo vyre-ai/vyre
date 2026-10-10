@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AvatarStack, Button, Card, Chip, Divider, EmptyState, LoadingState, Row, Text, markRef } from "@vyre/ui";
+import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
 import { useGap } from "../../src/state/setup-gap";
 import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
 import { ageOf } from "./chat-model.js";
-import { UNSUPPORTED, chatState, chatSub, chatsOrdered, chatsShown } from "./chats-model.js";
+import { UNSUPPORTED, chatState, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
 
@@ -29,12 +29,23 @@ export default function ChatsScreen() {
     void ensurePersistent("assistant").then((r) => { if ("chat" in r) void refresh(); }).catch(() => { asked.current = false; });
   }, [chats.from, chats.rows]);
   const rows = chatsOrdered(chatsShown(chats.rows));
+  const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
-      {chats.from === "unsupported" ? <Card><EmptyState title={UNSUPPORTED} body="This app and your server ship together. Update the server, then come back." /></Card>
-        : gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
-        : chats.from === "none" && !rows.length ? (status === "live" ? <LoadingState rows={4} /> : <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>)
-        : !rows.length ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
+      {view.banner && gap ? (
+        <Banner icon="info">
+          <View className="gap-s2">
+            <Text strong>{gap.title}</Text>
+            <Text size="caption" tone="muted">{gap.line}</Text>
+            <View className="self-start"><Button size="sm" label={gap.action} onPress={() => go(gap.route)} /></View>
+          </View>
+        </Banner>
+      ) : null}
+      {view.body === "unsupported" ? <Card><EmptyState title={UNSUPPORTED} body="This app and your server ship together. Update the server, then come back." /></Card>
+        : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
+        : view.body === "loading" ? <LoadingState rows={4} />
+        : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
+        : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
           <Card flush>
             {rows.map((t, i) => (
