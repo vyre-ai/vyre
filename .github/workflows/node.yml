@@ -14,8 +14,7 @@ permissions:
   contents: read
 concurrency:
   group: node-${{ github.ref }}
-  # The integration tip (work/lead-*) never cancels: a run finishes and the newest tip waits behind it, so a full result always arrives.
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   test:
     strategy:

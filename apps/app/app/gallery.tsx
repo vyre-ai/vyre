@@ -12,6 +12,7 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
@@ -77,13 +78,24 @@ function Sample({ name }: { name: string }) {
   if (name === "runner-settings-off") {
     return <RunHereView s={{ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 }} here={[]} cpu="50" mem="4096" problem="Not turned on: it needs your approval. Approve on this computer, then try again." setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
   }
+  if (name === "sites-list") {
+    const dep = (id: string, version: number, stage: string, host?: string) => ({ id, name: "", version, stage, url: null, domains: host ? [{ host, status: "verified" }] : [] });
+    const site = (name: string, versions: ReturnType<typeof dep>[], tone: "ok" | "accent" | "plain", label: string) => { const live = versions.find((v) => v.stage === "Production") ?? null; return { name, versions, live, current: versions[0], status: { label, tone } }; };
+    const rows = [
+      site("client-intake", [dep("a", 3, "Production", "intake.juniper.example")], "ok", "Live"),
+      site("fee-calculator", [dep("b", 2, "Approved"), dep("c", 1, "Production")], "accent", "Waiting on you"),
+      site("referral-form", [dep("d", 1, "Preview")], "plain", "In preview"),
+      site("menu", [dep("e", 1, "Draft")], "plain", "Draft"),
+    ];
+    return <SitesList rows={rows} onOpen={() => {}} />;
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
         <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
         <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
         <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }]} />
       </View>
     );
   }

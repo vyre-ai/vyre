@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
 import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
@@ -13,24 +13,17 @@ export function usePlacement(thread: string, real: boolean) {
   const [lines, setLines] = useState<{ at: number; text: string }[]>([]);
   // While the process starts on a computer the status line says so (thread.placing); it is gone once it is up or has fallen back to the server.
   const [starting, setStarting] = useState("");
-  // Two modules say the same fact (thread.placing from the switchboard, thread.starting from the link module): a line is never put twice in a row.
-  const say = useCallback((at: number, text: string) => setLines((l) => (l.length && l[l.length - 1].text === text ? l : [...l.slice(-4), { at, text }])), []);
   useEffect(() => {
     if (!real) return;
     let live = true;
     runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
     const off = listen((e: any) => {
-      if ((e?.type === "thread.placing" || e?.type === "thread.starting") && String(e?.payload?.thread ?? "") === thread) {
+      if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
         setStarting(placingWords(e.payload));
         const line = placingLine(e.payload);
-        if (line) say(Date.now(), line);
+        if (line) setLines((l) => [...l.slice(-4), { at: Date.now(), text: line }]);
         // Where it runs may have changed under it (the row is taken back on a fallback): ask again, the box is the one fact.
         if (e.payload.state !== "starting") runner.placement(thread).then((x) => { if (live) setP((cur) => (x && fresher(cur?.epoch, x.epoch) ? x : cur)); }).catch(() => {});
-        return;
-      }
-      if (e?.type === "lease.borrowed" && String(e?.payload?.thread ?? "") === thread) {
-        const line = leaseLine({ computer: e.payload.computer, limit: e.payload.limit });
-        if (line) say(Number(e.payload.at ?? Date.now()), line);
         return;
       }
       if (e?.type !== "thread.moved" || String(e?.payload?.thread ?? "") !== thread) return;
@@ -39,10 +32,10 @@ export function usePlacement(thread: string, real: boolean) {
       const epoch = Number.isInteger(e.payload.epoch) ? e.payload.epoch : undefined;
       // A higher epoch wins: an update that arrives late never moves the chip back.
       setP((cur) => (fresher(cur?.epoch, epoch) ? { where: to === "mac" ? "mac" : "server", computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now(), ...(to === "paused" ? { state: "paused" as const } : {}), ...(epoch !== undefined ? { epoch } : {}) } : cur));
-      say(Number(e.payload.at ?? Date.now()), movedLine({ to, reason: e.payload.reason }));
+      setLines((l) => [...l.slice(-4), { at: Number(e.payload.at ?? Date.now()), text: movedLine({ to, reason: e.payload.reason }) }]);
     });
     return () => { live = false; off?.(); };
-  }, [thread, real, say]);
+  }, [thread, real]);
   const move = useCallback(async (to: "mac" | "server") => {
     try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }
   }, [thread]);

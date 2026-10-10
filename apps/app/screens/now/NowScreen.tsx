@@ -16,7 +16,6 @@ import { callT } from "../../src/real/call-tool";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { GetStarted } from "./GetStarted";
 import { getStarted } from "./get-started.js";
-import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
 /** /u/now: Now, a view over tasks. Pull to refresh on a phone; the title collapses into the bar as it scrolls. `?scenario=client-pays` plays "a client pays" on a fresh mock store and ends with the Welcome email waiting for one tap. */
@@ -51,7 +50,7 @@ export default function NowScreen() {
       {real ? <UpdateNotice /> : null}
       {real ? <VaultHealthCard /> : null}
       {real ? <PairingCards /> : null}
-      {real && !started && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
+      {real && !started ? <CreateAssistantCard role={mine} agents={agents} /> : null}
       {real ? <WaitingOnYou /> : null}
       {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />

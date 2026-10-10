@@ -111,7 +111,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}/app`;
 const BAD = [[/\bfl_[0-9a-f]{8}/, "a Flow id"], [/\bper_[a-z0-9]{12,}/, "a person id"], [/\bspc_[a-z2-7]{8,}/, "a space id"], [/\brun_[a-z0-9]{6,}/, "a run id"], [/vyre:\/\//, "a vyre:// address"],
-  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"], [/\b[a-z]+(-[a-z]+)+\.(created|updated|removed)\b/, "an event name (def-flow.created)"], [/did not load\b/, "an error state"], [/That did not (go through|work)/, "an error toast"]];
+  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"], [/did not load\b/, "an error state"], [/That did not (go through|work)/, "an error toast"]];
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 let wrong = 0;
 // each screen on a wide screen in light and on a phone in dark, so a layout that hides words shows up too

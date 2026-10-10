@@ -8838,6 +8838,7 @@ During onboarding only, before this box has any person on a device: make the QR 
 
 - Input: none
 - Callers: `onboard`
+- Needs a person present.
 
 ### `relay.pair.pending.confirm`
 

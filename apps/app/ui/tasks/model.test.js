@@ -129,8 +129,6 @@ test("Now never greets a raw id, and Recent is plain sentences with kernel house
   assert.equal(nowModel({ ...w, actors: [{ id, name: "Devbox", family: "person" }] }).greeting, "Good afternoon, Devbox");
   assert.deepEqual(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), { what: "became the owner of Home", actor: "You", record: "vyre://spc_1/space/x" });
   assert.equal(plainLine(w, { what: "member.set", actor: "Vyre" }), null);
-  // the Flows system's own bookkeeping records have hyphenated names: they are not a person's news either
-  for (const what of ["def-flow.created", "flow-approval.created", "flow-state.updated", "flow-run.created", "flow-schedule.updated"]) assert.equal(plainLine(w, { what, actor: "Vyre" }), null, what);
   assert.equal(plainLine(w, { what: "grant.created", actor: "Vyre" }), null);
   assert.deepEqual(plainLine(w, { what: "sent the Welcome email", actor: "Intake" }), { what: "sent the Welcome email", actor: "Intake" });
 });

@@ -246,8 +246,6 @@ export function createLentHome(o) {
       owed.delete(String(i.session));
       lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
       reserved.delete(String(i.session));
-      // one line on the Space's timeline for each chat that borrows a computer: who, which computer, what limit holds
-      if (o.emit) { try { o.emit("lease.borrowed", { thread: chat || (asked && asked.chat) || String(i.session), session: String(i.session), person: w.person, device: w.device, limit: cap || null, epoch: row.epoch, at: now() }); } catch { /* a notice, never a stop */ } }
       const title = (asked && asked.title) || (chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null);
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
