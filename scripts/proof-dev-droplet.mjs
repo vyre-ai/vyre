@@ -22,6 +22,8 @@ if (!take("--tree") || !fs.existsSync(path.join(tree, "package.json"))) { consol
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `dev-droplet-${Date.now()}`)));
 const journeys = take("--journeys", "J2,J4").split(",").filter(Boolean);
 const region = take("--region", "nyc3"), size = take("--size", "s-4vcpu-8gb"), keep = argv.includes("--keep");
+// --hold-minutes N: after the journeys the droplet is kept for people to look at (ssh details are printed), then destroyed by this process after N minutes or as soon as OUT/DESTROY exists, whatever happens.
+const holdMinutes = Number(take("--hold-minutes", "0")) || 0;
 fs.mkdirSync(out, { recursive: true });
 const api = async (/** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ body) => {
   const r = await fetch(`https://api.digitalocean.com/v2${p}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -76,6 +78,11 @@ try {
     spawnSync("rsync", ["-az", "-e", `ssh ${sshBase.join(" ")} -l walker`, `walkdroplet:/home/walker/out-${j}/`, path.join(out, `out-${j}/`)], { encoding: "utf8", timeout: 300_000 });
   }
   code = failed ? 1 : 0;
+  if (holdMinutes) {
+    console.log(`HOLD  droplet ${id} at ${ip} kept for up to ${holdMinutes} minutes: ssh -i ${keyFile} -o UserKnownHostsFile=${path.join(out, "known_hosts")} walker@${ip}   (root works too; the repo is in /home/walker/vyre, journey output in /home/walker/out-<J>). It is destroyed when ${path.join(out, "DESTROY")} exists or the time is up.`);
+    const until = Date.now() + holdMinutes * 60_000;
+    while (Date.now() < until && !fs.existsSync(path.join(out, "DESTROY"))) await sleep(15_000);
+  }
 } catch (e) {
   console.error(`FAIL  ${/** @type {Error} */ (e).message}`);
 } finally {
