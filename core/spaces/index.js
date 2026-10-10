@@ -1396,10 +1396,10 @@ export default {
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
-        const mine = [];
+        const mine = [], who = await callerPerson(meta, K.owner);
         for (const id of K.spaces.list()) {
-          // the kernel's own answer for the home's person (no caller chain needed: a terminal on a server is not always recognised as the person, and this list is the owner's own)
-          let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
+          // the kernel's own answer for the CALLER (the person on the call's chain; a terminal with no chain of its own is the home's owner): never the owner's list for someone else
+          let m = null; try { const r = await K.membership(who, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
           mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames().label : null, displayName: id === K.space ? homeNames().displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
