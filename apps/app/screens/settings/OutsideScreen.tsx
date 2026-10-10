@@ -11,21 +11,24 @@ import { outside } from "./outside";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); };
 
-export default function OutsideScreen() {
-  const [agents, setAgents] = useState<Agent[] | null>(null);
+/** Sample world only (the screenshot pass): the screen as it looks with these agents and open states, calling nothing. */
+export type OutsideSample = { agents: Agent[]; shown?: Registered; giving?: string; types?: RecordType[]; picked?: string[]; write?: boolean; ending?: string };
+
+export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {}) {
+  const [agents, setAgents] = useState<Agent[] | null>(sample ? sample.agents : null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState("");
-  const [shown, setShown] = useState<Registered | null>(null);
-  const [giving, setGiving] = useState("");
-  const [types, setTypes] = useState<RecordType[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [write, setWrite] = useState(false);
-  const [ending, setEnding] = useState("");
+  const [shown, setShown] = useState<Registered | null>(sample?.shown ?? null);
+  const [giving, setGiving] = useState(sample?.giving ?? "");
+  const [types, setTypes] = useState<RecordType[]>(sample?.types ?? []);
+  const [picked, setPicked] = useState<string[]>(sample?.picked ?? []);
+  const [write, setWrite] = useState(sample?.write ?? false);
+  const [ending, setEnding] = useState(sample?.ending ?? "");
   const load = useCallback(() => { setErr(""); outside.list().then(setAgents).catch((e) => { setAgents([]); setErr(say(e, "Your outside agents could not be read.")); }); }, []);
-  useEffect(load, [load]);
+  useEffect(() => { if (!sample) load(); }, [load, sample]);
 
   const act = async (id: string, fn: () => Promise<unknown>) => {
     setBusy(id); setProblem("");
