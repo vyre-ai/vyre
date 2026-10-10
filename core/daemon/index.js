@@ -1601,9 +1601,13 @@ function stream(req, res, url, events, streams) {
   const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
   // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
   const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
-  const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
+  // A heartbeat alone never keeps vyred (or a test process) alive, and a client that went away before the listener below was attached (the request is already closed) is let go at once.
+  beat.unref();
+  const end = () => { off(); clearInterval(beat); streams.delete(end); try { res.end(); } catch { /* already gone */ } };
   streams.add(end);
   req.on("close", end);
+  res.on("close", end);
+  if (req.destroyed || res.destroyed || res.writableEnded) end();
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
