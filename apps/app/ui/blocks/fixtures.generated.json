@@ -3977,6 +3977,20 @@
     }
    }
   },
+  "flow-parallel": {
+   "title": "Flow with a parallel and its join",
+   "screens": {
+    "full": {
+     "component": "flow-parallel"
+    },
+    "compact": {
+     "component": "flow-parallel"
+    },
+    "glance": {
+     "component": "flow-parallel"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {
