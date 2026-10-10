@@ -107,9 +107,18 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     db.prepare("UPDATE connectors_made SET form = ?, updated = ? WHERE id = ?").run(JSON.stringify(f), now(), id);
   }
 
-  /** The light of a Connection, set from what a call or a check found. @param {string} id @param {"green" | "red"} light @param {string} words */
-  function touch(id, light, words) {
+  /** The light of a Connection, set from what a call or a check found. `cls` is the class of the answer (ok, auth, blocked, no_browser, ...), kept in the form so Needs you can say what the person has to do. @param {string} id @param {"green" | "red"} light @param {string} words @param {string} [cls] */
+  function touch(id, light, words, cls) {
     db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(light, words, now(), id);
+    if (cls !== undefined) keepClass(id, cls);
+  }
+  /** @param {string} id @param {string} cls */
+  function keepClass(id, cls) {
+    const r = row(id); if (!r) return;
+    const f = r.form ? JSON.parse(r.form) : {};
+    if ((f.last && f.last.class) === cls || (!f.last && !cls)) return;
+    if (cls) f.last = { class: cls }; else delete f.last;
+    db.prepare("UPDATE connectors_made SET form = ? WHERE id = ?").run(JSON.stringify(f), id);
   }
 
   /** @param {any} form @param {{ as: string, origin?: string, replace?: boolean }} o */
@@ -135,7 +144,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     if (!r) throw fail(`no connection ${id}`, "not_found");
     const d = JSON.parse(r.declaration);
     const stale = await isStale(r);
-    /** @type {{ light: "green" | "red", words: string }} */ let out;
+    /** @type {{ light: "green" | "red", words: string, cls?: string }} */ let out;
     if (d.transport === "site") out = stale ? { light: "red", words: "the Vault credential was changed outside this connection; sync the connection again to rebuild it" } : siteCheck ? await siteCheck(id) : { light: "red", words: "no browser is connected" };
     else if (stale) out = { light: "red", words: "the Vault credential was changed outside this connection; save the connection again to rebuild it" };
     else {
@@ -143,6 +152,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       out = res.error ? outcomeOf({ error: res.error }) : outcomeOf({ reply: res.data });
     }
     db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(out.light, out.words, now(), id);
+    if (d.transport === "site") keepClass(id, out.light === "green" ? "ok" : out.cls || "");
     emit("connectors.connection-checked", { id, light: out.light });
     return { id, light: out.light, words: out.words };
   }

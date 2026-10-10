@@ -7,7 +7,7 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
-export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing"]);
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"]);
 const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
@@ -132,6 +132,21 @@ export const fromSigning = rows => rows.filter(r => r && Number.isInteger(r.subm
 });
 
 /**
+ * connectors.site.attention (R031-79): a website Connection that waits for a person. One `signin` card each: the login ran out ("Sign in to linkedin.com again"), the site wants a person's check ("is checking
+ * the browser", answered by `connectors.site.resume` once the person has cleared it) or no browser holds the login. A box's login lives in an agent's computer, so its card opens that computer's screen.
+ * The answer re-checks the Connection; the card closes when the light is green again. No cookie, address of a page or value rides on it.
+ */
+export const fromSignIn = rows => rows.filter(r => r && typeof r.id === "string" && ["auth", "blocked", "no_browser"].includes(r.class)).map(r => {
+  const host = clean(r.host, 80) || "the site", agent = typeof r.agent === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(r.agent) ? r.agent : "";
+  const check = { tool: "connectors.connection.check", input: { id: r.id }, fill: /** @type {string[]} */ ([]) };
+  const resume = { tool: "connectors.site.resume", input: { id: r.id }, fill: /** @type {string[]} */ ([]) };
+  const title = r.class === "auth" ? `Sign in to ${host} again` : r.class === "blocked" ? `${host} is checking the browser` : `No browser is signed in to ${host}`;
+  return { id: `connectors:${r.id}`, kind: "signin", title, ...opt("detail", cap(clean(r.words), DETAIL_MAX)), at: at(r.at), source: "connectors",
+    answer: r.stopped ? resume : check,
+    answers: [...(agent ? [{ label: "Open the computer's screen", open: `/u/glass/${agent}` }] : []), { label: "Check it now", ...check }, ...(r.stopped ? [{ label: "I cleared it", ...resume }] : [])] };
+});
+
+/**
  * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
  * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
  */
@@ -146,6 +161,8 @@ export const OWNERS = [
     ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
   { name: "documents", tool: "documents.signing.waiting", map: d => fromSigning(d && Array.isArray(d.requests) ? d.requests : []), quiet: true, watch: [
     ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },
+  { name: "connectors", tool: "connectors.site.attention", map: d => fromSignIn(d && Array.isArray(d.sites) ? d.sites : []), quiet: true, watch: [
+    ["connectors.*", (t, p) => (p && p.id && t === "connectors.connection-checked" ? [`connectors:${p.id}`, p.light === "green" ? "signed in" : "checked"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
