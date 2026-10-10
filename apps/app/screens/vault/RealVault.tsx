@@ -172,10 +172,10 @@ export default function RealVault() {
               ))}
             </Card>
           ) : <Text tone="muted">Only you. Nothing else can use this until you give it access.</Text>}
-          {claimBlocked() ? null : <View className="self-start pt-s2"><Button kind="ghost" size="sm" icon="plus" label="Give access" onPress={() => { setProblem(""); setSharing({ module: "", project: "" }); }} /></View>}
+          {claimBlocked() ? null : <View className="self-start pt-s2"><Button kind="secondary" size="sm" icon="plus" label="Give access" onPress={() => { setProblem(""); setSharing({ module: "", project: "" }); }} /></View>}
         </Sec>
         <ItemHistory name={cur.id} />
-        {claimBlocked() ? null : <View className="self-start"><Button kind="ghost" size="sm" label="Edit" onPress={() => setEditing(true)} /></View>}
+        {claimBlocked() ? null : <View className="self-start"><Button kind="secondary" size="sm" label="Edit" onPress={() => setEditing(true)} /></View>}
       </View>
     </Card>
   ) : null;

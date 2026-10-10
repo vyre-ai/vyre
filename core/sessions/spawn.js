@@ -16,6 +16,7 @@
 // The pid, group and session are reported before the process can run a tool: at once for a
 // direct spawn, and for the spawner as soon as it answers, before anything is written to stdin.
 
+import { lentOrBox } from "./lent-spawn.js";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -42,9 +43,17 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
  * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
- *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
+ *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, lentSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
  */
 export function spawnSession(command, args, o = {}) {
+  // A chat placed on the person's own lent computer (contracts/lent-spawn.md): the process runs there, and when nothing could start it runs here, as it would have.
+  if (o.lentSpawn) {
+    const { lentSpawn, ...here } = o;
+    /** @type {any} */ let lent = null;
+    try { lent = lentSpawn(command, args, o.env || {}, o.cwd, o.signal ? { signal: o.signal } : undefined); } catch { lent = null; }
+    if (lent) return lentOrBox({ lent, box: () => spawnSession(command, args, here) });
+    return spawnSession(command, args, here);
+  }
   // On Windows (no session sandbox in 0.3) an agent process gets no shell tool, or does not start (reviewer-2 ENG-1; lib/agent-sandbox.js).
   if (!o.sandboxSpawn) args = windowsShellGuard(command, args, /** @type {any} */ (o).platform);
   // A session confined by the runner's home sandbox (lib/agent-sandbox.js): the prepared spawner plans and launches this process under the same rules, its group

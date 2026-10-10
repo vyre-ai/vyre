@@ -67,7 +67,7 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // Vault health on Now: a count from the last Watchtower run (no name, no value) and hiding the row for a while; nothing to approve.
     "vault.health.summary", "vault.health.dismiss",
     // A credential linked to a record: a pair of names that grants nothing, and the plain lines of how the linked items were used (R031-71).
-    "vault.link", "vault.unlink", "vault.links", "vault.uses.for",
+    "vault.link", "vault.unlink", "vault.links", "vault.used-by", "vault.uses.for",
     // The outside-agents module serves the pass's own tools to a registered agent (module-only; the pass was made with the person's yes).
     "vault.mcp.agent.tools", "vault.mcp.agent.call"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);

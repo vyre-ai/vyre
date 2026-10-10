@@ -1,6 +1,11 @@
 /* vyre.run v2. Bone theme: paper by day, graphite by night. One stylesheet for every page.
    Structure follows the teardown in team/site/twenty-teardown.md (eyebrow, heading, one line; product as hero;
    mono labels; clipped corners; plus-mark frames). Colours and type are Vyre's own. */
+/* The two faces, vyre.run's own files (site/fonts). No page here calls another company for type. */
+@font-face { font-family: 'Instrument Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url(/fonts/instrument-sans-latin.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 500; font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format('woff2'); }
 :root {
   --bg: #F4F1EA;
   --panel: #FBFAF6;

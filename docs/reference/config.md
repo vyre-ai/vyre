@@ -144,6 +144,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PREVIEW_THUMBS` | Not described yet. | `core/previews/index.js` |
 | `VYRE_PUBLISH_DOCKER` | Not described yet. | `core/publish/index.js` |
+| `VYRE_PUB_CTX` | Not described yet. | `core/appmods/host-pub.js` |
 | `VYRE_RECOVERY_CODE` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |

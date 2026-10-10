@@ -10,6 +10,7 @@ import http from "node:http";
 import os from "node:os";
 import { spawn, execFile } from "node:child_process";
 import { headlessChrome } from "./headless-chrome.js";
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
@@ -83,7 +84,7 @@ test("a React page in a folder goes live on one yes, as the pane showed it, with
   t.after(() => srv.close());
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-live-chrome-"));
   t.after(() => fs.rmSync(profile, { recursive: true, force: true }));
-  const dom = await new Promise(ok => execFile(headlessChrome(), ["--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`], { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
+  const dom = await new Promise(ok => execFile(headlessChrome(), [...CHROME_SAFE, "--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`], { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
   assert.match(String(dom), /Northwind Bakery/);
   assert.match(String(dom), /3 loaves today/);
 });
