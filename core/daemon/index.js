@@ -353,13 +353,7 @@ async function startLocked(opts, root, p, release) {
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
       get placements() { return lentPlacements(registry); },
       // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
-      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache();
-        // what a screen hears of a chat's process on a computer: starting (with the computer's name), up, or the fall back to the server (nothing ran)
-        const say = (/** @type {string} */ state, /** @type {any} */ more = {}) => { try { events.emit("link", "thread.starting", { thread: i.chat || i.session, session: i.session, computer: proc.lent ? proc.lent.computer : null, state, ...more }, { thread: i.chat || i.session }); } catch { /* a notice, never a stop */ } };
-        if (proc.lent) proc.once("starting", () => say("starting")); else say("fallback", { reason: "no_computer_ready" });
-        proc.once("spawn", () => say("up"));
-        proc.once("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && proc.lent) say("fallback", { reason: "lent_unavailable" }); });
-        return proc; },
+      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache(); return proc; },
       // A new chat's place (contracts/lent-spawn.md): a ready computer of the person's with the row written, or the box.
       placeNew: async (/** @type {string} */ space, /** @type {any} */ i) => {
         const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;

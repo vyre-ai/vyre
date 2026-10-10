@@ -25,6 +25,10 @@ export function sites(deps: Dep[]): Site[] {
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The line under a site in the list: what is live and where, and what waits in preview or approved. */
+export const siteLine = (s: Site): string =>
+  `${s.live ? `live version ${s.live.version}${s.live.domains[0] ? ` at ${s.live.domains[0].host}` : ""}` : "not live"}${s.current.stage === "Preview" || s.current.stage === "Approved" ? `, version ${s.current.version} in ${s.current.stage.toLowerCase()}` : ""}`;
+
 function statusOf(live: Dep | null, cur: Dep): Site["status"] {
   if (cur.stage === "Approved") return { label: "Waiting on you", tone: "accent" };
   if (cur.stage === "Preview") return { label: "In preview", tone: "plain" };

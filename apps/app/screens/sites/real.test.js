@@ -82,3 +82,16 @@ test("domains and secrets are one call each; a refusal gets plain words and keep
   await assert.rejects(s.preview("dep_4"), (/** @type {any} */ e) => e.code === "sealed_in_build" && /sealed value appears/.test(m.publishRefusal(e.code, e.message)));
   assert.match(m.publishRefusal("presence_required", ""), /Approve on this device/);
 });
+
+test("sites list: the line under a site says what is live, where, and what waits in preview", async () => {
+  const m = await import("./real-model.ts");
+  const dep = (/** @type {any} */ o) => ({ id: "d", name: "client-intake", version: 1, stage: "Draft", url: null, domains: [], ...o });
+  const [live] = m.sites([dep({ version: 3, stage: "Production", domains: [{ host: "intake.example.com", status: "verified" }] })]);
+  assert.equal(m.siteLine(live), "live version 3 at intake.example.com");
+  const [both] = m.sites([dep({ version: 3, stage: "Production" }), dep({ id: "e", version: 4, stage: "Preview" })]);
+  assert.equal(m.siteLine(both), "live version 3, version 4 in preview");
+  const [draft] = m.sites([dep({ stage: "Draft" })]);
+  assert.equal(m.siteLine(draft), "not live");
+  const [wait] = m.sites([dep({ version: 2, stage: "Approved" })]);
+  assert.equal(m.siteLine(wait), "not live, version 2 in approved");
+});
