@@ -1003,5 +1003,7 @@
  "apps/app/screens/now/vault-health.test.js": 1,
  "lib/publish/grants-kernel.test.js": 4,
  "apps/app/ui/tasks/one-vault.test.js": 1,
- "apps/app/screens/spaces/add-space.test.js": 1
+ "apps/app/screens/spaces/add-space.test.js": 1,
+ "apps/app/scripts/check-design-rules.test.js": 2,
+ "test/design-rules.test.js": 2
 }
