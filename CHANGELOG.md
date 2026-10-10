@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix (batch 1): the sessions contract test's server side includes the lib files the switchboard emits through, so `thread.placing` (emitted in lib/lent-placement.js) is seen as emitted; the app's generated copy of credential-shapes.js is a permanent mention beside the extension's (no-tailscale); core/modules/index.js is back at 2040 lines.
 - fix(app): the Glass relay proof page (`/glass-relay-proof`, mock build) is reachable on an unpaired phone. The first emulator run showed the app's first-run screen instead of the page, because the setup gate sends every unpaired route to setup.
 - fix(switchboard): `core/switchboard/index.js` imports `carryOn`. A chat whose process ended because it moved to the server called it without the import, so the move threw a ReferenceError instead of carrying the chat on. The new test goes through the real `onExit`.
 - test: the data-hygiene checks reach further: a Flow's run page, canvas, approval card, explanation and practice run, and a template project's record, tasks and team records, hold no "[object Object]" or "undefined" (test/flows-data-hygiene.test.js, test/project-templates-daemon.test.js).
