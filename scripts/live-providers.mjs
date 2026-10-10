@@ -46,7 +46,7 @@ async function account(/** @type {string} */ provider) {
 
 /** Answer asks as the person would: allow a Vyre tool, deny anything else (a check can change this). */
 const asks = /** @type {any[]} */ ([]);
-let askPolicy = (/** @type {any} */ a) => (/vyre/i.test(String(a.tool || a.title || "")) ? "allow" : "deny");
+let askPolicy = (/** @type {any} */ a) => { if (process.env.LP_DEBUG) console.log("ASK", JSON.stringify({ tool: a.tool, title: a.title, summary: a.summary, kind: a.kind }).slice(0, 200)); return /vyre|search_tool|use_tool|tools_(find|call)/i.test(String(a.tool || "") + " " + String(a.title || "") + " " + String(a.summary || "")) ? "allow" : "deny"; };
 const answered = new Set();
 const person = setInterval(async () => {
   try {
