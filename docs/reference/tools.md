@@ -1877,7 +1877,7 @@ The Gate's call once the person approved a held text: sends exactly the approved
 
 ### `comms.send`
 
-Send an email or a text message as the person, held at the Gate until they say yes to the final words: { via: email | sms, to, body, subject? (email), account? (email), why? }. Email goes through their mail account; a text through their Twilio account (comms.sms in config: account SID and the number it comes from). Several numbers are one yes. Nothing is sent from here; the answer is { held, via, message }. Once sent it is logged on the client.
+Send an email or text as the person, held at the Gate for their yes: { via: email | sms, to, body, subject? }.
 
 - Input:
   - `body` string, required
@@ -1892,14 +1892,14 @@ Send an email or a text message as the person, held at the Gate until they say y
 
 ### `computer.targets`
 
-The computers you can work on by name: the cloud computer and each paired Mac (or this Mac), and whether each is online. Left unnamed, work goes to the cloud computer.
+The computers you can work on by name, the cloud one and each paired Mac, and whether each is online.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `computer.use`
 
-Work on a computer: the cloud computer by default, or one you name in `on` ("my Mac", "office computer"). `do`: look (read the page or app), shot, tabs, open {url}, click, type, fill, act, find/get (files), signin {login} (a login lent to you; you never see it), route {goal, site} (what already covers this without the screen). Connections and learned operations come first: if one covers the site you are told once, and `screen: true` keeps the screen. `args` are the engine's own inputs (a selector, a ref, text).
+Work on a computer: the cloud one by default, or one named in `on`. `do` picks the action: look, open, click, type, fill, signin, route.
 
 - Input:
   - `do` one of "look", "shot", "tabs", "open", "click", "type", "fill", "act", "press", "find", "get", "signin", "route", required
@@ -2740,7 +2740,7 @@ Read a docs page, or one section of it. `page` is the path from docs.find ("usin
 
 ### `documents.generate`
 
-Make a document from a template and values, and file it: { template, values?, records?: { alias: record reference }, name?, project?, contact?, format? (docx or pdf), version?, space? }. `values` and the fields of each record (under its alias, {client.name}) fill the {placeholders}. A missing value stops it and names every one; nothing is guessed. Files the result in the Drive under Documents/<project>/ and, when the Space has a Document type, a Document record linked to `contact` and `project`. Answers { path, version, size, sha256, format, record? }.
+Fill a template with values and records, and file the document: { template, values?, records?, project?, contact?, format? }. A missing value stops it, named.
 
 - Input:
   - `template` string, required
@@ -2780,7 +2780,7 @@ Email the signer their signed copy: { slug, email, days? }. Makes the expiring l
 
 ### `documents.signed-link`
 
-A link to the signed copy of a finished document that stops working after 30 days (or sooner): { slug (the signer's, from documents.send or the signing request), days? (1 to 30) } -> { url, expires }. The signing page's own address does not open the finished file; this does, for the time you give it. Call it again for a new one. Outward: it makes the finished file reachable by whoever holds the link.
+A link to a signed copy that stops working after 30 days: { slug, days? }. Whoever holds the link can open the file.
 
 - Input:
   - `slug` string, required
@@ -2806,7 +2806,7 @@ The Flow that signs a document from a stage: { type, out_stage, signed_stage, te
 
 ### `documents.template.add`
 
-Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most 10 MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops, loopFields }.
+Put a Word template in the Drive as Templates/<name>.docx, a new version if the name exists: { name, base64 }. Answers its placeholders.
 
 - Input:
   - `base64` string, required
@@ -12746,7 +12746,7 @@ Unlock your personal vault from the phone: its password, and Face ID.
 
 ### `vault.agent.fill`
 
-Sign in on your own computer with a login lent to you (a # tag the person typed in this conversation, or vault.agent.grant). You never see the login: it is typed into the page for you. Returns which fields were filled, the origin and whether the page moved on.
+Sign in on your own computer with a login lent to you; you never see it. Answers which fields were filled and the origin.
 
 - Input:
   - `item` string, required
