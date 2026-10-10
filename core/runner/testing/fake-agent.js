@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
+import crypto from "node:crypto";
 import http from "node:http";
 
 const out = o => process.stdout.write(JSON.stringify(o) + "\n");
@@ -123,6 +124,26 @@ async function handle(line) {
     // a dev server of the session: answers every request with what it was asked, so a preview can be told from a broken one
     const port = Number(rest[0]);
     const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => { b += d; }); req.on("end", () => { res.writeHead(200, { "content-type": "text/plain", "x-dev": "yes" }); res.end(`dev:${req.method}:${req.url}:${req.headers.host}:${b}`); }); });
+    // and a hot-reload socket: a WebSocket that answers every text message with "echo:<it>" (small frames only), and says hello first
+    srv.on("upgrade", (req, sock) => {
+      const key = req.headers["sec-websocket-key"];
+      sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${crypto.createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64")}\r\n\r\n`);
+      const frame = text => { const b = Buffer.from(text); return Buffer.concat([Buffer.from([0x81, b.length]), b]); };
+      sock.write(frame("hello:" + req.url));
+      let buf = Buffer.alloc(0);
+      sock.on("data", d => {
+        buf = Buffer.concat([buf, d]);
+        while (buf.length >= 6) {
+          const len = buf[1] & 0x7f, op = buf[0] & 0x0f, need = 2 + 4 + len;
+          if (buf.length < need) break;
+          const mask = buf.subarray(2, 6), pay = Buffer.from(buf.subarray(6, need)).map((x, i) => x ^ mask[i % 4]);
+          buf = buf.subarray(need);
+          if (op === 8) { sock.end(); return; }
+          if (op === 1) sock.write(frame("echo:" + pay.toString()));
+        }
+      });
+      sock.on("error", () => {});
+    });
     srv.listen(port, "127.0.0.1", () => { out({ type: "serving", port }); out({ type: "result" }); });
   } else if (cmd === "seedcheck") {
     // what the program finds where its resume looks: the agent home's transcript of session `rest[0]`, in the folder this program sees as its own

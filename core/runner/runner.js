@@ -432,6 +432,22 @@ export function createRunner(o) {
         req.end(body);
       });
     },
+    /**
+     * A tunnel to the dev server in a session's sandbox (a WebSocket upgrade of a preview): raw bytes both ways, as the shim's socket on Linux (naming the port first) or loopback on a Mac. `io.data` gets the
+     * server's bytes, `io.end` its end. Null when the session has no preview here.
+     * @param {string} session @param {{ port: number }} job @param {{ data: (b: Buffer) => void, end: () => void }} io
+     */
+    previewTunnel(session, job, io) {
+      const h = live.get(session);
+      const port = Number(job.port);
+      if (!h || !h.preview || !Number.isInteger(port) || port < 1024 || port > 65535) return null;
+      const c = h.preview.dir ? net.connect(path.join(h.preview.dir, "p.sock")) : net.connect(port, "127.0.0.1");
+      if (h.preview.dir) c.write(`PORT ${port}\n`);
+      let over = false;
+      const fin = () => { if (!over) { over = true; io.end(); } };
+      c.on("data", d => io.data(d)); c.on("end", fin); c.on("close", fin); c.on("error", () => { try { c.destroy(); } catch { /* gone */ } fin(); });
+      return { write: b => { try { c.write(b); } catch { /* gone */ } }, end: () => { try { c.end(); } catch { /* gone */ } } };
+    },
     info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, ...(h.bound ? { bound: true } : {}), pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
     /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
     pause() { freeze("pause"); },

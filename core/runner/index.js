@@ -195,7 +195,7 @@ export default {
       if (spec.pipe === true && typeof p.pipe === "function" && h.child) { const pump = startPump({ child: h.child, session, pipe: i => p.pipe(i), isFrozen: () => r.frozenNow, onFenced: () => { r.fence(session).catch(() => {}); }, onKill: () => { r.stop(session).catch(() => {}); } }); pumps.set(session, pump); pump.done.finally(() => { if (pumps.get(session) === pump) pumps.delete(session); }); }
       // a dev server the chat starts may be previewed from the home (lent.preview): the pump runs while the program does
       if (spec.pipe === true && spec.preview === true && typeof p.preview === "function" && h.child) {
-        const pv = startPreviewPump({ session, poll: i => p.preview(i), run: job => r.previewRequest(session, job), onFenced: () => { r.fence(session).catch(() => {}); } });
+        const pv = startPreviewPump({ session, poll: i => p.preview(i), run: job => r.previewRequest(session, job), tunnel: (job, io) => r.previewTunnel(session, job, io), onFenced: () => { r.fence(session).catch(() => {}); } });
         h.child.once("close", () => pv.stop());
       }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };

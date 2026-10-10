@@ -8,6 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
+import { encodeClientFrame } from "../../lib/ws.js";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
@@ -323,6 +325,27 @@ test("a dev server the chat starts on the computer can be previewed from the hom
   const c = /** @type {any} */ (await ask(dead.port, "GET", "/"));
   assert.equal(c.status, 502);
   assert.match(c.body, /did not answer/);
+  // hot reload: a WebSocket through the bridge reaches the dev server's socket in the sandbox and talks both ways, in order
+  const ws = await new Promise((resolve, reject) => {
+    const c = net.connect(bridge.port, "127.0.0.1");
+    let raw = Buffer.alloc(0); /** @type {string[]} */ const texts = []; let upgraded = false;
+    const want = (/** @type {number} */ n, /** @type {() => boolean} */ ok) => new Promise(r => { const tm = setInterval(() => { if (ok()) { clearInterval(tm); r(undefined); } }, 20); setTimeout(() => { clearInterval(tm); r(undefined); }, n); });
+    c.on("data", d => {
+      raw = Buffer.concat([raw, d]);
+      if (!upgraded) { const i = raw.indexOf("\r\n\r\n"); if (i < 0) return; upgraded = true; texts.push(raw.subarray(0, raw.indexOf("\r\n")).toString()); raw = raw.subarray(i + 4); }
+      while (raw.length >= 2) { const len = raw[1] & 0x7f; if (raw.length < 2 + len) break; texts.push(raw.subarray(2, 2 + len).toString()); raw = raw.subarray(2 + len); }
+    });
+    c.on("error", reject);
+    c.on("connect", async () => {
+      c.write("GET /hmr?x=1 HTTP/1.1\r\nHost: pv-1.example.test\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+      await want(10_000, () => texts.length >= 2);
+      for (const m of ["one", "two", "three"]) c.write(encodeClientFrame(Buffer.from(m), 1));
+      await want(10_000, () => texts.length >= 5);
+      c.destroy(); resolve(texts);
+    });
+  });
+  assert.match(String(ws[0]), /^HTTP\/1\.1 101/);
+  assert.deepEqual(ws.slice(1), ["hello:/hmr?x=1", "echo:one", "echo:two", "echo:three"], "the dev server's hello, then every message echoed once and in order");
   // the program ending closes the previews
   assert.equal(w.r.home.hasPreview("s_dev"), true);
   proc.kill();
