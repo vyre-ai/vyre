@@ -375,7 +375,7 @@ export function createRunner(o) {
     thaw(why) { thawAll(why); },
     get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
-    async fence(session) { const h = live.get(session); if (!h) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
+    async fence(session) { const h = live.get(session); if (!h || h.released) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },

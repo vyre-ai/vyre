@@ -181,7 +181,7 @@ else {
   })();
   const psList = () => { try { return execFileSync("ps", ["-axo", "pid=,args="], { encoding: "utf8" }).split("\n").map(l => /^\s*(\d+)\s+(.*)$/.exec(l)).filter(Boolean).map(m => ({ pid: Number(m[1]), args: m[2] })); } catch { return []; } };
   const stateOf = pid => { try { return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim()[0] || ""; } catch { return ""; } };
-  const sandboxOf = needle => psList().filter(p => p.args.includes(needle) && !/watchdog\.js/.test(p.args) && p.pid !== process.pid);
+  const sandboxOf = needle => psList().filter(p => p.args.includes(needle) && !/watchdog\.js|runner-chaos\.mjs/.test(p.args) && p.pid !== process.pid);
   const failures = [];
   const check = (cond, what) => { if (cond) log("  ok  ", what); else { log("  FAIL", what); failures.push(what); } };
   const lenderN = { n: 0 };
