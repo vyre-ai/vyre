@@ -26,7 +26,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
-| [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
+| [`attachments`](#attachments) | `core/attachments` | `box` | 3 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`builder`](#builder) | `core/builder` | `box` | 1 | 0 | none |
@@ -231,7 +231,7 @@ Files a person adds to a chat: each is kept once, sealed, in the chat's own fold
 - Folder: `core/attachments`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [2](tools.md#attachments)
+- Tools: [3](tools.md#attachments)
 - Emits: [1 events](events.md#attachments)
 - Shows on: no surface
 
