@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 
 export default {
-  id: "J2", title: "Intake to signed engagement", owner: "operations", world: "daemon", store: "plain",
+  id: "J2", title: "Intake to signed engagement", owner: "operations", world: "daemon", store: "records",
   /** @param {any} w @param {ReturnType<typeof import("./lib/journey.mjs").stepper>} J */
   async steps(w, J) {
     /** @type {any} */ let team = null;
@@ -15,11 +15,21 @@ export default {
     });
     const sp = () => team.space;
     await J.step("explore: a client and its contact", async () => {
-      const c = await w.call("records.create", { type: "contact", space: sp(), data: { name: "Dana Harlow", email: "dana@harlow.test" } });
-      let cl;
-      try { cl = await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.urn } }); } catch (e) { throw new Error(`${e.message} | urn ${c.record.urn} | space ${sp()} | tries id: ${await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.id } }).then(() => "ok", x => x.message)}`); }
+      const c = await whenStoreIsUp(w, "records.create", { type: "contact", space: sp(), data: { name: "Dana Harlow", email: "dana@harlow.test" } });
+      const cl = await whenStoreIsUp(w, "records.create", { type: "client", space: sp(), data: { contact: c.record.urn } });
       const got = await w.call("records.get", { type: "client", space: sp(), id: cl.record.id });
       return JSON.stringify({ c: c.record, cl: cl.record, got });
     });
   },
 };
+
+/** Retry a call while the space's record store is still starting (it answers unavailable until its database is up). @param {any} w @param {string} tool @param {any} input */
+async function whenStoreIsUp(w, tool, input) {
+  const end = Date.now() + 6 * 60_000;
+  for (;;) {
+    try { return await w.call(tool, input); } catch (e) {
+      if (!(/** @type {any} */ (e).code === "unavailable") || Date.now() > end) throw e;
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+}
