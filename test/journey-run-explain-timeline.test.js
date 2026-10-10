@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
 import { explainText } from "../apps/app/screens/flows/real-model.js";
-import { groupByDay, entryAction } from "../apps/app/screens/projects/days.js";
+import { groupByDay, entryRoute } from "../apps/app/screens/projects/days.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -47,8 +47,5 @@ test("a run explains itself in plain words, and the record it was about has one 
   assert.ok(days.length >= 1 && days[0].items.length >= 1, "the pane has a day to show");
   const run = story.find((/** @type {any} */ e) => e.type === "flow-run");
   assert.ok(run, "the Flow run is on the record's story");
-  assert.deepEqual([run.run, run.flow], [runs[0].id, def.data.id], "the entry names its run and its Flow");
-  assert.deepEqual(entryAction(run), { route: `/u/flows/${def.data.id}?run=${runs[0].id}` }, "a run line opens that run's page");
-  const opened = await d.registry.call("flows.run", { run: run.run }, "cli", await meta());
-  assert.ok(!opened.error, JSON.stringify(opened.error));
+  assert.equal(entryRoute(run), null, "a run line is the story, it opens nothing");
 });

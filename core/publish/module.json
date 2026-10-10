@@ -176,8 +176,5 @@
       ]
     }
   },
-  "teaches": {},
-  "settings": [
-    {"key": "publish.servers", "group": "publish", "label": "Publish apps that run their own server", "help": "Off in this test release. On lets Publish build a folder with a Dockerfile and run it as a server. It stays off until the server's build network and its Space-and-name keying have been reviewed.", "type": "bool", "default": false, "levels": ["account"], "apply": "live", "store": {"config": "publish.servers"}}
-  ]
+  "teaches": {}
 }

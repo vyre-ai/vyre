@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Card, Chip, Divider, Icon, Row, SectionLabel, Text } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
-import { dayLabel, entryAction, groupByDay } from "./days.js";
+import { dayLabel, entryRoute, groupByDay } from "./days.js";
 
 export type Entry = { type: string; kind: string; id: string; urn: string; title: string; line: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
 const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records", person: "person" };
@@ -17,11 +17,11 @@ export function TimelineEntries({ rows }: { rows: Entry[] }) {
           <SectionLabel>{dayLabel(g.at)}</SectionLabel>
           <Card flush>
             {g.items.map((e, i) => {
-              const act = entryAction(e);
+              const to = entryRoute(e);
               return (
                 <View key={`${e.type}:${e.id}`}>
                   {i ? <Divider /> : null}
-                  <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={<Text medium size="body">{e.line}</Text>} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined} onPress={act ? () => router.push(act.route as never) : undefined} />
+                  <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={<Text medium size="body">{e.line}</Text>} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined} onPress={to ? () => router.push(to as never) : undefined} />
                 </View>
               );
             })}

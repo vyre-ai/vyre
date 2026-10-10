@@ -1187,26 +1187,6 @@ test("lending a computer to a space is a stored grant: Face ID only at the first
   w && void 0;
 });
 
-test("a person with only their own Space can lend to it: the home Space is lendable, listed and answered by status, not 'No such space' (the first-day switch)", async t => {
-  const { createKernel } = await import("../../kernel/index.js");
-  const w = world(t);
-  const HOME = "spc_aaaaaaaaaaaa";
-  /** @type {any} */ let K = null, handle = null;
-  const real = (/** @type {any} */ m) => (handle ||= K.kernelFor(m));
-  const kernelFor = (/** @type {any} */ m) => ({ space: HOME, for: () => real(m).for(HOME), chain: (/** @type {any} */ meta) => real(m).chain(meta), proofFrom: (/** @type {any} */ meta) => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (/** @type {any} */ c, /** @type {any} */ p) => real(m).acceptProofRequest(c, p), membership: (/** @type {any} */ p) => real(m).membership(p, HOME) });
-  const d = await device(t, { kernelFor });
-  const me = await d.ok("spaces.identity.create", { name: "alex" });
-  K = await createKernel({ space: HOME, owner: me.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: { check: async () => null }, hasPresenceSession: () => true });
-  const { token } = await K.surfaces.open(K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }));
-  const list = await d.ok("spaces.devices.list", { device: me.eid }, "cli", { token });
-  const home = list.spaces.find((/** @type {any} */ x) => x.home);
-  assert.ok(home, "the device list names the home Space");
-  const st = await d.call("spaces.devices.lend.status", { space: home.space, device: me.eid }, "cli", { token });
-  assert.notEqual(st.error?.code, "not_found", JSON.stringify(st.error));
-  const on = await d.call("spaces.devices.lend", { space: home.space, device: me.eid, on: true }, "cli", { token, proof: "touch" });
-  assert.notEqual(on.error?.code, "not_found", `lending to the person's own Space: ${JSON.stringify(on.error)}`);
-});
-
 test("the Run on this computer switch reads the real list and lends with the real tool: the plan names the device and the spaces, lending shows in the list, and stopping asks nothing", async t => {
   const { lendPlan } = await import("../../apps/app/screens/runner/runner-model.js");
   world(t);

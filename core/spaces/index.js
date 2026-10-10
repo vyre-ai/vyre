@@ -1095,7 +1095,7 @@ export default {
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
       obj({ space: str, device: str, on: { type: "boolean" }, network_cap: { type: "string", enum: ["provider", "internet"], description: "Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen." }, loosen: { type: "boolean", description: "Lending only: you mean to allow more network than you did before on this computer." }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
-        const row = spaceOrHome(i.space);
+        const row = spaceOf(i.space);
         const caller = await callerPerson(meta);
         if (caller !== s.id) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
         const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -1133,10 +1133,10 @@ export default {
           emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         });
-      }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOrHome(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
+      }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOf(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
     tool("spaces.devices.lend.status", "Whether a device of yours is lent to a space, when it was first lent and who allowed it. Only the device's person and the space's owners and admins can ask.", obj({ space: str, device: str }, ["space", "device"]), async (i, meta) => {
       const s = me();
-      const row = spaceOrHome(i.space);
+      const row = spaceOf(i.space);
       const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
       if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
       let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }

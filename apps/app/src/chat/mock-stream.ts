@@ -332,9 +332,26 @@ export function markdownScript(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: c.steps }];
 }
 
+/** The steps scenario (/chat-demo?scenario=steps): a turn of many steps in a row, then the reply, to look at the folded run. */
+export function stepsScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 60;
+  const c = new Clock();
+  c.push("status", { state: "working", turn: "turn-1" });
+  c.push("user-message", { message: "m1", text: "Find out why the intake form rejects 29 February and fix it.", state: "sent" }, 40);
+  c.say("a1", "I'll look at the form first.", tps, 200);
+  const steps = ["Reading the intake form", "Searching for the month table", "Reading date.ts", "Editing date.ts", "Running the intake tests"];
+  steps.forEach((summary, i) => {
+    c.push("tool-started", { tool_id: `s${i}`, tool: ["files.read", "files.search", "files.read", "files.edit", "shell.run"][i], summary }, 300);
+    c.push("tool-finished", { tool_id: `s${i}`, ok: true }, 450);
+  });
+  c.say("a2", "Fixed: the check now uses the real month length, and all fourteen tests pass.", tps, 200);
+  c.push("status", { state: "waiting", turn: "turn-1" }, 60);
+  return [{ gate: null, steps: c.steps }];
+}
+
 export type MockOptions = {
   /** "group": two people, two assistants, a fan-out (groupScript). */
-  scenario?: "group" | "models" | "people" | "assistant" | "activity" | "previews" | "markdown";
+  scenario?: "group" | "models" | "people" | "assistant" | "activity" | "previews" | "markdown" | "steps";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -353,7 +370,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = opts.scenario === "markdown" ? markdownScript({ tps: opts.tps }) : opts.scenario === "previews" ? previewsScript({ tps: opts.tps }) : opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
+  const segments = opts.scenario === "steps" ? stepsScript({ tps: opts.tps }) : opts.scenario === "markdown" ? markdownScript({ tps: opts.tps }) : opts.scenario === "previews" ? previewsScript({ tps: opts.tps }) : opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();
