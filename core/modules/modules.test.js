@@ -1367,7 +1367,7 @@ export default { async start(ctx) {
 } };`;
   const broken = `export default { async start() { throw new Error("broken for its own reason"); } };`;
   const reg = await registry(t, [["notes", good, waits], ["other", { name: "other", version: "0.1.0" }, broken]], { builtIn: true });
-  assert.equal(reg.modules.get("notes").state, "failed");
+  assert.equal(reg.modules.get("notes").state, "waiting", "only the store was away: it waits (and reports running) rather than failing the start");
   assert.equal(reg.modules.get("other").state, "failed");
   fs.writeFileSync(flag, "");
   await reg.startStoreWaiting();
