@@ -883,10 +883,10 @@ export default {
     };
 
     ctx.tool("team.add", {
-      description: "Add a teammate to a project: a role (how sessions address it, e.g. \"design\"), a brief (what work goes to it) and, optionally, instructions, tools and isolation. Makes agent <role>-<project>. isolation: \"worktree\" gives it its own git worktree and branch, and brings an \"integrator\" teammate along the first time, which merges finished work into the project's own branch; when the project's home is not a git repo it falls back to isolation: \"folder\" instead (shared with any other folder-isolated teammate), saying so in the answer's `notice`.",
-      input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string" },
-        brief: { type: "string" }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
-        isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
+      description: "Add a teammate to a project: role, brief, and optionally instructions, tools and isolation. Makes agent <role>-<project>; `notice` says if isolation fell back.",
+      input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string", description: "How sessions address it, e.g. \"design\"." },
+        brief: { type: "string", description: "What work goes to this teammate." }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
+        isolation: { type: "string", enum: ["worktree", "folder", "none"], description: "worktree: own git worktree and branch, brings an integrator teammate; falls back to folder (shared with other folder teammates) when the project is not a git repo." }, model: { type: "string" }, helper_model: { type: "string" } } },
       // The person's act, and their agent's only on their own words: reach asked (the registry asks vault.said.match for team.add:<project>/<role>,
       // team.act.target), so a model, the assistant included, adds a teammate once when the person said to. A person's surface (the Deck's @role, the CLI)
       // is never asked. Never a teammate. The project check below stays as the second guard.
@@ -948,9 +948,9 @@ export default {
     });
 
     ctx.tool("team.retire", {
-      description: "Retire a teammate: it stops being addressable and listed, its queued requests are cancelled, and its notes and history stay readable (team.add with the same role brings it back). Give teammate (the agent name) or project and role. undo: true is for taking back a teammate just made: only allowed while nothing has run for it, it removes the teammate and its queued asks entirely so the role is free again. Refused while a request is running. A person, or a session in that project acting on the person's own request; never a teammate. Returns {agent, project, role, retired, undone, cancelled: [request ids], worktree_kept}.",
+      description: "Retire a teammate: it leaves the list, queued requests cancel, notes and history stay. Give teammate, or project and role. Refused while a request runs.",
       input: { type: "object", properties: { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" },
-        reason: { type: "string" }, undo: { type: "boolean" } } },
+        reason: { type: "string" }, undo: { type: "boolean", description: "Take back a teammate just made: only while nothing has run for it; removes it and its queued asks, freeing the role." } } },
       callers: ["cli", "local", "deck", "capsule", "mcp", "module"],
       run: async (i, meta) => {
         if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot retire teammates; that is the person's, or a session acting on their request"), { code: "denied" });
@@ -1014,7 +1014,7 @@ export default {
     const charterRef = { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" } };
 
     ctx.tool("team.charter.get", {
-      description: "A teammate's charter: what it is for and how it works, the current version's text, who wrote it and when, or null when it has none yet. A teammate may read its own.",
+      description: "A teammate's charter: current version text, who wrote it and when, or null when it has none. A teammate may read its own.",
       input: { type: "object", properties: { ...charterRef } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, charter: charterCurrent(tm.agent), pending: db.prepare("SELECT text, by, at FROM team_charter_drafts WHERE teammate = ?").get(tm.agent) || null }; },
@@ -1046,7 +1046,7 @@ export default {
       },
     });
     ctx.tool("team.charter.diff", {
-      description: "What a charter version changed: the version's text beside the one before it (null for the first), who wrote it and how. What the Deck's \"charter changed by <agent>\" card shows before a one-tap team.charter.revert.",
+      description: "What a charter version changed: its text beside the previous version's (null for the first), who wrote it and how.",
       input: { type: "object", properties: { ...charterRef, version: { type: "integer" } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
@@ -1074,8 +1074,8 @@ export default {
       },
     });
     ctx.tool("team.charter.draft", {
-      description: "Write (or rewrite) a teammate's charter from what the project already knows: its brief, its role, the project's context and the teammate's notes, plus anything in from (a line or a conversation summary). Saved as a new version, and returned so the person can read and edit it. Nobody has to hand-write what a teammate is.",
-      input: { type: "object", properties: { ...charterRef, from: { type: "string" } } },
+      description: "Write or rewrite a teammate's charter from its brief, role, project context and notes. Saved as a new version and returned to edit.",
+      input: { type: "object", properties: { ...charterRef, from: { type: "string", description: "A line or conversation summary to draft from." } } },
       callers: DRAFTERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
@@ -1107,8 +1107,8 @@ export default {
     });
 
     ctx.tool("team.role.fill", {
-      description: "Have one of the person's agents fill a role, or (agent omitted) go back to the project's default helper. The role's notes, charter and history stay as they are; the live thread starts fresh at the next request under the new filler. The agent keeps its own chat and memory; in this project it works as the role, with this project's memory only. A person, the assistant, or a session in the project on the person's request; never a teammate.",
-      input: { type: "object", properties: { ...charterRef, agent: { type: "string" } } },
+      description: "Have one of the person's agents fill a role; omit agent to return to the default helper. Notes, charter and history stay; the thread restarts.",
+      input: { type: "object", properties: { ...charterRef, agent: { type: "string", description: "The agent to fill the role; omit for the project's default helper." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
@@ -1151,8 +1151,8 @@ export default {
     };
     const dutyRef = { ...charterRef };
     ctx.tool("team.duties.create", {
-      description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person starts it at once; anything an assistant, a session or a teammate makes waits off in the list (no watcher) until the person turns it on.",
-      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, title: { type: "string", description: "A short label the person names it by, like \"inbox duty\"; shown on the card." } } },
+      description: "Give a teammate a standing duty that runs when a trigger fires. Needs when and instruction. A person's starts at once; others' wait.",
+      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string", description: "The trigger in plain words: an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push." }, instruction: { type: "string" }, act: { type: "boolean", description: "true lets it call tools and ask a model (outward calls still hold at the Gate); false only files what it notices into notes and the waiting list." }, title: { type: "string", description: "A short label the person names it by, like \"inbox duty\"; shown on the card." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const { tm, propose } = await dutyTarget(i, meta, { write: true });
@@ -1169,8 +1169,8 @@ export default {
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, duties: dutyApi.list(tm.agent) }; },
     });
     ctx.tool("team.duties.update", {
-      description: "Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). Turning on, or changing a running duty, is the person's; the assistant or a session may pause it or edit a proposal; never a teammate.",
-      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean" }, expect: { type: "string", description: "With enabled true: the instruction you were shown; nothing starts if it has changed since." } } },
+      description: "Change a duty's when, instruction, act or enabled. Only the person turns one on or changes a running one; never a teammate.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean", description: "true turns a proposed duty on; false pauses it." }, expect: { type: "string", description: "With enabled true: the instruction you were shown; nothing starts if it has changed since." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         await dutyTarget(i, meta, { write: true, id: i.id });
@@ -1206,8 +1206,8 @@ export default {
     // A model starts a duty only when the person's own words asked for exactly this text: the registry asks vault.said.match for the key
     // team.duties.start:<teammate>/<id>@<hash of trigger, instruction and act> (team.act.target), and `expect` must equal the stored instruction.
     ctx.tool("team.duties.start", {
-      description: "Turn a proposed duty on for the person, when their own words asked for exactly this duty: give expect, the instruction you were shown. Anything changed since, or nothing said, refuses. A person's surface taps team.duties.enable instead.",
-      input: { type: "object", required: ["id", "expect"], properties: { id: { type: "string" }, expect: { type: "string" } } },
+      description: "Turn a proposed duty on when the person's words asked for exactly it; give expect, the instruction you were shown. Refuses if it changed.",
+      input: { type: "object", required: ["id", "expect"], properties: { id: { type: "string" }, expect: { type: "string", description: "The instruction you were shown; refuses if it changed since." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: true, expect: i.expect }); },
     });
@@ -1272,7 +1272,7 @@ export default {
     });
 
     ctx.tool("team.list", {
-      description: "The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.",
+      description: "The teammates that serve a project: role, brief, state, queue length, last result. Without project, the caller's own; a person with no thread sees all.",
       input: { type: "object", properties: { project: { type: "string" }, all: { type: "boolean" } } },
       // PERSON_ONLY: not because listing needs a proof (a session or teammate reads this freely,
       // unaffected), but because it is the only thing standing between a forged "cli"/"local"
@@ -1345,9 +1345,9 @@ export default {
     });
 
     ctx.tool("team.ask", {
-      description: "Send work to a project's teammate by role (\"design\", \"backend\", ...): {to, text, refs?, priority?, wait?, project?, model?}. model (a provider such as codex or grok, provider/model, or a Claude model name) runs this request in a session of its own on that model, through the same Gate and spend as any teammate session. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.",
-      input: { type: "object", required: ["to", "text"], properties: { to: { type: "string" }, text: { type: "string" }, refs: { type: "array", items: { type: "string" } },
-        priority: { type: "string", enum: PRIORITIES }, wait: { type: "boolean" }, project: { type: "string" }, key: { type: "string" }, model: { type: "string" } } },
+      description: "Send work to a project's teammate by role. Queues it in the teammate's inbox, returns {request, state, position}; the result comes back as a message.",
+      input: { type: "object", required: ["to", "text"], properties: { to: { type: "string", description: "The teammate's role, e.g. \"design\"." }, text: { type: "string" }, refs: { type: "array", items: { type: "string" } },
+        priority: { type: "string", enum: PRIORITIES }, wait: { type: "boolean", description: "true returns the result if it finishes within 30s." }, project: { type: "string" }, key: { type: "string" }, model: { type: "string", description: "A provider such as codex or grok, provider/model, or a Claude model name; runs this request in its own session on that model, through the same Gate and spend." } } },
       callers: TEAM_USE,
       run: async (i, meta) => {
         const choice = modelChoice(i.model);
@@ -1426,8 +1426,8 @@ export default {
     };
 
     ctx.tool("team.done", {
-      description: "The teammate itself closes its running request with a result. request may be left out; it defaults to the teammate's one running request. Refused if the notes have not changed since the request started, unless notes: \"unchanged\" is given with a reason (a request that genuinely needed none). Never callable for another teammate's request.",
-      input: { type: "object", required: ["result"], properties: { request: { type: "string" }, result: { type: "string" }, result_refs: { type: "array", items: { type: "string" } },
+      description: "The teammate closes its own running request with a result. Refused if its notes did not change, unless notes: \"unchanged\" comes with a reason.",
+      input: { type: "object", required: ["result"], properties: { request: { type: "string", description: "Defaults to the teammate's one running request." }, result: { type: "string" }, result_refs: { type: "array", items: { type: "string" } },
         notes: { type: "string", enum: ["unchanged"] }, reason: { type: "string" } } },
       // Closes the request only. The next one is dispatched once this turn actually ends (the
       // thread.finished listener pump() set up), not from here: this tool runs mid-turn.
@@ -1463,8 +1463,8 @@ export default {
     });
 
     ctx.tool("team.merge", {
-      description: "The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and, when a test command is set, that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
-      input: { type: "object", properties: { request: { type: "string" }, tests: { type: "object", properties: { exit_code: { type: "number" } } } } },
+      description: "The integrator's tool: after resolving a conflict or running the project's tests itself, checks both and fast-forwards the project's branch. Refused with the reason.",
+      input: { type: "object", properties: { request: { type: "string", description: "Defaults to the integrator's one running request." }, tests: { type: "object", properties: { exit_code: { type: "number", description: "Exit code of the project's test command; must be 0 when one is set." } } } } },
       callers: TEAM_USE,
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
@@ -1494,9 +1494,9 @@ export default {
     };
 
     ctx.tool("team.notes", {
-      description: "A teammate's notes: its memory of record. action \"get\" reads the current text and version history; \"set\" (the teammate itself, or a person) writes a new version, versioned and copied to <project home>/.vyre/team/<role>/notes.md.",
+      description: "A teammate's notes, its memory of record. action \"get\" reads text and version history; \"set\" writes a new version.",
       input: { type: "object", required: ["agent"], properties: { action: { type: "string", enum: ["get", "set"] }, agent: { type: "string" },
-        part: { type: "string" }, text: { type: "string" } } },
+        part: { type: "string" }, text: { type: "string", description: "With action set: the new notes text, copied to <project home>/.vyre/team/<role>/notes.md." } } },
       callers: TEAM_USE,
       run: async (i, meta) => {
         const tm = mustT(i.agent);

@@ -147,7 +147,7 @@ export default {
     });
 
     ctx.tool("hooks.list", {
-      description: "The webhook listener's state and every open route: its path, signature scheme, header and vault item (a name, never a value), how many deliveries are kept, the newest few (id, at, bytes).",
+      description: "The webhook listener's state and every open route: path, signature scheme, header, vault item name, kept deliveries and the newest few.",
       input: obj({}),
       run: async (_i, { caller }) => {
         reader(caller);
@@ -222,7 +222,7 @@ export default {
     };
 
     ctx.tool("hooks.status", {
-      description: "The listener and the open routes: each route's path, scheme and deliveries, and whether the internet can reach it, with the address to give the sender (the box's public address, https://<name>.vyre.run:7443/hooks/<route>) once it is up.",
+      description: "The listener and open routes: each route's path, scheme and deliveries, whether the internet can reach it, and the address to give the sender.",
       input: obj({}),
       run: async (_i, { caller }) => {
         reader(caller);

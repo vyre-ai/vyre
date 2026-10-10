@@ -142,8 +142,8 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   };
 
   ctx.tool("files.drive.list", {
-    description: "What is inside a folder of one of the box's VyreDrive shares: name, kind, size and date for each entry, folders first, a page at a time. The phone's Files view uses it, since a phone cannot mount a share. Only a folder the box offers as a share; secrets, dot folders and links leading out never appear. A named agent sees only what its own granted projects reach.",
-    input: { type: "object", required: ["share"], properties: { share: { type: "string" }, path: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" } } },
+    description: "List a folder inside one of the box's VyreDrive shares: name, kind, size and date per entry, folders first, a page at a time.",
+    input: { type: "object", required: ["share"], properties: { share: { type: "string", description: "share name, from files.drive.status" }, path: { type: "string", description: "folder inside the share; default its top" }, limit: { type: "integer", description: "entries per page" }, offset: { type: "integer", description: "entries to skip" } } },
     run: async ({ share, path: rel = "", limit = PAGE, offset = 0 }, meta = {}) => {
       limit = clamp(Number(limit) || PAGE, 1, PAGE_MAX);
       offset = Math.max(0, Number(offset) || 0);
@@ -186,8 +186,8 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   });
 
   ctx.tool("files.drive.read", {
-    description: "Read one chunk (up to 1 MiB) of a file in one of the box's VyreDrive shares, as base64, with its size and whether that was the end: call again with the next offset for a bigger file. Same rules as files.drive.list.",
-    input: { type: "object", required: ["share", "path"], properties: { share: { type: "string" }, path: { type: "string" }, offset: { type: "integer" }, length: { type: "integer" } } },
+    description: "Read one chunk (up to 1 MiB) of a file in a box VyreDrive share, as base64, with its size and an end flag.",
+    input: { type: "object", required: ["share", "path"], properties: { share: { type: "string" }, path: { type: "string" }, offset: { type: "integer", description: "start byte; use the next offset for a bigger file" }, length: { type: "integer", description: "chunk size in bytes, up to 1 MiB" } } },
     run: async ({ share, path: rel, offset = 0, length = CHUNK }, meta = {}) => {
       if (!rel) throw refuse("path is required", "bad_input");
       const g_ = await generated(share, rel, meta);

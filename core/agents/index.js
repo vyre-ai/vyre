@@ -530,7 +530,7 @@ export default {
     });
 
     ctx.tool("agents.ask", {
-      description: "Talk to an agent: the text goes to its current thread (started if needed) and the reply comes back when the turn ends. If the thread stops on a permission question, returns with the question instead; the user answers it with threads.answer.",
+      description: "Talk to an agent: text goes to its thread (started if needed). Returns the reply, or a permission question to answer with threads.answer.",
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as when a person sends to a thread): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
@@ -649,8 +649,8 @@ export default {
     const SUB_MAX = 5;
     const subRow = id => db.prepare("SELECT * FROM agents_subs WHERE id = ?").get(id);
     ctx.tool("agents.spawn", {
-      description: "Start a short-lived helper for one job: it works as you, with your access or less (tools: a shorter list of tool names), its steps show under one row in this conversation, and it ends when its turn does. Give it everything it needs in `task`; it cannot start helpers of its own.",
-      input: { type: "object", required: ["task"], properties: { task: { type: "string", maxLength: 8000 }, label: { type: "string", maxLength: 40 }, tools: { type: "array", maxItems: 100, items: { type: "string", maxLength: 120 } }, project: { type: "string" } } },
+      description: "Start a short-lived helper for one job, working as you with your access or less; it ends when its turn does. Put everything in task.",
+      input: { type: "object", required: ["task"], properties: { task: { type: "string", maxLength: 8000, description: "Everything the helper needs; it cannot start helpers of its own." }, label: { type: "string", maxLength: 40 }, tools: { type: "array", maxItems: 100, items: { type: "string", maxLength: 120 }, description: "A shorter list of tool names than yours." }, project: { type: "string" } } },
       callers: ["mcp", "harness", "cli", "local", "deck", "capsule", "module"],
       run: async (i, meta) => {
         const parent = meta.agent ? get(String(meta.agent)) : null;
@@ -705,8 +705,8 @@ export default {
     });
 
     ctx.tool("agents.usage", {
-      description: "What each agent has used: turns, threads, time, tokens and cost (all of it, and on the API key), its budget and what is left, and the last rate-limit report. since: ms since epoch. With no agent, every agent, and agent null for threads no agent ran.",
-      input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
+      description: "What each agent has used: turns, threads, time, tokens, cost, budget left and the last rate-limit report. With no agent, every agent.",
+      input: { type: "object", properties: { agent: { type: "string", description: "Leave out for every agent; agent null then covers threads no agent ran." }, since: { type: "integer", description: "ms since epoch." } } },
       run: async ({ agent, since }, meta) => {
         const { caller } = meta;
         guard(caller, "read other agents' usage");
@@ -729,8 +729,8 @@ export default {
     });
 
     ctx.tool("agents.history", {
-      description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
-      input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
+      description: "Past conversations with an agent (or every agent), newest last: what was asked, the answer, when, and the thread.",
+      input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer", description: "An exchange id: the page before it." } } },
       run: async ({ agent, limit, before }, meta) => {
         const { caller } = meta;
         guard(caller, "read other agents' conversations");

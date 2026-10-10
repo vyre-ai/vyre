@@ -154,7 +154,7 @@ export default {
 
     ctx.tool("spend.check", {
       effect: "read",
-      description: "Whether a provider may spend now: { ok, capped, spent, cap, left, line? }. Ask before a call that costs; at the cap answer from what is already known and show the line. No cap set means ok.",
+      description: "Whether a provider may spend now: { ok, capped, left, line? }. Ask before a costly call; at the cap, answer from what is known.",
       input: { type: "object", properties: { provider: { type: "string" } } },
       run: async i => {
         const p = provider(i.provider);
@@ -167,8 +167,8 @@ export default {
 
     ctx.tool("spend.summary", {
       effect: "read",
-      description: "Today's spend (UTC) per provider with its cap, and the rows behind it: { day, all: { spent, cap, left, capped }, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }; all is every provider together against spend.all.daily_usd. day is YYYY-MM-DD for an earlier one.",
-      input: { type: "object", properties: { day: { type: "string" } } },
+      description: "Spend per provider with its cap, and the rows behind it, plus the all-provider total against spend.all.daily_usd. Today in UTC unless day is given.",
+      input: { type: "object", properties: { day: { type: "string", description: "YYYY-MM-DD for an earlier day; default today (UTC)" } } },
       run: async i => {
         const day = i.day ? String(i.day) : dayUtc(now());
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw bad("day is YYYY-MM-DD");

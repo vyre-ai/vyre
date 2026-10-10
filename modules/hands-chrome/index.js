@@ -232,7 +232,7 @@ export default {
         return { ok: true, title: snap.title, url: snap.url };
       });
 
-    tool("chrome.click", "Click a control, chosen by role/name/identifier against a fresh look at the page. Refuses a control that looks consequential (send, pay, delete, submit, ...): take over in Glass for those.",
+    tool("chrome.click", "Click a control, chosen by role, name or identifier against a fresh look at the page. Refuses consequential controls (send, pay, delete): use Glass.",
       obj({ agent: str, selector: SELECTOR }, ["selector"]), async (i, meta) => {
         const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.click");

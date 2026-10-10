@@ -108,7 +108,7 @@ export default {
     };
 
     ctx.tool("goals.set", {
-      description: "Set a goal with its ordered milestones, on a session or a project (at least one of thread, project). A person's own call is the goal at once; an agent's is a proposal (state pending) until goals.accept, and only in its own session or project.",
+      description: "Set a goal with ordered milestones on a thread or project. A person's call sets it; an agent's is a pending proposal until goals.accept.",
       input: { type: "object", required: ["goal", "milestones"], properties: { project: str, thread: str, goal: str, milestones: { type: "array", items: str, minItems: 1 } } },
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
@@ -151,8 +151,8 @@ export default {
     });
 
     ctx.tool("goals.milestone-done", {
-      description: "Mark a milestone done, by its index (0-based). Scoped to the goal's own session or project - an agent elsewhere is refused. Marks the goal itself done, and emits goal.done, when the last one lands.",
-      input: { type: "object", required: ["goal", "index"], properties: { goal: str, index: { type: "integer", minimum: 0 } } },
+      description: "Mark a milestone done by its 0-based index. Marks the goal done and emits goal.done when the last lands. Agents only in their own scope.",
+      input: { type: "object", required: ["goal", "index"], properties: { goal: str, index: { type: "integer", minimum: 0, description: "0-based." } } },
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
         const g = await must(i.goal);
@@ -182,7 +182,7 @@ export default {
     });
 
     ctx.tool("goals.list", {
-      description: "Goals for a project or a thread (or every one, with neither, person only), newest first. An agent sees only its own session or project - given or, with neither, its own calling thread's.",
+      description: "Goals for a project or thread, newest first. An agent sees only its own scope; a person giving neither sees every goal.",
       input: { type: "object", properties: { project: str, thread: str, state: { type: "string", enum: STATES } } },
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {

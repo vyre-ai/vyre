@@ -498,8 +498,8 @@ export default {
     });
     ctx.tool("recall.links", {
       effect: "read",
-      description: "The turns that touched something, newest first: a file (ref is a path or just its name; kind file for changes, read for reads, both by default), a commit (kind commit, a short or full hash), or a url (kind url). Each is a pointer (session:seq) for recall.turn, with a snippet.",
-      input: { type: "object", required: ["ref"], properties: { ref: { type: "string" }, kind: { type: "string", enum: ["file", "read", "commit", "url"] },
+      description: "The turns that touched a file, commit or url, newest first. Each is a pointer (session:seq) for recall.turn, with a snippet.",
+      input: { type: "object", required: ["ref"], properties: { ref: { type: "string", description: "A file path or just its name, a short or full commit hash, or a url." }, kind: { type: "string", enum: ["file", "read", "commit", "url"], description: "file for changes, read for reads (both by default), commit or url." },
         session: { type: "string" }, since: { type: "integer", description: "ms since epoch" }, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;

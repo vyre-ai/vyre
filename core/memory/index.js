@@ -461,8 +461,8 @@ export default {
 
     ctx.tool("memory.graph", {
       effect: "read",
-      description: "The graph as a floor plan for the Deck: one room per project, a shared room, nodes and edges, capped. project_cwds gives one project's graph; without it, the main graph (the assistant only). around/depth draw one node's neighbourhood. since returns { unchanged: true } when nothing moved.",
-      input: { type: "object", properties: { project_cwds: cwds, ...roomField, around: { type: "string" }, depth: { type: "integer" }, limit: { type: "integer" }, since: { type: "integer" }, ...agentField } },
+      description: "The graph as a floor plan: a room per project, nodes and edges, capped. project_cwds picks one project; around and depth zoom to a node.",
+      input: { type: "object", properties: { project_cwds: cwds, ...roomField, around: { type: "string", description: "a node to draw the neighbourhood of" }, depth: { type: "integer", description: "hops out from around" }, limit: { type: "integer" }, since: { type: "integer", description: "the updated stamp of an earlier result; returns { unchanged: true } if nothing moved" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         input = { ...input, room: roomOf(input) };
         const r = await guard(input, caller, { tailnet: true });
@@ -480,8 +480,8 @@ export default {
     });
     ctx.tool("memory.facts", {
       effect: "read",
-      description: "What memory holds: facts about one thing (about), about what a project's sessions name (project_cwds), or the most-seen outside parties. Each fact has its source turn, age and confidence. thread (a session id) gives the facts that thread's turns support instead, each with refs: [{seq}], the turns where it came up; with room, that project's facts, else the main graph's.",
-      input: { type: "object", properties: { about: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
+      description: "Facts with source turn, age and confidence: about one thing (about), a project's sessions (project_cwds), or the most-seen outside parties. thread: a session's facts.",
+      input: { type: "object", properties: { about: { type: "string" }, thread: { type: "string", description: "a session id: the facts its turns support, each with refs [{seq}]; not with about or project_cwds" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
       run: async ({ about, thread, project_cwds = [], limit, agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
         if (thread) {
@@ -503,7 +503,7 @@ export default {
       },
     });
     const relevantDef = {
-      description: "The few facts worth adding to a prompt about this text, or [] when nothing in it is known. For the Enrich hook: precise, and fast.",
+      description: "The few facts worth adding to a prompt about this text, or [] when none are known. For the Enrich hook.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
       // The owner on a phone reads it too: Find searches memory by meaning with it, account-wide,
       // as the Deck does on the Mac. A session still names its room.
@@ -522,7 +522,7 @@ export default {
     ctx.tool("memory.relevant", relevantDef);
     ctx.tool("memory.why", {
       effect: "read",
-      description: "The turns that support a fact (its id, src|rel|dst) or where a thing came up (a name). Turns that no longer exist are counted as gone.",
+      description: "The turns that support a fact (its id, src|rel|dst) or show where a name came up.",
       input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
@@ -1055,8 +1055,8 @@ export default {
       scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
       effect: "read",
-      description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
-      input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
+      description: "Answer a question about the user's own life in one line, from personal facts, the graph, then their own words. Null when unknown.",
+      input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean", description: "true lists more of the turns the answer came from" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.answer");
         const effectiveCwds = await scopedCwds(true, input.agent, caller, clean(input.project_cwds));
@@ -1207,7 +1207,7 @@ export default {
     });
     ctx.tool("memory.space.retire", {
       effect: "write", callers: spaceCallers,
-      description: "Take a fact out of use in this Space's memory: the one who filed it, or a person with the right. It stays in the log; it is no longer read.",
+      description: "Take a fact out of use in this Space's memory (its filer, or a person with the right). It stays in the log.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       run: async (input, extra = {}) => { const { api, chain } = await spaceMemory(extra); return factOut(await api.retire(chain, String(input.id))); },
     });
@@ -1334,7 +1334,7 @@ export default {
     ctx.tool("memory.identity.status", {
       effect: "read",
       callers: idCallers,
-      description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it, which servers the person has given it to, and where it was moved to. For the person and their assistant.",
+      description: "Whether the person's identity memory is sealed here, unlocked now, how many devices can unlock it, which servers hold a grant, and where it moved.",
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return { ...(identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }), ...(identity && ctx.kernel && typeof ctx.kernel.space === "string" ? { space: ctx.kernel.space } : {}) }; },
     });
@@ -1375,7 +1375,7 @@ export default {
     ctx.tool("memory.identity.unlock.begin", {
       effect: "write",
       callers: idCallers,
-      description: "The person's assistant asks to read their identity memory: returns the request, signed by this server, which the person's phone answers by itself for a server they granted. Nothing is readable before the answer arrives.",
+      description: "Ask to read the person's identity memory. Returns a server-signed request that the person's phone answers by itself; nothing is readable until it does.",
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.unlock.begin"); if (!identity || !identity.sealed) throw noIdentity(); return identity.begin(); },
     });
@@ -1458,9 +1458,9 @@ export default {
       } });
     ctx.tool("memory.ask", {
       effect: "read",
-      description: "Vyre Memory: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
+      description: "Answer questions about the user's past work or life from past sessions and personal facts, with sources, or abstain. Ask before claiming not to remember.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
-        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean", description: "true emits memory.thinking { id, stage } as each step starts, then memory.answered { id, abstained, limited }" }, id: { type: "string", maxLength: 64, description: "your id for those stream events; else a new one, returned in the reply" },
         screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
       run: async (input, extra = {}) => {
         const { caller } = extra;
@@ -1483,8 +1483,8 @@ export default {
       },
     });
     const decisionsDef = {
-      description: "What was decided, per project and topic, the newest decision winning: { decisions: [{ id, project, topic, value, text, state: current|replaced|reverted|note, by: person|agent, at, replaces, contested, untrusted, source: { session, seq } }] }. Current decisions only, or with history: true every one, replaced ones marked; a note is an agent's later word on a topic the person decided, kept beside it. The person's decisions come from their own typed words; an agent's from memory.write kind decision. topic narrows by a word (\"hosting\", \"stripe\"); project (a slug) or project_cwds to one project. Only within the caller's reach.",
-      input: { type: "object", properties: { topic: { type: "string" }, history: { type: "boolean" }, project: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
+      description: "What was decided, per project and topic, the newest decision winning. Current ones unless history is true; topic or project narrows it.",
+      input: { type: "object", properties: { topic: { type: "string", description: "a word to narrow by, such as hosting" }, history: { type: "boolean", description: "true includes replaced and reverted decisions, marked" }, project: { type: "string", description: "a project slug" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
       run: async (input, extra = {}) => {
         const { caller } = extra;
         let sees = true;
@@ -1509,7 +1509,7 @@ export default {
     // knows whose names start with the prefix. Personal names only for the user's own surfaces.
     ctx.tool("memory.suggest", {
       effect: "read",
-      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }], items } (items: the same in suggest.offer's shape; memory offers this tool to suggest). Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
+      description: "Names memory knows that start with a prefix, for completion. Personal names reach only the user's own surfaces.",
       input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -1550,7 +1550,7 @@ export default {
     });
     ctx.tool("memory.profile", {
       effect: "read",
-      description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
+      description: "The user's durable facts as short lines for a system prompt, strongest first: only what holds at confidence 0.5 or more, nothing sensitive.",
       input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, class: { type: "string", enum: ["life", "working_style", "writing_style", "pm_style", "stack"], description: "only this class of the person's identity memory: how they work, write and run projects, what they build with, or their life" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.profile");
@@ -1563,8 +1563,8 @@ export default {
       effect: "write",
       // The person's own Claude session remembers a fact through this (/vyre remember); the body refuses an agent's session. Group D HD-8 (a session-sourced fact should wait for the person) is still open.
       callers: [...PEOPLE_MOD, "mcp", "harness"],
-      description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
-      input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
+      description: "Keep a fact the user or their assistant states outright, with no confirmation. Returns { id, text, facts }.",
+      input: { type: "object", properties: { text: { type: "string" }, room: { type: "string", description: "where it was said; personal facts are not a project's" }, ...agentField } },
       run: async (input, extra = {}) => {
         const { caller } = extra;
         await personalOnly(input, caller, "memory.remember");
@@ -1665,7 +1665,7 @@ export default {
     // memory can answer surely, that answer first.
     ctx.tool("memory.context", {
       effect: "read",
-      description: "Context for one prompt: lines worth adding before it. The graph's facts about what it names (as memory.relevant), and when the prompt asks about the user's own life and memory is sure (confidence 0.5 or more), that answer first. Returns { lines: string[], answer: { text, confidence, from } | null }.",
+      description: "Lines to add before a prompt: the graph's facts about what it names, plus memory's answer when it asks about the user's life.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
       run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
@@ -1701,7 +1701,7 @@ export default {
     // session and what memory learned about it this week, in at most 300 characters. No model and no
     // personal facts: a project's room only, for its brief.
     const todayDef = {
-      description: "For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.",
+      description: "For a session's brief: the project's last session and what memory learned this week from the person's own words. Empty outside a project.",
       input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, person_only: { type: "boolean", description: "leave out what agents and modules wrote (the brief asks for this)" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const room = roomOf(input);
@@ -1754,7 +1754,7 @@ export default {
     // caller's, never the input's. Untrusted rows and anything only an agent or module stands behind
     // stay out; every line is data, not an instruction.
     const briefDef = {
-      description: "What a session is told about memory when it starts: { text } of at most 600 characters. for: session|project|teammate|assistant; project (a slug) and thread optional. Plain words on using memory_ask and memory_remember, then the project's current decisions (top 5) and what was learned lately. Only the caller's reach; never an untrusted write.",
+      description: "What a session is told about memory when it starts: how to use memory_ask and memory_remember, current decisions, recent learnings. Returns { text }.",
       input: { type: "object", properties: { for: { type: "string", enum: ["session", "project", "teammate", "assistant"] }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
       run: async (input, extra = {}) => {
         const who = ["session", "project", "teammate", "assistant"].includes(input.for) ? input.for : "session";
@@ -1786,8 +1786,8 @@ export default {
     // first prompt, then up to 5 relevant lines on every prompt, each quoted and attributed as data.
     // It runs the two tools it is built from with the caller's own extra, so scope is the caller's.
     ctx.tool("memory.prompt", {
-      description: "Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) must pass that thread's agent, or person: true for the person's own thread (honored only from Vyre's own first-party modules); a module call with neither gets nothing (never the owner's view).",
-      input: { type: "object", properties: { prompt: { type: "string" }, first: { type: "boolean" }, person: { type: "boolean" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
+      description: "Text blocks for a provider's prompt: { blocks, text }. first: true adds the memory brief; prompt adds relevant lines, quoted as memory.",
+      input: { type: "object", properties: { prompt: { type: "string" }, first: { type: "boolean" }, person: { type: "boolean", description: "true for the person's own thread (first-party modules only); a module passing neither agent nor person gets nothing" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
       run: async (input, extra = {}) => {
         // Fail closed: a module that names no agent and does not say the thread is the person's own gets nothing.
         if (String(extra.caller || "").startsWith("module:") && !input.agent && !(input.person === true && extra.firstParty === true)) return { text: "", blocks: [] };
@@ -1821,7 +1821,7 @@ export default {
     // sessions to open; for the person's own surfaces, what it is to them too (their wife, their dog).
     ctx.tool("memory.card", {
       effect: "read",
-      description: "One card about a person, org or project: { card: { label, kind, role, to_you?, facts: [{ text, source, age }], projects: [name], sessions, last, sources: [{ session, name, ts }] } | null }. to_you is who it is to the person (\"your wife\"), for their own surfaces only. project_cwds or room scope it as memory.facts does.",
+      description: "One card about a person, org or project: label, role, facts with sources, projects, sessions. Scoped as in memory.facts.",
       input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
