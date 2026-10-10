@@ -140,6 +140,10 @@ test("an input field the tool never declared (bcc) asks", { timeout: 120_000 }, 
   await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", bcc: "x@elsewhere.com", body: "hi" }));
 });
 
+test("a destination written as an object, or computed into one, asks", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: [{ email: "sam@example.com" }], body: "hi" }));
+});
+
 test("a tool whose module declared no destination fields is never covered", { timeout: 120_000 }, async t => {
   await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", body: "hi" }, {}, { action: "zzflow.silent", resource: `vyre://${space}/tool/zzflow.silent` }));
 });

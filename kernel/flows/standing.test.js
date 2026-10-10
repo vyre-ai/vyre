@@ -21,6 +21,9 @@ test("only a tool whose module declared its destinations, with no undeclared inp
   assert.ok(covered(send({ to: "a@x.com" }), cat));
   assert.ok(!covered(send({ to: "a@x.com", bcc: "z@y.com" }), cat), "an undeclared field is unchecked");
   assert.ok(!covered({ ...send({ to: "a@x.com" }), action: "mail.blind" }, cat), "no declaration, no cover");
+  assert.ok(!covered(send({ to: [{ email: "a@x.com" }] }), cat), "a list of objects holds recipients nothing can read");
+  assert.ok(!covered(send({ to: { email: "a@x.com" } }), cat), "an object is not an address");
+  assert.ok(covered(send({ to: ["a@x.com", "b@x.com"] }), cat), "a list of addresses is");
 });
 
 test("a domain entry covers its addresses and nothing else", () => {

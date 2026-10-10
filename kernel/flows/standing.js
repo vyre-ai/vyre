@@ -12,6 +12,9 @@ const isConst = v => v === null || typeof v !== "object" ? true : Array.isArray(
 const one = (/** @type {any} */ x) => (typeof x === "string" || typeof x === "number" ? [String(x)] : []);
 export const strings = (/** @type {any} */ v) => (Array.isArray(v) ? v.flatMap(one) : one(v));
 
+/** Is a destination value something the allow check can read: a string, a number, or a list of those? An object or a list of objects (`to: [{ email }]`) holds recipients nothing here can see. @param {any} v */
+export const plain = v => typeof v === "string" || typeof v === "number" || (Array.isArray(v) && v.every(x => typeof x === "string" || typeof x === "number"));
+
 /** The input fields a tool's module declares as its destinations (`recipients` on its flow.steps entry), from the catalog. None declared means standing never covers it. @param {any} step @param {any} cat @returns {string[]} */
 export function declaredFields(step, cat) {
   const a = ((cat && cat.actions) || {})[step.action];
@@ -40,7 +43,9 @@ export function recipientOf(step, cat) {
 export function covered(step, cat) {
   if (step.kind !== "call" || !isSend(step, cat) || !declaredFields(step, cat).length) return false;
   const known = new Set(Object.keys(((cat && cat.actions) || {})[step.action].inputs || {}));
-  return !(step.input && typeof step.input === "object") || Object.keys(step.input).every(k => known.has(k));
+  const input = step.input && typeof step.input === "object" ? step.input : null;
+  if (input && declaredFields(step, cat).some(f => input[f] !== undefined && isConst(input[f]) && !plain(input[f]))) return false;
+  return !input || Object.keys(input).every(k => known.has(k));
 }
 
 /** Is this send an outward one a turned-on Flow may run on its own? Calls and non-GET service steps are the sends. @param {any} step @param {any} cat */
