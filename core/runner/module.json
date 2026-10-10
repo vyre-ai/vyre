@@ -47,7 +47,7 @@
       {
         "name": "runner.move",
         "effect": "write",
-        "summary": "move a session to the space's server after a last checkpoint",
+        "summary": "move a chat's session to the server, or bring it back to a computer; answers where it runs now",
         "reach": "person"
       },
       {
@@ -61,6 +61,48 @@
         "effect": "read",
         "summary": "where each of your chats runs: on the server or on a computer, and whether it is connected",
         "reach": "person"
+      },
+      {
+        "name": "runner.placement",
+        "effect": "read",
+        "summary": "where a chat's session runs now, its state, why it moved, its epoch and whether it may come back",
+        "reach": "person"
+      },
+      {
+        "name": "runner.why-not",
+        "effect": "read",
+        "summary": "why a chat's session is not running on a computer: one reason code",
+        "reach": "person"
+      },
+      {
+        "name": "runner.settings",
+        "effect": "read",
+        "summary": "this computer's limits for running sessions",
+        "reach": "person"
+      },
+      {
+        "name": "runner.settings.set",
+        "effect": "write",
+        "summary": "change this computer's limits for running sessions",
+        "reach": "person"
+      },
+      {
+        "name": "runner.here",
+        "effect": "read",
+        "summary": "the sessions running on this computer now, with what each uses",
+        "reach": "person"
+      },
+      {
+        "name": "runner.pause-all",
+        "effect": "write",
+        "summary": "freeze every session on this computer until resumed",
+        "reach": "person"
+      },
+      {
+        "name": "runner.resume-all",
+        "effect": "write",
+        "summary": "let the frozen sessions on this computer carry on",
+        "reach": "person"
       }
     ]
   },
@@ -72,13 +114,119 @@
       "runner.locked",
       "runner.deleted",
       "runner.sealed",
-      "runner.seal-failed"
+      "runner.seal-failed",
+      "runner.moved",
+      "runner.fenced"
     ]
   },
   "shows": {
     "deck": [],
-    "capsule": [],
+    "capsule": {
+      "view:here": {
+        "title": "Running on this computer",
+        "keywords": [
+          "running",
+          "sessions",
+          "this computer",
+          "processor",
+          "memory",
+          "pause",
+          "lend"
+        ],
+        "icon": "bolt",
+        "root": true,
+        "list": {
+          "tool": "runner.here",
+          "input": {},
+          "map": {
+            "rows": "sessions",
+            "id": "thread",
+            "title": "title",
+            "subtitle": "line",
+            "accessory": "cpu"
+          },
+          "actions": [
+            {
+              "id": "server",
+              "title": "Move to the server",
+              "tool": "runner.move",
+              "input": {
+                "thread": "{id}",
+                "to": "server"
+              }
+            },
+            {
+              "id": "pause",
+              "title": "Pause all",
+              "tool": "runner.pause-all",
+              "input": {}
+            },
+            {
+              "id": "resume",
+              "title": "Resume all",
+              "tool": "runner.resume-all",
+              "input": {}
+            }
+          ],
+          "empty": "Nothing is running on this computer."
+        }
+      }
+    },
     "cli": []
   },
-  "needs": {}
+  "needs": {},
+  "settings": [
+    {
+      "key": "runner.enabled",
+      "group": "devices",
+      "label": "Let sessions run on this computer",
+      "help": "Off: a space's sessions run on its server. On: they may run here too, within the limits below, and move to the server when a limit is passed.",
+      "type": "bool",
+      "default": false,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "runner.plugged_in_only",
+      "group": "devices",
+      "label": "Only while plugged in",
+      "help": "On battery, a session moves to the server.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "runner.cpu_percent",
+      "group": "devices",
+      "label": "Processor limit (percent)",
+      "help": "The most of one processor core the sessions here may use together. Past it, a session moves to the server.",
+      "type": "int",
+      "min": 10,
+      "max": 100,
+      "default": 50,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "runner.memory_mb",
+      "group": "devices",
+      "label": "Memory limit (megabytes)",
+      "help": "The most memory the sessions here may use together. Past it, a session moves to the server.",
+      "type": "int",
+      "min": 512,
+      "max": 65536,
+      "default": 4096,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    }
+  ]
 }

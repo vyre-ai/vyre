@@ -10,6 +10,10 @@ import { createTurnSeal } from "./ownserver.js";
 import path from "node:path";
 import fs from "node:fs";
 import { createLenderHost } from "./lender-host.js";
+import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
+import { hereBlock, deviceState } from "./placement.js";
+import { HEARTBEAT_MS } from "./placement-book.js";
+import { createMover, sleepReason } from "./mover.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
@@ -86,6 +90,8 @@ export default {
         l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(mine && typeof mine.deviceId === "string" && mine.deviceId ? { eid: mine.deviceId } : {}), ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
         await l.ready; lenders.set(space, l);
         l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} runners.delete(space); } });
+        // the home took a session of this computer (it moved, or this computer went quiet): stop it here, writing nothing more
+        l.ports.onFenced(session => { const r = runners.get(space); if (r) r.fence(session).catch(() => {}); });
       }
       return l.ports;
     };
@@ -102,7 +108,7 @@ export default {
       let r = runners.get(space);
       if (!r) {
         r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
-          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: s => p.requestServer?.(space, s), onEvent: e => emit(space, e) });
+          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
       return r;
@@ -124,20 +130,34 @@ export default {
       input: obj({ space: str, pinned: { type: "boolean" } }, ["space"]),
       run: async ({ space, pinned }) => (await forSpace(space)).decide({ pinnedToServer: Boolean(pinned) }),
     });
+    /** The limits the person set for this computer, as last read. */
+    const limits = { ...SETTING_DEFAULTS };
+    const readSettings = settingsReader(key => ctx.call("settings.get", { key }));
+    const refreshSettings = async () => { Object.assign(limits, await readSettings()); return limits; };
+    /** Titles of the chats the sessions here belong to, as the home told this computer when it lent them. @type {Map<string, string>} */ const titles = new Map();
+    /** Start (or resume) a session here: the Space's own definition says what runs. Both the person's tool and the home's "start it" (the person brought a session back) come here. */
+    const startSession = async (space, { session, resume, chat }) => {
+      await refreshSettings();
+      if (readSettings.known() && !limits.enabled) throw Object.assign(new Error("Running sessions on this computer is switched off. Turn it on in Settings, This computer."), { code: "refused" });
+      for (const r0 of runners.values()) if (r0.paused) throw Object.assign(new Error("Sessions on this computer are paused: resume them first."), { code: "conflict" });
+      const p = await portsFor(space); const r = await forSpace(space);
+      // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
+      await r.open();
+      const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
+      if (spec && spec.skew) throw Object.assign(new Error("This Mac runs an older Vyre than this Space needs, so the session runs on the server. Update Vyre on this Mac, then bring it back."), { code: "unavailable" });
+      if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
+      if (typeof spec.title === "string" && spec.title) titles.set(session, spec.title);
+      const run = resolveAgent(spec);
+      const h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
+      return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
+    };
     ctx.tool("runner.start", {
       description: "Start a session here. The space's own definition of the session decides the program, the routes and the credentials it may use; the caller names only the space and the session. Needs both grants and a held key lease.",
       input: obj({ space: str, session: str, resume: { type: "boolean" }, chat: { ...str, description: "The chat this work belongs to (chat_<id>), so the chat can say where it runs." } }, ["space", "session"]),
       run: async ({ space, session, resume, chat }, meta) => {
         if (chat !== undefined && !(typeof chat === "string" && /^chat_[0-9a-f-]{36}$/.test(chat))) throw Object.assign(new Error("a chat is named by its id"), { code: "bad_input" });
         await person(ctx, meta, "starting a session here");
-        const p = await portsFor(space); const r = await forSpace(space);
-        // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
-        await r.open();
-        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
-        if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
-        const run = resolveAgent(spec);
-        const h = await r.start({ session, resume: Boolean(resume), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
-        return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
+        return startSession(space, { session, resume, chat });
       },
     });
     // Where each chat's work runs, for the chips on a chat: on this server, or on a member's own computer, with its name and whether it is connected. Rows only for chats the caller is in (the kernel's own
@@ -158,6 +178,9 @@ export default {
         return { places: rows.filter((/** @type {any} */ r) => r.chat && mine.has(r.chat)).map((/** @type {any} */ r) => { const d = list.find((/** @type {any} */ x) => x.id === r.device); return { chat: r.chat, session: r.session, computer: d ? String(d.name) : null, device: r.device, online: d ? Boolean(d.online) : false }; }) };
       },
     });
+    /** What the place tools need from this module (place-tools.js); `moveThread` is added by them. @type {any} */
+    const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
+    registerPlaceTools(ctx, placeDeps);
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
         await person(ctx, meta, "stopping a session here"); await (await forSpace(space)).stop(session); return { stopped: true }; } });
@@ -172,9 +195,14 @@ export default {
         const r = runners.get(space); if (!r) return { revoked: false, why: "nothing here for that space" };
         await r.revoke(); runners.delete(space); return { revoked: true };
       } });
-    ctx.tool("runner.move", { description: "Move a session to the space's server, after a last checkpoint here.", input: obj({ space: str, session: str }, ["space", "session"]),
-      run: async ({ space, session }, meta) => {
-        await person(ctx, meta, "moving a session"); await (await forSpace(space)).moveToServer(session); return { moved: true }; } });
+    ctx.tool("runner.move", { description: "Move a chat's session to the server or back to a computer. Input: thread and to (server or mac). Answers where it runs now.",
+      input: obj({ thread: str, to: { type: "string", enum: ["server", "mac"] }, space: str, session: str }, []),
+      run: async (i, meta) => {
+        // the chat's own words: the home asks the computer to hand the session over, or lets it come back (place-tools.js)
+        if (i.thread !== undefined) return placeDeps.moveThread(i, meta);
+        // the computer's own: a last checkpoint here, then the server takes it
+        if (typeof i.space !== "string" || typeof i.session !== "string") throw Object.assign(new Error("name the chat to move, or the space and session on this computer"), { code: "bad_input" });
+        await person(ctx, meta, "moving a session"); const r = await (await forSpace(i.space)).moveToServer(i.session, "you"); return r.moved === false ? r : { moved: true }; } });
 
     // Revoking is the kernel's reaction to a withdrawn offer or a removed member, never a tool anyone can call.
     const off = ports()?.onRevoke?.(async () => {
@@ -234,7 +262,7 @@ export default {
           await h.identity();
           const me = await k.call("lent.whoami", []);
           const st = await k.call("lent.status", [{ device_key: me.device }]);
-          if (st && st.spaceAllows && st.memberAccepts) continue;   // access stands: the workspace stays locked and encrypted until runner.start
+          if (st && st.spaceAllows && st.memberAccepts) { await portsFor(id).catch(() => {}); continue; }   // access stands: the workspace stays locked and encrypted until runner.start; the home hears from this computer again
           const r = await forSpace(id); await r.revoke(); runners.delete(id);
         } catch (e) {
           const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "");
@@ -245,6 +273,74 @@ export default {
       if (unsure && !stoppedSweep) { sweepTimer = setTimeout(() => { sweepSpaces().catch(() => {}); }, 60_000); sweepTimer.unref?.(); }
     };
     void sweepSpaces().catch(() => {});
-    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+
+    // The heartbeat: every few seconds this computer tells each Space's home which sessions it runs, at which epoch and with what use, and whether nothing holds them back now. The answer says which of them the home
+    // no longer has (stopped here), and what it wants done: hand a session over (the person's move), or start one the person brought back. A home that cannot be reached changes nothing here: after a lapse it
+    // takes the sessions itself, and this computer is fenced when it is heard from again. The moves run apart from the beat, so a slow final checkpoint never makes this computer look dead.
+    const asked = new Set();
+    // Which sessions go to the server and why (mover.js), from the person's limits and this computer's conditions. A session is handed over apart from the beat (freeze, last checkpoint, release), once; a
+    // move the server held back (its cooldown) or that could not be made waits before it is tried again.
+    const mover = createMover();
+    /** @type {"lid-closed" | "asleep" | null} */ let sleeping = null;
+    const handing = new Set();
+    const holdOff = new Map();
+    const handOver = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason) => {
+      const key = `${space}/${session}`, r = runners.get(space);
+      if (!r || handing.has(key) || (holdOff.get(key) || 0) > Date.now()) return;
+      handing.add(key);
+      (async () => {
+        try { const out = await r.moveToServer(session, reason); if (out && out.moved === false) holdOff.set(key, Date.now() + 30_000); }
+        catch { holdOff.set(key, Date.now() + 10_000); }
+        finally { handing.delete(key); }
+      })();
+    };
+    const moveTick = () => {
+      /** @type {any[]} */ const rows = [];
+      for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x });
+      for (const d of mover.tick({ settings: limits, sleeping, onPower: deviceState().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
+    };
+    // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts; when it wakes, check in at once.
+    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); moveTick(); });
+    const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatOnce().catch(() => {}); });
+    /** Consecutive beats a Space's home did not answer. @type {Map<string, number>} */ const missed = new Map();
+    let beating = false, beatTimer = null;
+    const beatOnce = async () => {
+      if (beating) return;
+      beating = true;
+      try {
+        await refreshSettings().catch(() => {});
+        moveTick();
+        const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: deviceState(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
+        for (const [space, l] of lenders) {
+          const p = l.ports; if (typeof p.beat !== "function") continue;
+          const r = runners.get(space);
+          const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true })) : [];
+          let ans;
+          try { ans = await p.beat({ sessions, well }); }
+          catch {
+            // two beats unanswered: the sessions wait where they are, so they never run ahead of a server that will take them after a lapse; the next answer settles what happens to them
+            const n = (missed.get(space) || 0) + 1; missed.set(space, n);
+            if (n >= 2 && r) r.freeze("offline");
+            continue;
+          }
+          missed.set(space, 0);
+          if (r && ans && Array.isArray(ans.fenced)) for (const sid of ans.fenced) await r.fence(sid).catch(() => {});
+          if (r) r.thaw("offline");
+          for (const d of ans && Array.isArray(ans.directives) ? ans.directives : []) {
+            const key = `${space}/${d.do}/${d.session}`;
+            if (asked.has(key)) continue;
+            asked.add(key);
+            (async () => {
+              try {
+                if (d.do === "release" && r) await r.moveToServer(d.session, d.reason || "you");
+                else if (d.do === "start" && limits.enabled) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
+              } catch { /* asked again at a later beat */ } finally { asked.delete(key); }
+            })();
+          }
+        }
+      } finally { beating = false; }
+    };
+    if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, HEARTBEAT_MS); beatTimer.unref?.(); }
+    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

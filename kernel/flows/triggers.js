@@ -11,6 +11,7 @@
 //   person      manual             someone or an assistant runs it                          runner.start(), through the tasks path under their own chain
 
 import { validTimeZone } from "./zone.js";
+import { SCHEDULE_KEYS, checkSchedule, describeWindow } from "./schedule.js";
 
 /** @typedef {{ path: string, message: string }} Problem */
 /**
@@ -47,16 +48,17 @@ export const TRIGGER_REGISTRY = Object.freeze({
   },
   schedule: {
     kind: "schedule", on: ["time"], label: "Schedule", icon: "clock", armed: "runner.tick() at runner.nextWake()",
-    scope: ["trigger"], keys: ["on", "cron", "every_ms", "at", "tz"],
-    words: t => `${t.cron ? `On a schedule (${t.cron}${t.tz ? `, ${t.tz}` : ""})` : t.every_ms ? `Every ${span(t.every_ms)}` : "At a set time"}`,
+    scope: ["trigger"], keys: ["on", "cron", "every_ms", "at", "tz", ...SCHEDULE_KEYS],
+    words: t => `${t.cron ? `On a schedule (${t.cron}${t.tz ? `, ${t.tz}` : ""})` : t.every_ms ? `Every ${span(t.every_ms)}` : "At a set time"}${describeWindow(t) ? `, ${describeWindow(t)}` : ""}`,
     check(t, out, h) {
-      h.onlyKeys(t, ["on", "cron", "every_ms", "at", "tz"], "trigger", out);
+      h.onlyKeys(t, ["on", "cron", "every_ms", "at", "tz", ...SCHEDULE_KEYS], "trigger", out);
+      checkSchedule(t, out);
       if ([t.cron, t.every_ms, t.at].filter(x => x !== undefined).length !== 1) out.push({ path: "trigger", message: "a time trigger has exactly one of cron, every_ms or at" });
       if (t.cron !== undefined && typeof t.cron !== "string") out.push({ path: "trigger.cron", message: "cron is a five-field string" });
       if (t.every_ms !== undefined && !(Number.isInteger(t.every_ms) && t.every_ms >= 60_000)) out.push({ path: "trigger.every_ms", message: "a repeat is a whole number of milliseconds, at least a minute" });
       if (t.at !== undefined && !Number.isInteger(t.at)) out.push({ path: "trigger.at", message: "at is a time in milliseconds" });
-      // The zone is the Space's unless the trigger names one (a schedule for a branch office); only a cron has a wall clock to read.
-      if (t.tz !== undefined && (t.cron === undefined || !validTimeZone(t.tz))) out.push({ path: "trigger.tz", message: t.cron === undefined ? "a time zone goes with a cron schedule" : "that is not a time zone name (use one like America/Los_Angeles)" });
+      // The zone is the Space's unless the trigger names one (a schedule for a branch office); a cron line and business hours read a wall clock, an interval alone does not.
+      if (t.tz !== undefined && ((t.cron === undefined && t.hours === undefined) || !validTimeZone(t.tz))) out.push({ path: "trigger.tz", message: t.cron === undefined && t.hours === undefined ? "a time zone goes with a cron schedule or business hours" : "that is not a time zone name (use one like America/Los_Angeles)" });
     },
     source: t => `schedule:${t.cron ? `cron ${t.cron}` : t.every_ms ? `every ${t.every_ms}ms` : `at ${t.at}`}`,
   },
@@ -138,6 +140,8 @@ export function whyRan(t) {
     case "event": case "stage": return `A record event started it: ${src.replace(/^record:/, "")}.`;
     case "web": return `Something called ${src.replace(/^web:/, "")}${sample(t.input)}.`;
     case "manual": return `Someone ran it${sample(t.input)}.`;
+    case "branch": return "It is one lane of a parallel step in another run.";
+    case "subflow": return "Another Flow ran it as a step.";
     default: return `Started by ${src}.`;
   }
 }

@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const RUNNER_PROTOCOL = 1;
-export const RUNNER_PROTOCOL_MIN = 1;
+// 2: every write names the session's epoch, the heartbeat and the release exist (R031-95 2.4). A runner older than the home's minimum is told so and never half-runs a session (2.6).
+export const RUNNER_PROTOCOL = 2;
+export const RUNNER_PROTOCOL_MIN = 2;
 /** @type {string | null} */ let version = null;
 /** This runner's version, read from the package once. */
 export function runnerVersion() {

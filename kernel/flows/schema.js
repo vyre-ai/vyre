@@ -10,12 +10,12 @@ import { canonical as kernelCanonical } from "../core/canonical.js";
 
 export const FLOW_FORMAT = 1;
 
-export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "extract", "service", "fn"]);
-/** Steps that hold a nested list of steps. */
-export const BLOCK_KINDS = Object.freeze({ decide: ["then", "else"], repeat: ["steps"] });
+export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "parallel", "branch", "subflow", "wait", "ask", "assign", "call", "stage", "agent", "classify", "extract", "service", "fn"]);
+/** Steps that hold a nested list of steps. A `parallel` holds lanes (`branch` steps), each holding the steps that lane runs; the lanes run at the same time and the step is done when all are. */
+export const BLOCK_KINDS = Object.freeze({ decide: ["then", "else"], repeat: ["steps"], parallel: ["steps"], branch: ["steps"] });
 export const TRIGGER_KINDS = TRIGGER_ONS;
 export const AUTHORSHIP = Object.freeze(["builder", "human", "model", "kit"]);
-export const LIMITS = Object.freeze({ steps: 200, depth: 6, name: 120, codeSource: 64 * 1024, repeatMax: 1000 });
+export const LIMITS = Object.freeze({ steps: 200, depth: 6, name: 120, codeSource: 64 * 1024, repeatMax: 1000, lanes: 8 });
 
 const ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
 const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/; // record type names are the kernel's: lowercase letters, digits and hyphens (fields and roles keep underscores)
@@ -67,7 +67,7 @@ function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, 
 export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
-  decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"],
+  decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
   call: ["action", "resource", "input"], stage: ["type", "record", "to"],
@@ -90,8 +90,9 @@ const OUTPUT_KINDS = ["fields", "note", "draft", "sent", "decision", "file"];
 /**
  * @param {any} steps @param {string} path @param {Problem[]} out @param {Set<string>} ids @param {number} depth
  * @param {{ count: number }} budget @param {boolean} [inHandler] steps of a failure path: they may not carry a failure path of their own
+ * @param {boolean} [inLane] the steps of a parallel step: lanes (branch steps) and nothing else
  */
-function checkSteps(steps, path, out, ids, depth, budget, inHandler = false) {
+function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inLane = false) {
   if (!Array.isArray(steps)) { out.push({ path, message: "steps are a list" }); return; }
   if (depth > LIMITS.depth) { out.push({ path, message: `steps nest at most ${LIMITS.depth} deep` }); return; }
   steps.forEach((s, i) => {
@@ -102,9 +103,11 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false) {
     else if (ids.has(s.id)) out.push({ path: `${p}.id`, message: `the step id ${s.id} is used twice` });
     else ids.add(s.id);
     if (!STEP_KINDS.includes(s.kind)) { out.push({ path: `${p}.kind`, message: `a step is one of ${STEP_KINDS.join(", ")}` }); return; }
+    if (inLane && s.kind !== "branch") out.push({ path: `${p}.kind`, message: "a parallel step holds lanes only: each one a branch step with its steps inside" });
     const keys = STEP_KEYS[/** @type {keyof typeof STEP_KEYS} */ (s.kind)];
     // (a decide or a repeat takes a failure path and a check, but no time limit or retry: a key the runner would ignore is refused, not accepted)
-    const policyKeys = BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
+    // (a lane has no policy of its own: its steps do; a parallel step waits for its lanes, so a time limit or a retry on it would not mean one attempt)
+    const policyKeys = s.kind === "branch" ? [] : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || s.kind === "subflow" ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
     onlyKeys(s, ["id", "kind", "label", ...keys, ...policyKeys], p, out);
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });
@@ -130,6 +133,20 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false) {
         need("as", v => typeof v === "string" && ID_RE.test(v), "name the item");
         if (s.max !== undefined && !(Number.isInteger(s.max) && s.max >= 1 && s.max <= LIMITS.repeatMax)) out.push({ path: `${p}.max`, message: `max is 1 to ${LIMITS.repeatMax}` });
         checkSteps(s.steps, `${p}.steps`, out, ids, depth + 1, budget, inHandler);
+        break;
+      case "parallel":
+        if (inHandler) out.push({ path: p, message: "a failure path runs one step after another: a parallel step does not belong in it" });
+        if (!Array.isArray(s.steps) || s.steps.length < 2 || s.steps.length > LIMITS.lanes) out.push({ path: `${p}.steps`, message: `a parallel step has 2 to ${LIMITS.lanes} lanes (branch steps)` });
+        else checkSteps(s.steps, `${p}.steps`, out, ids, depth + 1, budget, inHandler, true);
+        break;
+      case "branch":
+        if (!inLane) out.push({ path: p, message: "a branch is a lane of a parallel step" });
+        if (!Array.isArray(s.steps) || !s.steps.length) out.push({ path: `${p}.steps`, message: "give the steps this lane runs" });
+        else checkSteps(s.steps, `${p}.steps`, out, ids, depth + 1, budget, inHandler);
+        break;
+      case "subflow":
+        need("flow", v => typeof v === "string" && NAME_RE.test(v), "name the Flow to run, by its name");
+        value("input");
         break;
       case "wait": {
         const given = ["for_ms", "until", "event"].filter(k => s[k] !== undefined);
@@ -276,7 +293,7 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "concurrency", "lock", "stuck_after_ms"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "concurrency", "lock", "stuck_after_ms"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
@@ -296,6 +313,8 @@ export function checkFlow(flow) {
     if (!Array.isArray(flow.on_failure) || !flow.on_failure.length) out.push({ path: "on_failure", message: "on_failure is a list of steps to run when the run is about to fail" });
     else checkSteps(flow.on_failure, "on_failure", out, ids, 0, budget, true);
   }
+  // what a Flow gives back to the Flow that ran it as a sub-flow: values and expressions over its steps
+  if (flow.returns !== undefined) { if (!isObj(flow.returns)) out.push({ path: "returns", message: "returns is an object of names and values" }); else checkValue(flow.returns, "returns", out); }
   if (flow.concurrency !== undefined && !(Number.isInteger(flow.concurrency) && flow.concurrency >= 1 && flow.concurrency <= 32)) out.push({ path: "concurrency", message: "concurrency is 1 to 32 runs at once" });
   if (flow.lock !== undefined) { if (typeof flow.lock !== "string") out.push({ path: "lock", message: "lock is an expression giving a key (runs with the same key never run at the same moment)" }); else checkExpr(flow.lock, "lock", out); }
   if (flow.stuck_after_ms !== undefined && !(Number.isInteger(flow.stuck_after_ms) && flow.stuck_after_ms >= 10_000 && flow.stuck_after_ms <= 86_400_000)) out.push({ path: "stuck_after_ms", message: "stuck_after_ms is 10 seconds to 24 hours, in milliseconds" });

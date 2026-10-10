@@ -40,7 +40,7 @@ import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
-import { lentServiceFor } from "./lent-service.js";
+import { lentServiceFor, lentPlacements } from "./lent-service.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -340,6 +340,8 @@ async function startLocked(opts, root, p, release) {
       get member() { return kernel && kernel.owner; },
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
       lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
+      // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
+      get placements() { return lentPlacements(registry); },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
@@ -613,6 +615,10 @@ async function startLocked(opts, root, p, release) {
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
+        emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
+        // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a thread is `opts.resumeLent` (or the registry's `resumeLent`) and, until it exists, the move is recorded and said but nothing continues the session
+        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f === "function") return f(i); log(`lent: ${String(i.session).slice(0, 8)} is the server's now (${i.reason}); nothing continues it yet`); },
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
           // the credential is the owner of this home's own: a member who is not that person gets no model route from it
@@ -629,6 +635,9 @@ async function startLocked(opts, root, p, release) {
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
       const homeMoves = () => { try { const w = registry.modules.get("wink"); return w && w.handle ? w.handle.homeMoves : null; } catch { return null; } };
       registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
+      registry.deps.lentHome = (/** @type {string} */ space) => lent.home(space);
+      registry.deps.lentSpaces = () => lent.spaces();
+      registry.deps.lentStop = () => lent.stop();
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent, services: (/** @type {string} */ space, /** @type {any} */ k) => { const h = /** @type {any} */ (registry.modules.get("sidebar") && registry.modules.get("sidebar").handle); return h && typeof h.peerService === "function" ? { sidebar: h.peerService({ space, kernel: k, registry }) } : {}; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
@@ -710,6 +719,7 @@ async function startLocked(opts, root, p, release) {
     if (releaseWatch) releaseWatch.stop();
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
     if (closeFlowsHost) closeFlowsHost();
+    try { /** @type {any} */ (registry.deps).lentStop?.(); } catch { /* the home is going down */ }
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;

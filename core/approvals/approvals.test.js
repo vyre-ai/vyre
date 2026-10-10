@@ -82,3 +82,12 @@ test("the calling device comes from the verified peer, not the caller label: a `
   assert.equal((await w.run("approvals.answer", { id: a.id, approve: false }, { caller: "device:other" })).answered, "refused", "a label alone is not a device");
   void card;
 });
+
+test("a held outward call shows in the waiting list with a plain title: who, and what, never the digest that binds the call or the words of the message", async () => {
+  const w = await world();
+  const f = { to: "juno@example.com", body: "the whole message, which is for the card and not the list", input_sha256: "a".repeat(32) };
+  const a = await w.run("approvals.hold", { tool: "mail.send", fields: f, from: "mcp:agent:kit" }, { caller: "module:registry" });
+  assert.match(a.line, /kit/); assert.doesNotMatch(a.line, /aaaaaaaa/, "the digest is not words");
+  const { items } = await w.run("approvals.items", {}, { caller: "cli" });
+  assert.deepEqual(items.map(i => i.title), ["An assistant (kit) wants to run mail.send"]);
+});
