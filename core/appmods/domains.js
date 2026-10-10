@@ -27,7 +27,7 @@ export function cleanHost(raw, zone = "vyre.run") {
  */
 export function createDomains(db, now = Date.now) {
   return {
-    list: () => /** @type {{ host: string, app: string, created: number }[]} */ (db.prepare("SELECT host, app, created FROM appmods_domains ORDER BY created, host").all()),
+    list: () => /** @type {{ host: string, app: string, created: number }[]} */ (db.prepare("SELECT host, app, created FROM appmods_domains ORDER BY created, host").all().map(r => ({ host: String(r.host), app: String(r.app), created: Number(r.created) }))),
     /** The app a host belongs to, or null. @param {string} host */
     appOf(host) { const r = db.prepare("SELECT app FROM appmods_domains WHERE host = ?").get(host); return r ? String(r.app) : null; },
     /** @param {string} host @param {string} app */
