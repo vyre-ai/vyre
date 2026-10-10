@@ -72,6 +72,7 @@ function fieldBuilder(kind) {
     if (kind === "link") {
       // no `to`: a link to any record of the Space (the Project's credentials name a Vault login by its address)
       if (opts.to !== undefined) f.to = name(opts.to, "defineField.link.to");
+      else if (opts.inverse !== undefined) bad("defineField.link.inverse", "an inverse needs the type it links to (to)");
       if (opts.many !== undefined) { if (bool(opts.many, "defineField.link.many")) f.many = true; }
       if (opts.inverse !== undefined) {
         onlyKeys(opts.inverse, ["name", "label"], "defineField.link.inverse");
