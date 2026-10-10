@@ -1149,12 +1149,13 @@ generated: scripts/gen-docs-reference
 - `onboard.stepped` event, [explained](events.md#onboard). No mentions.
 - `onboard.you` tool, [explained](tools.md#onboardyou). 2 mentions: adr/0008-install-journey.md [141](../adr/0008-install-journey.md#4-names-and-certificates), [305](../adr/0008-install-journey.md#who-builds-what)
 - `outside` config key, not explained on any page yet. No mentions.
-- `outside.base` tool, [explained](tools.md#outsidebase). No mentions.
 - `outside.grant` tool, [explained](tools.md#outsidegrant). No mentions.
 - `outside.granted` event, [explained](events.md#outside). No mentions.
 - `outside.held` event, [explained](events.md#outside). No mentions.
 - `outside.host` config key, not explained on any page yet. No mentions.
 - `outside.list` tool, [explained](tools.md#outsidelist). No mentions.
+- `outside.mcp.base` tool, [explained](tools.md#outsidemcpbase). No mentions.
+- `outside.mcp.status` tool, [explained](tools.md#outsidemcpstatus). No mentions.
 - `outside.port` config key, not explained on any page yet. No mentions.
 - `outside.refused` event, [explained](events.md#outside). No mentions.
 - `outside.register` tool, [explained](tools.md#outsideregister). No mentions.
@@ -1162,7 +1163,6 @@ generated: scripts/gen-docs-reference
 - `outside.release` tool, [explained](tools.md#outsiderelease). No mentions.
 - `outside.revoke` tool, [explained](tools.md#outsiderevoke). No mentions.
 - `outside.revoked` event, [explained](events.md#outside). No mentions.
-- `outside.status` tool, [explained](tools.md#outsidestatus). No mentions.
 - `outside.token` tool, [explained](tools.md#outsidetoken). No mentions.
 - `outside.ungrant` tool, [explained](tools.md#outsideungrant). No mentions.
 - `outside.used` event, [explained](events.md#outside). No mentions.
