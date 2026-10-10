@@ -49,6 +49,7 @@ const fakeSource = `export default { async start(ctx) {
   } else if (tools === "appmods") {
     t("appmods.publish.install", async i => { pf().installs.push(i.deployment); return { name: i.deployment.name, state: "running", url: "https://x" }; });
     t("appmods.publish.remove", async () => ({ removed: true }));
+    t("appmods.publish.run", async i => { pf().runs.push(i.deployment); const r = pf().runResult; if (r instanceof Error) throw r; return r; });
   } else if (tools === "projects") {
     t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
@@ -58,7 +59,7 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership", "spaces.merge-list"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership", "spaces.merge-list"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove", "appmods.publish.run"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
@@ -88,6 +89,8 @@ async function boxRegistry(t, o = {}) {
     owns: (/** @type {string} */ host, /** @type {string} */ space) => host === "northwind.vyre.run" && space === SPACE.id,
     tasks: /** @type {any[]} */ ([]),
     installs: /** @type {any[]} */ ([]),
+    runs: /** @type {string[]} */ ([]),
+    runResult: /** @type {any} */ ({ ok: true, message: "ran", output: "exit=0 seconds=2\nhello\n" }),
   });
   /** @type {any} */ (globalThis).__publishFakes = pf;
   t.after(() => { delete /** @type {any} */ (globalThis).__publishFakes; });
@@ -648,4 +651,58 @@ test("publish: a key changed in the Vault restarts the live server that holds it
   await new Promise(r => setTimeout(r, 200));
   assert.equal(installs(), before + 1, "once for a burst of changes");
   assert.equal(b.pf.installs.filter((/** @type {any} */ d) => d.name === "northwind-build").length, 1, "a site that only uses the key to build is not restarted");
+});
+
+test("publish: a job goes live with one yes and no address, runs now and on its schedule one at a time with a five-minute floor, keeps what it printed without secret shapes, and a failed run is a card", async t => {
+  const { seams } = await import("./index.js");
+  seams.jobTickMs = 20;
+  t.after(() => { seams.jobTickMs = undefined; });
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "appmods"] });
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [], logs: "ok", runtime: { kind: "image", image: "sha256:" + "f".repeat(64), port: 8080, health: { path: "/", ok: [200] }, job: true } });
+  const made = await b.ok("publish.create", { name: "nightly", source: { kind: "folder", ref: "/srv/nightly" }, build: { image: "dockerfile" }, job: { every_minutes: 5, timeout_s: 120 } });
+  const id = made.deployment.id;
+  assert.deepEqual(made.deployment.job, { every_minutes: 5, timeout_s: 120 });
+  await b.ok("publish.preview", { deployment: id });
+  const a = await b.ok("publish.approve", { deployment: id });
+  await b.ok("publish.decide", { task: a.task, approve: true });
+  const p = await b.ok("publish.publish", { deployment: id });
+  assert.equal(p.held, true);
+  assert.deepEqual(p.plan.job, { every_minutes: 5, timeout_s: 120, image: "sha256:" + "f".repeat(64), network: "none", egress: [] }, "the plan names the job");
+  assert.equal(p.plan.goes_public, false);
+  assert.equal(p.plan.server, undefined, "a job is not a server");
+  const live = await b.ok("publish.decide", { task: p.task, approve: true });
+  assert.equal(live.deployment.stage, "Production");
+  assert.equal(live.deployment.url, null, "a job has no address");
+  assert.deepEqual(b.pf.installs.at(-1).job, { every_minutes: 5, timeout_s: 120 }, "appmods is told it is a job");
+  assert.equal((await b.call("publish.domain.add", { host: "nightly.example.com", deployment: id })).error?.code, "bad_input", "a job has no domain");
+  // run it now
+  b.pf.runResult = { ok: true, message: "ran", output: "exit=0 seconds=2\nreport sent; key sk-ant-api03-" + "a".repeat(40) + " end\n" };
+  const r = await b.ok("publish.job.run", { deployment: id });
+  assert.deepEqual([r.ok, r.code, r.seconds], [true, 0, 2]);
+  assert.ok(!r.output.includes("sk-ant-api03"), "a key shape is cut out of what it printed");
+  const runs = (await b.ok("publish.job.runs", { deployment: id })).runs;
+  assert.equal(runs.length, 1);
+  assert.ok(!JSON.stringify(runs).includes("sk-ant-api03"));
+  // the floor: not again within five minutes
+  assert.equal((await b.call("publish.job.run", { deployment: id })).error?.code, "too_soon");
+  // a failed run is kept with its words and is a card's row
+  const db = b.reg.deps.db;
+  db.prepare("UPDATE publish_job_runs SET at = at - ?").run(6 * 60_000);
+  b.pf.runResult = { ok: false, message: "the job ended with exit 3 in 4 seconds", output: "exit=3 seconds=4\nboom\n" };
+  const bad = await b.ok("publish.job.run", { deployment: id });
+  assert.deepEqual([bad.ok, bad.code], [false, 3]);
+  assert.deepEqual((await b.ok("publish.job.attention", {})).jobs.map((/** @type {any} */ j) => [j.deployment, j.name, j.message]), [[id, "nightly", "the job ended with exit 3 in 4 seconds"]]);
+  // an error from the helper (it refused) is kept as a failed run too
+  db.prepare("UPDATE publish_job_runs SET at = at - ?").run(6 * 60_000);
+  b.pf.runResult = Object.assign(new Error("that job ran less than 5 minutes ago"), { code: "failed" });
+  assert.equal((await b.ok("publish.job.run", { deployment: id })).ok, false);
+  // the schedule: a job that is due runs by itself, one that is not does not
+  db.prepare("UPDATE publish_job_runs SET at = at - ?").run(10 * 60_000);
+  b.pf.runResult = { ok: true, message: "ran", output: "exit=0 seconds=1\n" };
+  const before = b.pf.runs.length;
+  for (let i = 0; i < 100 && b.pf.runs.length === before; i++) await new Promise(res => setTimeout(res, 30));
+  assert.equal(b.pf.runs.length, before + 1, "the scheduler ran the due job");
+  await new Promise(res => setTimeout(res, 200));
+  assert.equal(b.pf.runs.length, before + 1, "and only once: it is not due again");
+  assert.equal((await b.ok("publish.job.attention", {})).jobs.length, 0, "the card is gone when the job runs well");
 });
