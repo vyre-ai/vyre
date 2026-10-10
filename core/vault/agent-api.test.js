@@ -200,3 +200,17 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   const real = v.clock; v.clock = () => real() + 10_000;
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
 });
+
+test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
+  const { cred, ask, give, agent, net, GET, v } = await mk(t);
+  await cred("graph-api");
+  await v.access.convertScopes();
+  await give("graph-api", agent("kit"));
+  for (const who of ["cli:agent:kit", "local:agent:kit", "tailnet:agent:kit"]) {
+    assert.equal((await ask({ credential: "graph-api", ...GET }, who)).kind, "read", `${who}: its own grant works`);
+    await assert.rejects(ask({ credential: "graph-api", ...GET }, who.replace("kit", "juno")), /needs a grant/, `${who}: another agent has none`);
+  }
+  assert.equal(net.calls.length, 3, "only the granted agent's calls went out");
+  // the person's own surface needs no grant
+  assert.equal((await ask({ credential: "graph-api", ...GET }, "cli")).kind, "read");
+});

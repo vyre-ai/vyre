@@ -27,7 +27,7 @@ import { validZone, zoneFrom } from "../../lib/time/index.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { hostSafe } from "../../lib/api-endpoint.js";
 import { claudeProvider } from "../sessions/providers.js";
-import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
+import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from "../sessions/config.js";
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
@@ -394,7 +394,7 @@ const MCP_SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 
 export function pluginDir() {
   const dir = process.env.VYRE_HARNESS_DIR || path.resolve(HERE, "..", "..", "harness");
-  return fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
+  return fs.existsSync(path.join(dir, PLUGIN_LAYOUT.manifest)) ? dir : null;
 }
 
 /**
@@ -1334,7 +1334,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
