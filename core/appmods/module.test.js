@@ -467,7 +467,8 @@ test("a published server: only Publish runs it, from the secrets Publish wrote, 
   const asPublish = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:publish") => w.d.registry.call(tool, input, caller);
   const secretsAt = path.join(w.root, "publish", SP, "secrets", DEP);
   // nobody else runs a site's server: not a person, not another module, not a model
-  for (const caller of ["module:comms", "module:documents", "mcp"]) assert.equal((await asPublish("appmods.publish.install", { deployment: dep() }, caller)).error.code, "denied", caller);
+  for (const caller of ["module:comms", "module:documents"]) assert.equal((await asPublish("appmods.publish.install", { deployment: dep() }, caller)).error.code, "denied", caller);
+  assert.equal((await w.model("appmods.publish.install", { deployment: dep() })).error.code, "no_such_tool", "a model does not even see it");
   assert.ok((await w.cli("appmods.publish.install", { deployment: dep() })).error, "nor a person at the terminal");
   // a secret Publish has not written is said, and nothing runs
   const missing = await asPublish("appmods.publish.install", { deployment: dep() });
