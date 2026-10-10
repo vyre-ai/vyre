@@ -92,8 +92,10 @@ export function createMcp(d) {
       const rel = String(a.path || "").replace(/^\/+|\/+$/g, "");
       if (rel.split("/").some((/** @type {string} */ s) => s === ".." || s === ".")) throw bad("give a path inside the project's folder");
       const full = rel ? `${p.drive_path}/${rel}` : p.drive_path;
+      // A project's folder also holds Vyre's own marker and the chats' private folders (chat/, made/): an outside agent is given the project's files, never those.
+      if (/^(chat|made)(\/|$)/.test(rel) || rel.split("/").some((/** @type {string} */ seg) => seg.startsWith("."))) throw bad("that was not found for you", "not_found");
       let entries = [];
-      try { entries = await K.drive.list(chain, full); } catch (e) { throw unreadable(e, "that folder"); }
+      try { entries = (await K.drive.list(chain, full)).filter((/** @type {any} */ e) => { const name = String(e.path ?? e.name ?? e).slice(p.drive_path.length).replace(/^\/+/, ""); return !/^(chat|made)\//.test(name) && !name.split("/").some((/** @type {string} */ seg) => seg.startsWith(".")); }); } catch (e) { throw unreadable(e, "that folder"); }
       if (entries.length && !(entries.length === 1 && String(entries[0].path ?? entries[0].name ?? entries[0]) === full)) {
         return { project: p.name, folder: rel || "/", files: entries.slice(0, 200).map((/** @type {any} */ e) => ({ name: String(e.path ?? e.name ?? e).slice(p.drive_path.length).replace(/^\/+/, ""), ...(e.size !== undefined ? { bytes: e.size } : {}) })) };
       }
