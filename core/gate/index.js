@@ -220,10 +220,15 @@ export default {
     });
 
     ctx.tool("gate.reject", {
-      description: "The user discards a held item. Nothing is sent.",
+      description: "The user discards a held item. Nothing is sent. The module that offered the item's sender may also take its own item back.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device"],
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.reject({ ...input, by: input.by || c }); },
+      run: (input, { caller }) => {
+        // Taking an item back sends nothing, so the module whose sender holds it may do so (an outside agent that was ended); any other module goes through the same rule as approving.
+        const c = String(caller || "");
+        const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : mayApprove(caller);
+        return gate.reject({ ...input, by: input.by || own });
+      },
     });
 
     ctx.tool("gate.settle", {

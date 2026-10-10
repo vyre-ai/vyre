@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import { newPrefixedId } from "../../lib/id.js";
+import { actorIdOf } from "../../lib/outside.js";
 import { credentialAction } from "../../kernel/seal/uses.js";
 
 /** The passes made for outside agents (appended to the vault's MIGRATIONS). */
@@ -56,7 +57,7 @@ export class PassMcp {
 
   get K() { return this.v.access && this.v.access.K; }
   now() { return this.v.clock(); }
-  actor(/** @type {string} */ id) { return `ext_${id.replace(/^vp_/, "")}`; }
+  actor(/** @type {string} */ id) { return actorIdOf(id.replace(/^vp_/, "")); }
 
   /**
    * Make a pass. `items` are api credentials; `hosts` narrows each credential's own hosts (never widens); `expires` is a time or milliseconds from now (at most 90 days).
