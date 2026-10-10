@@ -319,7 +319,7 @@ export default {
       { type: "object", required: ["id"], properties: { id: str, thread: str, said: str } },
       async i => {
         const hit = (await accountChoices()).find(r => r.id === String(i.id));
-        if (!hit) throw Object.assign(new Error("that account is not signed in (sessions.accounts.list shows the accounts; sessions.accounts.signin signs one in)"), { code: "not_found" });
+        if (!hit) throw Object.assign(new Error("that account is not signed in"), { code: "not_found" });
         return { name: hit.name, hint: hit.hint, outside: false, note: `The person asked ${hit.name} to answer this one turn. The session keeps its own provider.` };
       });
 
@@ -347,7 +347,7 @@ export default {
           const granted = /** @type {any} */ (meta).granted;
           const m = /^(project|agent):(.+)$/.exec(String(i.scope));
           const ok = m && (m[1] === "agent" ? m[2] === who : granted === "*" || (Array.isArray(granted) && granted.includes(m[2])));
-          if (!ok) throw Object.assign(new Error("an agent sets its own fallback order, or a project it is granted: ask the person to set this one"), { code: "denied" });
+          if (!ok) throw Object.assign(new Error("an agent sets its own fallback order, or a project it is granted"), { code: "denied" });
         }
         return routes.set(i, who ? `agent:${who}` : String(meta && meta.caller || "person"));
       });
@@ -545,7 +545,7 @@ export default {
       input: { type: "object", required: ["account", "file"], properties: { account: str, file: str } },
       run: async i => {
         const a = accounts.row(String(i.account));
-        if (!a) throw Object.assign(new Error(`no account ${i.account} (sessions.accounts.list shows them)`), { code: "not_found" });
+        if (!a) throw Object.assign(new Error(`no account ${i.account}`), { code: "not_found" });
         // Relative on purpose: the floor refuses any path inside Vyre's own home in a call's input, and on a Mac an account's HOME is there; the provider's
         // own folder (.grok, .codex) is the only place a generated file is read from, and nothing else of the HOME.
         const rel = String(i.file);

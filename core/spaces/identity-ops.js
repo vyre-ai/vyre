@@ -33,7 +33,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
   if (!seen) throw new Error("identity ops need a `seen` store: when this device first saw each op of the list");
   const me = () => {
     const s = store.status();
-    if (!s.exists) throw refuse("This device has no Vyre identity yet; make one first with spaces.identity.create.", "no_identity");
+    if (!s.exists) throw refuse("This device has no Vyre identity yet.", "no_identity");
     return s;
   };
   const ctx = () => ({ now: now() + C.SKEW_MS, seenAt: (/** @type {number} */ seq) => seen.get(String(store.status().id), seq) });
@@ -168,7 +168,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     },
     /** A new device, the recovery code in hand (and the password if one was set): back in at once. */
     async recoverWithCode({ name, code, password = "", deviceLabel }) {
-      if (store.status().exists) throw refuse("This device already has a Vyre identity; use the one it has, or recover on a device that has none.", "exists");
+      if (store.status().exists) throw refuse("This device already has a Vyre identity.", "exists");
       const r = await dir.resolve(name);
       if (!r.ok || r.kind !== "person") throw refuse(r.ok ? "That name does not belong to a person." : r.why, "not_found");
       const ck = codeKey(code, password, stretch);
@@ -186,7 +186,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     },
     /** Everything lost: a new device asks. The request goes to the recovery contacts (any way the person likes: a code, a link). */
     async beginContactRecovery({ name, deviceLabel }) {
-      if (store.status().exists) throw refuse("This device already has a Vyre identity; use the one it has, or recover on a device that has none.", "exists");
+      if (store.status().exists) throw refuse("This device already has a Vyre identity.", "exists");
       const r = await dir.resolve(name);
       if (!r.ok || r.kind !== "person") throw refuse(r.ok ? "That name does not belong to a person." : r.why, "not_found");
       const key = store.newDeviceKey();
@@ -197,7 +197,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     async approveRecovery(request) {
       const name = String(request && request.name || "").toLowerCase();
       const r = await dir.resolve(name);
-      if (!r.ok || r.kind !== "person") throw refuse("That name could not be verified; check the spelling with spaces.identity.resolve.", "not_found");
+      if (!r.ok || r.kind !== "person") throw refuse("That name could not be verified.", "not_found");
       const op = request.op;
       if (!op || op.type !== "recover" || op.id !== r.state.id || op.prev !== r.state.head) throw refuse("That request is out of date. Ask again.", "stale_request");
       const mine = r.state.entries.filter(e => e.kind === "contact").map(e => ({ e, held: store.held.get(e.eid) })).find(x => x.held);

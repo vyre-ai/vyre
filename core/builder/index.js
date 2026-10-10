@@ -38,7 +38,7 @@ async function containerBuild(ctx, d, dir, secretArgs) {
   const allow = (ctx.config && ctx.config.builder && Array.isArray(ctx.config.builder.from) ? ctx.config.builder.from : []).filter((/** @type {any} */ x) => typeof x === "string");
   const checked = checkDockerfile(df.content.toString("utf8"), { allow });
   const port = d.build && Number.isInteger(d.build.port) ? d.build.port : checked.port;
-  if (!port) throw refuse("name the port the app listens on: set the build's port, or put an EXPOSE line in the Dockerfile", "refused");
+  if (!port) throw refuse("name the port the app listens on: set build.port, or put an EXPOSE line in the Dockerfile", "refused");
   const tag = `vyre-pub-${String(d.name || "app").replace(/[^a-z0-9-]/g, "")}:${site.digest.replace(/^sha256:/, "").slice(0, 16)}`;
   // a server that runs its apps through the host helper cannot run Docker here: the helper builds, from a folder this module writes and takes by rename (team/contracts/builder.md)
   const helper = seam.helper || { present: helperPresent, ask: askHelper };
@@ -52,10 +52,10 @@ async function containerBuild(ctx, d, dir, secretArgs) {
  * The host helper's build: the context and the settings go into the deployment's folder under the daemon's publish folder, the helper is asked `pub-build <deployment>` and answers `built <image id>`.
  * @param {any} ctx @param {{ ask: typeof askHelper }} helper @param {any} d @param {{ path: string, content: Buffer }[]} files @param {number} port @param {string[]} secretArgs
  */
-export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
+async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
   if (secretArgs && secretArgs.length) throw refuse("build secrets are not supported on a server that builds through its host helper yet; grant the secret for running, not building", "refused");
   const home = ctx.paths && ctx.paths.root;
-  if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here: restart Vyre and try again", "not_available");
+  if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here", "not_available");
   const where = { home, space: String(d.space || ""), deployment: String(d.id || "") };
   try {
     writeServerFolder({ ...where, files, request: requestText({ name: String(d.name), version: Number(d.version) || 1, port, memoryMb: 512, cpus: 0.5, pids: 256, health: { path: HEALTH.path, ok: [...HEALTH.ok], startS: 60 }, secrets: [] }) });

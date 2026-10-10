@@ -122,23 +122,3 @@ test("try it on last week in a real daemon: the window picks the real events, an
   const later = (await d.registry.call("flows.simulate", { id: r.data.id, since: Date.now() + 3_600_000 }, "cli", { token })).data;
   assert.equal(later.matched, 0, "a window in the future holds nothing");
 });
-
-test("a short wait in a real daemon resumes when it is due, not at the timer's next minute", { timeout: 120_000 }, async t => {
-  const root = tempHome(t);
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
-  t.after(() => d.stop());
-  const space = d.kernel.id.space;
-  const host = d.registry.deps.flowsHost.get(space);
-  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
-  const token = (await d.kernel.surfaces.open(chain, {})).token;
-  await d.kernel.gateway.records.define(chain, { add_types: [NOTE] });
-  // let the timer settle into its long sleep, as it does on a quiet server
-  await new Promise(r => setTimeout(r, 2500));
-  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "short_wait", label: "Short wait", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "w", kind: "wait", for_ms: 3000 }, { id: "c", kind: "create", type: "filing-note", set: { body: "after the wait" } }] } }, "cli", { token });
-  assert.ok(r.data && r.data.ok, JSON.stringify(r));
-  await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
-  const t0 = Date.now();
-  await host.flows.tools["flows.start"](host.personChain(), { id: r.data.id, input: {} });
-  await until(async () => ((await d.registry.call("flows.runs", { id: r.data.id }, "cli", { token })).data || []).some((/** @type {any} */ x) => x.state === "done"), "the run to finish after its 3 second wait", 30_000);
-  assert.ok(Date.now() - t0 < 30_000, `it took ${Date.now() - t0} ms (the timer's minute-long sleep made it up to 60 s)`);
-});

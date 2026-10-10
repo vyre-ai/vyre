@@ -89,3 +89,27 @@ test("runner: every placement, call and event the contract fixtures hold draws t
   assert.deepEqual(pickSettings(F.calls.settings.output), F.defaults);
   assert.deepEqual([F.limits.cpuPercent, F.limits.memoryMb], [[10, 100], [512, 65536]]);
 });
+
+test("runner: while a chat's process starts on a computer the status line says so, never a silent wait; a fallback says the server runs it instead", async () => {
+  const { placingWords, placingLine } = await import("./runner-model.js");
+  assert.equal(placingWords({ state: "starting", computer: "Dana's MacBook" }), "Starting on Dana's MacBook...");
+  assert.equal(placingWords({ state: "starting" }), "Starting on your computer...", "a computer the relay does not list is never shown by an id");
+  assert.equal(placingWords({ state: "up", computer: "Dana's MacBook" }), "", "once it is up the line is gone");
+  assert.equal(placingWords({ state: "fallback", computer: "Dana's MacBook" }), "");
+  assert.equal(placingWords(null), "");
+  assert.equal(placingLine({ state: "fallback", computer: "Dana's MacBook", reason: "unavailable" }), "Dana's MacBook did not answer. Running on the server instead.");
+  assert.equal(placingLine({ state: "fallback" }), "Your computer did not answer. Running on the server instead.");
+  assert.equal(placingLine({ state: "starting", computer: "x" }), "");
+  assert.equal(placingLine({ state: "fallback", computer: "  " }), "Your computer did not answer. Running on the server instead.");
+});
+
+test("runner: a lease is one quiet line in words: who borrowed which computer and what limit holds", async () => {
+  const { leaseLine } = await import("./runner-model.js");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "provider" }), "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else.");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "internet" }), "This chat borrowed Dana's MacBook. It can reach the internet.");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: null }), "This chat borrowed Dana's MacBook.");
+  assert.equal(leaseLine({ limit: "provider" }), "This chat borrowed one of your computers. It can reach the AI provider and nothing else.", "a computer with no name is never shown by its id");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "something new" }), "This chat borrowed Dana's MacBook.", "a limit this app does not know says nothing");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "provider" }, "Kit"), "Kit borrowed Dana's MacBook. It can reach the AI provider and nothing else.");
+  assert.equal(leaseLine(null), "");
+});

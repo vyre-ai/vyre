@@ -245,7 +245,7 @@ export function driveUrl(st, boxNode, share) {
 async function status() {
   const r = await tailscale(["status", "--json"]);
   if (r.code === 127) throw refuse("sharing folders to a computer as a disk is not available on this device yet; the Space's own Drive and VyreDrive transfers do not need it", "unavailable");
-  try { return JSON.parse(r.out); } catch { throw refuse("sharing folders to a computer as a disk could not start here; make sure Tailscale is running and signed in, then try again", "unavailable"); }
+  try { return JSON.parse(r.out); } catch { throw refuse("sharing folders to a computer as a disk could not start here", "unavailable"); }
 }
 
 const hasCap = (st, cap) => Boolean(st && st.Self && st.Self.CapMap && Object.prototype.hasOwnProperty.call(st.Self.CapMap, cap));
@@ -337,7 +337,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       if (!fs.statSync(safe.real).isDirectory()) throw refuse("a share must be a folder", "bad_input");
       const privateHere = [ctx.paths.root, ctx.paths.vault, os.homedir()].filter(Boolean)
         .flatMap(x => [path.resolve(String(x)), real(String(x))]).filter(Boolean);
-      if (privateHere.some(x => inside(/** @type {string} */ (x), safe.path) || inside(/** @type {string} */ (x), safe.real))) throw refuse("not available (files.drive.candidates lists the folders that may be shared)", "not_available");
+      if (privateHere.some(x => inside(/** @type {string} */ (x), safe.path) || inside(/** @type {string} */ (x), safe.real))) throw refuse("not available", "not_available");
       return safe.real;
     };
 
@@ -706,7 +706,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       dirOf(share);
       const link = await ctx.call("link.status", {});
       const node = link.data && link.data.box && link.data.box.node;
-      if (!node) throw refuse("this Mac is not paired with a box; pair it first (vyre link pair <address>)", "no_link");
+      if (!node) throw refuse("this Mac is not paired with a box (vyre link pair <address>)", "no_link");
       const st = await status();
       return { ...driveUrl(st, node, share), ...(hasCap(st, "drive:access") ? { ready: true } : { ready: false, fix: FIX_ACCESS }) };
     }
@@ -773,7 +773,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Make a tagged file readable in the chat it was tagged in. The box does this; a Mac has no chats of its own.",
       input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
       callers: ["module"],
-      run: async () => { throw refuse("that file is not available; use the box, where a tag is resolved in the chat it was tagged in", "not_found"); },
+      run: async () => { throw refuse("that file is not available", "not_found"); },
     });
 
     ctx.tool("files.drive.url", {
@@ -801,7 +801,7 @@ export function drive(ctx, { role, guard: g, roots }) {
             // A drive letter, not a folder. Windows' own client cannot map read-only, so the
             // share's access is enforced by the box; `readonly` still says what the box allows.
             dir = await fx.letter();
-            if (!dir) throw refuse("every drive letter is in use; disconnect a drive you no longer need, then mount again", "no_letter");
+            if (!dir) throw refuse("every drive letter is in use; free one and mount again", "no_letter");
           } else fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
           await fx.mount(u.url, dir, { readonly, name: share });
         }

@@ -500,12 +500,10 @@ test("mcp: the hub is never a route around the floor", async t => {
   assert.deepEqual(sent(), []);
 
   // A person without presence cannot approve either; with it, the send reaches the server once.
-  // approving a held send is the outward yes: the person's own device sends the header its client sends, and the floor asks this presence about it
-  const approve = () => d.registry.call("gate.approve", { id }, "cli", { proof: { method: "touchid" } });
-  assert.equal((await approve()).error?.code, "presence_required");
+  assert.equal((await cli("gate.approve", { id })).error?.code, "presence_required");
   assert.deepEqual(sent(), []);
   here = true;
-  const ok = await approve();
+  const ok = await cli("gate.approve", { id });
   assert.equal(ok.data?.state, "sent", JSON.stringify(ok));
   assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "dana@harlowlegal.com", text: "Friday works" })}`]);
   here = false;

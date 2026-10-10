@@ -14,7 +14,7 @@ export function registerSleepTools(ctx, d) {
       input: { type: "object", properties: {} },
       callers: ["cli", "local", "capsule"],
       run: async (_i, meta) => {
-        if (!meta || !["cli", "local", "capsule"].includes(String(meta.caller))) throw refuse("the Mac's own app says this; call it from the app or the terminal on that Mac", "denied");
+        if (!meta || !["cli", "local", "capsule"].includes(String(meta.caller))) throw refuse("the Mac's own app says this", "denied");
         ctx.events.emit(event, {});
         return { ok: true, linked: d.linked() };
       },

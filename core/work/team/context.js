@@ -30,7 +30,7 @@ export async function teammateContext(kernel, chain, { project, role, templates 
   const p = parseUrn(project);
   if (!p) throw Object.assign(new Error("the project is a vyre:// address"), { code: "bad_input" });
   const root = await kernel.records.get(chain, p.type, p.id);
-  if (!root) throw Object.assign(new Error("not found: check the project address (projects.list shows the projects you may see)"), { code: "not_found" });
+  if (!root) throw Object.assign(new Error("not found"), { code: "not_found" });
   const urns = [project], skipped = [], labels = [root.labels];
   /** @type {string[]} */ const parts = [];
   const instr = typeof role?.instructions === "string" ? { text: role.instructions, labels: externalLabels(space), reviewed: false } : role?.instructions;

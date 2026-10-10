@@ -231,10 +231,10 @@ export default {
         const ref = input.content && typeof input.content.ref === "string" ? input.content.ref : "";
         const rkey = heldActs.has(String(input.id)) ? String(input.id) : ref;
         const rec = heldActs.get(rkey);
-        if (!rec || !rec.hash || !rec.input) throw Object.assign(new Error("that held act is not one hands made, or it was already released (ask for the act again with hands.act)"), { code: "denied" });
+        if (!rec || !rec.hash || !rec.input) throw Object.assign(new Error("that held act is not one hands made, or it was already released"), { code: "denied" });
         heldActs.delete(rkey);
         // The agent that caused the hold must still be granted when the person approves it.
-        if (rec.key && !g.has(rec.key)) throw Object.assign(new Error(`${rec.key} is no longer granted to drive this Mac. Nothing was done. Ask the person to grant it again, then repeat the act.`), { code: "denied" });
+        if (rec.key && !g.has(rec.key)) throw Object.assign(new Error(`${rec.key} is no longer granted to drive this Mac. Nothing was done.`), { code: "denied" });
         return hands.release({ input: rec.input, hash: rec.hash });
       }),
     });

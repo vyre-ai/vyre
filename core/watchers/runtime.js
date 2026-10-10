@@ -297,7 +297,7 @@ export class Runtime {
     mustName(d.name);
     const r = this.row(d.name);
     const cur = this.spec(d.name).spec;
-    if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty (team.duties.list shows a teammate's duties)`), { code: "not_found" });
+    if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty`), { code: "not_found" });
     this.writeDuty({ project: cur.project, owner: cur.owner, when: d.when, instruction: d.instruction, act: d.act, name: d.name, current: cur });
     const { hash, spec } = this.spec(d.name);
     const next = PUSHED.has(spec.schedule) ? null : cron.next(cron.parse(spec.schedule), this.now(), this.zone());
@@ -330,7 +330,7 @@ export class Runtime {
     mustName(name);
     const r = this.row(name);
     const f = folder.read(this.d.dir, name);
-    if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name} (watchers.list shows them)`), { code: "not_found" });
+    if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
     this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
     if (DUTY_NAME.test(name)) { fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true }); if (this.d.defs) void this.d.defs.forget(name).catch(() => {}); }
     this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
@@ -341,7 +341,7 @@ export class Runtime {
   async run(name) {
     mustName(name);
     const r = this.row(name);
-    if (!r || !r.enabled || r.paused) throw Object.assign(new Error(`${name} is not on; turn it on first (watchers.resume if it is paused)`), { code: "denied" });
+    if (!r || !r.enabled || r.paused) throw Object.assign(new Error(`${name} is not on`), { code: "denied" });
     await this.kick(name, "run");
     return this.logs(name, 1);
   }

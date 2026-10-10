@@ -45,7 +45,7 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = httpFetch, now 
     }
     let res;
     try { res = await fetch(root + target, { method, headers, body: text || undefined, signal: AbortSignal.timeout(timeoutMs), allow: LOOPBACK.has(new URL(root).hostname) ? "any" : "public" }); }
-    catch (e) { throw Object.assign(new Error(`the name directory is not reachable (${/** @type {any} */ (e).cause?.code || /** @type {Error} */ (e).name || "network error"}); wait a minute and try again`), { code: "unreachable", status: 0 }); }
+    catch (e) { throw Object.assign(new Error(`the name directory is not reachable (${/** @type {any} */ (e).cause?.code || /** @type {Error} */ (e).name || "network error"})`), { code: "unreachable", status: 0 }); }
     let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
     if (!res.ok || !json || json.error || !json.data) {

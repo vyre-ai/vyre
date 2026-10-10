@@ -30,7 +30,7 @@ const LEASE_S = 3600;
 const DESCRIPTION = "Vyre";
 
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
-const within = (/** @type {Promise<any>} */ p, /** @type {number} */ ms, /** @type {string} */ what) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(`${what} did not answer in ${ms} ms; try again in a minute`), { code: "timeout" })), ms); })]).finally(() => clearTimeout(t)); };
+const within = (/** @type {Promise<any>} */ p, /** @type {number} */ ms, /** @type {string} */ what) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(`${what} did not answer in ${ms} ms`), { code: "timeout" })), ms); })]).finally(() => clearTimeout(t)); };
 
 /** A public IPv4 (lib/netguard.js decides: not private, loopback, link-local, carrier-grade, multicast, documentation or reserved). @param {string} ip */
 export function isPublicV4(ip) { return net.isIPv4(String(ip)) && isPublicAddress(String(ip), []); }
@@ -112,7 +112,7 @@ function search(o) {
 function pmp(o, req) {
   return new Promise((resolve, reject) => {
     const sock = o.dgram.createSocket("udp4");
-    const t = setTimeout(() => { try { sock.close(); } catch { /* closed */ } reject(Object.assign(new Error("the router did not answer NAT-PMP; turn NAT-PMP on in the router, or use the relay (relay.enable)"), { code: "timeout" })); }, o.timeoutMs);
+    const t = setTimeout(() => { try { sock.close(); } catch { /* closed */ } reject(Object.assign(new Error("the router did not answer NAT-PMP"), { code: "timeout" })); }, o.timeoutMs);
     sock.on("error", e => { clearTimeout(t); reject(e); });
     sock.on("message", msg => { clearTimeout(t); try { sock.close(); } catch { /* closed */ } resolve(msg); });
     sock.send(req, o.port ?? 5351, o.gateway, e => { if (e) { clearTimeout(t); reject(e); } });

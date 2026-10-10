@@ -15,7 +15,7 @@ export function createOwnServerHost(o) {
     authorize: (/** @type {any} */ q) => o.kernel.gateway.authorize({ chain: q.chain, action: q.action, resource: q.resource }) }));
   return Object.freeze({
     /** The store's port for this home's own Space; any other Space's sessions are not this home's to seal. @param {string} s */
-    port: s => { if (s !== space()) throw Object.assign(new Error("not this home's Space: give the Space this home belongs to (spaces.list shows them)"), { code: "not_found" }); return storeOf().port(chain); },
+    port: s => { if (s !== space()) throw Object.assign(new Error("not this home's Space"), { code: "not_found" }); return storeOf().port(chain); },
     /** @param {any} e a thread.finished event @returns {Promise<{ space: string, session: string, file: string, root: string, state: any } | null>} */
     resolve: async e => {
       const session = String((e && e.payload && (e.payload.session || e.payload.thread)) || (e && e.thread) || "");

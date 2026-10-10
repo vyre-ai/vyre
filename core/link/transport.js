@@ -143,7 +143,7 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
         else go();
       });
       req.on("response", res => { onResponse(res); resolve({ who, req }); });
-      req.on("timeout", () => req.destroy(Object.assign(new Error("the box did not answer in time; check it is on and try again"), { code: "timeout" })));
+      req.on("timeout", () => req.destroy(Object.assign(new Error("the box did not answer in time"), { code: "timeout" })));
       req.on("error", reject);
       if (signal) {
         const abort = () => req.destroy(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));

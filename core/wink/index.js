@@ -804,7 +804,7 @@ export function createWink(inject = {}) {
       internal: true, description: "The loopback port of this box's public gate: { port } or { port: null } while there is none. Internal: the relay module's tunnel end connects each public stream to it.",
       input: { type: "object", properties: {} },
       run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
-        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("the relay module alone asks for the gate's port; relay.status shows the relay"), { code: "denied" });
+        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("the relay module alone asks for the gate's port"), { code: "denied" });
         const p = netd && netd.status().publicGate && netd.status().publicGate.port;
         return { port: Number.isInteger(p) ? p : null };
       },
@@ -855,7 +855,7 @@ export function createWink(inject = {}) {
     const drive = acceptDrive({ endpoint, secrets: bsecrets, home: homeId, roots: br && br.roots ? br.roots : storageRoots, onServed: r => servedKeep.put(r) });
     const serveBridge = bridgeServe({ endpoint, drive, home: homeId, scan: async () => { const r = await storage.discovery.discover(); return { from: String(ctx.config.name || "a computer").slice(0, 60), candidates: r.candidates.map((/** @type {any} */ c) => ({ name: c.name, kind: c.kind, host: c.host, share: c.share, path: c.path, size: c.size })), notes: r.notes }; } });
     // The home's one message that is not storage: a grant for this computer ended, so the runner stops the Space's sessions here and deletes the local work and keys now (core/runner, runner.revoke).
-    const lentRevokedFn = lentRevoked({ call: (/** @type {string} */ t, /** @type {any} */ i) => t === "spaces.server.of" ? ctx.call("spaces.server.of", i) : t === "runner.revoke" ? ctx.call("runner.revoke", i) : Promise.reject(Object.assign(new Error("not a tool lent-revoked calls: it runs spaces.server.of and runner.revoke only"), { code: "denied" })), log: m => ctx.log(m) });
+    const lentRevokedFn = lentRevoked({ call: (/** @type {string} */ t, /** @type {any} */ i) => t === "spaces.server.of" ? ctx.call("spaces.server.of", i) : t === "runner.revoke" ? ctx.call("runner.revoke", i) : Promise.reject(Object.assign(new Error("not a tool lent-revoked calls"), { code: "denied" })), log: m => ctx.log(m) });
     serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ from) => {
       if (tool === "wink.drop.offer") {
         // a drop waits for this computer on the server: only the server this computer is paired to may say so

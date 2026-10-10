@@ -106,8 +106,8 @@ export class LocalTree {
   async write(rel, body, { size, overwrite = false }) {
     const { real } = resolveIn(this.dir, rel, { create: true });
     const exists = fs.existsSync(real);
-    if (exists && !overwrite) throw Object.assign(new Error(`"${rel}" already exists; upload with another name, or say overwrite to replace it`), { code: "exists" });
-    if (exists && !fs.statSync(real).isFile()) throw Object.assign(new Error(`"${rel}" is a folder; upload with another name`), { code: "exists" });
+    if (exists && !overwrite) throw Object.assign(new Error(`"${rel}" already exists`), { code: "exists" });
+    if (exists && !fs.statSync(real).isFile()) throw Object.assign(new Error(`"${rel}" is a folder`), { code: "exists" });
     const temp = path.join(path.dirname(real), UPLOAD_PREFIX + crypto.randomBytes(8).toString("hex"));
     const count = counter(size);
     try {
@@ -118,8 +118,8 @@ export class LocalTree {
         // A hard link fails if the name was taken meanwhile, where a rename would clobber it.
         try { fs.linkSync(temp, real); fs.rmSync(temp, { force: true }); }
         catch (e) {
-          if (/** @type {any} */ (e).code === "EEXIST") throw Object.assign(new Error(`"${rel}" already exists; upload with another name, or say overwrite to replace it`), { code: "exists" });
-          if (fs.existsSync(real)) throw Object.assign(new Error(`"${rel}" already exists; upload with another name, or say overwrite to replace it`), { code: "exists" });
+          if (/** @type {any} */ (e).code === "EEXIST") throw Object.assign(new Error(`"${rel}" already exists`), { code: "exists" });
+          if (fs.existsSync(real)) throw Object.assign(new Error(`"${rel}" already exists`), { code: "exists" });
           fs.renameSync(temp, real);
         }
       }

@@ -6,7 +6,6 @@
 //   <out>/index.md, using/capsule.md, ...       each page's source, front matter kept, includes spliced
 //   <out>/assets/docs.<hash>.css, .js           one stylesheet, one script, named by content hash
 //   <out>/assets/demos.<hash>.css, .js          the demo widgets, linked only from pages with a demo
-//   <out>/assets/fonts/<face>.<hash>.woff2      the two fonts, from web/fonts, declared at the top of the stylesheet
 //   <out>/search-index.json                     what the search box searches: pages, and one item
 //                                               per heading and per [!SNAG], with its anchor
 //   <out>/index.json                            the terms index (docs/index.json), for agents
@@ -32,12 +31,7 @@ const ASSETS = path.join(HERE, "assets");
 // Search text per item: the words under a heading (or a page's intro), enough to match on.
 const ITEM_CHARS = 1000;
 
-// The two faces are the repo's own files (web/fonts, the Deck's copies), written into assets/fonts and named by content: the docs call no other company for type.
-const FONT_FILES = [
-  ["Instrument Sans", "instrument-sans-latin.woff2", "400 600"],
-  ["JetBrains Mono", "jetbrains-mono-latin.woff2", "400 500"],
-];
-const FONT_DIR = path.join(HERE, "..", "..", "..", "web", "fonts");
+const FONTS = "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
 
 // The Lead mark and the wordmark, from docs/design/TOKENS.md. Colours come from CSS (.mk-*), so
 // the one drawing is Bone and Signal on dark, Ink on paper.
@@ -108,14 +102,7 @@ export function build({ root, out, log = () => {}, palette }) {
   const put = (/** @type {string} */ rel, /** @type {string | Buffer} */ data) => files.set(rel, data);
 
   // Assets, named by content.
-  let fontCss = "";
-  for (const [family, file, weight] of FONT_FILES) {
-    const bytes = fs.readFileSync(path.join(FONT_DIR, file));
-    const name = `assets/fonts/${file.replace(/\.woff2$/, "")}.${hash(bytes)}.woff2`;
-    put(name, bytes);
-    fontCss += `@font-face { font-family: '${family}'; font-style: normal; font-weight: ${weight}; font-display: swap; src: url(/${name}) format('woff2'); }\n`;
-  }
-  const css = fontCss + fs.readFileSync(path.join(ASSETS, "docs.css"), "utf8");
+  const css = fs.readFileSync(path.join(ASSETS, "docs.css"), "utf8");
   const js = fs.readFileSync(path.join(ASSETS, "docs.js"), "utf8");
   const cssName = `assets/docs.${hash(css)}.css`;
   const jsName = `assets/docs.${hash(js)}.js`;
@@ -256,7 +243,7 @@ export function build({ root, out, log = () => {}, palette }) {
 
 // ---- pieces ------------------------------------------------------------------------------------
 
-/** @param {string | Buffer} s */
+/** @param {string} s */
 function hash(s) {
   return crypto.createHash("sha256").update(s).digest("hex").slice(0, 10);
 }
@@ -437,6 +424,9 @@ ${page ? `<link rel="canonical" href="${e(canonical)}">\n<link rel="alternate" t
 <meta name="theme-color" content="#0E0D0C">
 <script>${THEME_BOOT}</script>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="${e(FONTS)}">
 <link rel="stylesheet" href="${assets.css}">
 <script src="${assets.js}" defer></script>
 ${demos ? `<link rel="stylesheet" href="${assets.demoCss}">\n<script src="${assets.demoJs}" defer></script>\n` : ""}

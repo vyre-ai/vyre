@@ -65,10 +65,10 @@ export function store(db) {
  * @param {any[]} all @param {string} [name]
  */
 export function forRead(all, name) {
-  if (!all.length) throw Object.assign(new Error("no Google account is connected: add one with `vyre connect add google <name> --email <address> --item <vault item>`"), { code: "no_account" });
+  if (!all.length) throw Object.assign(new Error("no Google account is connected · add one with `vyre connect add google <name> --email <address> --item <vault item>`"), { code: "no_account" });
   if (name === undefined) return all;
   const one = all.find(a => a.name === name);
-  if (!one) throw Object.assign(new Error(`no Google account named ${name}; say which one: ${all.map(a => a.name).join(", ")} (google.accounts lists them)`), { code: "no_account" });
+  if (!one) throw Object.assign(new Error(`no Google account named ${name}; the accounts are ${all.map(a => a.name).join(", ")}`), { code: "no_account" });
   return [one];
 }
 

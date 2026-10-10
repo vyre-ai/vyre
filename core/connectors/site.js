@@ -165,7 +165,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
   /** Can the browser sign for this Connection right now (the right site is open, the references resolve)? @param {string} id */
   async function check(id) {
     const row = made.row(id);
-    if (!row) throw Object.assign(new Error(`no connection ${id} (connectors.site.list shows the website Connections)`), { code: "not_found" });
+    if (!row) throw Object.assign(new Error(`no connection ${id}`), { code: "not_found" });
     /** @type {Declaration} */ const decl = JSON.parse(row.declaration);
     const host = new URL(/** @type {string} */ (decl.base_url)).hostname;
     const first = Object.values(decl.ops).find(o => o.site);

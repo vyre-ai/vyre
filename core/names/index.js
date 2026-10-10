@@ -79,8 +79,8 @@ export default {
     });
     // The box's public gate (core/wink/control/publicgate.js) gets its certificate and its address through the directory, which this module alone can sign for.
     // Modules only, and only the Wink module: it never sees the route key, only these three answers.
-    const fromWink = meta => { if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("the name directory's DNS calls are the Wink module's alone; names.status shows this box's name"), { code: "denied" }); };
-    const myName = () => { const n = ctx.config.name; if (!n) throw Object.assign(new Error("this box has no name yet; choose one first (names.check tells if a name is free)"), { code: "no_name" }); return String(n); };
+    const fromWink = meta => { if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("the name directory's DNS calls are the Wink module's"), { code: "denied" }); };
+    const myName = () => { const n = ctx.config.name; if (!n) throw Object.assign(new Error("this box has no name yet"), { code: "no_name" }); return String(n); };
     ctx.tool("names.directory.acme", {
       description: "Put an ACME DNS-01 challenge value under this box's name, or under its own-domain label with own: true (Wink module only).",
       input: obj({ token: { type: "string" }, own: { type: "boolean" } }, ["token"]),

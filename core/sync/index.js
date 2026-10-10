@@ -103,16 +103,16 @@ export default {
       for (const seg of parts.slice(0, -1)) {
         dir = path.join(dir, seg);
         let st; try { st = fs.lstatSync(dir); } catch { continue; }
-        if (st.isSymbolicLink()) throw Object.assign(new Error("a symlink in the path is refused; use the real folder, not a link to it"), { code: "denied" });
+        if (st.isSymbolicLink()) throw Object.assign(new Error("a symlink in the path is refused"), { code: "denied" });
       }
       const full = path.join(root, ...parts);
-      if (!insideDir(full, root)) throw Object.assign(new Error("outside the synced root; give a path inside the synced folder"), { code: "denied" });
+      if (!insideDir(full, root)) throw Object.assign(new Error("outside the synced root"), { code: "denied" });
       // The refusal itself must not be caught by the "does it exist" try (e2e's review: as
       // written, it was — a symlink at the final segment slipped through, harmless only because
       // rename() happens not to follow one, which is not a reason to leave the check broken).
       let finalSt = null;
       try { finalSt = fs.lstatSync(full); } catch {}
-      if (finalSt && finalSt.isSymbolicLink()) throw Object.assign(new Error("a symlink is refused; use the real file, not a link to it"), { code: "denied" });
+      if (finalSt && finalSt.isSymbolicLink()) throw Object.assign(new Error("a symlink is refused"), { code: "denied" });
       return full;
     }
 
@@ -197,7 +197,7 @@ export default {
       run: async ({ machine, on, planHash, included, folders }) => {
         const peers = await ctx.call("link.peers", {});
         const row = (peers.data || []).find(p => p.id === machine || p.name === machine);
-        if (!row) throw Object.assign(new Error(`no paired device named "${machine}" (link.status lists the paired devices)`), { code: "no_link" });
+        if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
         // call gave (or clears them, giving none): a later approval without them must not leave
@@ -223,7 +223,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, confirm }) => {
         const row = /** @type {any} */ (db.prepare("SELECT * FROM sync_peers WHERE peer = ? OR name = ?").get(machine, machine));
-        if (!row) throw Object.assign(new Error(`no session data from "${machine}" is on this box (link.status lists the paired devices)`), { code: "no_link" });
+        if (!row) throw Object.assign(new Error(`no session data from "${machine}" is on this box`), { code: "no_link" });
         const n = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS files, COALESCE(SUM(bytes), 0) AS bytes FROM sync_files WHERE peer = ?").get(row.peer));
         if (!confirm) return { machine: row.name, files: n.files, bytes: n.bytes, deleted: false, confirm: "call again with confirm: true to delete" };
         db.prepare("DELETE FROM sync_files WHERE peer = ?").run(row.peer);
@@ -241,9 +241,9 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, planHash, confirm }) => {
         const row = /** @type {any} */ (db.prepare("SELECT * FROM sync_peers WHERE peer = ? OR name = ?").get(machine, machine));
-        if (!row) throw Object.assign(new Error(`no session data from "${machine}" is on this box (link.status lists the paired devices)`), { code: "no_link" });
+        if (!row) throw Object.assign(new Error(`no session data from "${machine}" is on this box`), { code: "no_link" });
         const rows = /** @type {any[]} */ (db.prepare("SELECT path, bytes FROM sync_files WHERE peer = ? AND plan_hash = ?").all(row.peer, String(planHash)));
-        if (!rows.length) throw Object.assign(new Error(`no files from "${machine}" carry plan ${planHash}; ask for a fresh preview and give its plan hash`), { code: "no_link" });
+        if (!rows.length) throw Object.assign(new Error(`no files from "${machine}" carry plan ${planHash}`), { code: "no_link" });
         const bytes = rows.reduce((sum, r) => sum + Number(r.bytes), 0);
         if (!confirm) return { machine: row.name, planHash: String(planHash), files: rows.length, bytes, deleted: false, confirm: "call again with confirm: true to delete" };
         const root = syncedRoot(row.name, row.peer);
@@ -267,7 +267,7 @@ export default {
       callers: ["tailnet", "device", "space", "agent"],
       run: async ({ files, companion }, meta) => {
         const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
-        if (!peer) throw Object.assign(new Error("this connection is not a paired device; pair this computer with the box first"), { code: "no_link" });
+        if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
         const known = new Map(/** @type {any[]} */ (db.prepare("SELECT path, hash FROM sync_files WHERE peer = ?").all(peer.id)).map(r => [r.path, r.hash]));
@@ -293,7 +293,7 @@ export default {
       run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
         const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
-        if (!peer) throw Object.assign(new Error("this connection is not a paired device; pair this computer with the box first"), { code: "no_link" });
+        if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
         if (Number(bytes) > MAX_FILE) throw Object.assign(new Error(`a session file is at most ${MAX_FILE} bytes`), { code: "bad_input" });
@@ -337,7 +337,7 @@ export default {
         const peer = await peerOf(meta.peer, "sync.upload.chunk", companion, { upload, offset, data });
         // Resume state is keyed by machine + path hash, and an upload is never another peer's to
         // write into, even one that somehow names the same id (e2e's condition).
-        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device; start an upload of your own"), { code: "denied" });
+        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
         const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64");
         if (buf.length > CHUNK_CAP) throw Object.assign(new Error(`a chunk is at most ${CHUNK_CAP} bytes`), { code: "bad_input" });
         let have = 0; try { have = fs.statSync(u.tmp).size; } catch {}
@@ -363,7 +363,7 @@ export default {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
         const peer = await peerOf(meta.peer, "sync.upload.cancel", companion, { upload });
-        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device; start an upload of your own"), { code: "denied" });
+        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
         uploads.delete(String(upload));
         try { fs.rmSync(u.tmp, { force: true }); } catch {}
         return { ok: true, cancelled: true };
@@ -379,14 +379,14 @@ export default {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
         const peer = await peerOf(meta.peer, "sync.upload.finish", companion, { upload, hash });
-        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device; start an upload of your own"), { code: "denied" });
+        if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
         const row = syncRow(peer.id, peer.name);
         uploads.delete(String(upload));
         // The real size on disk, not what start() declared (e2e's review: booking the declared
         // size let a small declared value hide a larger real one from the quota; chunk's own
         // check above already refuses more bytes than declared, but this is the number of record).
         let realBytes = 0;
-        try { realBytes = fs.statSync(u.tmp).size; } catch { throw Object.assign(new Error("the upload is missing on the box; start it again"), { code: "denied" }); }
+        try { realBytes = fs.statSync(u.tmp).size; } catch { throw Object.assign(new Error("the upload is missing on the box"), { code: "denied" }); }
         if (realBytes > MAX_FILE) { try { fs.rmSync(u.tmp, { force: true }); } catch {} throw Object.assign(new Error(`a session file is at most ${MAX_FILE} bytes`), { code: "bad_input" }); }
         // Stream the file once: hash every byte as it goes by (e2e's review — reading the whole
         // file into one string to hash it undid MAX_FILE's own memory bound), and scrub-scan every
@@ -406,7 +406,7 @@ export default {
               tail = window.length > SCRUB_OVERLAP ? window.subarray(window.length - SCRUB_OVERLAP) : window;
             }
           }
-        } catch { throw Object.assign(new Error("the upload is missing on the box; start it again"), { code: "denied" }); }
+        } catch { throw Object.assign(new Error("the upload is missing on the box"), { code: "denied" }); }
         const gotHash = hasher.digest("hex");
         if (String(hash) !== gotHash) { try { fs.rmSync(u.tmp, { force: true }); } catch {} throw Object.assign(new Error("the finished upload's hash does not match what was sent"), { code: "bad_input" }); }
         const scan = { safe: found.size === 0, found: [...found].slice(0, SCRUB_MAX_FOUND) };
@@ -486,7 +486,7 @@ function allowedSessionPath(p, root) {
     const st = fs.lstatSync(stage);
     if (st.isDirectory() && !st.isSymbolicLink() && (st.mode & 0o077) === 0 && (typeof process.getuid !== "function" || st.uid === process.getuid())) roots.push(fs.realpathSync(stage));
   } catch { /* not made yet: nothing can be inside it */ }
-  if (!roots.some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder; give a path inside it`), { code: "denied" });
+  if (!roots.some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
   return real;
 }
 
@@ -559,7 +559,7 @@ async function deviceSide(ctx) {
     } },
     callers: ["module"],
     run: async ({ files }, meta) => {
-      if (!meta.firstParty || !SEND_CALLERS.has(String(meta.caller))) throw Object.assign(new Error("only Vyre's own sync and import send session files, so no module may call this; to bring sessions across, turn session import on for a paired device"), { code: "denied" });
+      if (!meta.firstParty || !SEND_CALLERS.has(String(meta.caller))) throw Object.assign(new Error("sync.send is core/sync's and core/import's own door, not a general module capability"), { code: "denied" });
       const byRel = new Map(files.map(f => [f.rel, f]));
       const plan = await ctx.remote("sync.upload.plan", { files: files.map(f => ({ path: f.rel, bytes: f.bytes, hash: f.hash })) });
       if (plan.error) return { sent: 0, failed: files.length, quarantined: 0, error: plan.error };

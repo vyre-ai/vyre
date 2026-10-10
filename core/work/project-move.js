@@ -38,7 +38,7 @@ export async function linkedClosure(side, project) {
 export async function planMove({ from, to, project, client = "leave" }) {
   const { type, id } = urnParts(project);
   const root = await from.records.get(from.chain, type, id);
-  if (!root || type !== PROJECT) throw Object.assign(new Error("no such project in this Space (projects.list shows the ones you have)"), { code: "not_found" });
+  if (!root || type !== PROJECT) throw Object.assign(new Error("no such project in this Space"), { code: "not_found" });
   /** @type {Map<string, any>} */ const found = new Map();
   /** @type {string[]} */ const queue = [root.urn];
   let truncated = false;
@@ -92,7 +92,7 @@ export async function planMove({ from, to, project, client = "leave" }) {
 /** A slug free in the target. @param {any} to @param {string} base */
 async function freeSlug(to, base) {
   for (let n = 1; n < 1000; n++) { const s = n === 1 ? base : `${base}-${n}`; if (!(await to.records.query(to.chain, PROJECT, { filter: { field: "slug", op: "eq", value: s }, page: { limit: 1 } })).rows.length) return s; }
-  throw Object.assign(new Error("no free short name in the target Space; rename the project first (work.project.rename)"), { code: "conflict" });
+  throw Object.assign(new Error("no free short name in the target Space"), { code: "conflict" });
 }
 
 /**

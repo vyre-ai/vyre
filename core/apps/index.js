@@ -154,7 +154,7 @@ export default {
       input: { type: "object", properties: {} },
       run: async () => {
         const m = readManifest();
-        if (!m) throw Object.assign(new Error("no Android release on this box yet: ask the owner of this server to put one here"), { code: "no_release" });
+        if (!m) throw Object.assign(new Error("no Android release on this box yet"), { code: "no_release" });
         const s = await signed(m);
         return { file: m.file, version: m.version, versionCode: m.versionCode, sha256: s.sha256, size: s.size, cert_sha256: (await ownerKey()).cert_sha256 };
       },

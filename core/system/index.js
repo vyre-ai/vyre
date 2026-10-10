@@ -70,7 +70,7 @@ export default {
         /** @param {string} f */
         const read = f => { const p = path.join(PKG_ROOT, f); const st = fs.lstatSync(p); if (!st.isFile() || st.size > 8_000_000) throw new Error("not a plain file"); return fs.readFileSync(p, "utf8"); };
         try { return { appbuild: read("appbuild.json"), sums: read("SHA256SUMS"), sig: read("SHA256SUMS.sig").trim() }; }
-        catch { throw Object.assign(new Error("this build carries no signed record of the app (a development build); install a released build to get one"), { code: "no_build" }); }
+        catch { throw Object.assign(new Error("this build carries no signed record of the app (a development build)"), { code: "no_build" }); }
       },
     });
     ctx.tool("system.rename", {

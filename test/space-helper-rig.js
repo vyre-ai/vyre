@@ -34,7 +34,7 @@ if (a[0] === "inspect") {
     if (fmt === "{{.Image}}") out("sha256:" + "a".repeat(64));
     if (fmt === "{{.Id}}") out(rd("ctr-id", "abcdef012345") + "0".repeat(52));
     if (fmt === "{{.State.StartedAt}}") out(rd("ctr-start", "2026-10-04T10:00:00.123456789Z"));
-    if (fmt.includes(".Mounts") && fmt.includes("|")) out(has("no-mounts") ? "" : has("home-mount") ? "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre|" + F + "/lend" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
+    if (fmt.includes(".Mounts") && fmt.includes("|")) out(has("no-mounts") ? "" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
     if (fmt.includes(".Destination}} {{end}}")) out(has("no-state-mount") ? "/work /home/vyre/.vyre " : "/work /home/vyre/.vyre /run/vyre-spaces /run/vyre-spaces-state ");
     out(rd("joined").split("\\n").join(" ") + " ");
   }

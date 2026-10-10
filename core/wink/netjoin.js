@@ -28,10 +28,10 @@ function makeRelayPeer(h, o) {
   /** @type {any} */ let conn = null;
   const open = async () => {
     if (!conn) conn = (o.relayConnect || realRelayConnect)({ relay: String(h.relay), route: String(h.route), box: String(h.box), name: o.name || "a server", crypto: nodeCrypto(), keyStore, backoff: { min: 1000, max: 15_000 } });
-    const chan = await withinOrThrow(conn.ready(), o.openMs ?? 10_000, () => Object.assign(new Error("the relay did not answer; check it is on (relay.status) and try again"), { code: "unreachable" }));
+    const chan = await withinOrThrow(conn.ready(), o.openMs ?? 10_000, () => Object.assign(new Error("the relay did not answer"), { code: "unreachable" }));
     const s = chan.open({ peer: "wink", space: PEER_HOME });
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { s.reset("no answer"); reject(Object.assign(new Error("the home did not accept the peer stream; check the home is on and try again"), { code: "unreachable" })); }, o.openMs ?? 10_000);
+      const timer = setTimeout(() => { s.reset("no answer"); reject(Object.assign(new Error("the home did not accept the peer stream"), { code: "unreachable" })); }, o.openMs ?? 10_000);
       s.onhead = (/** @type {any} */ x) => { clearTimeout(timer); x && x.status === 200 ? resolve(undefined) : reject(Object.assign(new Error(`the home refused the peer stream (${x && x.status})`), { code: x && x.status === 429 ? "rate_limited" : "denied" })); };
       s.onreset = (/** @type {any} */ why) => { clearTimeout(timer); reject(Object.assign(new Error(String(why || "reset")), { code: "unreachable" })); };
     });
@@ -111,7 +111,7 @@ export function createNetJoin(o) {
     start: refresh,
     refresh,
     /** A call on the home through the link (direct when up, the relay otherwise). */
-    call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opt) => { if (!link) throw Object.assign(new Error("this server has no link to its home's network; pair it with its home first (wink.server.code)"), { code: "unavailable" }); return link.call(tool, input, opt); },
+    call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opt) => { if (!link) throw Object.assign(new Error("this server has no link to its home's network"), { code: "unavailable" }); return link.call(tool, input, opt); },
     link: () => link,
     host: () => host,
     status() { return { ...st, ...(link ? { link: link.status() } : {}) }; },

@@ -271,7 +271,7 @@ export default {
       input: { type: "object", required: ["slug", "name"], properties: { slug: str, name: str } },
       callers: ["module"],
       run: async ({ slug, name }, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:work") throw refuse("only the work module adopts a project this way; work.project.create makes one", "denied");
+        if (String((meta && meta.caller) || "") !== "module:work") throw refuse("projects.adopt is the work module's", "denied");
         const p = P.adopt({ slug, name });
         return { slug: p.slug, name: p.name, home: p.home };
       },
@@ -295,11 +295,11 @@ export default {
     };
     const agentsList = async () => {
       const r = await ctx.call("agents.list", {});
-      if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message}); check that agents are running, then call again`, "no_link");
+      if (r.error) throw refuse(`agents cannot be listed (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`, "no_link");
       return (Array.isArray(r.data) ? r.data : r.data?.agents || []).filter((/** @type {any} */ a) => a && a.name && a.kind !== "assistant");
     };
     if (!K || typeof K.agentMay !== "function") ctx.log("projects.access: this build has no kernel grants to ask; agents reach no project");
-    const needKernel = () => { if (!K || !K.grants) throw refuse("project reach is a kernel grant, and there is no kernel here; run this on the machine that hosts the Space", "unavailable"); };
+    const needKernel = () => { if (!K || !K.grants) throw refuse("project reach is a kernel grant, and there is no kernel here", "unavailable"); };
 
     // The Project record's address for a short name: what a kernel grant names. For the agents module, which makes grants in the person's own create or update.
     ctx.tool("projects.backup.sources", {
@@ -307,7 +307,7 @@ export default {
       input: { type: "object", properties: {} },
       callers: ["module"],
       run: async (_i, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:memory") throw refuse("only the memory module asks for backup sources; memory.backup.status shows the backup", "denied");
+        if (String((meta && meta.caller) || "") !== "module:memory") throw refuse("projects.backup.sources is the memory module's", "denied");
         return backupSources(P.valid());
       },
     });
@@ -316,7 +316,7 @@ export default {
       input: { type: "object", required: ["project"], properties: { project: str } },
       callers: ["module"],
       run: async ({ project }, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:agents") throw refuse("only the agents module asks for a project's record address; projects.list shows the projects", "denied");
+        if (String((meta && meta.caller) || "") !== "module:agents") throw refuse("projects.record is the agents module's", "denied");
         return { urn: await urnOfSlug(P.resolve(project).slug) };
       },
     });
@@ -328,7 +328,7 @@ export default {
         needKernel();
         const slug = P.resolve(project).slug, urn = await urnOfSlug(slug);
         const names = normAgent(agent) ? [normAgent(agent)] : (await agentsList()).map((/** @type {any} */ a) => normAgent(a.name));
-        for (const n of names) { const uid = await uidOf(n); if (!uid) throw refuse(`no agent ${n} (agents.list shows them)`, "not_found"); await grantReach(K, meta, { urn, agent: uid }); }
+        for (const n of names) { const uid = await uidOf(n); if (!uid) throw refuse(`no agent ${n}`, "not_found"); await grantReach(K, meta, { urn, agent: uid }); }
         return { project: slug, agent: normAgent(agent), status: "granted", agents: names };
       },
     });
@@ -448,19 +448,19 @@ export default {
       callers: ["module"],
       run: async ({ agent, caller, kind = "content", person, thread, claim }) => {
         const said = reachAgentOf(caller, claim);
-        if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}; name the agent you are, or leave agent out`, "denied");
+        if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
         const who = said || agent || null;
         if (!who) {
           // The asking module passes `person` from the kernel's chain for the call (exactly one person hop): then that fact, never the label, decides the owner. Without it (no kernel) the labels do, as before.
-          if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; ask the person to do this`, "denied"); }
+          if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied"); }
           if (reachOwner(caller) || reachOwnSession(caller, thread, claim) || ownerDevice(caller)) return { all: true, agent: null };
-          throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}; ask the person to do this`, "denied");
+          throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
         }
         const r = await ctx.call("agents.list", {});
         if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
         const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
         const a = list.find(x => x && x.name === who);
-        if (!a) throw refuse(`no agent ${who} (agents.list shows them)`, "denied");
+        if (!a) throw refuse(`no agent ${who}`, "denied");
         const assistant = a.kind === "assistant";
         if (assistant && kind === "facts") return { all: true, agent: who };
         const all = P.list().projects.map(p => ({ slug: p.slug, name: p.name, folders: p.workspaces ? [p.home, ...p.workspaces] : [p.home], threads: p.picks || [] }));

@@ -169,7 +169,7 @@ export default {
         let origin = ""; try { origin = new URL(String(i.site)).origin; } catch { throw new Error("site is an origin such as https://app.example.com"); }
         const got = await ctx.call("memory.site.get", { origin, parts: ["ops"] });
         const entry = !got.error && got.data && got.data.origin && Array.isArray(got.data.origin.ops) ? got.data.origin.ops.find(o => o.name === i.name) : null;
-        if (!entry) throw Object.assign(new Error(`no operation ${String(i.name).slice(0, 40)} is kept for ${origin} (connectors.site.operations lists the ones kept)`), { code: "not_found" });
+        if (!entry) throw Object.assign(new Error(`no operation ${String(i.name).slice(0, 40)} is kept for ${origin}`), { code: "not_found" });
         await mayAct(agent, "chrome.op.run");
         const { cdp, sessionId } = await session(agent);
         if (i.check === true) return checkBoxOperation({ cdp, sessionId, op: entry.op });

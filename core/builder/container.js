@@ -82,7 +82,7 @@ export async function buildImage(p) {
     fs.mkdirSync(ctx, { recursive: true, mode: 0o755 });
     for (const f of p.files) {
       const to = path.join(ctx, f.path);
-      if (!to.startsWith(ctx + path.sep)) throw refuse("a file path leaves the folder: use paths inside the app's folder", "refused");
+      if (!to.startsWith(ctx + path.sep)) throw refuse("a file path leaves the folder", "refused");
       fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o755 });
       fs.writeFileSync(to, f.content, { mode: 0o644 });
     }
@@ -98,7 +98,7 @@ export async function buildImage(p) {
     const r = await pipeline(argv, { timeoutMs: BUILD_MS, maxBytes: IMAGE_MAX });
     const lines = r.stderr.split("\n").filter(Boolean);
     const logs = lines.slice(-60).join("\n");
-    if (r.code === 127) throw refuse("this server cannot build an image: Docker is not available here: ask the owner to install Docker on this server", "not_available");
+    if (r.code === 127) throw refuse("this server cannot build an image: Docker is not available here", "not_available");
     if (r.code !== 0) throw refuse(`the build failed:\n${lines.slice(-40).join("\n")}`, "build_failed");
     const id = await run(["image", "inspect", p.tag, "--format", "{{.Id}}"]);
     const image = id.stdout.trim();

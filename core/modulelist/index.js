@@ -75,7 +75,7 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         needKernel();
         const a = live();
-        if (!a || a.state !== "waiting" || a.id !== String(input.id)) throw refuse("there is no rollback waiting for you: it was answered, it timed out, or none was asked (ask the owner to start the rollback again)", "not_found");
+        if (!a || a.state !== "waiting" || a.id !== String(input.id)) throw refuse("there is no rollback waiting for you", "not_found");
         // A no ends the ask only from the person's own session: a label alone cannot cancel the owner's rollback.
         if (input.approve !== true) { if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" }; a.state = "refused"; return { answered: "refused" }; }
         const p = payload(a.id);

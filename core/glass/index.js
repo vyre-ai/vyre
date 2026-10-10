@@ -113,7 +113,7 @@ export default {
       const r = await p.read(rel, `bytes=0-${KEY_SNIFF - 1}`);
       const chunks = [];
       for await (const c of r.stream) chunks.push(c);
-      if (isKeyBytes(Buffer.concat(chunks))) throw Object.assign(new Error(`"${rel}" is a private key; Glass does not open keys, so the person opens it by hand outside Glass`), { code: "denied" });
+      if (isKeyBytes(Buffer.concat(chunks))) throw Object.assign(new Error(`"${rel}" is a private key; Glass does not open keys`), { code: "denied" });
     };
 
     /** A person's surface, from someone allowed to name one. */

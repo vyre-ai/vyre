@@ -41,7 +41,6 @@ import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor, lentPlacements } from "./lent-service.js";
-import { lentRequest } from "./threadsock.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 import { askLeaseProof } from "../../lib/lease-card.js";
@@ -337,14 +336,6 @@ async function startLocked(opts, root, p, release) {
     // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
     const { createOwnServerHost } = await import("./ownserver-host.js");
     /** @type {any} */ let ownServerHost = null;
-    /** Computers by device id for the name a chat's status line shows ("Starting on Office Mac..."), read from the relay's list and kept a minute. */
-    let nameAt = 0; /** @type {Map<string, string>} */ let nameMap = new Map();
-    const nameCache = async () => {
-      if (Date.now() - nameAt < 60_000) return nameMap;
-      nameAt = Date.now();
-      try { const r = /** @type {any} */ (await registry.call("relay.devices.all", {}, "module:vyred")); const list = r && r.data && (Array.isArray(r.data) ? r.data : r.data.devices); if (Array.isArray(list)) nameMap = new Map(list.filter((/** @type {any} */ x) => x && x.id && x.name).map((/** @type {any} */ x) => [String(x.id), String(x.name)])); } catch { /* the names are a nicety */ }
-      return nameMap;
-    };
     const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
@@ -353,34 +344,10 @@ async function startLocked(opts, root, p, release) {
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
       get placements() { return lentPlacements(registry); },
       // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
-      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache(); return proc; },
-      // A new chat's place (contracts/lent-spawn.md): a ready computer of the person's with the row written, or the box.
-      placeNew: async (/** @type {string} */ space, /** @type {any} */ i) => {
-        const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
-        if (!h) return { where: "box" };
-        const r = h.placeNew(i);
-        if (r.where !== "mac") return r;
-        const names = await nameCache();
-        return { ...r, computer: names.get(r.device) || null };
-      },
-      // The remote Spaces this computer is set to lend itself to (the person's "Run on this computer" for a Space): an enrolled lender beats for each, whether or not it has run a session there.
-      lentTo: async () => {
-        const id = opts.deviceIdentity ? await opts.deviceIdentity().catch(() => null) : null;
-        if (!id) return [];
-        /** @type {string[]} */ const out = [];
-        try {
-          for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'lend/%'").all())) {
-            const [, space, device] = String(r.key).split("/");
-            let v = null; try { v = JSON.parse(r.value); } catch { /* not a record */ }
-            if (!space || device !== id.deviceId || !v || v.lent !== true) continue;
-            try { const h = kernel.spaces.for(space); if (h && h.hosted === false) out.push(space); } catch { /* not a Space reached over a wire */ }
-          }
-        } catch { /* no spaces table yet */ }
-        return out;
-      },
+      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; return h ? h.spawn(i) : null; },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
-        if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet: pair it first, then call again"), { code: "unavailable" });
+        if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
         return id;
       },
     });
@@ -405,7 +372,7 @@ async function startLocked(opts, root, p, release) {
         const port = /** @type {any} */ (registry.deps).credentialsPort;
         // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
         const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
-        if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session (sessions.accounts.list shows the accounts; sign one in first)"), { code: "not_found" });
+        if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
         return v;
       },
       forwardCredential: async (/** @type {any} */ q) => {
@@ -487,7 +454,7 @@ async function startLocked(opts, root, p, release) {
             /** Write a text or base64 file as a new version: `{ path, text }` or `{ path, base64 }`, at most 8 MB. */
             write: async (/** @type {{ path: string, text?: string, base64?: string }} */ f) => {
               const bytes = f.base64 !== undefined ? new Uint8Array(Buffer.from(String(f.base64), "base64")) : new Uint8Array(Buffer.from(String(f.text ?? ""), "utf8"));
-              if (bytes.length > 8 * 1024 * 1024) throw Object.assign(new Error("a file here is at most 8 MB: send a smaller one or split it"), { code: "too_large" });
+              if (bytes.length > 8 * 1024 * 1024) throw Object.assign(new Error("a file here is at most 8 MB"), { code: "too_large" });
               const r = await h.drive.put(chain(), within(f.path), bytes);
               return { path: within(f.path), version: r.version, size: bytes.length };
             },
@@ -655,8 +622,7 @@ async function startLocked(opts, root, p, release) {
         emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a chat is `opts.resumeLent` (or the registry's `resumeLent`, agent-core's). Until it exists the server
         // takes no session from a computer (`canResume`): a move answers "coming in this release" and the computer keeps running the session, because a session taken with nothing to continue it is a session lost.
-        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet: start a new session on that computer instead"), { code: "unavailable" }); return f(i); },
-        http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers, /** @type {string} */ body) => lentRequest(thread, method, p, headers, body),
+        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet"), { code: "unavailable" }); return f(i); },
         canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {

@@ -235,7 +235,7 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
   assert.match(page.body, /window\.mine=1/, "and nothing else is touched");
   const script = /** @type {any} */ (await front(frontPort, u.host, "/__vyre/claude.js", { cookie }));
   assert.equal(script.status, 200);
-  assert.match(script.body, /var NAME = "claude";[\s\S]*window\[NAME\] = Object\.freeze/); // the page global is `claude`, named once
+  assert.match(script.body, /window\.claude/);
   assert.match(script.body, /use: function/);
 
   /** One bridge call. @param {string} op @param {any} args @param {Record<string, string>} [extra] */

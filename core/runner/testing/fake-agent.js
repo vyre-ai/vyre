@@ -54,36 +54,5 @@ async function handle(line) {
     r.other = await new Promise(res => { const q = http.request({ hostname: sp.hostname, port: sp.port, path: "/elsewhere/x", headers: { "x-api-key": process.env.ANTHROPIC_API_KEY } }, m => res({ status: m.statusCode })); q.on("error", e => res({ error: e.code })); q.end(); });
     out(r);
     out({ type: "result" });
-  } else if (cmd === "vyre") {
-    // a call to Vyre as the session's own, through the door the runner gives it (VYRE_SOCKET): `vyre <tool> <json>`
-    const [tool, ...j] = arg.split(" ");
-    const reply = await new Promise(res => {
-      const data = j.join(" ") || "{}";
-      const q = http.request({ socketPath: process.env.VYRE_SOCKET, path: "/v1/tools/" + tool, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), "x-vyre-caller": "mcp" } }, m => { let b = ""; m.on("data", d => b += d); m.on("end", () => res({ status: m.statusCode, body: b })); });
-      q.on("error", e => res({ error: e.code })); q.end(data);
-    });
-    out({ type: "vyre", reply });
-    out({ type: "result" });
-  } else if (cmd === "mcp") {
-    // run Vyre's own MCP server as Claude would (from the --mcp-config the runner gave), ask it for its tools, and say what it answered
-    const cfgs = process.argv.flatMap((x, i, a) => (x === "--mcp-config" ? [JSON.parse(a[i + 1])] : []));
-    const v = cfgs.map(c => c.mcpServers.vyre).find(Boolean);
-    const { spawn } = await import("node:child_process");
-    const child = spawn(process.execPath, v.args, { env: { PATH: process.env.PATH, HOME: process.env.HOME, ...v.env }, stdio: ["pipe", "pipe", "pipe"] });
-    let buf = "", err = ""; const replies = new Map();
-    child.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(l); replies.get(m.id)?.(m); } catch {} } });
-    child.stderr.on("data", d => { err += d; });
-    const rpc = (id, method, params) => new Promise(res => { const t = setTimeout(() => res({ timeout: true, err: err.slice(0, 600) }), 12000); replies.set(id, m => { clearTimeout(t); res(m); }); child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
-    const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
-    const list = await rpc(2, "tools/list", {});
-    // `mcp <tool> <json>`: also call one tool by its MCP name
-    const [tname, ...tj] = arg.split(" ");
-    const called = tname ? await rpc(3, "tools/call", { name: tname, arguments: JSON.parse(tj.join(" ") || "{}") }) : null;
-    child.kill();
-    out({ type: "mcp", init: init.result ? "ok" : init, tools: list.result ? list.result.tools.map(x => x.name) : list, ...(called ? { called: called.result || called } : {}) });
-    out({ type: "result" });
-  } else if (cmd === "argv") {
-    out({ type: "argv", argv: process.argv.slice(2), socket: process.env.VYRE_SOCKET || null });
-    out({ type: "result" });
   } else if (cmd === "exit") process.exit(0);
 }

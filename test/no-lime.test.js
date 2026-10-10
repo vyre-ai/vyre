@@ -14,8 +14,7 @@ import { spawnSync } from "node:child_process";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HISTORY = /^(CHANGELOG\.md|site\/CHANGELOG\.md|docs\/work\/|docs\/adr\/|test\/no-lime\.test\.js$|test\/test-counts\.json$)/;
 // Named CSS colours in a colour parser are not the brand colour.
-// The preview libraries Vyre ships (d3, chart.js, recharts, three) are third-party code built as they are, hash-pinned (core/previews/vendor-src): their CSS colour-name tables carry the word.
-const KEEP = /^(local\/capsule\/native\/Sources\/Core\/Colour\.swift|core\/previews\/vendor\/[^/]+\.js)$/;
+const KEEP = /^local\/capsule\/native\/Sources\/Core\/Colour\.swift$/;
 const OLD = new RegExp(
   ["c6" + "f36b", "d4" + "f88a", "46" + "700c", "rgba\\(\\s*198\\s*,\\s*243\\s*,\\s*107", "rgba\\(\\s*70\\s*,\\s*112\\s*,\\s*12\\s*,", "\\bli" + "me\\b"].join("|"), "i");
 

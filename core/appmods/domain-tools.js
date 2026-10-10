@@ -40,7 +40,7 @@ export function registerDomainTools({ ctx, domains, running, signingApp, ownerOr
       if (!app || !running(app)) throw refuse(app ? `${app} is not running here; install and start it first` : "no signing app is running here; install Documents first", "not_found");
       if (!(ctx.config && ctx.config.relay && ctx.config.relay.tunnel_url)) throw refuse("your own domain needs the public door, which is not set up on this server yet", "unavailable");
       let changed;
-      try { changed = domains.add(host, app); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "conflict"); }
+      try { changed = domains.add(host, app); } catch (e) { throw refuse(`${/** @type {Error} */ (e).message}; remove one first`, "conflict"); }
       if (changed) ctx.events.emit("appmods.domain-changed", { host, app, on: true });
       return { host, app, state: "waiting", records: await records(host), note: "Add both records at your domain's DNS. Vyre looks again every few minutes and starts serving the page when they are there." };
     },
@@ -52,7 +52,7 @@ export function registerDomainTools({ ctx, domains, running, signingApp, ownerOr
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       if (!(await ownerOrAdmin(meta))) throw refuse("only the Space's owner or an admin can remove a domain", "denied");
       const host = cleanHost(i.host, zone());
-      if (!host || !domains.remove(host)) throw refuse("that domain is not in use here: give the host as it was added, such as sign.yourfirm.com", "not_found");
+      if (!host || !domains.remove(host)) throw refuse("that domain is not in use here", "not_found");
       ctx.events.emit("appmods.domain-changed", { host, on: false });
       return { host, removed: true };
     },

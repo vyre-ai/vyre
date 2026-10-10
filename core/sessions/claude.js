@@ -113,7 +113,7 @@ export function run(sdk, o) {
     stderr: (/** @type {string} */ c) => { err = (err + c).slice(-2000); },
     // Own the spawn: the pid is Vyre's to know, and a stop takes the whole tree.
     spawnClaudeCodeProcess: (/** @type {any} */ sp) => {
-      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn, lentSpawn: /** @type {any} */ (o).lentSpawn });
+      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn });
       child = c;
       c.on("exit", (cd, s) => { code = cd; sig = s; died = true; done(); });
       c.on("error", e => { err = e.message; died = true; done(); });
@@ -172,7 +172,7 @@ export function run(sdk, o) {
     /** A permission mode a person chose (the Switchboard checks which). */
     /** Only the modes Claude Code has; anything else, a bypass-shaped name above all, is refused here (conform's fixed set). */
     async setMode(/** @type {string} */ mode) {
-      if (!CLAUDE_MODES.has(String(mode))) throw Object.assign(new Error(`${mode} is not a permission mode: use one of default, acceptEdits, plan, dontAsk or auto`), { code: "denied" });
+      if (!CLAUDE_MODES.has(String(mode))) throw Object.assign(new Error(`${mode} is not a permission mode`), { code: "denied" });
       if (!exited) await q.setPermissionMode(mode);
     },
     /** Stop the current turn; the session stays. */

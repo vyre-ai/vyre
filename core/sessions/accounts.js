@@ -179,7 +179,7 @@ export class Accounts {
   /** The person's privacy choice for an account on a provider that has one. @param {string} id @param {boolean} on */
   setPrivacy(id, on) {
     const r = this.row(id);
-    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${id} (sessions.accounts.list shows them)`), { code: "not_found" });
+    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${id}`), { code: "not_found" });
     if (r.provider !== "grok") throw Object.assign(new Error(`${r.provider} has no privacy setting`), { code: "bad_input" });
     this.db.prepare("UPDATE sessions_accounts SET privacy = ?, updated = ? WHERE id = ?").run(on ? 1 : 0, Date.now(), String(id));
     return this.row(id);
@@ -190,7 +190,7 @@ export class Accounts {
 
   remove(id) {
     const r = this.row(id);
-    if (!r) throw Object.assign(new Error(`no account ${id} (sessions.accounts.list shows them)`), { code: "not_found" });
+    if (!r) throw Object.assign(new Error(`no account ${id}`), { code: "not_found" });
     this.db.prepare("DELETE FROM sessions_accounts WHERE id = ?").run(String(id));
     // If one account is left on the provider it is the default.
     const rest = /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ?").all(r.provider));
@@ -203,7 +203,7 @@ export class Accounts {
   /** Add or replace a project/agent's place in an account's scope, or set it as its provider's default. */
   bind(i) {
     const r = this.row(i.id);
-    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${i.id} (sessions.accounts.list shows them)`), { code: "not_found" });
+    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${i.id}`), { code: "not_found" });
     const add = (list, v) => (list === "*" ? "*" : [...new Set([...list, v])]);
     const scope = { ...r.scope };
     if (i.project) scope.projects = add(scope.projects, String(i.project));
@@ -239,8 +239,8 @@ export class Accounts {
       const waiting = listed.find(a => a.id === i.account && a.pending);
       if (waiting) throw Object.assign(new Error(`${waiting.label} is waiting for the person to finish setting it up on their own device`), { code: "pending" });
       const chosen = all.find(a => a.id === i.account);
-      if (!chosen) throw Object.assign(new Error(`no account ${i.account} on ${provider} (sessions.accounts.list shows them)`), { code: "not_found" });
-      if (!inScope(chosen.scope, target)) throw Object.assign(new Error(`${chosen.label} is not granted to ${target.project ? "project " + target.project : target.agent ? "agent " + target.agent : "this call"} (sessions.accounts.bind grants it)`), { code: "denied" });
+      if (!chosen) throw Object.assign(new Error(`no account ${i.account} on ${provider}`), { code: "not_found" });
+      if (!inScope(chosen.scope, target)) throw Object.assign(new Error(`${chosen.label} is not granted to ${target.project ? "project " + target.project : target.agent ? "agent " + target.agent : "this call"}`), { code: "denied" });
       return chosen;
     }
     if (target.agent) { const a = real.find(a => a.provider === provider && inScope(a.scope, target) && a.scope.agents !== "*" && a.scope.agents.includes(target.agent)); if (a) return a; }

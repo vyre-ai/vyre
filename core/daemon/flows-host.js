@@ -57,7 +57,7 @@ export function createFlowsHost(o) {
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
       // The model door is the kernel's own (gateway.model, present when the home was booted with the inference door): every classify step goes through its scan, so a sealed field reaches the
       // model only as a placeholder, and the step passes no tools. Without a door the step fails plainly and the owner is told.
-      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run: ask the owner to turn on model access for this home"), { code: "unavailable" }); } },
+      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run"), { code: "unavailable" }); } },
     };
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
@@ -87,15 +87,14 @@ export function createFlowsHost(o) {
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
       call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string, ride?: { run: string, step: string, with: string } }} */ opts = {}) => {
         const tool = o.flowTools ? (o.flowTools() || []).find((/** @type {any} */ t) => t.name === action) : null;
-        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run (flows.cheatsheet lists the steps)`), { code: "denied" });
+        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run`), { code: "denied" });
         if (!o.callFlow) throw Object.assign(new Error("this home has no way to run a module's tool from a Flow"), { code: "unavailable" });
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });
         if (tool.risk === "outward") {
           // A step that rides an earlier step's yes (`with`) is covered when the person's approved question for that earlier step, in this run, listed it (action and resource) among the steps it asks for
           // (kernel/flows/rides.js): the question was frozen with the task and read in full by the person. The yes is not spent here again; each rider has a receipt of its own below.
-          // (read from the task itself, which a restart keeps: the person's yes was proven when they answered it, and the rider may come days later)
-          const ride = opts.ride, row = ride ? await gw.ask.get(flowsChain(), String(opts.approval)).catch(() => null) : null, form = row && row.state === "done" && row.outcome === "approved" ? row.form : null;
+          const ride = opts.ride, form = ride && k.tasks && typeof k.tasks.kitApproval === "function" ? (k.tasks.kitApproval(String(opts.approval)) || {}).form : null;
           const rides = ride && form && form.kind === "held_act" && form.run === ride.run && form.step === ride.with && Array.isArray(form.rides) && form.rides.some((/** @type {any} */ r) => r.step === ride.step && r.action === action && r.resource === resource);
           if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
             throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
@@ -133,7 +132,7 @@ export function createFlowsHost(o) {
       // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
       // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
-        if (!gw.leases) throw Object.assign(new Error("this home has no vault forward, so a Flow cannot call a service: ask the owner to set up the vault on this home"), { code: "unavailable" });
+        if (!gw.leases) throw Object.assign(new Error("this home has no vault forward"), { code: "unavailable" });
         const r = q.request || {};
         return gw.leases.forward(q.chain, { connector: q.connector, method: r.method || "GET", path: r.path || "/", ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) });
       },
@@ -184,7 +183,7 @@ export function createFlowsHost(o) {
     };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
     const isAdminOf = async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id);
-    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules: ask the owner to restart Vyre"), { code: "unavailable" }); });
+    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules"), { code: "unavailable" }); });
     /** An agent's change to itself, by conversation (R031-09): the agents module keeps the draft and writes the version; the card goes to the agent's owner, else an owner or admin. */
     const agentKind = {
       draft: async (/** @type {any} */ chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
@@ -250,31 +249,20 @@ export function createFlowsHost(o) {
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
-    // A wait or a schedule that comes due sooner than the timer's sleep wakes it early (set below).
-    /** @type {() => Promise<void>} */ let nudge = async () => {};
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); void nudge(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;
-    let stopped = false, plannedAt = Infinity, nudging = false, lastNudge = 0;
+    let stopped = false;
     const arm = async () => {
       if (stopped) return;
       let wait = MIN_TICK_MS;
       try { const next = await flows.nextWake(); if (typeof next === "number") wait = Math.max(1000, Math.min(MIN_TICK_MS, next - clock())); } catch (err) { log(`flows ${space}: no next wake (${/** @type {Error} */ (err).message})`); }
       if (stopped) return;
-      plannedAt = clock() + wait;
       timer = setTimeout(async () => { try { await flows.tick(); } catch (err) { log(`flows ${space}: tick failed (${/** @type {Error} */ (err).message})`); } void arm(); }, wait);
       timer.unref();
-    };
-    // A run that started a short wait, or a Flow with a schedule that is due sooner, must not sit out the timer's last sleep (a minute at most): look again at most once a second, and sleep less if the next wake moved up.
-    let nudgeLater = false;
-    nudge = async () => {
-      if (stopped || nudging || timer === null) return;
-      if (clock() - lastNudge < 1000) { if (!nudgeLater) { nudgeLater = true; setTimeout(() => { nudgeLater = false; void nudge(); }, 1000).unref(); } return; }
-      nudging = true; lastNudge = clock();
-      try { const next = await flows.nextWake(); if (typeof next === "number" && next < plannedAt - 500) { clearTimeout(timer); await arm(); } } catch { /* the next tick looks again */ } finally { nudging = false; }
     };
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.

@@ -703,7 +703,7 @@ export default {
       // What it targets changed since the agent suggested it: it expires rather than apply to something else.
       if (state === "accepted" && r.target != null && targetOf(input) !== r.target) {
         ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = 'expired', settled = ? WHERE id = ?").run(Date.now(), Number(id));
-        throw Object.assign(new Error(`suggestion ${id} expired: what it was about has changed since; ask for new suggestions`), { code: "not_found" });
+        throw Object.assign(new Error(`suggestion ${id} expired: what it was about has changed since`), { code: "not_found" });
       }
       ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = ?, settled = ? WHERE id = ?").run(state, Date.now(), Number(id));
       ctx.events.emit("memory.suggested", { id: Number(id), state });
@@ -1188,7 +1188,7 @@ export default {
     // chain, never decided here; a fact keeps its source and its filer from the chain. Nothing is copied across Spaces: a call is for the Space it is asked in.
     const spaceMemory = async (/** @type {any} */ extra) => {
       const k = rawCtx.kernel;
-      if (!k || !k.memory || typeof k.chain !== "function") throw Object.assign(new Error("this install has no Space memory; run this on the server that hosts the Space"), { code: "unavailable" });
+      if (!k || !k.memory || typeof k.chain !== "function") throw Object.assign(new Error("this install has no Space memory"), { code: "unavailable" });
       return { api: k.memory, chain: await k.chain(extra || {}) };
     };
     const factOut = (/** @type {any} */ f) => ({ id: f.id, urn: f.urn, text: f.text, source: f.source, kind: f.kind, topics: f.topics, by: f.by, filed_at: f.filed_at, state: f.state, labels: f.labels, ...(f.scope ? { scope: f.scope } : {}), ...(f.existing !== undefined ? { existing: f.existing } : {}) });
@@ -1220,7 +1220,7 @@ export default {
     // The backup key is sealed under the identity memory key, which this device's key unwraps from the identity home with no prompt: every device in the identity's list opens the backup, one added to the
     // home opens it at once, and the recovery code restores it onto a new device. The home has to be enrolled first (the person's own act); until then there is nothing to back up to.
     const backupOf = () => bkOpen || (bkOpen = (async () => {
-      if (!identity || !identity.home.exists()) throw Object.assign(new Error("the encrypted home is not set up yet (memory.identity.enroll sets it up)"), { code: "not_found" });
+      if (!identity || !identity.home.exists()) throw Object.assign(new Error("the encrypted home is not set up yet"), { code: "not_found" });
       const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
       const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8"));
       const lease = await identity.home.unlockWithDevice(dev);
@@ -1255,7 +1255,7 @@ export default {
       effect: "write",
       description: "Back up now: upload what the team server lacks, then write the next manifest. Returns { rev, uploaded, reused, items, bytes }. Runs by itself every hour while there are changes.",
       input: { type: "object", properties: {} },
-      run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg) throw Object.assign(new Error("there is no team server to back up to (memory.backup.status shows where backups go)"), { code: "not_found" }); return bkRun(); },
+      run: async (_i, extra = {}) => { if (!reader(extra.caller)) throw denied("backing up is the person's own act"); if (!bkCfg) throw Object.assign(new Error("there is no team server to back up to"), { code: "not_found" }); return bkRun(); },
     });
     ctx.tool("memory.backup.restore", {
       effect: "write",
@@ -1329,7 +1329,7 @@ export default {
     });
     // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
     // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
-    const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: name a home for it in the install's settings first"), { code: "not_found" });
+    const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });
     const idCallers = [...PEOPLE_MOD, "mcp", "harness"];
     ctx.tool("memory.identity.status", {
       effect: "read",
@@ -1885,7 +1885,7 @@ export default {
       run: ownerWrite(async ({ id, pick }, { caller } = {}) => {
         if (running) await running.catch(() => {});
         const c = contradictions(personal).find(x => x.id === id);
-        if (!c) throw Object.assign(new Error(`no open contradiction ${id}: it may be settled already; list the open ones again to see what is left`), { code: "not_found" });
+        if (!c) throw Object.assign(new Error(`no open contradiction ${id}: it may be settled already`), { code: "not_found" });
         const said = answerOf(c, pick);
         const r = personal.tell(said.text, said.claim, { who: `settle:${plain(caller || "", 40)}` });
         ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });

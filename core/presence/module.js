@@ -187,7 +187,7 @@ export default {
           // The native app (vyre://person/signin): its code is traded by the app itself, which
           // must also sign that trade with the key it registers (person.js exchange).
           const native = back.protocol === "vyre:" && back.host === "person";
-          if (!loop && !native && (back.protocol !== "https:" || !allowed.includes(back.origin))) throw Object.assign(new Error(`${back.protocol === "vyre:" ? back.href : back.origin} is not an app this box signs in to; ask the owner to allow it`), { code: "denied" });
+          if (!loop && !native && (back.protocol !== "https:" || !allowed.includes(back.origin))) throw Object.assign(new Error(`${back.protocol === "vyre:" ? back.href : back.origin} is not an app this box signs in to`), { code: "denied" });
           const c = people.code({ node, cc: input.cc, origin: loop ? "loopback" : native ? "app:vyre" : back.origin, label });
           back.searchParams.set("code", c.code);
           return { kind: "code", code: c.code, expires: c.expires, redirect: back.href };
@@ -200,12 +200,12 @@ export default {
           if (meta.presence.method === "passkey") {
             // A relayed browser: its passkey is bound to this device id (presence checked it too).
             const b = /** @type {any} */ (ctx.store.db.prepare("SELECT device FROM presence_key_devices WHERE key = ?").get(String(meta.presence.keyId || "")));
-            if (!b || b.device !== node) throw Object.assign(new Error("that passkey is not this device's; sign in on this device with its own passkey"), { code: "denied" });
+            if (!b || b.device !== node) throw Object.assign(new Error("that passkey is not this device's"), { code: "denied" });
           } else if (meta.presence.method === "device") {
             const r = await ctx.call("relay.device.presence", { id: node }).catch(() => null);
             const mine = r && r.data && r.data.key;
-            if (!mine || mine !== meta.presence.keyId) throw Object.assign(new Error("that key is not the one enrolled for this device; sign in with the key this device paired with"), { code: "denied" });
-          } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey; use one of them, or pair the device again if it has neither"), { code: "denied" });
+            if (!mine || mine !== meta.presence.keyId) throw Object.assign(new Error("that key is not the one enrolled for this device"), { code: "denied" });
+          } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
           const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null, strength: openedBy(meta.presence.method) });
@@ -232,13 +232,13 @@ export default {
         if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("only the pairing makes a grant"), { code: "denied" });
         const r = await ctx.call("wink.device.record", { id: String(input.device) }).catch(() => null);
         const rec = r && r.data;
-        if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner; the owner confirms the pairing on their own device first"), { code: "denied" });
+        if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
         if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
         const strength = STRENGTHS[0], software = true;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
         const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
-        if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof; confirm the pairing again with Touch ID or a passkey"), { code: "denied" });
+        if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
         const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software, strength });
         // The challenge goes back to the pairing, which hands it to the device; the device can also ask for it (presence.person.pair-challenge).
         return { granted: true, expires: g.expires, challenge: g.challenge, ...(software ? { software: true } : {}) };
@@ -335,9 +335,9 @@ export default {
       callers: RELAY_DEVICE_CALLERS,
       input: obj({ t: str, n: str, sig: str }, ["t", "n", "sig"]),
       run: async (input, meta = {}) => {
-        if (!meta.person) throw Object.assign(new Error("no person session; sign in as the person first"), { code: "denied" });
+        if (!meta.person) throw Object.assign(new Error("no person session"), { code: "denied" });
         const r = people.rotate({ id: meta.person.id, t: String(input.t), n: String(input.n), sig: String(input.sig) });
-        if (!r) throw Object.assign(new Error("that rotation was not accepted; sign in again to get a new session"), { code: "denied" });
+        if (!r) throw Object.assign(new Error("that rotation was not accepted"), { code: "denied" });
         return { kind: "bearer", id: r.id, token: r.token, expires: r.expires };
       },
     });
@@ -390,7 +390,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule"],
       input: obj({ id: str }, ["id"]),
       run: async ({ id }) => {
-        if (!people.revoke(id)) throw Object.assign(new Error(`no session ${id}; give the id of a session that is still signed in`), { code: "not_found" });
+        if (!people.revoke(id)) throw Object.assign(new Error(`no session ${id}`), { code: "not_found" });
         ctx.events.emit("presence.signed-out", { id });
         return { revoked: id };
       },

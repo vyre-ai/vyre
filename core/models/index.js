@@ -225,11 +225,11 @@ export default {
         const k = String(i.model), row = /** @type {any} */ (db.prepare("SELECT * FROM models_evals WHERE model = ?").get(k));
         if (!row || row.state !== "approved") throw refuse("that eval was not approved (models.eval-queue)", "not_allowed");
         const types = JSON.parse(String(row.types));
-        if (!types.includes(String(i.type))) throw refuse(`${i.type} was not approved for this model (models.eval-queue shows what is approved)`, "not_allowed");
+        if (!types.includes(String(i.type))) throw refuse(`${i.type} was not approved for this model`, "not_allowed");
         const score = Number(i.score);
         if (!(score >= 0 && score <= 1)) throw refuse("score is a number from 0 to 1", "bad_input");
         const entries = load(), e = entries.get(k);
-        if (!e) throw refuse("no such model (models.list shows them)", "not_found");
+        if (!e) throw refuse("no such model", "not_found");
         e.evals = { ...(e.evals || {}), [String(i.type)]: { score, at: now(), ...(i.run ? { run: String(i.run).slice(0, 80) } : {}) } };
         entries.set(k, e); save(new Map([[k, e]]));
         if (types.every((/** @type {string} */ t) => e.evals[t])) db.prepare("UPDATE models_evals SET state = 'done' WHERE model = ?").run(k);

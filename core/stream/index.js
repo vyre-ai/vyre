@@ -250,7 +250,7 @@ export default {
       const kc = await access.chat(session, meta);
       // The kernel is on: a chat is the kernel's, and a call that carries no session of its own cannot speak in one (the 0.2 group path is closed).
       if (!kc) { if (kernelOn) throw Object.assign(new Error("a call needs the person's own session"), { code: "person_session_required" }); return; }
-      if (!kc.chat) throw Object.assign(new Error("no such session: name a chat the person is in (work.chat.list shows them)"), { code: "not_found" });
+      if (!kc.chat) throw Object.assign(new Error("no such session"), { code: "not_found" });
       // Nobody joins by a call: people and assistants are the kernel's list, changed by a person in the chat acting directly (the kernel's chats.change), never by a send.
       if ((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length)) throw Object.assign(new Error("people and assistants of a chat are added with the kernel's chat change, by a person in it"), { code: "bad_input" });
       await groups.mirror(session, { people: [...kc.chat.people], assistants: [...(kc.chat.assistants || [])] }, meta, `person:${kc.person}`, kc.chain);
@@ -259,7 +259,7 @@ export default {
     const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => ctx.tool(name, {
       description, input, callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (!groups) throw Object.assign(new Error("the stream has no store here: ask the owner to restart Vyre"), { code: "unavailable" });
+        if (!groups) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
         if (method === "send") refuseKey(i.text); // appended to the chat first, so refused before it is written
         await kernelGate(i, meta);
         return /** @type {any} */ (groups)[method](i, meta);
@@ -279,7 +279,7 @@ export default {
     // The chat's frames and who answers in it, to leave this device with the chat and be put back on the other (core/work/chat-upgrade.js). Modules only: the work module has checked the person is in the chat.
     const db = ctx.store && ctx.store.db;
     // the work module's door and no other: any other module, an added one included, could read every chat's frames or forge some
-    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone: the person moves chats with work.chat.upgrade-plan`), { code: "denied" }); };
+    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone`), { code: "denied" }); };
     ctx.tool("stream.export-chat", {
       description: "A chat's logged frames and member rows, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
       input: obj({ chat: str }, ["chat"]),
@@ -295,7 +295,7 @@ export default {
       input: obj({ chat: str, frames: { type: "array" }, members: { type: "array" }, fresh: { type: "boolean" } }, ["chat", "frames", "members"]),
       run: async (/** @type {any} */ i, /** @type {any} */ m) => {
         workOnly(m, "putting a chat's history back");
-        if (!db) throw Object.assign(new Error("the stream has no store here: ask the owner to restart Vyre"), { code: "unavailable" });
+        if (!db) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
         const chat = String(i.chat);
         logs.get(chat); // the log's table is made the first time any log is opened
         db.exec("CREATE TABLE IF NOT EXISTS stream_imports (chat TEXT PRIMARY KEY)");
@@ -303,7 +303,7 @@ export default {
         if (i.fresh === true && db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
         // a later chunk only carries on an import this door started: frames are never written into a chat that was not put back from its first chunk
         if (i.fresh === true) db.prepare("INSERT OR IGNORE INTO stream_imports (chat) VALUES (?)").run(chat);
-        else if (!db.prepare("SELECT 1 FROM stream_imports WHERE chat = ?").get(chat)) throw Object.assign(new Error("that chat's history was not started here: start the import from its first chunk"), { code: "denied" });
+        else if (!db.prepare("SELECT 1 FROM stream_imports WHERE chat = ?").get(chat)) throw Object.assign(new Error("that chat's history was not started here"), { code: "denied" });
         let frames = 0, members = 0;
         for (const f of /** @type {any[]} */ (i.frames)) { if (f && Number.isInteger(f.cur) && typeof f.json === "string") { db.prepare("INSERT OR IGNORE INTO stream_frames (session, cur, first, json) VALUES (?,?,?,?)").run(chat, f.cur, Number.isInteger(f.first) ? f.first : f.cur, f.json); frames++; } }
         for (const m of /** @type {any[]} */ (i.members)) { if (m && m.grp === chat && typeof m.who === "string") { db.prepare("INSERT OR IGNORE INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)").run(chat, m.who, m.thread ?? null, m.cwd ?? null, m.name ?? null, m.asker ?? null, m.answer ?? null, Number(m.last_event) || 0, m.kind ?? null); members++; } }

@@ -46,7 +46,7 @@ export function createCalendarSync(o) {
       for (;;) {
         const res = await o.call("events.list", { params: { calendar: cal }, query: { singleEvents: "true", showDeleted: "true", maxResults: 250, ...(token ? { syncToken: token } : {}), ...(pageToken ? { pageToken } : {}) } });
         if (res.status === 410) { state.set("syncToken", undefined); token = undefined; pageToken = undefined; continue; } // the token expired: start over
-        if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status} (wait a few minutes and sync again; if it keeps failing, ask the person to reconnect the calendar)`), { code: "unavailable" });
+        if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
         for (const g of res.body.items || []) {
           const existing = await byExternal(g.id);
           if (g.status === "cancelled") { if (existing) { await R.remove(o.chain(), "event", existing.id, existing.version); out.removed++; } continue; }
@@ -103,12 +103,12 @@ export function createCalendarSync(o) {
         }
         const res = /** @type {any} */ (w.value);
         if (isNew) {
-          if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status} (wait a few minutes and sync again; if it keeps failing, ask the person to reconnect the calendar)`), { code: "unavailable" });
+          if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
           const u = await R.update(o.chain(), "event", r.id, { external_id: res.body.id, calendar: route, source: "vyre" }, r.version);
           mark(u.id, { version: u.version, etag: res.body.etag }); out.inserted++;
         } else {
           if (res.status === 412) { out.conflicts++; report("calendar.conflict", change); mark(r.id, { version: r.version, conflict: true }); continue; }
-          if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status} (wait a few minutes and sync again; if it keeps failing, ask the person to reconnect the calendar)`), { code: "unavailable" });
+          if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
           mark(r.id, { version: r.version, etag: res.body.etag }); out.patched++;
         }
       }

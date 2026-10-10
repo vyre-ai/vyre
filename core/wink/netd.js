@@ -295,7 +295,7 @@ export function createNetd(o) {
      */
     /** A one-time join key for a node that will reach this network on `controlUrl`, in memory only, and the watch that gives the new node its door rule. For in-process callers (the pairing's hand-over, the real test); never a tool. @param {number} [ttlMs] @param {string} [device] the paired device the key is for: the key's id is recorded, and the node that joins with it is bound to that device */
     async joinKey(ttlMs = 120_000, device) {
-      if (st.state !== "up" || !hs) throw Object.assign(new Error("the network is not up; wait a minute and try again"), { code: "unavailable" });
+      if (st.state !== "up" || !hs) throw Object.assign(new Error("the network is not up"), { code: "unavailable" });
       const key = await hs.createPreauthKey({ ttlMs });
       noteKey(key.id, device);
       watchJoin(ttlMs);

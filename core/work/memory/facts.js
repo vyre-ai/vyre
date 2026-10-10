@@ -192,16 +192,16 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
     /** Accept: the caller's own chain writes it (so the caller must hold write); a field that has since been filled becomes the owner's task. @param {any} chain @param {number} id */
     async accept(chain, id) {
       const row = db.prepare("SELECT * FROM memory_engine_suggestions WHERE id = ? AND state = 'pending'").get(id);
-      if (!row) throw Object.assign(new Error("no such suggestion (work.know.suggestions shows the ones waiting)"), { code: "not_found" });
+      if (!row) throw Object.assign(new Error("no such suggestion"), { code: "not_found" });
       const s = sug(row);
-      if (s.private && s.person !== personId(chain)) throw Object.assign(new Error("no such suggestion (work.know.suggestions shows the ones waiting)"), { code: "not_found" });
+      if (s.private && s.person !== personId(chain)) throw Object.assign(new Error("no such suggestion"), { code: "not_found" });
       const p = /** @type {any} */ (parseUrn(s.record));
       const f = { record: s.record, field: s.field, note: s.note, value: s.value, citations: s.citations, labels: s.labels, person: chain.hops[0].actor, from: s.from };
       let result;
       if (s.note) { await writeNote(chain, f); result = { outcome: "note" }; }
       else {
         const rec = await kernel.records.get(chain, p.type, p.id);
-        if (!rec) throw Object.assign(new Error("not found; the record is gone or not yours to see, so ask the owner or an admin"), { code: "not_found" });
+        if (!rec) throw Object.assign(new Error("not found"), { code: "not_found" });
         if (!empty(rec.data[/** @type {string} */ (s.field)])) result = { outcome: "task", ...(await raiseTask(chain, f, "changes an existing value", false)) };
         else { await kernel.records.update(chain, p.type, p.id, { [/** @type {string} */ (s.field)]: s.value }, rec.version); result = { outcome: "applied" }; }
       }
@@ -211,7 +211,7 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
     /** @param {any} chain @param {number} id */
     dismiss(chain, id) {
       const row = db.prepare("SELECT * FROM memory_engine_suggestions WHERE id = ? AND state = 'pending'").get(id);
-      if (!row || (row.private && String(row.person) !== personId(chain))) throw Object.assign(new Error("no such suggestion (work.know.suggestions shows the ones waiting)"), { code: "not_found" });
+      if (!row || (row.private && String(row.person) !== personId(chain))) throw Object.assign(new Error("no such suggestion"), { code: "not_found" });
       db.prepare("UPDATE memory_engine_suggestions SET state = 'dismissed' WHERE id = ?").run(id);
     },
     /** Erasure: suggestions and proposal keys about a record go. @param {string} record */

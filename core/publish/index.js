@@ -36,8 +36,6 @@ export { buildctlArgs } from "./builder-plan.js";
  */
 export const seams = {
   dns: { resolveTxt: (/** @type {string} */ name) => dns.resolveTxt(name) },
-  /** How long a burst of key changes waits before a live server restarts (tests shorten it). @type {number | undefined} */
-  restartMs: undefined,
   /** @type {null | ((argv: string[]) => Promise<{ code: number }>)} */
   docker: process.env.VYRE_PUBLISH_DOCKER === "1"
     ? argv => new Promise(resolve => execFile("docker", argv, { timeout: 15 * 60_000, maxBuffer: 1 << 20 }, err => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0 })))
@@ -105,7 +103,7 @@ export default {
 
     /** The Space's kernel grants this module made (a deployment's secrets are kernel grants, lib/publish/grants.js). No kernel, no secrets: nothing is kept anywhere else. */
     const grantsFor = () => {
-      const mint = () => { const m = ctx.kernel && ctx.kernel.mint; if (!m) throw refuse("deployment secrets are kernel grants, and this server has no kernel: ask the owner of this server to run a build that has one", "unavailable"); return m; };
+      const mint = () => { const m = ctx.kernel && ctx.kernel.mint; if (!m) throw refuse("deployment secrets are kernel grants, and this server has no kernel", "unavailable"); return m; };
       return { list: async (/** @type {string} */ source) => (ctx.kernel && ctx.kernel.mint ? ctx.kernel.mint.list({ source }) : []), make: (/** @type {any} */ i) => mint().make(i), end: (/** @type {any} */ q) => mint().end(q) };
     };
     /** @param {string} space */
@@ -121,7 +119,7 @@ export default {
     /** @param {string} space @param {string} person */
     async function member(space, person) {
       const r = await call("spaces.membership", { space, person });
-      if (r.missing) throw refuse("the spaces module is not running, so nobody can be checked: ask the owner of this server to start it", "no_spaces");
+      if (r.missing) throw refuse("the spaces module is not running, so nobody can be checked", "no_spaces");
       members.set(`${space}:${person}`, r.data || null);
       return r.data || null;
     }
@@ -136,7 +134,7 @@ export default {
       const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
       if (!first || !first.actor || first.actor.kind !== "person" || chain.viewer === true) throw refuse("only a person, or their own assistant, can do that", "forbidden");
       const r = await call("spaces.self", { person: String(first.actor.id), ...(input && input.space ? { space: input.space } : {}) });
-      if (r.missing || !r.data || !r.data.space || !r.data.person) throw refuse("no space is set up on this machine yet: create one first with spaces.create", "no_space");
+      if (r.missing || !r.data || !r.data.space || !r.data.person) throw refuse("no space is set up on this machine yet", "no_space");
       if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
       return { space: /** @type {{ id: string, name: string }} */ (r.data.space), person: String(r.data.person) };
     }
@@ -180,7 +178,7 @@ export default {
         async read(/** @type {string} */ ref, /** @type {{ deployment?: string }} */ o = {}) {
           try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, ""), { deployment: o.deployment }); }
           catch (/** @type {any} */ e) {
-            if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available: ask the owner of this server to start the vault", "no_vault");
+            if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available", "no_vault");
             throw e;
           }
         },
@@ -421,7 +419,7 @@ export default {
         const st = storeFor(space.id);
         const task = await st.get("tasks", String(i.task));
         const hold = await st.get("holds", String(i.task));
-        if (!task || !hold) throw refuse("that request does not exist or was already handled: give the id of one still waiting for a decision", "not_found");
+        if (!task || !hold) throw refuse("that request does not exist or was already handled", "not_found");
         if (task.state !== "needs_check") throw refuse("that request was already decided", "already_decided");
         if (i.plan_hash !== undefined && i.plan_hash !== task.payload_hash) throw refuse("what would change is different from what you saw; ask again", "approval_mismatch");
         const chain = chainOf(space.id, person, { caller: "cli" });
@@ -612,24 +610,7 @@ export default {
       },
     });
 
-    // A key rotated in the Vault reaches a live server (R031-70): every Production server holding a RUNTIME grant on that credential is started again with the new value, once for a burst of changes. A site
-    // that only uses the key to build reads the new value at its next build, and a static site holds none.
-    /** @type {Map<string, NodeJS.Timeout>} */ const restarting = new Map();
-    const restartUsers = async (/** @type {string} */ item) => {
-      for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {
-        for (const d of await storeFor(space).list("deployments")) {
-          if (d.stage !== "Production" || !d.runtime || d.runtime.kind !== "image" || !(d.secrets || []).some((/** @type {any} */ x) => x.use.includes("runtime") && x.ref === `vault://${item}`)) continue;
-          if (restarting.has(d.id)) continue;
-          restarting.set(d.id, setTimeout(() => {
-            restarting.delete(d.id);
-            runnerFor({ id: space, name: space }).start(d).then(() => ctx.events.emit("deployment.restarted", { deployment: d.id, space, why: "a key changed in the Vault" }), (/** @type {Error} */ err) => ctx.log.warn(`publish: ${d.id} did not restart with its new key: ${err.message}`));
-          }, seams.restartMs ?? 300));
-        }
-      }
-    };
-    const offRotate = ctx.events.on("vault.item-changed", (/** @type {any} */ e) => { const item = String((e.payload || e).name || ""); if (item) restartUsers(item).catch((/** @type {Error} */ err) => ctx.log.warn(`publish: could not look for sites using ${item}: ${err.message}`)); });
-
-    return { async stop() { offRotate(); for (const t of restarting.values()) clearTimeout(t); restarting.clear(); publishers.clear(); members.clear(); } };
+    return { async stop() { publishers.clear(); members.clear(); } };
   },
 };
 

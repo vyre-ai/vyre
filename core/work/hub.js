@@ -39,7 +39,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   async function freeSlug(name) {
     const base = slugify(name) || "project";
     for (let n = 1; n < 1000; n++) { const s = n === 1 ? base : `${base}-${n}`; if (!(await find(PROJECT, "slug", s))) return s; }
-    throw Object.assign(new Error("could not find a free short name for this project; give a different name"), { code: "conflict" });
+    throw Object.assign(new Error("could not find a free short name for this project"), { code: "conflict" });
   }
   /** The Project's owner field for the person it is made for: the named owner, else the first hop of the caller's chain when that is a person. @param {any} caller @param {string} [named] */
   const ownerOf = (caller, named) => {
@@ -52,7 +52,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     const nm = String(name || "").trim();
     if (!nm || nm.length > 120) throw Object.assign(new Error("a project has a name of up to 120 characters"), { code: "bad_input" });
     if (slug !== undefined && !(typeof slug === "string" && SLUG_RE.test(slug))) throw Object.assign(new Error("the short name is lower case letters, numbers and dashes"), { code: "bad_input" });
-    if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name; pick another (projects.list shows the taken ones)"), { code: "conflict" });
+    if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
     const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
       // the person who makes a project owns it: the Project's own files open for its owner and its team (kernel/gateway/project-members.js), so a project nobody owned would have files nobody could open
@@ -290,9 +290,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   async function moveChat(chat, projectRef, by) {
     if (!by) throw Object.assign(new Error("a chat is moved by a person"), { code: "not_allowed" });
     const rec = await findChat(chat);
-    if (!rec) throw Object.assign(new Error("no record of that chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
+    if (!rec) throw Object.assign(new Error("no record of that chat"), { code: "not_found" });
     const proj = await projectOf(projectRef);
-    if (!proj) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
+    if (!proj) throw Object.assign(new Error("no such project"), { code: "not_found" });
     if (rec.data.project && rec.data.project.urn === proj.urn) return rec;
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
     if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));

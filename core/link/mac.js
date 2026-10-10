@@ -117,7 +117,7 @@ export function macSide(ctx, seam = {}) {
    * @param {{ timeout?: number, signal?: AbortSignal }} [opts] a longer timeout for link.serve, and a way to cancel it
    */
   async function boxCall(tool, input, c = conn, { timeout, signal, headers } = {}) {
-    if (!c) return { error: { code: "no_link", message: "pair this Mac with a box first (vyre link pair <address>)" } };
+    if (!c) return { error: { code: "no_link", message: "this Mac is not paired with a box (vyre link pair <address>)" } };
     try {
       const r = await c.json("POST", "/v1/tools/" + encodeURIComponent(tool), input, { timeout: timeout || seam.timeout || 10_000, signal, ...(headers ? { headers } : {}) });
       if (c === conn) up();
@@ -155,7 +155,7 @@ export function macSide(ctx, seam = {}) {
   }
 
   async function remote(tool, input = {}, caller = "module:link") {
-    if (!saved || !conn) return { error: { code: "no_link", message: "pair this Mac with a box first (vyre link pair <address>)" } };
+    if (!saved || !conn) return { error: { code: "no_link", message: "this Mac is not paired with a box (vyre link pair <address>)" } };
     if (saved.revoked) return { error: { code: "unpaired", message: "the box no longer knows this Mac; pair again" } };
     // The link's own tools on the box are for the link, not for other modules to drive.
     if (String(tool).startsWith("link.")) return { error: { code: "denied", message: "link tools on the box are not callable through the link" } };
@@ -560,7 +560,7 @@ export function macSide(ctx, seam = {}) {
     callers: ["cli", "local", "capsule"],
     input: { type: "object", properties: {} },
     run: async () => {
-      if (!saved || !conn || saved.revoked) throw Object.assign(new Error("pair this Mac with a box first (vyre link pair <address>)"), { code: "no_link" });
+      if (!saved || !conn || saved.revoked) throw Object.assign(new Error("this Mac is not paired with a box (vyre link pair <address>)"), { code: "no_link" });
       if (signing && signing.expires > Date.now()) return { url: signing.url, expires: signing.expires };
       const verifier = crypto.randomBytes(32).toString("base64url");
       const cc = crypto.createHash("sha256").update(verifier).digest("base64url");
@@ -729,7 +729,7 @@ export function macSide(ctx, seam = {}) {
     run: async ({ tool, input }, meta) => {
       firstPartyOnly(meta, "link.call");
       // A module hop made for a model (meta.origin) is a model's call: it never rides this Mac's paired-device identity to the box.
-      if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("this call is the person's own; a module acting for a model session may not use it, so ask the person to do it"), { code: "denied" });
+      if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("link.call is the person's own; a module acting for a model session may not use it"), { code: "denied" });
       const r = await remote(tool, input || {}, meta && meta.caller);
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
       return r.data;
@@ -756,7 +756,7 @@ export function macSide(ctx, seam = {}) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(upload))) {
         throw Object.assign(new Error("upload must be the id sync.upload.start gave"), { code: "bad_input" });
       }
-      if (!conn) throw Object.assign(new Error("pair this Mac with a box first (vyre link pair <address>)"), { code: "no_link" });
+      if (!conn) throw Object.assign(new Error("this Mac is not paired with a box (vyre link pair <address>)"), { code: "no_link" });
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64");
       const p = `/v1/sync/upload/${encodeURIComponent(upload)}?offset=${encodeURIComponent(String(offset))}`;
       let r;

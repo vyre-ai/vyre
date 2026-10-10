@@ -40,8 +40,8 @@ export function allowed(home, file, allow) {
  * @param {string} home @param {string} file @param {RegExp} allow
  */
 export function openAllowed(home, file, allow) {
-  if (!allowed(home, file, allow)) throw Object.assign(new Error("not a transcript file this reader may open (give a transcript file from the folders this reader scans)"), { code: "denied" });
-  if (!fs.lstatSync(file).isFile()) throw Object.assign(new Error("not a regular file (give the transcript file itself, not a folder or a link)"), { code: "denied" });
+  if (!allowed(home, file, allow)) throw Object.assign(new Error("not a transcript file this reader may open"), { code: "denied" });
+  if (!fs.lstatSync(file).isFile()) throw Object.assign(new Error("not a regular file"), { code: "denied" });
   return fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
 }
 

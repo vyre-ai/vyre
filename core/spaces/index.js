@@ -181,7 +181,7 @@ export default {
     const chainOf = spaceId => /** @type {any} */ (kv.get(`chain/${spaceId}`));
     const stateOfSpace = async (/** @type {string} */ spaceId) => {
       const c = await chainOf(spaceId);
-      if (!c) throw refuse("This device does not hold the space's list of owners; join the space on this device again (spaces.invites.accept).", "no_chain");
+      if (!c) throw refuse("This device does not hold the space's list of owners.", "no_chain");
       return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) }) };
     };
     /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
@@ -230,7 +230,7 @@ export default {
         // A home with no claimed identity has nobody to own or invite into a space yet: say that, not "no such space".
         let who = null; try { who = identity.status(); } catch { who = null; }
         if (!who || !who.exists || who.pending) throw refuse("Choose your Vyre name first.", "no_identity");
-        throw refuse("No such space on this device (spaces.list shows yours).", "not_found");
+        throw refuse("No such space on this device.", "not_found");
       }
       return row;
     };
@@ -442,7 +442,7 @@ export default {
     /** Who may call a modules-only tool: the registry names a module caller `module:<name>` from the module it verified; only these first-party modules (and the daemon) are admitted, whatever a module's declaration says. @param {any} meta @param {string[]} names */
     const onlyModules = (meta, names) => {
       const c = String((meta && meta.caller) || "");
-      if (!names.some(n => c === `module:${n}`)) throw refuse("That is not for this caller; only the modules that run it may call it.", "denied");
+      if (!names.some(n => c === `module:${n}`)) throw refuse("That is not for this caller.", "denied");
     };
     const pairedServer = async id => {
       let who = null; try { who = identity.status(); } catch { who = null; }
@@ -655,13 +655,13 @@ export default {
       if (!P) return;
       try { const st = identity.status(); if (st.exists && !st.pending) await P.sync({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), binds: [] }); } catch (e) { ctx.log.warn(`presence sync was not sent: ${/** @type {Error} */ (e).message}`); }
     };
-    const needPresence = () => { const P = presenceOf(); if (!P) throw refuse("This computer has no sealing process running, so there is no presence to recover; start Vyre on this computer first.", "unavailable"); return P; };
+    const needPresence = () => { const P = presenceOf(); if (!P) throw refuse("This computer has no sealing process running, so there is no presence to recover.", "unavailable"); return P; };
     const personIdOfChain = (/** @type {any} */ c) => { const h = c && c.hops && c.hops[0]; return h && h.actor.kind === "person" ? String(h.actor.id) : ""; };
     // ---- The Space bundle (R031-83, lib/space-bundle.js): every Space this box holds, each opened by its OWN owner's recovery code, given once; the export then runs unattended into the home, where a backup carries it ----
     const bundleK = ctx.kernel && ctx.kernel.bundle ? ctx.kernel.bundle : null;
     const homeSpace = () => String(ctx.kernel.space);
     /** @type {Map<string, number>} */ const bundleLast = new Map();
-    const bundleOfSpace = (/** @type {string} */ id) => { const k = bundleK && bundleK.of(id); if (!k) throw Object.assign(new Error("this box has no Space bundle yet; spaces.bundle.enrol turns backups on for a Space"), { code: "unavailable" }); return k; };
+    const bundleOfSpace = (/** @type {string} */ id) => { const k = bundleK && bundleK.of(id); if (!k) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" }); return k; };
     const bundleIdent = (/** @type {string} */ id, /** @type {any} */ k) => (id === homeSpace() ? { space: id, owner: String(ctx.kernel.owner) } : { space: id, owner: String(k.id.owner), ...(k.id.name ? { name: k.id.name } : {}) });
     const exportSpace = async (/** @type {string} */ id) => { const k = bundleOfSpace(id), r = await exportBundle({ root: ctx.paths.root, id: bundleIdent(id, k), k, home: id === homeSpace() }); bundleLast.set(id, Date.now()); return r; };
     const nameOfSpace = (/** @type {string} */ id, /** @type {any} */ k) => (id === homeSpace() ? "this box's own Space" : String((k.id && k.id.name) || id));
@@ -765,7 +765,7 @@ export default {
         return { name: row.label, id: state.id, signer: await ownerSigner(), row };
       }
       const s = me();
-      if (i.name && String(i.name).toLowerCase().replace(/\.vyre\.run$/, "") !== s.name) throw refuse("That is not this device's name; spaces.identity.status shows it.", "forbidden");
+      if (i.name && String(i.name).toLowerCase().replace(/\.vyre\.run$/, "") !== s.name) throw refuse("That is not this device's name.", "forbidden");
       return { name: /** @type {string} */ (s.name), id: /** @type {string} */ (s.id), signer: selfSigner(), row: null };
     };
     tool("spaces.identity.alias", "The DNS TXT record to publish at _vyre-id.<your domain> so your own domain can sit on top of your Vyre name (or a space's). Publish it, then call spaces.identity.alias.add.",
@@ -921,7 +921,7 @@ export default {
       obj({ space: str }, ["space"]), async (i, meta) => {
         const { row } = mine(i.space);
         const cur = await setupOf(row.id);
-        if (!cur) throw refuse("Nothing is being set up for that space; spaces.setup.save starts keeping a setup.", "no_setup");
+        if (!cur) throw refuse("Nothing is being set up for that space.", "no_setup");
         const device = await callerDevice(meta);
         if (cur.device.id === device.id) return { space: row.id, setup: cur, moved: false };
         const next = { ...cur, device, updated: now() };
@@ -935,7 +935,7 @@ export default {
     const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta) => {
       const eid = String(id || ownDeviceEid(meta));
       const e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device");
-      if (!e) throw refuse("That is not one of your devices (spaces.identity.entries lists yours).", "not_found");
+      if (!e) throw refuse("That is not one of your devices.", "not_found");
       return e;
     };
     /** The ids of every space this person is in (finished or not), for the default list of a device. @param {any} s @param {any} meta */
@@ -1097,7 +1097,7 @@ export default {
         const s = me();
         const row = spaceOf(i.space);
         const caller = await callerPerson(meta);
-        if (caller !== s.id) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
+        if (caller !== s.id) throw refuse("That is not yours to do.", "forbidden");
         const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
         if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
         await notRemoved(row.id, meta);
@@ -1115,7 +1115,7 @@ export default {
               emit("space.device-lent", { space: row.id, device: String(i.device), lent: false });
               return { space: row.id, device: String(i.device), lent: false, first_grant_at: null, allowed_by: null, stopped: viaHome };
             }
-            if (!mine && !(owner && cur)) throw refuse("That is not one of your devices (spaces.identity.entries lists yours).", "not_found");
+            if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
             if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
             const viaKernel = await kernelOffers(row.id, { eid: cur.kdevice || String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
             // LD-2: the space's owner switching a computer off that is not theirs withdraws the space's consent: turning it on again asks the device's person for Face ID again
@@ -1141,7 +1141,7 @@ export default {
       if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
       let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
       const lead = (m && (m.role === "owner" || m.role === "admin")) || row.createdBy === s.id;
-      if (!mine && !lead) throw refuse("That is not one of your devices (spaces.identity.entries lists yours).", "not_found");
+      if (!mine && !lead) throw refuse("That is not one of your devices.", "not_found");
       const cur = await kv.get(lendKey(row.id, String(i.device)));
       return { space: row.id, device: String(i.device), lent: Boolean(cur && cur.lent), first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
     });
@@ -1152,9 +1152,9 @@ export default {
       onlyModules(meta, ["wink"]);
       const id = String(i.person);
       let rec = null; try { const r = await ctx.call("wink.server.owner", {}); rec = r && r.data ? r.data : null; } catch { rec = null; }
-      if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to; give the identity of the person who paired it.", "forbidden");
+      if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
-      if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change; run this on a server that hosts spaces.", "unavailable");
+      if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
       // First owner wins: a home whose owner is already a claimed identity is never taken by another one
       { const had = typeof K.ownerClaimed === "function" ? K.ownerClaimed() : null; if (had && had !== id) throw refuse("This server already belongs to another Vyre identity.", "owned_by_other"); }
       let r;
@@ -1268,21 +1268,21 @@ export default {
     // home's owner (the identity that paired it). Idempotent for a given id. Only the owner person acts: a chain that is not exactly the home's owner is refused.
     /** Only exactly this home's owner (one person on the chain, equal to the kernel's owner). @param {any} meta */
     const ownerOnly = async meta => {
-      if (!K || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space; run this on a server that hosts spaces.", "unavailable");
+      if (!K || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
       if (!person || person !== K.owner) throw refuse("Only this home's owner can have it host a space.", "forbidden");
     };
     tool("spaces.retire-here", "On a server: take back a space that was only started here (a failed or cancelled create). Refuses a space with content (fail closed).", obj({ id: str }, ["id"]), async (i, meta) => {
       await ownerOnly(meta);
-      if (!K || !K.spaces || typeof K.spaces.retire !== "function") throw refuse("This home has no kernel to change; run this on a server that hosts spaces.", "unavailable");
+      if (!K || !K.spaces || typeof K.spaces.retire !== "function") throw refuse("This home has no kernel to change.", "unavailable");
       let r;
       try { r = await K.spaces.retire(String(i.id)); } catch (e) { throw plainKernelError(e); }
       if (/^spc_[a-z2-7]{12}$/.test(String(i.id))) await files.keys.discard(String(i.id)).catch(() => {});
       return r;
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
     tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
-      if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space; run this on a server that hosts spaces.", "unavailable");
+      if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
       if (!person || person !== K.owner) throw refuse("Only this home's owner can have it host a space.", "forbidden");
@@ -1314,9 +1314,9 @@ export default {
       onlyModules(meta, ["vyred"]);
       const id = String(i.space), nonce = String(i.nonce);
       if (!/^spc_[a-z2-7]{12}$/.test(id) || !/^[A-Za-z0-9_-]{16,64}$/.test(nonce)) throw refuse("That is not a request this home answers.", "bad_input");
-      if (!K || !K.spaces || K.spaces.hosts(id) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!K || !K.spaces || K.spaces.hosts(id) !== true) throw refuse("This home does not host that space.", "not_found");
       const k = files.keys.load(id);
-      if (!k) throw refuse("This home holds no key for that space (spaces.get names the home that does).", "unavailable");
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
       return { pub: k.publicKey, sig: b64u(await k.sign(Buffer.from(attestMessage(id, nonce)))) };
     }, { internal: true });
     // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
@@ -1456,7 +1456,7 @@ export default {
     const MAX_OBJECT = 8 * 1024 * 1024;
     /** @param {string} space @param {any} meta @param {boolean} [owner] @returns {Promise<{ person: string, role: string }>} */
     const storageCaller = async (space, meta, owner = false) => {
-      if (!K || !K.spaces || typeof K.spaces.hosts !== "function" || K.spaces.hosts(String(space)) !== true) throw refuse("This server does not host that space (spaces.get names its home).", "not_found");
+      if (!K || !K.spaces || typeof K.spaces.hosts !== "function" || K.spaces.hosts(String(space)) !== true) throw refuse("This server does not host that space.", "not_found");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
       if (!person) throw refuse("Only a person can use their storage.", "forbidden");
@@ -1509,7 +1509,7 @@ export default {
     /** Sign `obj` under `tag` with a hosted Space's own key: { pub, sig }. The kernel hands over only what its own log said, never a key. */
     const signMove = async (/** @type {string} */ space, /** @type {string} */ tag, /** @type {any} */ obj) => {
       const k = files.keys.load(space);
-      if (!k) throw refuse("This home holds no key for that space (spaces.get names the home that does).", "unavailable");
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
       return { pub: k.publicKey, sig: b64u(await k.sign(Buffer.from(`${tag}\n${canonicalOf(obj)}`))) };
     };
     /** The Space's published key, by Space id, resolved under the pin (RM-6): null unless the directory names this very Space id with a key. */
@@ -1554,10 +1554,10 @@ export default {
     }
     /** The mover's chain in a hosted Space and its gateway's moves. @param {string} space @param {any} meta */
     const moveSide = async (space, meta) => {
-      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(String(space)) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(String(space)) !== true) throw refuse("This home does not host that space.", "not_found");
       let chain; try { chain = await K.chainIn(String(space), meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
       const h = kernelHandle(String(space));
-      if (!h || !h.gateway || !h.gateway.moves) throw refuse("That space cannot move projects; ask its owner to update its home.", "unavailable");
+      if (!h || !h.gateway || !h.gateway.moves) throw refuse("That space cannot move projects.", "unavailable");
       return { chain, moves: h.gateway.moves };
     };
     const asRefusal = (/** @type {any} */ e) => { const c = String((e && e.code) || ""); if (/^(not_found|invalid|bad_input|chain_not_person|rate_limited|unavailable|not_allowed|needs_presence)$/.test(c)) return refuse(String(e.message || "That move is refused."), c); throw plainKernelError(e); };
@@ -1572,7 +1572,7 @@ export default {
       // this home may now serve a pull for this move to the target space whose key it just resolved, for as long as a pull may live
       await kv.put(`move-pull/${evidence.move_id}`, { from: String(i.space), to: evidence.to, to_pub: toKey, person: evidence.person, plan_hash: evidence.plan_hash, project: evidence.project, expires: evidence.at + SESSION_CAP_MS });
       // the home's door admits the target home for this move, and only while this is open (network's home-to-home channel); with no such tool (a build without it) the pull simply cannot arrive
-      try { const r = await ctx.call("wink.home-move.open", { space: String(i.space), move_id: evidence.move_id, to: evidence.to, expires: evidence.at + SESSION_CAP_MS }); if (r && r.error && r.error.code !== "no_such_tool") throw refuse("This server could not open its door for the move. Nothing was started. Try the move again in a minute.", "unavailable"); }
+      try { const r = await ctx.call("wink.home-move.open", { space: String(i.space), move_id: evidence.move_id, to: evidence.to, expires: evidence.at + SESSION_CAP_MS }); if (r && r.error && r.error.code !== "no_such_tool") throw refuse("This server could not open its door for the move. Nothing was started.", "unavailable"); }
       catch (e) { if (e && /** @type {any} */ (e).code === "unavailable") throw e; /* the channel is not part of this build */ }
       return { evidence, ...signed };
     });
@@ -1615,7 +1615,7 @@ export default {
         src = createPullSource({
           space,
           grantOf: async (/** @type {string} */ moveId) => { const g = await kv.get(`move-pull/${moveId}`); return g && g.from === space ? g : null; },
-          sign: async (/** @type {string} */ m) => { const k = files.keys.load(space); if (!k) throw refuse("This home holds no key for that space (spaces.get names the home that does).", "unavailable"); return b64u(await k.sign(Buffer.from(m))); },
+          sign: async (/** @type {string} */ m) => { const k = files.keys.load(space); if (!k) throw refuse("This home holds no key for that space.", "unavailable"); return b64u(await k.sign(Buffer.from(m))); },
           verify: async (/** @type {string} */ pub, /** @type {string} */ m, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(m), sig); } catch { return false; } },
           // every call names exactly what was approved: the serving side checks it against the source's own `project.move_started` (it does not rely on this pull check alone)
           planFor: (g) => serve({ op: "plan", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, to_space: g.to }),
@@ -1631,7 +1631,7 @@ export default {
     tool("spaces.moves.pull", "In the SOURCE home: answer one request of a target home's pull (hello, auth, plan, records, file, sealed or done). For the daemon's peer door only: the target proves itself with its Space key, and nothing is served outside the plan this home recomputes under the mover. See lib/spaces/move-pull.js.", obj({ space: str, request: { type: "object" } }, ["space", "request"]), async (i, meta) => {
       onlyModules(meta, ["vyred"]);
       const space = String(i.space);
-      if (!SPACE_ID_RE.test(space) || !K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!SPACE_ID_RE.test(space) || !K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
       const r = i.request;
       const t = r && typeof r.t === "string" ? r.t : "";
       if (!["hello", "auth", "plan", "records", "file", "sealed", "done"].includes(t)) throw refuse("That is not a request this home answers.", "bad_input");
@@ -1652,21 +1652,21 @@ export default {
       onlyModules(meta, ["work", "vyred"]);
       const pin = parsePin(i.pin);
       if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
-      let r; try { r = await dir.resolve(String(i.fromName).replace(/\.vyre\.run$/, ""), { pin, resolve: ownerLookup }); } catch { throw refuse("The source space could not be looked up; check its name and try again (spaces.identity.resolve looks a name up).", "not_found"); }
+      let r; try { r = await dir.resolve(String(i.fromName).replace(/\.vyre\.run$/, ""), { pin, resolve: ownerLookup }); } catch { throw refuse("The source space could not be looked up.", "not_found"); }
       const rt = r && r.ok && r.kind === "space" && r.payload && r.payload.id === i.from ? r.payload.route : null;
-      if (!rt || typeof rt.route !== "string" || typeof rt.box !== "string" || !rt.box) throw refuse("The source space publishes no address for its home, so it cannot be pulled from; ask its owner to bring that home online.", "not_found");
+      if (!rt || typeof rt.route !== "string" || typeof rt.box !== "string" || !rt.box) throw refuse("The source space publishes no address for its home, so it cannot be pulled from.", "not_found");
       return { relay: String(rt.relay || ""), route: rt.route, box: rt.box };
     }, { internal: true });
     tool("spaces.moves.pull-sign", "In the TARGET home: sign the pull proof for a move this space received, bound to both spaces, the move and the source's nonce, with this space's key. Only for a move this space has received (`project.move_in` in its log).", obj({ space: str, from: str, move_id: str, nonce: str }, ["space", "from", "move_id", "nonce"]), async (i, meta) => {
       onlyModules(meta, ["work", "vyred"]);
       const space = String(i.space);
-      if (!K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
       const h = kernelHandle(space);
       const got = h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_in" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id && e.data.from === i.from) : null;
-      if (!got) throw refuse("This space received no such move; say which move you mean (the move id the source home gave).", "not_found");
+      if (!got) throw refuse("This space received no such move.", "not_found");
       if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(i.nonce))) throw refuse("That is not a challenge.", "bad_input");
       const k = files.keys.load(space);
-      if (!k) throw refuse("This home holds no key for that space (spaces.get names the home that does).", "unavailable");
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
       return { proof: b64u(await k.sign(Buffer.from(pullMessage(String(i.from), space, String(i.move_id), String(i.nonce))))) };
     }, { internal: true });
     // ---- upgrading this device's Personal space to My Cloud (kernel/gateway/upgrade.js, lib/spaces/upgrade.js). The device carries it: it holds this home's gateway and My Cloud's over the paired session. ----
@@ -1696,7 +1696,7 @@ export default {
       if (!K || typeof K.space !== "string") throw refuse("This device has no Personal space to upgrade.", "unavailable");
       if (!SPACE_ID_RE.test(String(to)) || to === K.space) throw refuse("Name your My Cloud space.", "bad_input");
       const lh = kernelHandle(K.space), rh = kernelHandle(String(to));
-      if (!lh || !lh.gateway || !rh || !rh.gateway) throw refuse("That space is not reachable from this device (spaces.list shows the ones that are).", "not_found");
+      if (!lh || !lh.gateway || !rh || !rh.gateway) throw refuse("That space is not reachable from this device.", "not_found");
       const lk = await kctxOf(meta, K.space);
       return {
         local: { space: K.space, records: lh.gateway.records, definitions: (/** @type {any} */ c) => lh.gateway.definitions(c), chain: lk.chain },
@@ -1716,7 +1716,7 @@ export default {
     });
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);
-      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
       if (!Array.isArray(i.objects) || i.objects.length > 5000) throw refuse("An upgrade receipt covers at most 5000 objects.", "bad_input");
       let chain; try { chain = await K.chainIn(space, meta); } catch (e) { ctx.log.warn(`upgrade receipt: no chain in ${space}: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message} (facts ${JSON.stringify(meta && meta.kernelFacts ? Object.keys(meta.kernelFacts) : null)})`); throw refuse("You are not a member of that space.", "forbidden"); }
       const h = kernelHandle(space);
@@ -1727,10 +1727,10 @@ export default {
     });
     tool("spaces.upgrade.wrap-key", "In MY CLOUD's home: answer this space's sealed-value wrapping key, signed with this space's own key, so the device can check it came from the Space it names before it approves carrying sealed values there.", obj({ space: str }, ["space"]), async (i, meta) => {
       const space = String(i.space);
-      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space (spaces.get names its home).", "not_found");
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
       let chain; try { chain = await K.chainIn(space, meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
       const h = kernelHandle(space);
-      if (!h || !h.gateway || !h.gateway.seal || typeof h.gateway.seal.wrapKey !== "function") throw refuse("This space cannot receive sealed values yet; ask its owner to update its home.", "unavailable");
+      if (!h || !h.gateway || !h.gateway.seal || typeof h.gateway.seal.wrapKey !== "function") throw refuse("This space cannot receive sealed values yet.", "unavailable");
       const r = await h.gateway.seal.wrapKey(chain, { record: `vyre://${space}/contact/0190c3f2-1111-4abc-8def-000000000000` });
       const body = { v: 1, space, wrap_key: String(r.key), at: now() };
       return { body, ...(await signMove(space, UPGRADE_WRAPKEY_TAG, body)) };
@@ -1811,7 +1811,7 @@ export default {
         const personalHost = await personalHostOf(cloud);
         if (i.space && !(K && i.space === K.space)) {
           const r = rows.find(x => x.id === i.space);
-          if (!r) throw refuse("No such space here (spaces.list shows them).", "not_found");
+          if (!r) throw refuse("No such space here.", "not_found");
           return { tier: r.tier, cloud, time_zone: r.time_zone ?? null, personal_host: personalHost };
         }
         return { tier: tierOf({ kind: "this-computer" }), cloud, time_zone: K && typeof K.space === "string" ? await zoneOf(K.space) : null, personal_host: personalHost };
@@ -2326,7 +2326,7 @@ export default {
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { entries: [] };
       let r;
       const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
-      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached; wait a minute and try again.", "unreachable"); }
+      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     }, { internal: true });
@@ -2453,7 +2453,7 @@ export default {
     tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. With no space it answers for this home's own Space once it holds the root key. The kernel reads this on every invite card.", obj({ space: str }), async i => {
       // The daemon asks with no space for this home's own Space: the one the kernel keeps here, once this module holds its root key (until then the card shows none).
       const home = i.space ? null : spaces.all().find(r => K && r.id === K.space && r.status === "done");
-      if (!i.space && !home) throw refuse("This home's space has no root key here yet; finish setting up this home first (spaces.status shows how far it got).", "not_found");
+      if (!i.space && !home) throw refuse("This home's space has no root key here yet.", "not_found");
       const row = home || spaceOf(i.space);
       const c = await chainOf(row.id);
       const k = files.keys.load(row.id);

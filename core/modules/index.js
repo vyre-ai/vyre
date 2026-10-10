@@ -1082,7 +1082,7 @@ export class Registry {
         let host = "";
         try { host = new URL(url).hostname; } catch {}
         if (!((needs.network) || []).some(h => { const n = String(h).split(":")[0]; return n.startsWith("*.") ? host.endsWith(n.slice(1)) : host === n; })) throw undeclared(`fetched ${host}, which needs.network does not list`);
-        throw Object.assign(new Error("a module's fetch arrives with the module host; it isn't available in this Vyre yet; wait for an update"), { code: "not_available" });
+        throw Object.assign(new Error("ctx.fetch arrives with the module host; it isn't available in this Vyre yet"), { code: "not_available" });
       },
       ask: async (prompt, o = {}) => {
         spendDeclared("ctx.ask");
@@ -1221,7 +1221,7 @@ export class Registry {
         // A context with no registry row (the docs harvest builds one to read tool schemas) is no
         // module the registry started; every started module has its row before start() runs.
         if (!as && rec && !fp && addedNever(tool)) {
-          return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which an added module can never use: leave that call out of the module`), { code: "denied" }));
+          return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which an added module can never use`), { code: "denied" }));
         }
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
@@ -1232,7 +1232,7 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
+          if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay"), { code: "denied" }));
           const origin = captureOrigin();
           return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token } });
         }
@@ -1355,10 +1355,10 @@ export class Registry {
       // reach a paired server's kernel are given them (spaces: where a space is hosted; runner: lending), late-bound because wink starts after them.
       ...(["spaces", "runner", "files"].includes(m.name) ? {
         sessionForReady: () => typeof (/** @type {any} */ (this.deps)).winkSessionFor === "function",
-        sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet: pair it with a server first"), { code: "unavailable" }); return f(id); },
+        sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id); },
         // an invitee's session to the home a space's directory record names (the spaces module only; the hello is signed by the invitee's identity)
-        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet: accept the invitation to it on this device first"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
-        remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet: pair it with a server first"), { code: "unavailable" }); return f(id, space); },
+        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
+        remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
       // the presence module confirms a local yes with the daemon's own verifier (Touch ID, the terminal code), the one the registry's floor already holds
       ...(m.name === "presence" && (/** @type {any} */ (this.deps)).presence ? { verifier: (/** @type {any} */ (this.deps)).presence } : {}),

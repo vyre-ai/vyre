@@ -134,7 +134,7 @@ export class IdentityLive {
 
   /** The person said yes, once, for this server's assistant: recorded, and the phone answers this server's requests from now on. @param {{ server?: string }} [o] */
   grant({ server = this.server ? this.server.name : "this server" } = {}) {
-    if (!this.server) throw Object.assign(new Error("this server has no key of its own to be granted; the person unlocks their memory from their own device instead"), { code: "unavailable" });
+    if (!this.server) throw Object.assign(new Error("this server has no key of its own to be granted"), { code: "unavailable" });
     this.home.addGrant({ server, fp: /** @type {string} */ (this.serverFp) });
     return this.status();
   }
@@ -174,7 +174,7 @@ export class IdentityLive {
   /** The phone's answer arrives: the rows come into the process, and stay there until lock, revoke or the process ends. A request is one use. @param {string} request @param {any} answer */
   async finish(request, answer) {
     const open = this.asks.get(request);
-    if (!open) throw Object.assign(new Error("no unlock is waiting for that request (it may be answered already; memory.identity.unlock.begin asks again)"), { code: "not_found" });
+    if (!open) throw Object.assign(new Error("no unlock is waiting for that request"), { code: "not_found" });
     this.asks.delete(request);
     // the standing grant must be for the server that asked: a grant for server A never finishes an ask from server B
     const fp = open.ask.server && open.ask.server.fp;

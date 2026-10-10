@@ -50,7 +50,6 @@ import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as linkTools from "./tools/links.js";
-import { UsedBy } from "./used-by.js";
 import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
@@ -88,7 +87,6 @@ export default {
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     // Who may use a login is a kernel grant (access.js); the vault keeps no table of it.
     vault.access = new Access(vault, ctx);
-    vault.usedBy = new UsedBy(vault, ctx);
     // Every tool that returns or moves a value is held at the registry's floor, which asks the one yes (lib/one-yes.js) before the tool runs; nothing here asks twice.
 
     const opts = (ctx.config && ctx.config.vault) || {};

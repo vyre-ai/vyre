@@ -181,7 +181,7 @@ export function createBridge(o) {
         const input = a && a.input;
         const prompt = typeof input === "string" ? input : Array.isArray(input) ? input.map((/** @type {any} */ m) => `${m && m.role === "assistant" ? "Assistant" : "User"}: ${String(m && m.content || "")}`).join("\n\n") + "\n\nAssistant:" : "";
         if (!prompt || Buffer.byteLength(prompt) > 60_000) throw Object.assign(new Error("give a prompt of at most 60 KB"), { code: "invalid_argument" });
-        if (throttled(`s|${row.id}|${v.w}`) || (rate.get(`s|${row.id}|${v.w}`) || []).length > 20) throw Object.assign(new Error("too many requests: wait a minute and call again"), { code: "rate_limited" });
+        if (throttled(`s|${row.id}|${v.w}`) || (rate.get(`s|${row.id}|${v.w}`) || []).length > 20) throw Object.assign(new Error("too many requests: slow down"), { code: "rate_limited" });
         const r = await o.call("threads.quick", { purpose: "helper", prompt, spend_purpose: "previews-sample", timeout_ms: 60_000 });
         if (r.error) throw Object.assign(new Error(r.error.message || "the model did not answer"), { code: r.error.code === "denied" ? "not_granted" : "unavailable" });
         return { text: String(r.data && r.data.text || ""), truncated: false, modelTierApplied: "default" };

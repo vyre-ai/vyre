@@ -345,7 +345,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
   const change = (state) => async (input, extra = {}) => {
     const caller = String(extra.caller || "");
     const w = store.get(String(input.id || ""));
-    if (!w) throw Object.assign(new Error(`no memory write ${plain(input.id, 40)} (memory.writes lists them with their ids)`), { code: "not_found" });
+    if (!w) throw Object.assign(new Error(`no memory write ${plain(input.id, 40)}`), { code: "not_found" });
     const project = typeof input.project === "string" && input.project ? input.project : null;
     const person = !claims(caller) && personWrites(caller, extra);
     if (!project && !person) throw denied(state === "forgotten" ? "Forget everywhere is the person's own, from their surfaces" : "restoring everywhere is the person's own, from their surfaces");
@@ -360,7 +360,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     }
     const links = store.links(w.id);
     if (project) {
-      if (!links.some(l => l.project === project)) throw Object.assign(new Error(`${w.id} is not filed in ${plain(project, 60)} (memory.writes shows where each write is filed)`), { code: "not_found" });
+      if (!links.some(l => l.project === project)) throw Object.assign(new Error(`${w.id} is not filed in ${plain(project, 60)}`), { code: "not_found" });
       if (!(project === YOU ? s.you : (!s.slugs || s.slugs.has(project)))) throw denied(`${plain(s.r.agent || caller, 60)} does not reach ${plain(project, 60)}`);
     }
     const changed = store.set(w.id, project ? [project] : null, state);
