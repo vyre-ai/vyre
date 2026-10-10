@@ -27,6 +27,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
   const [picked, setPicked] = useState<string[]>(sample?.picked ?? []);
   const [write, setWrite] = useState(sample?.write ?? false);
   const [ending, setEnding] = useState(sample?.ending ?? "");
+  const [project, setProject] = useState("");
   const load = useCallback(() => { setErr(""); outside.list().then(setAgents).catch((e) => { setAgents([]); setErr(say(e, "Your outside agents could not be read.")); }); }, []);
   useEffect(() => { if (!sample) load(); }, [load, sample]);
 
@@ -81,6 +82,12 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
                     {types.map((t) => <Row key={t.name} dense title={t.label} end={<Switch label={t.label} on={picked.includes(t.name)} onChange={(on) => setPicked(on ? [...picked, t.name] : picked.filter((x) => x !== t.name))} />} />)}
                     <Row dense title="It may ask to add or change them" sub="Each change still waits for your yes." end={<Switch label="It may ask to add or change them" on={write} onChange={setWrite} />} />
                     <View className="flex-row flex-wrap gap-s2"><Button size="sm" label="Give access" disabled={busy === a.id} onPress={() => give(a.id)} /><Button size="sm" kind="ghost" label="Cancel" onPress={() => setGiving("")} /></View>
+                    <Text size="caption" tone="label">Or one project's memory or files</Text>
+                    <Field name="The project's name" value={project} onChangeText={setProject} placeholder="Harlow v. Harlow" />
+                    <View className="flex-row flex-wrap gap-s2">
+                      <Button size="sm" kind="ghost" label="Give its memory" disabled={busy === a.id || !project.trim()} onPress={() => void act(a.id, async () => { await outside.grant(a.id, { kind: "memory", project: project.trim() }); setGiving(""); setProject(""); })} />
+                      <Button size="sm" kind="ghost" label="Give its files" disabled={busy === a.id || !project.trim()} onPress={() => void act(a.id, async () => { await outside.grant(a.id, { kind: "files", project: project.trim() }); setGiving(""); setProject(""); })} />
+                    </View>
                   </View>
                 ) : ending === a.id ? (
                   <View className="gap-s2">
