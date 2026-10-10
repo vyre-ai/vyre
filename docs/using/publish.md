@@ -44,7 +44,7 @@ What it gets and does not get:
 - The build: it runs in a locked-down builder, not on the server itself. It may start from official images (node, python, nginx and the like) and from registries you allow in the setting `builder.from`; a Dockerfile that names another base, or its own build frontend (`# syntax=`), is refused. The build can reach the internet to fetch packages. The folder is read like any folder: `.env`, keys and `.git` are not in it.
 - A new version replaces the running one; if it does not answer its health check, the old one is started again and nothing goes live. Rolling back starts the previous image. Retiring removes the app and keeps its data.
 
-Servers that run their apps through the Linux installer's host helper cannot run your own image yet; Publish says so. Sites made of files are not affected.
+On a server made by the Linux installer, the server's host helper builds and runs the image for you, the same way and with the same limits (it needs the helper that came with the installer; `vyre space-helper install` updates it). On that kind of server the build cannot use build-time secrets yet, only run-time ones.
 
 ## Not here yet
 
