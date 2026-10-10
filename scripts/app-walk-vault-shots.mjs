@@ -42,7 +42,10 @@ if (args.includes("--seed")) {
   await box("vault.vaults.create", { name: "Acme-client" }, { "x-vyre-presence": "stand-in" });
 }
 
-const TOKEN = (await box("signin.dev", { node: "vault-shots", label: "walk" })).data?.token ?? "";
+// A dev sign-in lapses after a few minutes, so each width and theme signs in again (the proxy below reads the latest).
+let TOKEN = "";
+const signIn = async () => { TOKEN = (await box("signin.dev", { node: "vault-shots", label: "walk" })).data?.token ?? TOKEN; };
+await signIn();
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/v1")) {
@@ -64,6 +67,7 @@ const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const errors = [];
 for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "light"]) {
   if (ONLY && ONLY !== `${w}:${theme}`) continue;
+  await signIn();
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, serviceWorkers: "block", reducedMotion: ROUTES.length ? "reduce" : "no-preference", deviceScaleFactor: w > 600 ? 1 : 2 });
   // The app is a native window, not a browser: stand in for the Mac shell so the screen is the one a person has (Add, Share and Reveal are there, not "on your phone").
   await ctx.addInitScript(() => { window.__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} }; });
