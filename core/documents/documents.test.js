@@ -297,3 +297,38 @@ test("documents.signing.waiting lists what nobody has signed without the link or
   assert.ok(!seen.some(s => s.tool === "comms.send"), "nothing was sent for either");
   assert.equal((await code(rig({ chain: null }).run("documents.signing.remind", { submission: 4411 }))).code, "denied");
 });
+
+test("documents.send and send-signed take the signer from a Contact: its address and name, read under the caller's grants; a Contact with no address, or one that is not there, is said", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const contacts = { "c-1": { data: { name: "Dana Harlow", email: "dana@harlow.test" } }, "c-2": { data: { name: "Sam Poe" } } };
+  const r = rig({ records: Object.fromEntries(Object.entries(contacts).map(([id, v]) => [`contact/${id}`, v])), call: async (tool, input) => {
+    if (tool === "spaces.self") return {};
+    seen.push({ tool, input });
+    return tool === "appmods.signing.request" ? { data: { submission: 9, slug: "abc", url: "https://documents.harlow.vyre.run/sign/9/abc" } } : tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/0.abc.sig", expires: null } } : { data: { held: "gi_1" } };
+  } });
+  // the three ways a link reaches a tool: the urn, the link as a record holds it ({ urn }), and the bare id
+  for (const contact of ["vyre://spc_x/contact/c-1", { urn: "vyre://spc_x/contact/c-1" }, "c-1"]) {
+    seen.length = 0;
+    await r.run("documents.send", { template_id: 12, contact });
+    assert.equal(seen[0].input.email, "dana@harlow.test", JSON.stringify(contact));
+    assert.equal(seen[0].input.signer, "Dana Harlow");
+    assert.equal(seen[1].input.to, "dana@harlow.test");
+  }
+  seen.length = 0;
+  await r.run("documents.send", { template_id: 12, contact: "c-1", signer: "D. Harlow" });
+  assert.equal(seen[0].input.signer, "D. Harlow", "a name given wins");
+  seen.length = 0;
+  await r.run("documents.send-signed", { slug: "abc", contact: "c-1" });
+  assert.equal(seen[1].input.to, "dana@harlow.test");
+  // an address given still wins over a Contact, and neither is said
+  seen.length = 0;
+  await r.run("documents.send", { template_id: 12, email: "x@y.test", contact: "c-1" });
+  assert.equal(seen[0].input.email, "x@y.test");
+  assert.match((await code(r.run("documents.send", { template_id: 12 }))).message, /name who signs/);
+  assert.match((await code(r.run("documents.send", { template_id: 12, contact: "c-2" }))).message, /Sam Poe has no e-mail address yet/);
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "c-404" }))).code, "not_found");
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "vyre://spc_x/client/c-1" }))).code, "bad_input", "only a Contact");
+  const before = seen.length;
+  assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "c-404" }))).code, "not_found");
+  assert.equal(seen.length, before, "nothing was asked of the app or sent for a Contact that is not there");
+});
