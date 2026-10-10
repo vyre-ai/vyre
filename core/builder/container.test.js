@@ -9,8 +9,6 @@ import os from "node:os";
 import path from "node:path";
 import builder, { seam, HEALTH } from "./index.js";
 import { checkDockerfile, fromAllowed, instructions, buildArgv, secretsOf, buildImage, BUILDKIT } from "./container.js";
-// the Dockerfile path is switched off in the test release unless this is set (core/builder/index.js planOf); these tests are about that path
-process.env.VYRE_PUBLISH_SERVERS = "1";
 
 const OK = "FROM node:22-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN npm ci\nFROM node:22-alpine\nCOPY --from=build /app /app\nEXPOSE 8080/tcp\nCMD [\"node\", \"server.js\"]\n";
 const refused = (/** @type {string} */ text, /** @type {RegExp} */ words, /** @type {any} */ o) => assert.throws(() => checkDockerfile(text, o), (/** @type {any} */ e) => { assert.equal(e.code, "refused"); assert.match(e.message, words); return true; });
@@ -137,7 +135,7 @@ test("on a server that builds through its host helper: the context and the setti
     return { state: "ok", message: "built sha256:" + "9".repeat(64) };
   }) };
   const tools = new Map();
-  const mod = await builder.start({ config: {}, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
+  const mod = await builder.start({ config: { publish: { servers: true } }, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
   t.after(() => { seam.helper = null; return mod.stop(); });
   const build = (/** @type {string[]} */ secretArgs = []) => tools.get("builder.build").run({ deployment: { id: DEP, space: SPC, name: "northwind", version: 3, source: { kind: "folder", ref: d }, build: { command: "", output_dir: ".", image: "dockerfile" } }, secretArgs });
   const r = await build();

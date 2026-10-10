@@ -10,8 +10,6 @@ import path from "node:path";
 import builder, { seam } from "../../core/builder/index.js";
 import { publishedManifest, checkPublished } from "../../core/appmods/published.js";
 import { normalizeDraft } from "../../lib/publish/deployment.js";
-// the Dockerfile path is switched off in the test release unless this is set (core/builder/index.js planOf); these tests are about that path
-process.env.VYRE_PUBLISH_SERVERS = "1";
 
 const manifest = (/** @type {string} */ rel) => JSON.parse(fs.readFileSync(new URL(`../../core/${rel}/module.json`, import.meta.url), "utf8"));
 const IMG = "sha256:" + "e".repeat(64);
@@ -22,7 +20,7 @@ test("builder v2: a Dockerfile folder builds to { digest, files: [], logs, runti
   fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM node:22-alpine\nEXPOSE 3000\n"); fs.writeFileSync(path.join(dir, "app.js"), "x");
   seam.buildImage = async () => ({ image: IMG, logs: "ok" });
   const tools = new Map();
-  await builder.start({ config: {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
+  await builder.start({ config: { publish: { servers: true } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   const draft = normalizeDraft({ name: "northwind", source: { kind: "folder", ref: dir }, build: { image: "dockerfile" } });
   const out = await tools.get("builder.build").run({ deployment: { id: "dep_0123456789abcdef", ...draft }, secretArgs: [] });
   assert.deepEqual(Object.keys(out).sort(), ["digest", "files", "logs", "runtime"]);
@@ -49,7 +47,7 @@ test("builder v2: the static path is as v1 said", async t => {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "index.html"), "<p>hi</p>");
   const tools = new Map();
-  await builder.start({ config: {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
+  await builder.start({ config: { publish: { servers: true } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   const out = await tools.get("builder.build").run({ deployment: { id: "dep_a", source: { kind: "folder", ref: dir }, build: { command: "", output_dir: ".", image: "static" } }, secretArgs: [] });
   assert.deepEqual(out.runtime, { kind: "static" });
   assert.deepEqual(out.files.map((/** @type {any} */ f) => f.path), ["index.html"]);
