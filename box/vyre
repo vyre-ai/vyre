@@ -2373,6 +2373,7 @@ sp_pub_owns() {
   [ "$(awk 'NR == 1 { print $1 " " $2; exit }' "$_pf" 2>/dev/null || true)" = "$1 $PR_SPACE" ]
 }
 # sp_pub_scrub FILE: the job's own runtime secrets, by exact value, are replaced in what it printed (a job can print what it was given). The values are read from root's env file for the name, line by line.
+# shellcheck disable=SC2015
 sp_pub_scrub() {
   f=$1; ef=$SP_APPS/$PR_NAME/secrets.env
   [ -f "$ef" ] || return 0
