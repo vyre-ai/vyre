@@ -248,7 +248,7 @@ test("own hosts: a host is listed, gets its own certificate under the own-domain
   await g.start();
   const st = () => Object.fromEntries(g.status().hosts.map((/** @type {any} */ h) => [h.host, h.state]));
   assert.deepEqual(st(), { "sign.firm.example": "live", "later.firm.example": "waiting" });
-  assert.deepEqual(w.issued.map(i => i.names), [["alex.vyre.run", "*.alex.vyre.run"].slice(0, 1), ["sign.firm.example"]].map(x => x), "nothing is ordered for the host that is not proven");
+  assert.deepEqual(w.issued.map(i => i.names), [["alex.vyre.run", "*.alex.vyre.run"], ["sign.firm.example"]], "nothing is ordered for the host that is not proven");
   assert.deepEqual(w.dirCalls.filter(c => /own|host/.test(c)), ["host-add sign.firm.example", "acme-own", "clear-own", "host-add later.firm.example"]);
   assert.deepEqual(Object.keys(w.gates[0].hostTls), ["sign.firm.example"]);
   assert.deepEqual(g.liveHosts(), ["sign.firm.example"]);
