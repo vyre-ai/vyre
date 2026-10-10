@@ -85,7 +85,9 @@ export function cardModel(i) {
       why = `Needed to continue ${rec}.`;
       actions = [{ id: "file", label: "Add the file", kind: "primary" }];
     } else {
-      why = `${madeBy && madeBy.id !== i.me && madeBy.family === "person" ? `${madeBy.name} assigned this to you. ` : ""}Due with ${task.stage || rec}.`;
+      // a to-do that belongs to no stage or record has nothing to be "due with": it just waits for you
+      const where = task.stage || rec;
+      why = `${madeBy && madeBy.id !== i.me && madeBy.family === "person" ? `${madeBy.name} assigned this to you. ` : ""}${where ? `Due with ${where}.` : "It is waiting for you."}`;
       actions = [{ id: "done", label: "Mark done", kind: "primary" }, { id: "open", label: "Open", kind: "secondary" }];
     }
   } else {
