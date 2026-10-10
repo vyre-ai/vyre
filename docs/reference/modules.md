@@ -162,6 +162,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
 - Needs tools: `documents.send`
 - Needs vault: `per-app`
+- Teaches tips: `[object Object]`
 
 ## approvals
 
