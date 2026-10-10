@@ -298,7 +298,7 @@ export function createStages(o) {
    * Move a record on before its tasks are done, by the person who may (the stage's owner or an admin). It is on the gate's ledger with who and why, and the move itself is the same write
    * the stage would have made, so the next stage's entry condition still holds it back. @param {string} runId @param {any} who @param {string} reason
    */
-  function advance(runId, who, reason) {
+  function advance(runId, who, reason, via = []) {
     return serial(async () => {
       const ent = [...entries.values()].find(e => e.run === runId);
       const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -312,9 +312,9 @@ export function createStages(o) {
       if (!cur || cur.data[fieldOf(cur.data)] !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
       await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` });
       ent.advanced = true;
-      await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
-      await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
-      emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
+      await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, ...(via.length ? { via } : {}), reason: String(reason).slice(0, 300) } });
+      await closeGate(ent, { note: `moved on early by ${who.id}${via.length ? ` (through ${via.join(", ")})` : ""}: ${String(reason).slice(0, 120)}` });
+      emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, ...(via.length ? { via } : {}), reason: String(reason).slice(0, 300) });
       if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key) });
       return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
     });

@@ -132,6 +132,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
   ["work.template.golive", "puts a template version live: the template's owner or an admin in their own name; an assistant proposes it (flows.propose what: template) and the owner approves on a card"],
+  ["flows.advance", "moving a record past a stage gate early skips a human step: only a person does it, in their own name"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.kit.remove", "changes the Space's shape and revokes grants"],
@@ -377,7 +378,7 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "update.whats-new", "update.whats-new-seen", // the release notes of the running version, once per person: the assistant says them in the notes' own words and marks them seen; nothing but a seen mark is written
-  "flows.settle", "flows.advance", // answer a run that needs attention, and move a record past its stage gate early: the kernel holds the call to the person's own chain (a stage gate to its owner or an admin, with a reason on the ledger); a value for a skipped step stays the person's
+  "flows.settle", // answer a run that needs attention (retry, skip, stop); advance (past a stage gate) is refused for a chain with an assistant hop, and a value for a skipped step stays the person's
   "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",

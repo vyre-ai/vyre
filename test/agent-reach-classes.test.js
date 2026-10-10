@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { OPEN, PERSON_ONLY, ASK_FIRST } from "../core/modules/agent-reach.js";
 
 test("the release notes and the run and stage answers are open to the person's assistant", () => {
-  for (const t of ["update.whats-new", "update.whats-new-seen", "flows.settle", "flows.advance"]) assert.ok(OPEN.has(t), `${t} is open`);
+  for (const t of ["update.whats-new", "update.whats-new-seen", "flows.settle"]) assert.ok(OPEN.has(t), `${t} is open`);
 });
 
 test("approving, rolling back, removing a test case, spending on an eval and the Mac's lid stay the person's own, each with a reason", () => {

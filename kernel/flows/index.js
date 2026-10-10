@@ -95,6 +95,16 @@ export function createFlows(o) {
 
   /** Every stored version of every Flow as { id, name, version, json }. */
   const allDefinitions = async () => (await store.allVersions()).map((/** @type {any} */ v) => ({ id: v.id, name: v.flow.label || v.flow.name || v.id, version: v.version, json: JSON.stringify(v.flow) }));
+  /**
+   * Moving a record past a stage gate early skips a human step, so only a person does it, in their own name: a chain with an assistant, a service or an automation hop is refused (an owner's assistant
+   * must not use the owner's authority to skip a review). Returns the hops other than the person, for the gate's ledger.
+   * @param {any} chain @returns {string[]}
+   */
+  const humanOnly = chain => {
+    const others = (chain.hops || []).filter((/** @type {any} */ h) => h.actor.kind !== "person");
+    if (others.length) throw Object.assign(new Error("moving a record past a stage gate early skips a human step: a person does it, in their own name, from the stage's screen"), { code: "person_required" });
+    return [];
+  };
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
   const tools = {
     /** Compile and store a new version, from the stored form or from text. Nothing runs until `flows.approve`. */
@@ -314,7 +324,7 @@ export function createFlows(o) {
       if (action === "stop") return { ...(await runner.cancel(run, { by: who.id, reason: i.reason })), action };
       if (action === "advance") {
         if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
-        return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
+        return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"), humanOnly(chain))), action };
       }
       throw Object.assign(new Error("action is retry, skip, stop or advance"), { code: "bad_input" });
     },
@@ -382,7 +392,7 @@ export function createFlows(o) {
     "flows.advance": async (chain, i) => {
       const who = personOf(chain);
       if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
-      return stagesRef.advance(need(i, "run", "the stage gate's run id (flows.runs, or a record's stage)"), who, need(i, "reason", "why it moves on early"));
+      return stagesRef.advance(need(i, "run", "the stage gate's run id (flows.runs, or a record's stage)"), who, need(i, "reason", "why it moves on early"), humanOnly(chain));
     },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
