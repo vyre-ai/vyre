@@ -420,10 +420,9 @@ stops, the move stops the new one and starts the old one again, and says which.
 
 ## Agents' computers
 
-Agents' computers run as their own containers through Vyre's Docker proxy. A new install turns
-them on: `/srv/vyre/.env` has `COMPOSE_PROFILES=computers`. To turn them off, remove that line
-from `/srv/vyre/.env` and run `vyre up`. A server installed before this has no such line; add it the same way to turn
-them on.
+Agents' computers run as their own containers through Vyre's Docker proxy. It runs on every Vyre
+server from the install: the `vyre` command names the `computers` profile itself, so there is nothing to
+add to `/srv/vyre/.env`.
 
 What the proxy allows is in
 [The box and the Mac](../concepts/box-and-mac.md#the-agents-computers).

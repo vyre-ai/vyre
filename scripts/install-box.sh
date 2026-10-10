@@ -492,7 +492,7 @@ docker_gid() {
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person changes COMPOSE_PROFILES (computers is on at install) and anything else of theirs. The one
+# it is where the person adds COMPOSE_PROFILES and anything else of theirs. The one
 # exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
   gid=$(docker_gid)
@@ -531,8 +531,6 @@ write_env() {
     fi
     # The Docker socket's group, for the computers profile's docker-api proxy.
     [ -z "$gid" ] || printf '%s\n' "DOCKER_GID=$gid"
-    # The agents' computers (the cloud computer Vyre Computer works on by default) are on from the start: the docker-api proxy is the computers profile of compose.yml.
-    printf '%s\n' "COMPOSE_PROFILES=computers"
   } >"$TMP/env"
   if [ "$DRY" = 1 ]; then
     say "would write $DIR/.env (0600):"
