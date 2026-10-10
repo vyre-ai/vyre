@@ -422,6 +422,20 @@ test("grok: the entry starts `grok agent stdio` without auto-update or always-ap
   assert.deepEqual(l.grokImports, ["0", "0"], "Grok does not import the person's Claude or Cursor MCP servers");
 });
 
+test("acp: Grok is given the Space's skills folder with agent --plugin-dir, between agent and stdio, only when there is one", async t => {
+  const { grokProvider } = await import("./grok.js");
+  const w = world(t);
+  const bin = path.join(w.store, "grok");
+  fs.writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`);
+  fs.chmodSync(bin, 0o755);
+  w.provider = grokProvider({ bin, home: "/acct/2000", floor: () => null });
+  w.env.VYRE_SKILLS_DIR = "/lib/skills/abc";
+  const s = open(w);
+  await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  await s.proc.stop(1000);
+  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", "/lib/skills/abc", "stdio"]);
+});
+
 test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {
   const w = world(t);
   const a = open({ ...w, env: { ...w.env, FAKE_ACP_START_MODE: "bypassPermissions" } });

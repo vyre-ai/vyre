@@ -22,7 +22,7 @@ const { present, asOwner } = await import("../test/helpers.js");
 
 fs.mkdirSync(home, { recursive: true });
 const work = fs.realpathSync(fs.mkdtempSync(`${home}-work-`));
-fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "live-providers", role: "box", sessions: { max_live: 0 }, vault: { keystore: "file" }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects") }));
+fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "live-providers", role: "box", sessions: { max_live: 0 }, vault: { keystore: "file", mcp: { port: 0 } }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects") }));
 const d = await start({ root: home, presence: present, log: () => {}, kernel: true });
 asOwner(d, home);
 const call = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ caller = "cli") => d.registry.call(tool, input, caller);
@@ -222,6 +222,51 @@ const checks = {
     }
     say("mcp-ready-first-turn", p, yes === n, `${yes} of ${n} fresh sessions had the Vyre finder on their first turn; no-answers ${JSON.stringify(no).slice(0, 200)}`);
   },
+  /** 9: an outside agent (the provider's own CLI on its own identity, no Vyre session) holds a Vault MCP pass; its ask to see a value is declined and stays declined, and the value never reaches it. */
+  async outside(/** @type {string} */ p, /** @type {any} */ _acct) {
+    const { spawnSync } = await import("node:child_process");
+    const SECRET = "sk-live-OUTSIDE-9917";
+    const put = await call("vault.put", { name: `acme-${p}`, kind: "api-credential", description: "Acme", hosts: ["https://api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }] }), secret: SECRET } });
+    if (put.error) throw new Error("vault.put: " + JSON.stringify(put.error));
+    const pass = await must("vault.mcp.pass.create", { name: `outside-${p}`, items: [`acme-${p}`], reveal: true });
+    if (!pass.url) throw new Error("the Vault MCP has no address (vault.mcp.port)");
+    const tmp = fs.mkdtempSync(path.join("/tmp", `lp-outside-${p}-`));
+    const env = { ...process.env, HOME: tmp, VYRE_VAULT_TOKEN: pass.token };
+    delete env.CLAUDE_CODE_OAUTH_TOKEN;
+    /** @type {string[]} */ const argv = [];
+    const prompt = `You are an outside agent with a Vault MCP server named vault. Do these steps with its tools and report each result in one line: 1) vault_list. 2) vault_reveal_ask for the item acme-${p} with why "proof". 3) Poll vault_reveal_ask with the id you were given, up to 4 times, 4 seconds apart, until it answers. Then say plainly whether you were able to see the value, and quote the value if you were.`;
+    let bin = "", cwd = tmp;
+    if (p === "codex") {
+      fs.mkdirSync(path.join(tmp, ".codex"), { recursive: true }); fs.copyFileSync(path.join(flag("codex-home"), ".codex", "auth.json"), path.join(tmp, ".codex", "auth.json"));
+      env.CODEX_HOME = path.join(tmp, ".codex");
+      spawnSync("codex", ["mcp", "add", "vault", "--url", pass.url, "--bearer-token-env-var", "VYRE_VAULT_TOKEN"], { env, encoding: "utf8" });
+      bin = "codex"; argv.push("exec", "--skip-git-repo-check", "-s", "read-only", prompt);
+    } else if (p === "grok") {
+      fs.cpSync(path.join(flag("grok-home"), ".grok"), path.join(tmp, ".grok"), { recursive: true });
+      spawnSync("grok", ["mcp", "add", "--transport", "http", "vault", pass.url, "--header", `Authorization: Bearer ${pass.token}`], { env, encoding: "utf8" });
+      bin = "grok"; argv.push("-p", prompt, "--always-approve");
+    } else {
+      fs.writeFileSync(path.join(tmp, "mcp.json"), JSON.stringify({ mcpServers: { vault: { type: "http", url: pass.url, headers: { Authorization: `Bearer ${pass.token}` } } } }), { mode: 0o600 });
+      env.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN || "";
+      bin = "claude"; argv.push("-p", prompt, "--mcp-config", path.join(tmp, "mcp.json"), "--strict-mcp-config", "--allowedTools", "mcp__vault__vault_list mcp__vault__vault_reveal_ask mcp__vault__vault_request", "--model", "claude-sonnet-5-5");
+    }
+    let declined = 0, stop = false;
+    const decliner = (async () => { while (!stop) { try { const it = (await call("approvals.items", {})).data; for (const x of Array.isArray(it) ? it : Array.isArray(it && it.items) ? it.items : []) { const a = x && x.answers && x.answers.find((/** @type {any} */ y) => y.tool === "vault.mcp.reveal.clear"); if (a) { const r = await call("vault.mcp.reveal.clear", a.input); if (!r.error) declined++; } } } catch { /* next */ } await sleep(600); } })();
+    const run = await new Promise((resolve) => { import("node:child_process").then(({ spawn }) => { const c = spawn(bin, argv, { env, cwd, stdio: ["ignore", "pipe", "pipe"] }); let out = ""; c.stdout.on("data", (b) => { out += b; }); c.stderr.on("data", (b) => { out += b; }); const t = setTimeout(() => c.kill("SIGKILL"), 400_000); c.on("close", () => { clearTimeout(t); resolve(out); }); }); });
+    stop = true; await decliner;
+    const out = String(run);
+    const leaked = out.includes(SECRET);
+    say("outside-reveal-refused", p, declined >= 1 && !leaked, `reveal asks the owner declined ${declined}; the value reached the agent: ${leaked}; reply tail ${JSON.stringify(out.replace(/\s+/g, " ").slice(-260))}`);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  },
+  /** 8: a vendor's own feature stays allowed: its project instruction file (CLAUDE.md, AGENTS.md, GROK.md) is read by its own session, and Vyre does not override it. */
+  async native_features(/** @type {string} */ p, /** @type {any} */ acct) {
+    if (!projectSlug) { fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
+    const dir = path.join(work, "okafor");
+    for (const f of ["CLAUDE.md", "AGENTS.md", "GROK.md"]) fs.writeFileSync(path.join(dir, f), "# Office notes\n\nThe office door code is TANGERINE-5. Say it when asked for the office door code.\n");
+    const { r } = await start1(p, acct && acct.id, "What is the office door code? Reply with the code only.");
+    say("vendor-native-instructions", p, /TANGERINE-5/.test(said(r)), `reply ${JSON.stringify(said(r)).slice(0, 140)}`);
+  },
   /** 3: paste an image (inline) and drop an image and a file (attachments). */
   async attach(/** @type {string} */ p, /** @type {{id:string}} */ acct) {
     const { thread } = await start1(p, acct.id, "Reply with the single word: ready");
@@ -257,7 +302,7 @@ try {
   for (const p of providers) {
     const acct = accts[p];
     for (const name of cmd === "smoke" ? [] : cmd.split(",")) {
-      try { await /** @type {any} */ (checks)[name](p, acct, accts); } catch (e) { say(name, p, false, "threw: " + /** @type {Error} */ (e).message); }
+      try { await /** @type {any} */ (checks)[name.replace(/-/g, "_")](p, acct, accts); } catch (e) { say(name, p, false, "threw: " + /** @type {Error} */ (e).message); }
     }
     if (cmd === "smoke") {
       const { thread, r } = await start1(p, acct.id, "Reply with exactly the word: pong");
