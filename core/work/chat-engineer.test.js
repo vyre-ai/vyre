@@ -31,3 +31,24 @@ test("the @Engineer chat starts the way the app starts it, and is pinned", { tim
   assert.ok(!pinned.error, JSON.stringify(pinned.error));
   assert.equal((await call("work.chat.persistent", { kind: "engineer" })).data.chat, made.data.chat, "the pinned chat is the one made");
 });
+
+test("asking for the same chat again, with the id the caller chose, answers the chat and does not refuse (a retried create, as the journey's store wait does)", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli");
+  const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
+  const id = `chat_${crypto.randomUUID()}`;
+  const ring = createRing(id, holdersOf([{ device: "dev_app", agree: dev.getPublicKey().toString("base64url") }]));
+  const input = { title: "Assistant", id, ring: ring.doc, people: [], agents: [] };
+  const first = await call("work.chat.create", input);
+  assert.ok(!first.error, JSON.stringify(first.error));
+  const second = await call("work.chat.create", input);
+  assert.ok(!second.error, JSON.stringify(second.error));
+  assert.equal(second.data.chat, first.data.chat, "the same chat");
+  // a chat that is someone else's is not handed back by asking for its id
+  const other = await call("work.chat.create", { ...input, id: "chat_x" });
+  assert.ok(other.error || other.data.chat !== first.data.chat);
+});

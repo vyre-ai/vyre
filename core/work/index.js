@@ -643,7 +643,13 @@ export default {
             for (const a of input.agents) await ctx.agentActor(String(a));
             made = await open();
           }
-        } catch (e) { if (keys) keys.lock(); throw e; }
+        } catch (e) {
+          // The same chat asked for again (a client that retried a call whose answer was lost, or one that waited for the store to come up): the id the caller chose is theirs already, and the answer is the chat as it is.
+          const again = input.id && /chat id is new/.test(String(e && /** @type {any} */ (e).message)) ? await k0.chats.read(chain, String(input.id)).catch(() => null) : null;
+          if (!again) { if (keys) keys.lock(); throw e; }
+          made = { id: String(input.id), people: again.people || [], assistants: again.assistants || [] };
+          keys = null;
+        }
         if (keys) k0.chats.keys.adopt(chain, keys);
         const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
