@@ -15,43 +15,7 @@ import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { createLentHome, CHUNK_BYTES } from "./lent-home.js";
 import { createLentClient } from "./lent-client.js";
-
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol";
-const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
-const used = new Set();
-const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
-function fakeSealer() {
-  const st = { live: new Map(), revoked: new Set() }; let n = 0;
-  const one = c => { if (!c || c.hops.length !== 1 || c.hops[0].actor.kind !== "person") throw Object.assign(new Error("human_only"), { code: "human_only" }); };
-  return { st, lease: {
-    // like the real process, issue gives the same member and computer the same key while access holds
-    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.createHash("sha256").update(`${m}|${i.device}`).digest("base64"), ttlMs: 3600000 }; },
-    renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
-    revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
-    reinstate: async () => ({ reinstated: true }),
-    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
-  } };
-}
-
-async function rig(t, o = {}) {
-  const acceptCap = o.acceptCap;
-  const keyOf = o.keyIsDevice ? "dev_laptop" : "KEY_LAPTOP";
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const sealer = fakeSealer();
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
-  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
-  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });
-  const g = k.gateway.grants;
-  for (const p of [BOB, CAROL]) { const role = { person: p, role: "member" }; await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${p}`) }); }
-  const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
-  await mk(owner, { side: "space_allows", member: BOB });
-  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap, ...(o.now ? { now: o.now } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.emit ? { emit: o.emit } : {}),
-    specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
-  const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
-  const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };
-  return { k, owner, bob, g, mk, accept, home, server, sealer, as, dir };
-}
+import { SPACE, OWNER, BOB, CAROL, proof, rig } from "./testing/lent-rig.js";
 
 test("a lent session end to end: lease, definition with the lender's cap, transcript, a multi-chunk file, a checkpoint, and the same read back", async t => {
   const r = await rig(t, { cap: "provider" });
@@ -446,4 +410,28 @@ test("a home that restarts keeps the sessions on lenders' computers, and gives e
 
 test("a heartbeat is cheap and bounded: a lender names at most fifty sessions, and the beat interval is the one the book promises", () => {
   assert.ok(HEARTBEAT_MS < LAPSE_MS / 3, "three beats can be lost before a lender is taken");
+});
+
+test("a runner older than the server needs is told so: the session is the server's and the chat says this computer is updating; once the runner is current it may start the session", async t => {
+  const r = await clockRig(t);
+  let protocol = 1;
+  const kl = r.k.gateway.leases;
+  const leases = { renew: (/** @type {any[]} */ ...a) => kl.renew(...a), bind: (/** @type {any[]} */ ...a) => kl.bind(...a), unbind: (/** @type {any[]} */ ...a) => kl.unbind(...a), helloOf: () => ({ protocol }) };
+  const home = createLentHome({ space: SPACE, root: path.join(r.dir, "home-skew"), offers: r.g.offers, leases, now: () => r.c.t, chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { r.g.chats.read(chain, id); return true; } catch { return false; } },
+    specFor: async () => ({ command: "/usr/bin/agent", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const server = createRemoteServer({ space: SPACE, kernel: r.k, services: { lent: home } });
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const c = createLentClient({ invoke: remote.call, device: "dev_laptop", deviceKey: "KEY_LAPTOP" });
+  await c.vault.lease();
+  const old = await c.spec({ session: "s1", chat: r.chat });
+  assert.deepEqual(old, { skew: { need: 2, have: 1 } }, "an old runner is told what it needs, and no definition");
+  assert.equal(c.epochOf("s1"), undefined, "nothing was lent");
+  const row = home.book.get("s1");
+  assert.deepEqual([row.where, row.state, row.reason, row.chat], ["server", "updating", "version-skew", r.chat]);
+  await assert.rejects(c.sync.appendTranscript("s1", [{ seq: 1, line: "x" }]), e => e.code === "not_found", "it can write nothing");
+  protocol = 2;   // the Mac updated itself and started again
+  const now = await c.spec({ session: "s1", chat: r.chat });
+  assert.equal(now.command, "/usr/bin/agent");
+  assert.equal(home.book.get("s1").where, "mac");
+  assert.ok(now.epoch >= 2);
 });
