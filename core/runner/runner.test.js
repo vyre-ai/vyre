@@ -279,8 +279,8 @@ async function rig(t, over = {}) {
   const up = await upstream();
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });
   const grants = over.grants || { spaceAllows: true, memberAccepts: true };
-  const server = { starts: 0 };
-  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: () => { server.starts++; }, retryMs: 50, sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
+  const server = { starts: 0, asked: [] };
+  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: over.requestServer || ((session, reason) => { server.starts++; server.asked.push([session, reason]); }), retryMs: 50, sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
@@ -468,4 +468,80 @@ test("egress: a route's own static headers go with the credential (a sign-in tok
   for (const headers of [{ Authorization: "x" }, { "x-api-key": "x" }, { host: "x" }, { "bad name": "x" }, { "a-b": "line\nbreak" }, "no"]) {
     assert.throws(() => createEgress({ routes: [{ ...route, headers }], vault: sp.vault, session: "s", token: "t" }), /own headers/, JSON.stringify(headers));
   }
+});
+
+// ---- handing a session to the server, freezing, fencing (R031-95 2.4) -------------------------------------------------------------------------------------------------------------------
+const procState = pid => { try { const t = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return t.slice(t.lastIndexOf(")") + 2, t.lastIndexOf(")") + 3); } catch { return ""; } };
+const LINUX = process.platform === "linux";
+
+test("runner: handing a session over freezes it, flushes the last turn, tells the server why, and only then ends it", { skip: SKIP || false, timeout: 90_000 }, async t => {
+  /** @type {any} */ let seen = null;
+  const r = await rig(t, { requestServer: (session, reason) => { seen = { session, reason, state: LINUX ? procState(h.pid) : "T", checkpoint: r.sp.state.checkpoints.get("s1")?.turn }; return { moved: true }; } });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  const events = []; 
+  assert.deepEqual(await r.runner.moveToServer("s1", "lid-closed"), { moved: true });
+  assert.deepEqual([seen.session, seen.reason, seen.state, seen.checkpoint], ["s1", "lid-closed", "T", 1], "frozen, with the last whole turn already at the space, when the server is told");
+  assert.deepEqual(r.runner.status().sessions, [], "the server took it: it is gone here");
+  void events;
+});
+
+test("runner: a server that holds the move back, or cannot be reached, leaves the session running", { skip: SKIP || false, timeout: 90_000 }, async t => {
+  let answer = /** @type {any} */ ({ moved: false, why: "cooldown" });
+  const r = await rig(t, { requestServer: () => { if (answer instanceof Error) throw answer; return answer; } });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  assert.deepEqual(await r.runner.moveToServer("s1", "unplugged"), { moved: false, why: "cooldown" });
+  assert.deepEqual(r.runner.status().sessions, ["s1"]);
+  if (LINUX) assert.notEqual(procState(h.pid), "T", "it carries on");
+  answer = new Error("the server is not reachable");
+  await assert.rejects(r.runner.moveToServer("s1", "unplugged"), /not reachable/);
+  assert.deepEqual(r.runner.status().sessions, ["s1"]);
+  if (LINUX) assert.notEqual(procState(h.pid), "T");
+  h.send("turn b");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 2);
+});
+
+test("runner: Pause all freezes every session and keeps it frozen until resumed; this computer being offline is a second reason and does not thaw the first", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const h = await r.launch(r.runner, "s1");
+  r.runner.pause();
+  await waitFor(() => procState(h.pid) === "T"); assert.equal(r.runner.paused, true);
+  assert.equal(r.runner.info()[0].paused, true);
+  r.runner.freeze("offline"); r.runner.thaw("offline");
+  await sleep(200); assert.equal(procState(h.pid), "T", "the person's pause is still in force");
+  const h2 = await r.launch(r.runner, "s2");
+  await waitFor(() => procState(h2.pid) === "T");
+  r.runner.resume();
+  await waitFor(() => procState(h.pid) !== "T" && procState(h2.pid) !== "T");
+  assert.equal(r.runner.paused, false);
+  r.runner.freeze("offline");
+  await waitFor(() => procState(h.pid) === "T"); assert.equal(r.runner.paused, false, "offline is not the person's pause");
+  r.runner.thaw("offline");
+  await waitFor(() => procState(h.pid) !== "T");
+});
+
+test("runner: a fenced session ends at once and writes nothing more to the space", { skip: SKIP || false, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  const before = r.sp.state.transcript.get("s1").length;
+  assert.equal(await r.runner.fence("s1"), true);
+  assert.deepEqual(r.runner.status().sessions, []);
+  assert.equal(r.sp.state.transcript.get("s1").length, before, "nothing written after the fence");
+  assert.equal(await r.runner.fence("s1"), false, "a session already gone is not fenced twice");
+});
+
+test("runner: when the lease ends the sessions are handed to the server first, with the reason the chat prints", { skip: SKIP || false, timeout: 90_000 }, async t => {
+  const r = await rig(t, { ttlMs: 12000 });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn before expiry");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  r.sp.state.offline = true;
+  await h.done;
+  await waitFor(() => r.runner.status().open === false);
+  assert.deepEqual(r.server.asked, [["s1", "lease-expired"]]);
 });

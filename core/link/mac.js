@@ -20,6 +20,7 @@
 // crossed). assert.js checks it. While paired, the Mac also forwards every ask it raises and its end
 // (allow.js ASKS), so the person sees the Mac's asks on the box and can answer them there.
 
+import { registerSleepTools } from "./sleep.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -492,6 +493,7 @@ export function macSide(ctx, seam = {}) {
     });
   }
 
+  registerSleepTools(ctx, { linked: () => Boolean(saved && !saved.revoked) });
   ctx.tool("link.pair", {
     effect: "write",
     description: "Pair this device with your box. Shows a code to approve on the box: `vyre link approve <code>` there, or in the Deck. kind: \"mac\" (the default, the full link feature set) or \"device\" (paired only to import its own sessions, core/sync).",
