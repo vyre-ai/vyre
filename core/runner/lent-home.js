@@ -36,6 +36,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
+ *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
@@ -158,8 +159,9 @@ export function createLentHome(o) {
       catch (e) { if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } } throw e; }
       owed.delete(String(i.session));
       lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
+      const title = chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null;
       const { credentialRoutes, ...visible } = spec;
-      return { ...visible, network, lenderCap: cap || null, epoch: row.epoch };
+      return { ...visible, network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
     },
     /**
      * The lender is alive. Each session it still runs is checked against the book: one whose epoch is not current (it moved, or the home restarted without it) is listed in `fenced`, and the lender stops it
