@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Button, Card, Divider, Field, Select, Switch, Text } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import type { Body } from "./model";
 import * as E from "./edit";
+import { templates } from "./templates";
 
 /**
  * The template studio's visual editor: the name, the page projects open on, the roles, and the stages with their tasks, each a field or a choice, no JSON. Every change goes through edit.ts (pure, tested);
@@ -11,6 +12,9 @@ import * as E from "./edit";
  */
 export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { body: Body; onChange: (b: Body) => void; onSave: () => void; onCancel: () => void; saving: boolean }) {
   const [role, setRole] = useState("");
+  const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  useEffect(() => { templates.flows().then(setFlows).catch(() => setFlows([])); }, []);
+  const [pick, setPick] = useState("");
   const todo = E.missing(body);
   const open = (body as Body & { opens_on?: string }).opens_on || "";
   const doers = E.doerChoices(body), owners = E.ownerChoices(body);
@@ -71,6 +75,24 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
         </Sec>
       ))}
       <View className="self-start"><Button kind="ghost" size="sm" label="Add a stage" onPress={() => onChange(E.addStage(body))} /></View>
+      <Sec title="Automations">
+        <Text tone="muted">A Flow of this Space the template runs for each project: when it starts, or when it enters a stage. The Flow keeps its own approval and limits; only a running Flow runs.</Text>
+        <Card flush>
+          {(body.automations || []).map((a, i) => (
+            <View key={`${a.when}|${a.flow}`}>{i ? <Divider /> : null}
+              <View className="gap-s2 p-s3">
+                <Text strong>{flows.find((f) => f.id === a.flow)?.name || a.flow}{flows.length && !flows.find((f) => f.id === a.flow)?.active ? " (not running)" : ""}</Text>
+                <Select label="Runs" value={a.when} options={E.whenChoices(body)} onChange={(v: string) => onChange(E.setAutomationWhen(body, i, v))} />
+                <View className="self-start"><Button kind="ghost" size="sm" label="Remove" onPress={() => onChange(E.removeAutomation(body, i))} /></View>
+              </View>
+            </View>
+          ))}
+        </Card>
+        <View className="flex-row items-end gap-s2">
+          <View className="min-w-0 flex-1"><Select label="Attach a Flow" value={pick} options={flows.map((f): [string, string] => [f.id, f.name + (f.active ? "" : " (not running)")])} onChange={setPick} placeholder={flows.length ? "Choose a Flow" : "No Flows yet"} /></View>
+          <Button kind="ghost" size="sm" label="Attach" disabled={!pick} onPress={() => { onChange(E.addAutomation(body, pick)); setPick(""); }} />
+        </View>
+      </Sec>
       {todo.length ? <View className="gap-s1">{todo.map((m) => <Text key={m} size="caption" tone="label">{m}</Text>)}</View> : null}
       <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save as a draft version" loading={saving} disabled={todo.length > 0} onPress={onSave} /><Button kind="ghost" size="sm" label="Cancel" onPress={onCancel} /></View>
     </View>
