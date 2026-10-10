@@ -214,3 +214,23 @@ test("on the real home: a new chat of the owner is placed at creation on the own
   assert.equal(typeof proc.kill, "function");
   proc.kill();
 });
+
+test("a chat that moved to the server under a running turn starts again here with resume and sends the cut turn again; a finished turn is not repeated; a failure ends the thread in words", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const sb = () => ({ live: new Map(), record: () => ({ project: "p" }), libraryPlugin: async () => "plug", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "n", turnAsker: new Map(),
+    spawn: (/** @type {string} */ id, /** @type {any} */ o) => calls.push(["spawn", id, o.resume, o.lastPrompt]), write: (/** @type {string} */ id, /** @type {string} */ text) => calls.push(["write", id, text]),
+    emit: (/** @type {string} */ type, /** @type {any} */ payload) => calls.push([type, payload.text || payload.reason || null]), set: (/** @type {string} */ id, /** @type {any} */ patch) => calls.push(["set", id, patch.status]) });
+  const cutTurn = { turn: "t:2", lastPrompt: "and again", launch: { cwd: "/x" }, switching: false };
+  await carryOn(sb(), "t", cutTurn);
+  assert.deepEqual(calls.filter(c => c[0] !== "thread.text"), [["spawn", "t", true, "and again"], ["write", "t", "and again"]], "resumed here and the cut turn sent again");
+  assert.equal(cutTurn.switching, true);
+  calls.length = 0;
+  await carryOn(sb(), "t", { turn: null, lastPrompt: "and again", launch: {}, switching: false });
+  assert.deepEqual(calls.filter(c => c[0] !== "thread.text"), [["spawn", "t", true, null]], "a finished turn is not sent again");
+  calls.length = 0;
+  const broken = sb(); broken.spawn = () => { throw new Error("no folder"); };
+  const st = { turn: "t:3", lastPrompt: "x", launch: {}, switching: false };
+  await carryOn(broken, "t", st);
+  assert.equal(st.switching, false);
+  assert.deepEqual(calls.map(c => c[0]), ["set", "thread.stopped"], "the thread ends, saying why");
+});
