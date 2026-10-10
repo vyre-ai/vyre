@@ -270,7 +270,7 @@ test("a restart reconciles: the session that outlived the daemon is ended and th
     const two = mkCtx(); const m2 = await mod.start(two.ctx); later.push(m2);
     assert.equal(await waitFor(() => !alive(started.pid)), true, "the session that outlived its runner is ended at the restart");
     assert.equal(fs.existsSync(path.join(base, dirs[0])), true, "access stands: the workspace is kept");
-    assert.ok(fs.existsSync(path.join(base, dirs[0], "cipher")), "encrypted at rest, locked");
+    assert.ok(["cipher", "vol.sparsebundle"].some(n => fs.existsSync(path.join(base, dirs[0], n))), "encrypted at rest, locked (gocryptfs's cipher folder, or the Mac's sparse bundle)");
     // the session is started again (resumes from the home's checkpoint), then the daemon dies again, and the Space ends this computer's access while it is down
     const again = await two.tools.get("runner.start").run({ space: SPACE, session: "s2" }, { caller: "cli" });
     assert.ok(alive(again.pid));

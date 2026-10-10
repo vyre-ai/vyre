@@ -135,7 +135,7 @@ test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks
   assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"]], ["s_tools", "/v1/tools/harness.rules", "harness"], "as a hook, not as the MCP server");
   // and Vyre's real MCP server, run inside the sandbox from that config, lists the tools the home says this session has
   proc.stdin.write("mcp\n");
-  const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000).catch(e => { throw new Error(`${e.message}; the program said: ${out.slice(-6).join(" | ").slice(0, 700)}`); }));
   assert.equal(mcp.init, "ok", JSON.stringify(mcp));
   assert.ok(Array.isArray(mcp.tools) && mcp.tools.includes("tools_find"), "the server answered from the home's list: " + JSON.stringify(mcp.tools));
   proc.kill();
@@ -168,7 +168,7 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   assert.deepEqual(echo, await onBox("system.echo", { text: "same" }), "a module tool answers the same");
   // Vyre's own MCP server, run in the sandbox, finds tools in the box's catalog and calls one of them
   const n0 = out.length; proc.stdin.write("mcp tools_find {\"query\":\"echo\"}\n");
-  const mcp = JSON.parse(await waitFor(() => out.slice(n0).find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  const mcp = JSON.parse(await waitFor(() => out.slice(n0).find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000).catch(e => { throw new Error(`${e.message}; the program said: ${out.slice(-6).join(" | ").slice(0, 700)}`); }));
   assert.equal(mcp.init, "ok", JSON.stringify(mcp));
   assert.ok(mcp.tools.includes("tools_find") && mcp.tools.includes("tools_call"), JSON.stringify(mcp.tools));
   assert.ok(JSON.stringify(mcp.called).includes("system_echo") || JSON.stringify(mcp.called).includes("system.echo"), "tools_find found the box's echo tool: " + JSON.stringify(mcp.called).slice(0, 300));
