@@ -64,6 +64,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
+| [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
@@ -643,6 +644,18 @@ The built-in network as the person sees it: whether this machine is signed in, p
 - Tools: [14](tools.md#onboard)
 - Emits: [3 events](events.md#onboard)
 - Shows on: no surface
+
+## outside
+
+Outside agents: Dots, Muse, Hermes, ChatGPT or your own Claude Code elsewhere reach the records, memory and files you choose through one address, hold only what you give, ask before they change anything, and stop the moment you end them.
+
+- Folder: `core/outside`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [9](tools.md#outside), 3 of them only for other modules
+- Emits: [6 events](events.md#outside)
+- Shows on: no surface
+- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory/*","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
 
 ## planner
 
