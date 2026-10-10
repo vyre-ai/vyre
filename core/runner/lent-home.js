@@ -108,7 +108,8 @@ export function createLentHome(o) {
     // a continuation that hangs is given half a minute and told again at the next sweep
     try {
       await Promise.race([Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), new Promise((_, no) => { const t = setTimeout(() => no(new Error("the continuation did not answer")), RESUME_MS); t.unref?.(); })]);
-      owed.delete(session); book.resumed(session);
+      // only what was owed at THIS take-over: a later one of the same session is owed its own
+      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); }
     } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
@@ -176,7 +177,6 @@ export function createLentHome(o) {
       const cap = tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined);
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
-      if (o.leases && i.lease) { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
       // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
       const had = lent.get(String(i.session));
       if (had && had.person !== w.person) throw err("not_found", "not found");
@@ -194,9 +194,18 @@ export function createLentHome(o) {
         return { skew: { need: RUNNER_PROTOCOL_MIN, have: hello.protocol } };
       }
       // The book decides whether this computer may run it (a session the server took comes back only when the person asked) and gives the epoch every later write names.
-      let row;
-      try { row = book.lend({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null }); }
-      catch (e) { if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } } throw e; }
+      // Nothing of a session that is running well elsewhere is touched until the book has said this computer may have it: the refusals above and the book's own (a second computer, a session on the server) leave its
+      // credentials and its row as they were.
+      const before = book.get(String(i.session));
+      const row = book.lend({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null });
+      if (o.leases && i.lease) {
+        try { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
+        catch (e) {
+          // the lease did not hold: the lend is undone, and the epoch it used stays used (a row that existed goes back to the server; one that did not is forgotten, its id still the person's)
+          if (before) book.toServer(String(i.session), "crash"); else book.forget(String(i.session));
+          throw e;
+        }
+      }
       owed.delete(String(i.session));
       lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
       const title = chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null;
@@ -216,7 +225,10 @@ export function createLentHome(o) {
       for (const x of list) {
         const sid = String(x && x.session), l = lent.get(sid);
         // an Offer that no longer stands ends the lending: the server takes the session instead of counting a healthy beat
-        if (l && l.person === w.person && l.device === w.device && !stands(w, l.key)) { await takeOver(sid, "switched-off"); fencedList.push(sid); continue; }
+        if (l && l.person === w.person && l.device === w.device) {
+          if (stands(w, l.key)) l.unstood = 0;
+          else if ((l.unstood = (l.unstood || 0) + 1) >= 2) { await takeOver(sid, "switched-off"); fencedList.push(sid); continue; }   // twice running: a home that has only just started and not yet read its Offers must not take a healthy session
+        }
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);

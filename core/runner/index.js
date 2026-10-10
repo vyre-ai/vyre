@@ -165,8 +165,11 @@ export default {
         const run = resolveAgent(spec);
         h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
       } catch (e) {
-        // the home lent the session on the strength of this start: a start that failed here must not leave it believing the session runs on this computer (it would be taken, as "offline", twenty seconds later)
-        if (!r.info().some((/** @type {any} */ x) => x.session === session)) Promise.resolve(p.stop?.(session)).catch(() => {});
+        // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
+        // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
+        if (!(e && /** @type {any} */ (e).code === "conflict") && !r.info().some((/** @type {any} */ x) => x.session === session)) {
+          Promise.resolve(resume ? p.requestServer?.(space, session, "crash") : p.stop?.(session)).catch(() => {});
+        }
         throw e;
       }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
@@ -336,8 +339,9 @@ export default {
     };
     // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts. What is not handed over waits, frozen, until this computer has been heard by its home again
     // (a woken computer must not run ahead of a server that may have taken its sessions); when it wakes, it checks in at once.
-    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); sleepingAt = Date.now(); moveTick(); for (const r of runners.values()) r.freeze("sleep"); });
-    const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatAgain = true; beatOnce().catch(() => {}); });
+    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); sleepingAt = Date.now(); moveTick(); for (const [space, r] of runners) if (typeof lenders.get(space)?.ports?.beat === "function") r.freeze("sleep"); });
+    // a wake: the connections of before the sleep are dead, so a call still out is forgotten and the check-in goes at once
+    const offWake = ctx.events.on("link.woke", () => { sleeping = null; inflight.clear(); beatAgain = true; beatOnce().catch(() => {}); });
     /** Consecutive beats a Space's home did not answer, and the beat to each that is still out. @type {Map<string, number>} */ const missed = new Map();
     /** @type {Map<string, { call: Promise<any>, at: number }>} */ const inflight = new Map();
     let beating = false, beatTimer = null, beatAgain = false;
@@ -354,6 +358,26 @@ export default {
         if (ans && Array.isArray(ans.directives)) got.directives.push(...ans.directives);
       }
       return got;
+    };
+    /** What a home's answer to a heartbeat means here: the sessions it fenced end, the sessions it kept run again (a Mac that waited to be heard has been), and what it wants done is done. */
+    const settle = (/** @type {string} */ space, /** @type {any} */ r, /** @type {{ fenced: string[], directives: any[] }} */ ans) => {
+      missed.set(space, 0);
+      if (r) {
+        for (const sid of ans.fenced) r.fence(sid).catch(() => {});
+        r.thaw("offline");
+        if (!sleeping) r.thaw("sleep");   // not while the Mac is still about to sleep: it waits to be heard AFTER it wakes
+      }
+      for (const d of ans.directives) {
+        const key = `${space}/${d.do}/${d.session}`;
+        if (asked.has(key)) continue;
+        asked.add(key);
+        (async () => {
+          try {
+            if (d.do === "release" && r) await r.moveToServer(d.session, d.reason || "you");
+            else if (d.do === "start" && enabledNow()) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
+          } catch { /* asked again at a later beat */ } finally { asked.delete(key); }
+        })();
+      }
     };
     const beatOnce = async () => {
       if (beating) return;
@@ -376,25 +400,11 @@ export default {
           if (out) { missOne(); if (Date.now() - out.at > 2 * BEAT_TIMEOUT_MS) inflight.delete(space); return; }
           const call = beatSpace(space, l, rows, well);
           inflight.set(space, { call, at: Date.now() });
-          call.catch(() => {}).finally(() => { if (inflight.get(space)?.call === call) inflight.delete(space); });
-          /** @type {{ fenced: string[], directives: any[] }} */ let ans;
-          try { ans = await Promise.race([call, new Promise((_, no) => { const t = setTimeout(() => no(new Error("the home did not answer")), BEAT_TIMEOUT_MS); t.unref?.(); })]); }
-          catch { missOne(); return; }
-          // two beats unanswered froze the sessions so they never ran ahead of a server that takes them after a lapse; this answer settles what happens to them
-          missed.set(space, 0);
-          if (r) for (const sid of ans.fenced) await r.fence(sid).catch(() => {});
-          if (r) { r.thaw("offline"); r.thaw("sleep"); }
-          for (const d of ans.directives) {
-            const key = `${space}/${d.do}/${d.session}`;
-            if (asked.has(key)) continue;
-            asked.add(key);
-            (async () => {
-              try {
-                if (d.do === "release" && r) await r.moveToServer(d.session, d.reason || "you");
-                else if (d.do === "start" && enabledNow()) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
-              } catch { /* asked again at a later beat */ } finally { asked.delete(key); }
-            })();
-          }
+          // An answer is acted on whenever it arrives, even after the beat gave up waiting for it: a home that answers in seven seconds is a home that answers.
+          const answered = call.then(ans => { settle(space, r, ans); return ans; });
+          answered.catch(() => {}).finally(() => { if (inflight.get(space)?.call === call) inflight.delete(space); });
+          try { await Promise.race([answered, new Promise((_, no) => { const t = setTimeout(() => no(new Error("the home did not answer")), BEAT_TIMEOUT_MS); t.unref?.(); })]); }
+          catch { missOne(); }
         }));
       } finally {
         beating = false;

@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { endOrphans } from "./orphans.js";
+import { endOrphans, startedOf } from "./orphans.js";
 import { watch } from "./watchdog.js";
 
 const alive = (/** @type {number} */ pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -20,7 +20,7 @@ function world(/** @type {import("node:test").TestContext} */ t) {
   /** A session left running: its own process group, and the record the runner wrote for it. */
   const left = (/** @type {string} */ space, /** @type {string} */ name) => {
     const c = spawn("sleep", ["60"], { detached: true, stdio: "ignore" }); c.unref(); kids.push(c);
-    fs.writeFileSync(path.join(base, "run", `${space}.${name}.pid`), JSON.stringify({ pid: c.pid, session: name }));
+    fs.writeFileSync(path.join(base, "run", `${space}.${name}.pid`), JSON.stringify({ pid: c.pid, started: startedOf(/** @type {number} */ (c.pid)), session: name }));
     return /** @type {number} */ (c.pid);
   };
   return { base, left };
@@ -68,4 +68,11 @@ test("a record whose pid now belongs to a different process (another start time)
   assert.equal(endOrphans(w.base), 0);
   assert.equal(alive(pid), true, "somebody else's process is not ours to end");
   assert.deepEqual(fs.readdirSync(path.join(w.base, "run")), [], "the stale record is cleared");
+});
+
+test("a record that could not say when its process started is not obeyed", async t => {
+  const w = world(t), pid = w.left("aaaa", "s1");
+  fs.writeFileSync(path.join(w.base, "run", "aaaa.s1.pid"), JSON.stringify({ pid, session: "s1" }));
+  assert.equal(endOrphans(w.base), 0);
+  assert.equal(alive(pid), true);
 });

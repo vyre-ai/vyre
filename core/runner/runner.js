@@ -38,6 +38,9 @@ export const effectiveNetwork = (space, lenderCap) => (lenderCap === "provider" 
 
 const spaceDir = (base, space) => path.join(base, "spaces", crypto.createHash("sha256").update(space).digest("hex").slice(0, 16));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** How long a hand-over's flush, or the server's answer, may take: past it the hand-over fails and the session runs on. */
+const HANDOVER_MS = 20_000;
+const within = (p, ms) => new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error("the server did not answer in time")), ms); t.unref?.(); p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); }); });
 
 /** A stream-json line that ends a turn. Claude Code prints { type: "result" }; other agents use turn.end. */
 const endsTurn = line => { try { const j = JSON.parse(line); return j && (j.type === "result" || j.type === "turn.end"); } catch { return false; } };
@@ -70,7 +73,7 @@ export async function reconcile(o) {
 /**
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
- *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string, reason?: string) => Promise<{ moved?: boolean } | void> | { moved?: boolean } | void, usage?: ReturnType<typeof createUsage>,
+ *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, handoverMs?: number, requestServer?: (session: string, reason?: string) => Promise<{ moved?: boolean } | void> | { moved?: boolean } | void, usage?: ReturnType<typeof createUsage>,
  *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
@@ -139,7 +142,7 @@ export function createRunner(o) {
       // (revoked) hands nothing over: the work is not this computer's to give. Then stop every session and close the workspace; the data stays encrypted on disk.
       const reason = why === "expired" ? "lease-expired" : why === "slept" ? "asleep" : why === "released" ? "you" : null;
       if (reason && o.requestServer) for (const s of [...live.keys()]) { try { await moveToServer(s, reason); } catch { /* the server takes it after the lapse */ } }
-      for (const s of [...live.keys()]) await stop(s, { final: false });
+      for (const s of [...live.keys()]) await stop(s, { why: "teardown" });
       if (await lockHard()) { emit({ type: "locked", why }); } else { emit({ type: "lock-pending", why }); chase(why === "revoked" ? "revoked" : why); }
     },
     async onRevoke() {
@@ -188,14 +191,14 @@ export function createRunner(o) {
    * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
-    if (starting.has(s.session)) throw new Error("that session is already being started here");
+    if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here"), { code: "conflict" });
     starting.add(s.session);
     try { return await startInner(s); } finally { starting.delete(s.session); }
   }
   async function startInner(s) {
     const g = o.grants();
     if (!g.spaceAllows || !g.memberAccepts) throw new Error("both grants are needed: the space allows it and this computer accepts it");
-    if (live.has(s.session)) throw new Error("that session is already running here");
+    if (live.has(s.session)) throw Object.assign(new Error("that session is already running here"), { code: "conflict" });
     const bad = unavailable(platform);
     if (bad) throw new Error(bad);
     const ws = await open();
@@ -282,7 +285,7 @@ export function createRunner(o) {
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     // why it ended, for the Space's home: the person stopped it, the program finished by itself, the program died, or it was handed over / fenced (the home already knows)
-    emit({ type: "stopped", session: h.session, why: h.released ? "released" : h.stopped ? "stopped" : h.exit && h.exit.code === 0 ? "finished" : "crashed" });
+    emit({ type: "stopped", session: h.session, why: h.released ? "released" : h.stopped ? h.why : h.exit && h.exit.code === 0 ? "finished" : "crashed" });
   }
 
   /** Send a signal to a session: the process group Vyre started, and, to freeze or thaw it, everything under it (the sandbox gives the agent a session of its own). */
@@ -297,10 +300,10 @@ export function createRunner(o) {
   }
 
   /** Stop one session: ask nicely, then end it. Everything under the process Vyre started is asked first (a frozen session wakes to hear it), and whatever is still there when the first has gone is ended. */
-  async function stop(session, _o = {}) {
+  async function stop(session, opt = {}) {
     const h = live.get(session);
     if (!h) return;
-    h.stopped = true;
+    h.stopped = true; h.why = opt.why || "stopped";
     const pid = h.child.pid;
     const under = pidsUnder(Number(pid));   // seen before the first dies: afterwards nothing says whose they were
     const killed = new Promise(r => h.child.once("close", () => r(undefined)));
@@ -314,7 +317,7 @@ export function createRunner(o) {
   }
 
   const freeze = (/** @type {string} */ why) => { frozen.add(why); for (const h of live.values()) signal(h, "SIGSTOP"); };
-  const thawAll = (/** @type {string} */ why) => { frozen.delete(why); if (!frozen.size) for (const h of live.values()) if (!h.moving) signal(h, "SIGCONT"); };
+  const thawAll = (/** @type {string} */ why) => { if (!frozen.delete(why)) return; if (!frozen.size) for (const h of live.values()) if (!h.moving) signal(h, "SIGCONT"); };
 
   /**
    * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
@@ -329,11 +332,11 @@ export function createRunner(o) {
       if (h) {
         h.moving = true;
         signal(h, "SIGSTOP");
-        try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
+        try { await within(Promise.resolve(h.queue).then(() => (mnt ? h.sy.flush() : undefined)), o.handoverMs ?? HANDOVER_MS); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
       }
       const thaw = () => { if (h) { h.moving = false; if (!frozen.size) signal(h, "SIGCONT"); } };
       let r;
-      try { r = await o.requestServer?.(session, reason); } catch (e) { thaw(); throw e; }
+      try { r = await within(Promise.resolve(o.requestServer?.(session, reason)), o.handoverMs ?? HANDOVER_MS); } catch (e) { thaw(); throw e; }   // a server that does not answer leaves the session running, not frozen for ever
       if (r && r.moved === false) { thaw(); return { moved: false, why: /** @type {any} */ (r).why }; }
       if (h) { h.released = true; await stop(session); }
       emit({ type: "moved", session, to: "server", reason });
@@ -344,7 +347,7 @@ export function createRunner(o) {
     return h.handing;
   }
 
-  async function stopAll() { for (const s of [...live.keys()]) await stop(s); }
+  async function stopAll() { for (const s of [...live.keys()]) await stop(s, { why: "teardown" }); }
 
   return {
     decide, start, stop, stopAll, open,
