@@ -34,6 +34,7 @@ import { validEnc } from "./protocol.js";
 import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
 import { presenceFor } from "./presence.js";
+import { createSendContext } from "./context.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 
 const MIGRATIONS = [`
@@ -53,7 +54,9 @@ const MIGRATIONS = [`
 // A message sent while a turn works is steered into it at its next step by default; `queue` waits for the turn to end (and can be taken back).
 `ALTER TABLE stream_groups_outbox ADD COLUMN mode TEXT;`,
 // The sending device's IANA time zone, handed to the run with the words.
-`ALTER TABLE stream_groups_outbox ADD COLUMN tz TEXT;`];
+`ALTER TABLE stream_groups_outbox ADD COLUMN tz TEXT;`,
+// Images a message carries (JSON), handed to the assistant's thread with the words.
+`ALTER TABLE stream_groups_outbox ADD COLUMN images TEXT;`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -119,7 +122,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
       ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
-    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz) VALUES (?,?,?,?,?,?,?,?,?)"),
+    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz, images) VALUES (?,?,?,?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
     outOpen: db.prepare("SELECT * FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid"),
     mark: db.prepare("INSERT INTO stream_groups_marks (person, session, upto) VALUES (?,?,?) ON CONFLICT(person, session) DO UPDATE SET upto = excluded.upto"),
@@ -139,6 +142,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const TOKEN_MS = 24 * 3600_000;
   /** What a call's own chain gave mirror(): the person's chain (exactly one person) and who it is. @type {WeakMap<object, { chain: any, person: string }>} */
   const kcalls = new WeakMap();
+  const sendContext = createSendContext({ kernel: ctx.kernel, call: (tool, input) => ctx.call(tool, input) });
   /** @type {Map<string, { token: string, exp: number }>} one open session per (chat, person, assistant) */ const sessions = new Map();
   /**
    * A session token with the chat in it, opened by the kernel for the person acting (the chain of a call that carried their own token). `agent` makes it an
@@ -749,7 +753,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...turn }));
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...(row.images ? { images: JSON.parse(String(row.images)) } : {}), ...turn }));
       let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
@@ -891,6 +895,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         else if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
       }
 
+      // What the message carries beside the words, for the assistants only (a record named exactly, the files attached): read under the sender's own chain, and a bad list refuses the send before anything is stored.
+      const carried = await sendContext({ chain: (kcalls.get(meta) || {}).chain, grp, text, pasted: i.pasted, attachments: i.attachments, members: to.map(id => { const m = g.bots.get(id); return { who: id, cwd: m ? m.cwd || null : null, session: Boolean(m && m.thread) }; }) });
       // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
       // (its replies are appended under it). A refusal here is the send's refusal: nothing is stored.
       /** @type {string|undefined} */ let kid;
@@ -902,7 +908,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         kid = String((await append(mine.token, { text })).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
-      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(tz ? { tz } : {}) }, { author, message });
+      out.append("user-message", { message, text, state: "sent", ...(carried.saved.length ? { attachments: carried.saved } : {}), ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(tz ? { tz } : {}) }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));
@@ -911,9 +917,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const surface = typeof i.surface === "string" ? i.surface : "deck";
       const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : ""), asker: author, answer: a.message, surface, mode, tz };
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: (quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text) + (hidden ? `\n\n${hidden}` : "") + (carried.noteOf(a.who) ? `\n\n${carried.noteOf(a.who)}` : ""), asker: author, answer: a.message, surface, mode, tz, images: carried.imagesOf(a.who).length ? JSON.stringify(carried.imagesOf(a.who)) : null };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
-        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz);
+        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz, row.images);
         return row;
       });
       for (const r of rows) void schedule(r);

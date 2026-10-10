@@ -11,9 +11,9 @@ const obj = (/** @type {any} */ properties = {}, /** @type {string[]} */ require
 const PERSON = [...PERSON_SURFACES, "tailnet", "device"];
 const fail = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
-/** @param {any} ctx */
-export function registerAttachments(ctx) {
-  const door = createDoor(ctx);
+/** @param {any} ctx @param {{ door?: any }} [seam] a test hands in the Space door */
+export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
+  const door = seam.door || createDoor(ctx);
   ctx.tool("attachments.put", {
     description: "Add a file to a chat: { thread, name, mime?, data } with data as base64. Returns { id, name, mime, bytes } to attach to the next message.",
     input: obj({ thread: str, name: str, mime: str, data: str }, ["thread", "name", "data"]), callers: PERSON,
