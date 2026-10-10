@@ -7,6 +7,7 @@ import { checkFlow } from "./schema.js";
 import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
 import { explainRun } from "./describe.js";
+import { applyPatch } from "./patch.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 const flowOf = (steps, extra = {}) => ({ format: 1, name: "par", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
@@ -259,4 +260,13 @@ test("the schema: a lane belongs inside a parallel step, a parallel step has two
   assert.deepEqual(checkFlow(flow), []);
   const text = printLines(flow);
   assert.ok(sameFlow(parseLines(text), flow), text);
+});
+
+test("edit by patch: a step goes into a lane, a lane can be removed with its steps, and the result still checks", () => {
+  const base = flowOf([{ id: "p", kind: "parallel", steps: [lane("a", [{ id: "m1", kind: "create", type: "matter", set: { client: "A" } }]), lane("b", [{ id: "m2", kind: "create", type: "matter", set: { client: "B" } }]), lane("c", [{ id: "m3", kind: "create", type: "matter", set: { client: "C" } }])] }]);
+  let f = applyPatch(base, [{ op: "insert", into: "b", block: "steps", line: "n create type=matter set={client: N}" }]);
+  assert.deepEqual(f.steps[0].steps[1].steps.map(s => s.id), ["m2", "n"]);
+  f = applyPatch(f, [{ op: "remove", step: "c" }]);
+  assert.deepEqual(f.steps[0].steps.map(s => s.id), ["a", "b"]);
+  assert.deepEqual(checkFlow(f), []);
 });

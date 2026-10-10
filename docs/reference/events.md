@@ -363,7 +363,9 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `link.paired` | `peer`; sometimes `box`, `kind`, `login`, `name` |
 | `link.signed-in` | `box`, `expires` |
 | `link.signed-out` | none |
+| `link.sleeping` | built in a variable before the emit; see the source |
 | `link.unpaired` | none; sometimes `box`, `name`, `peer` |
+| `link.woke` | built in a variable before the emit; see the source |
 | `thread.contended` | built in a variable before the emit; see the source |
 | `thread.finished` | built in a variable before the emit; see the source |
 | `thread.limit` | not found in the source (the type is built at run time) |
@@ -863,8 +865,6 @@ Listens for: `link.unpaired`
 
 | Event | Fields |
 | --- | --- |
-| `grant.created` | `grant` |
-| `grant.revoked` | `grant` |
 | `storage.paired` | built in a variable before the emit; see the source |
 | `storage.removed` | `drain`, `final` |
 | `storage.unreachable` | `reason` |
