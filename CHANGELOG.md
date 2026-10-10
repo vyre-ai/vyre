@@ -2,6 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 - fix(app): no command lines on screens (the copy sweep, FOUNDATION 4.3). Connections asks "Give access" with a button (vault.grant, one yes) where it printed `vyre vault grant`, and points the Google OAuth client at the Vault's Import instead of `vyre vault put`. Settings, This computer turns the webhook listener on and off, opens a route (a sheet: name, signed by, header, the Vault item) and closes one with buttons, where it printed `vyre hooks ...`. Pairing, Autofill and Glass say where to go in Vyre instead of a terminal. The design checker's command-line rule keeps them out.
+- fix(flows): a run held at the Space's switch (or by a Flow's run limit) can be stopped before it starts (`flows.cancel`), so what it would have done never happens when the switch is released; stopping a parent stops its held lanes.
 - fix(flows): a failed lane is one row in Needs attention (the parent's, which names the lane and why, and whose Retry sends the failed lanes round again), and a Flow's health line counts a run with lanes once, not once per lane.
 - feat(documents,comms): Documents and Comms teach themselves (tips): send a template for signature with one yes, make a matter sign itself from a stage, and text a client from your own number.
 - feat(relay): the public door opens and shuts at once. `relay.tunnel_url` is a live setting: set the edge's address and the box dials it, clear it and the box hangs up, with no restart (core/relay/tunnel.test.js).

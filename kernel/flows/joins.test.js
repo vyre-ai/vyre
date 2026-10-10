@@ -256,6 +256,21 @@ test("parallel: a Flow that allows one run at a time still finishes: the lanes t
   assert.equal(mine(w, "payment").length, 5, "and every run went on after its join, once");
 });
 
+test("a run held at the switch can be stopped before it starts, and then nothing of it runs when the switch is released", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([{ id: "m", kind: "create", type: "matter", set: { client: "Held" } }]));
+  await w.runner.pauseAll({ reason: "test" });
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [held] = await roots(w, id);
+  assert.equal(held.state, "queued");
+  assert.deepEqual(await w.runner.cancel(held.id, { by: "per_alex" }), { ok: true, state: "cancelled" });
+  await w.runner.resumeAll({});
+  await settle(w);
+  assert.equal((await w.runner.getRun(held.id)).state, "cancelled");
+  assert.equal(mine(w, "matter").length, 0, "it never ran");
+});
+
 test("parallel: a practice run counts what every lane would do", async () => {
   const w = await world();
   const flow = flowOf([{ id: "p", kind: "parallel", steps: [
