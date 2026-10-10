@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- feat(documents,comms): Documents and Comms teach themselves (tips): send a template for signature with one yes, make a matter sign itself from a stage, and text a client from your own number.
 - feat(relay): the public door opens and shuts at once. `relay.tunnel_url` is a live setting: set the edge's address and the box dials it, clear it and the box hangs up, with no restart (core/relay/tunnel.test.js).
 - refactor(app): Settings home is one list block (R031-58). Its groups, icons, descriptions and the devices count are data a screen draws through BlockScreen; each row opens its page; the Mac's "make this Mac a server" card sits in the block's `after:Devices` slot. Same pixels as before (before and after pictures in team/0.3.1/shots/design/settings-blocks). test/key-screens.test.js counts settings/index.tsx as drawn from blocks.
 - fix(app): Settings gives every place its own icon (a download arrow stood for Spending limits, Backups and Updates; a link for Connections and Outside agents; a shield for four). logic.test.js keeps them unique and in the family.
