@@ -981,24 +981,39 @@ public final class CapsuleModel: ObservableObject {
         return id
     }
 
-    /// Say the words in the pinned chat and follow the answer on the chat's thread. nil means "not through the chat": the caller asks the old way.
+    /// Say the words in the pinned chat and follow the answer on the chat's thread. nil means "not through the chat": the caller asks the old way. Every thread event is heard from BEFORE the words go and kept
+    /// until the chat's run names its thread, then replayed, so a fast answer's first words are never lost; once the chat's thread is known (a follow-up) its events are applied as they come.
     func askPinned(_ words: String, append: String) async -> ActionOutcome? {
         guard let chat = await pinnedAssistantChat() else { return nil }
-        pinnedThread = nil
-        reply = VyState.reply("")
-        // the chat's run names its thread once it has started; the follow reads that thread's events from then
-        follow { [weak self] in self?.pinnedThread }
+        var rep = VyState.reply(pinnedThread ?? "")
+        reply = rep
+        var early: [VyredEvent] = []
+        replySub?.cancel()
+        heardAt = Date()
+        watchReply()
+        replySub = vyred.on("thread.*") { [weak self] e in
+            guard let self else { return }
+            self.keeper.heard(e)
+            guard let r = self.reply else { return }
+            guard let t = self.pinnedThread else { if early.count < 500 { early.append(e) }; return }
+            if e.thread == t { self.heardAt = Date(); self.reply = VyState.applyReply(r, e) }
+        }
         let r = await vyred.call("stream.send", ["chat": chat, "text": append.isEmpty ? words : words + "\n\n" + append], presence: false)
         pending = false
         if let why = Bridge.explain(r) { reply = nil; asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
-        for _ in 0..<40 {
-            let g = await vyred.call("work.chat.get", ["chat": chat], presence: false)
-            if let d = g.data as? [String: Any], let slots = d["slots"] as? [[String: Any]], let t = slots.compactMap({ VJ.nonEmpty($0["thread"]) }).last {
-                pinnedThread = t
-                if reply?.thread.isEmpty == true { reply?.thread = t }
-                break
+        if pinnedThread == nil {
+            // the chat's run names its thread once it has started
+            for _ in 0..<40 {
+                let g = await vyred.call("work.chat.get", ["chat": chat], presence: false)
+                if let d = g.data as? [String: Any], let slots = d["slots"] as? [[String: Any]], let t = slots.compactMap({ VJ.nonEmpty($0["thread"]) }).last {
+                    pinnedThread = t
+                    rep = VyState.reply(t)
+                    for e in early where e.thread == t { rep = VyState.applyReply(rep, e) }
+                    if let now = reply, now.thread.isEmpty { reply = rep }
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 150_000_000)
             }
-            try? await Task.sleep(nanoseconds: 150_000_000)
         }
         return .said("")
     }
