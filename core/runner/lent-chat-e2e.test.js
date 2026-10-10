@@ -35,8 +35,9 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   Object.assign(process.env, { VYRE_CLAUDE_BIN: agent, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts, VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1" });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 
+  /** @type {string[]} the tool requests that came down the lender's door, with the thread each was for */ const doorCalls = [];
   // the home: link's lent world, whose tool requests go to the daemon's own session socket for the thread
-  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => lentRequest(thread, method, p, headers, body),
+  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { doorCalls.push(`${thread} ${p}`); return lentRequest(thread, method, p, headers, body); },
     specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [REPO], labels: {}, network: "provider", credentialRoutes: [] }) });
 
   // the daemon: kernel on, the stream and the switchboard real; the lent home is the rig's, and a loader exists so the server could carry a session on (the loader itself is agent-core's)
@@ -101,5 +102,6 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 3, "the tool turn", 60_000);
   const tool = String((await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1));
   const answer = JSON.parse(tool);
+  assert.ok(doorCalls.some(c => c.startsWith(th.id) && c.includes("/v1/tools/threads.list")), "the call came down the lender's door for this chat's thread: " + JSON.stringify(doorCalls));
   assert.ok(!answer.error && Array.isArray(answer.data ? answer.data : answer.threads || answer), "the home answered the tool call from the lent session: " + tool.slice(0, 300));
 });
