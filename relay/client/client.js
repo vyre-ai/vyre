@@ -633,7 +633,7 @@ export class RelaySocket {
     s.ondata = c => {
       if (this.readyState !== 1 || !c.length) return;
       const m = c.subarray(1);
-      this.onmessage?.({ data: c[0] === 1 ? fromUtf8(m) : m.slice().buffer });
+      this.onmessage?.({ data: c[0] === 1 ? fromUtf8(m) : Uint8Array.prototype.slice.call(m).buffer });
     };
     s.onend = () => this.finish(1000, "");
     s.onreset = r => this.finish(1006, r);
