@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 
 export const PIN = { version: "153.0.8010.12", platform: "linux64", sha256: "a9da028861a0cf789ff25c2fed45f5f1aaf969ed9247835b6a7821a4f7af9d1d" };
 export const HOME_DIR = path.join(os.homedir(), ".cache", "vyre", "chrome-headless-shell", PIN.version);
@@ -17,13 +19,15 @@ export async function install() {
   if (process.platform !== "linux" || process.arch !== "x64") throw new Error(`the pinned browser is the ${PIN.platform} build; browser tests run on the Linux test boxes and in CI, not here`);
   const url = `https://storage.googleapis.com/chrome-for-testing-public/${PIN.version}/${PIN.platform}/chrome-headless-shell-${PIN.platform}.zip`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`could not download ${url}: ${res.status}`);
-  const zip = Buffer.from(await res.arrayBuffer());
-  const got = crypto.createHash("sha256").update(zip).digest("hex");
-  if (got !== PIN.sha256) throw new Error(`the downloaded browser is not the pinned one (sha256 ${got}); nothing was unpacked`);
+  if (!res.ok || !res.body) throw new Error(`could not download ${url}: ${res.status}`);
   fs.mkdirSync(HOME_DIR, { recursive: true });
   const file = path.join(HOME_DIR, "chs.zip");
-  fs.writeFileSync(file, zip);
+  // streamed to disk and hashed as it comes, so a small box never holds the 120 MB in memory
+  const hash = crypto.createHash("sha256");
+  const out = fs.createWriteStream(file);
+  await pipeline(Readable.fromWeb(/** @type {any} */ (res.body)), async function* (src) { for await (const chunk of src) { hash.update(chunk); yield chunk; } }, out);
+  const got = hash.digest("hex");
+  if (got !== PIN.sha256) { fs.rmSync(file); throw new Error(`the downloaded browser is not the pinned one (sha256 ${got}); nothing was unpacked`); }
   execFileSync("unzip", ["-q", "-o", file, "-d", HOME_DIR]);
   fs.rmSync(file);
   fs.chmodSync(BIN, 0o755);
