@@ -2926,6 +2926,7 @@ The Flow that signs a document from a stage: { type, out_stage, signed_stage, te
   - `contact_field` string
   - `email_field` string
   - `name_field` string
+  - `signed_field` string
   - `subject` string
   - `submission_field` string
   - `wait_days` integer
