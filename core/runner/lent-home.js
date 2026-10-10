@@ -23,6 +23,7 @@ import { effectiveNetwork } from "./runner.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
+import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
@@ -153,6 +154,14 @@ export function createLentHome(o) {
       if (i.chat !== undefined && !(typeof i.chat === "string" && /^chat_[0-9a-f-]{36}$/.test(i.chat))) throw err("bad_input", "a chat is named by its id");
       // The lender names the chat, so the home believes it only when that person is in that chat (the kernel's own read decision): otherwise the session runs and the chat is dropped, never shown as running here.
       const chat = i.chat && o.chatHas && (await Promise.resolve(o.chatHas(chain, i.chat)).catch(() => false)) === true ? i.chat : null;
+      // A runner older than this server needs (the protocol it signed in its hello) never half-runs a session: the session is the server's, the chat says this computer is updating, and the lender is told what
+      // protocol is needed. Where no hello was signed (a test, a home that does not require it) there is nothing to compare.
+      const hello = o.leases && i.lease && typeof o.leases.helloOf === "function" ? o.leases.helloOf(String(i.lease)) : null;
+      if (hello && Number.isInteger(hello.protocol) && hello.protocol < RUNNER_PROTOCOL_MIN) {
+        book.skew({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null });
+        if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } }
+        return { skew: { need: RUNNER_PROTOCOL_MIN, have: hello.protocol } };
+      }
       // The book decides whether this computer may run it (a session the server took comes back only when the person asked) and gives the epoch every later write names.
       let row;
       try { row = book.lend({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null }); }

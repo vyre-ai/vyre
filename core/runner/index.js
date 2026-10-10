@@ -144,6 +144,7 @@ export default {
       // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
       await r.open();
       const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
+      if (spec && spec.skew) throw Object.assign(new Error("This Mac runs an older Vyre than this Space needs, so the session runs on the server. Update Vyre on this Mac, then bring it back."), { code: "unavailable" });
       if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
       if (typeof spec.title === "string" && spec.title) titles.set(session, spec.title);
       const run = resolveAgent(spec);

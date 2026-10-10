@@ -447,3 +447,27 @@ test("a home that restarts keeps the sessions on lenders' computers, and gives e
 test("a heartbeat is cheap and bounded: a lender names at most fifty sessions, and the beat interval is the one the book promises", () => {
   assert.ok(HEARTBEAT_MS < LAPSE_MS / 3, "three beats can be lost before a lender is taken");
 });
+
+test("a runner older than the server needs is told so: the session is the server's and the chat says this computer is updating; once the runner is current it may start the session", async t => {
+  const r = await clockRig(t);
+  let protocol = 1;
+  const kl = r.k.gateway.leases;
+  const leases = { renew: (/** @type {any[]} */ ...a) => kl.renew(...a), bind: (/** @type {any[]} */ ...a) => kl.bind(...a), unbind: (/** @type {any[]} */ ...a) => kl.unbind(...a), helloOf: () => ({ protocol }) };
+  const home = createLentHome({ space: SPACE, root: path.join(r.dir, "home-skew"), offers: r.g.offers, leases, now: () => r.c.t, chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { r.g.chats.read(chain, id); return true; } catch { return false; } },
+    specFor: async () => ({ command: "/usr/bin/agent", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const server = createRemoteServer({ space: SPACE, kernel: r.k, services: { lent: home } });
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const c = createLentClient({ invoke: remote.call, device: "dev_laptop", deviceKey: "KEY_LAPTOP" });
+  await c.vault.lease();
+  const old = await c.spec({ session: "s1", chat: r.chat });
+  assert.deepEqual(old, { skew: { need: 2, have: 1 } }, "an old runner is told what it needs, and no definition");
+  assert.equal(c.epochOf("s1"), undefined, "nothing was lent");
+  const row = home.book.get("s1");
+  assert.deepEqual([row.where, row.state, row.reason, row.chat], ["server", "updating", "version-skew", r.chat]);
+  await assert.rejects(c.sync.appendTranscript("s1", [{ seq: 1, line: "x" }]), e => e.code === "not_found", "it can write nothing");
+  protocol = 2;   // the Mac updated itself and started again
+  const now = await c.spec({ session: "s1", chat: r.chat });
+  assert.equal(now.command, "/usr/bin/agent");
+  assert.equal(home.book.get("s1").where, "mac");
+  assert.ok(now.epoch >= 2);
+});
