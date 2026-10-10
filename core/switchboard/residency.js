@@ -7,13 +7,11 @@ export const SETTING = "threads.vendors.allow";
 
 /** The vendor behind each provider, as the person reads it. */
 export const VENDORS = Object.freeze({ claude: "Anthropic (Claude)", codex: "OpenAI (Codex)", grok: "xAI (Grok)", openrouter: "OpenRouter", "openai-compatible": "an OpenAI-compatible endpoint" });
-/** Names a person may write for a provider. */
-const ALIASES = Object.freeze({ anthropic: "claude", openai: "codex", xai: "grok", "x.ai": "grok" });
 
 /** @param {any} value the setting @returns {Set<string> | null} the provider ids allowed, or null for no limit */
 export function allowedSet(value) {
   const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-  const ids = raw.map(x => String(x).trim().toLowerCase()).filter(Boolean).map(x => /** @type {Record<string, string>} */ (ALIASES)[x] || x);
+  const ids = raw.map(x => String(x).trim().toLowerCase()).filter(Boolean);
   return ids.length ? new Set(ids) : null;
 }
 
@@ -28,12 +26,12 @@ export function refusal(provider, value) {
 
 /**
  * Check a provider against the person's setting. Throws an error with code "residency" and the words.
- * @param {(tool: string, input: any) => Promise<any>} call the registry's call @param {string} provider
+ * @param {{ call: (tool: string, input: any) => Promise<any> }} deps the Switchboard's deps (its registry call) @param {string} provider
  */
-export async function checkResidency(call, provider) {
+export async function checkResidency(deps, provider) {
   let value;
   try {
-    const r = await call("settings.get", { key: SETTING });
+    const r = await deps.call("settings.get", { key: SETTING });
     if (r && r.error && !/^(no_such_tool|not_found|missing)$/.test(String(r.error.code))) throw Object.assign(new Error("Vyre could not read which model vendors are allowed, so this chat did not start."), { code: "residency" });
     value = r && !r.error && r.data ? r.data.value : undefined;
   } catch (e) {

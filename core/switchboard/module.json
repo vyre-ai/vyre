@@ -530,7 +530,7 @@
       "key": "threads.vendors.allow",
       "group": "sessions",
       "label": "Model vendors allowed",
-      "help": "Leave empty to run chats on any vendor. List vendors (claude, codex, grok, openrouter, openai-compatible, or anthropic, openai, xai) and a chat on any other starts nothing and says so. It applies to every chat, whichever way it signs in.",
+      "help": "Leave empty to run chats on any vendor. List vendors (claude, codex, grok, openrouter, openai-compatible) and a chat on any other starts nothing and says so. It applies to every chat, whichever way it signs in.",
       "type": "list",
       "levels": [
         "account"
