@@ -53,7 +53,7 @@ export function matcher(signing) {
 /** The credit every public page carries: legible, with a link to the source (the licence asks for it). */
 export const CREDIT_HTML = '<div id="vyre-credit">Signatures by <a href="https://github.com/docusealco/docuseal" rel="noopener noreferrer">DocuSeal</a>, open source (AGPL-3.0)</div>';
 /** The style of that credit, always sent, with or without a brand. */
-export const CREDIT_CSS = "#vyre-credit{box-sizing:border-box;width:100%;padding:10px 16px;text-align:center;font:12px/1.4 system-ui,sans-serif;color:#555;background:transparent}#vyre-credit a{color:inherit;text-decoration:underline}download-button{display:none!important}";
+export const CREDIT_CSS = "#vyre-credit{box-sizing:border-box;width:100%;padding:10px 16px;text-align:center;font:12px/1.4 system-ui,sans-serif;color:#555;background:transparent}#vyre-credit a{color:inherit;text-decoration:underline}download-button,a[href*=\"docuseal.com\"]{display:none!important}";
 
 /**
  * Lay Vyre's look over an HTML page: one stylesheet link before the head ends, the credit before the body ends. No script. A page with no head or body gets them at the ends.

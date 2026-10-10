@@ -60,9 +60,9 @@ export function registerPlaceTools(ctx, d) {
     return (/** @type {string | null} */ id) => { const x = list.find((/** @type {any} */ y) => y.id === id); return x && x.name ? String(x.name) : null; };
   };
   /** Find a thread's row (a chat or a session id) in the Spaces this home serves. @returns {{ space: string, row: any } | null} */
-  const find = (/** @type {string} */ thread, /** @type {string | undefined} */ space) => {
+  const find = (/** @type {string} */ thread, /** @type {string | undefined} */ space, /** @type {string} */ person) => {
     const p = placements();
-    for (const sp of space ? [space] : p.spaces()) { const row = p.find(sp, thread); if (row) return { space: sp, row }; }
+    for (const sp of space ? [space] : p.spaces()) { const row = p.find(sp, thread, person); if (row) return { space: sp, row }; }
     return null;
   };
   const mineChat = async (/** @type {any} */ chain, /** @type {string} */ thread) => {
@@ -79,7 +79,7 @@ export function registerPlaceTools(ctx, d) {
     run: async (i, meta) => {
       const thread = threadOf(i);
       const { chain, person } = await who(meta, i.space);
-      const hit = find(thread, i.space);
+      const hit = find(thread, i.space, person);
       if (!hit) {
         // a session the server runs itself has no row: it is the server's, and only the chat's own people are told so
         if (!(await mineChat(chain, thread))) throw refuse("no such chat", "not_found");
@@ -96,7 +96,7 @@ export function registerPlaceTools(ctx, d) {
     run: async (i, meta) => {
       const thread = threadOf(i);
       const { person } = await who(meta, i.space);
-      const hit = find(thread, i.space);
+      const hit = find(thread, i.space, person);
       if (!hit || hit.row.person !== person) return { reason: null };
       return { reason: hit.row.where === "server" ? hit.row.reason : null };
     },
@@ -107,14 +107,14 @@ export function registerPlaceTools(ctx, d) {
     const thread = threadOf(i);
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
     const { person } = await who(meta, i.space);
-    const hit = find(thread, i.space);
+    const hit = find(thread, i.space, person);
     if (!hit) {
       if (i.to === "server") return answer(null);
       throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet", "unavailable");
     }
     if (hit.row.person !== person) throw refuse("no such chat", "not_found");
     const p = placements();
-    const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you") : p.bringBack(hit.space, hit.row.session, person);
+    const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
 

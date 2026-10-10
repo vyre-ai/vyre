@@ -133,7 +133,7 @@ export function createPlacementBook(o = {}) {
 
     /** The person asks for a session on the server to run on its computer again (the offer, or a tap): the next lend of it is allowed. @param {string} id @param {string} person */
     bringBack(id, person) {
-      const r = this.find(id); if (!r || r.person !== person) throw bad("no such session", "not_found");
+      const r = this.find(id, person); if (!r) throw bad("no such session", "not_found");
       const live = /** @type {Row} */ (rows.get(r.session));
       if (live.pin === "server") throw bad("this session is pinned to the server: unpin it first", "conflict");
       if (live.where === "mac") return copy(live);
@@ -183,9 +183,9 @@ export function createPlacementBook(o = {}) {
       return { changed: true, row: copy(r) };
     },
 
-    /** The person (or the server) asks the lender to hand a session over: it finishes its turn, checkpoints and releases it. Until it does the session reads as moving. @param {string} id @param {string} reason */
-    askRelease(id, reason) {
-      const r = this.find(id); if (!r) throw bad("no such session", "not_found");
+    /** The person (or the server) asks the lender to hand a session over: it finishes its turn, checkpoints and releases it. Until it does the session reads as moving. @param {string} id @param {string} reason @param {string} [person] */
+    askRelease(id, reason, person) {
+      const r = this.find(id, person); if (!r) throw bad("no such session", "not_found");
       if (!REASONS.includes(reason)) throw bad("that reason is not one the chat knows", "bad_input");
       const live = /** @type {Row} */ (rows.get(r.session));
       if (live.where !== "mac") return copy(live);
@@ -209,9 +209,9 @@ export function createPlacementBook(o = {}) {
       return out;
     },
 
-    /** The person pins a session ("keep running when I close my laptop") or lets it go. @param {string} id @param {"server" | "mac" | null} pin */
-    pin(id, pin) {
-      const r = this.find(id); if (!r) throw bad("no such session", "not_found");
+    /** The person pins a session ("keep running when I close my laptop") or lets it go. @param {string} id @param {"server" | "mac" | null} pin @param {string} [person] */
+    pin(id, pin, person) {
+      const r = this.find(id, person); if (!r) throw bad("no such session", "not_found");
       if (pin !== null && pin !== "server" && pin !== "mac") throw bad("a pin is server, mac or none", "bad_input");
       const live = /** @type {Row} */ (rows.get(r.session)); live.pin = pin; if (pin === "server") live.offer = null; save();
       return copy(live);
