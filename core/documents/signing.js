@@ -47,8 +47,8 @@ export function signingFlow(o) {
         ...(field ? [{ id: "mark", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: { expr: `"" + steps.send.submission` } } }] : []),
         { id: "signed", kind: "wait", event: "documents.signed", where: `"" + event.data.payload.submission == "" + steps.send.submission`, timeout_ms: days * 86_400_000, on_timeout: "fail" },
         { id: "move", kind: "stage", type, record: { expr: "trigger.id" }, to: o.signed_stage },
-        // the finished copy goes to the signer by a link that does not expire unless the person set documents.signed_link_days: the link and the email are one act with one yes
-        { id: "copy", kind: "call", action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: { expr: "steps.send.slug" }, ...(contact ? { contact: who.contact } : { email: { expr: mine } }) } },
+        // the finished copy goes to the signer by a link that does not expire unless the person set documents.signed_link_days: the link and the email are one act, and it rides the yes to the request (`with`): the person reads both on the first card and says yes once
+        { id: "copy", kind: "call", with: "send", action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: { expr: "steps.send.slug" }, ...(contact ? { contact: who.contact } : { email: { expr: mine } }) } },
       ], else: [] },
     ],
   };
