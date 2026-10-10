@@ -206,6 +206,7 @@ test("an outside signer signs in a real browser through the public door: relay, 
   assert.match(first, /Vyre proof NDA/, "the page is the signer's, for this document");
   assert.match(first, /Signatures by DocuSeal, open source \(AGPL-3\.0\)/, "the open-source credit is present");
   assert.equal(await ev("location.host"), APP_HOST, "and the browser never left the public name");
+  assert.equal(await ev("[...document.querySelectorAll('a')].filter(a => /docuseal\\.com/.test(a.href) && getComputedStyle(a).display !== 'none').length"), 0, "the engine's own logo and \"powered by\" links are not shown: the page is the firm's, with the licence credit in the footer");
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "every request the page made was answered");
   // the signer types a signature and completes, as a person does
   const click = (/** @type {string} */ label) => ev(`(() => { const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim().toUpperCase() === ${JSON.stringify(label)} && x.offsetParent); if (!b) return false; b.click(); return true; })()`);
