@@ -3077,6 +3077,186 @@
     }
    }
   },
+  "grouped": {
+   "title": "Settings",
+   "screens": {
+    "full": {
+     "v": 2,
+     "id": "grouped",
+     "title": "Settings",
+     "layout": {
+      "block": "s"
+     },
+     "blocks": {
+      "s": {
+       "type": "list",
+       "props": {
+        "density": "tight"
+       },
+       "content": {
+        "rows": [
+         {
+          "id": "account",
+          "title": "Account and recovery",
+          "subtitle": "Sign-in, recovery code",
+          "icon": "person.crop.circle",
+          "group": "You"
+         },
+         {
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you, and when",
+          "icon": "bell",
+          "group": "You"
+         },
+         {
+          "id": "ai",
+          "title": "AI accounts",
+          "subtitle": "Claude, OpenAI and others, with budgets",
+          "icon": "sparkles",
+          "group": "You"
+         },
+         {
+          "id": "devices",
+          "title": "Devices",
+          "subtitle": "Your phone and computers",
+          "icon": "phone",
+          "accessory": "2 devices",
+          "group": "Devices"
+         },
+         {
+          "id": "backups",
+          "title": "Backups",
+          "subtitle": "Which Spaces are backed up",
+          "icon": "tray",
+          "group": "Devices"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "app"
+    },
+    "compact": {
+     "v": 2,
+     "id": "grouped",
+     "title": "Settings",
+     "layout": {
+      "block": "s"
+     },
+     "blocks": {
+      "s": {
+       "type": "list",
+       "props": {
+        "density": "tight"
+       },
+       "content": {
+        "rows": [
+         {
+          "id": "account",
+          "title": "Account and recovery",
+          "subtitle": "Sign-in, recovery code",
+          "icon": "person.crop.circle",
+          "group": "You"
+         },
+         {
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you, and when",
+          "icon": "bell",
+          "group": "You"
+         },
+         {
+          "id": "ai",
+          "title": "AI accounts",
+          "subtitle": "Claude, OpenAI and others, with budgets",
+          "icon": "sparkles",
+          "group": "You"
+         },
+         {
+          "id": "devices",
+          "title": "Devices",
+          "subtitle": "Your phone and computers",
+          "icon": "phone",
+          "accessory": "2 devices",
+          "group": "Devices"
+         },
+         {
+          "id": "backups",
+          "title": "Backups",
+          "subtitle": "Which Spaces are backed up",
+          "icon": "tray",
+          "group": "Devices"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "phone"
+    },
+    "glance": {
+     "v": 2,
+     "id": "grouped",
+     "title": "Settings",
+     "layout": {
+      "col": [
+       {
+        "block": "s"
+       }
+      ]
+     },
+     "blocks": {
+      "s": {
+       "type": "list",
+       "props": {
+        "density": "tight"
+       },
+       "content": {
+        "rows": [
+         {
+          "id": "account",
+          "title": "Account and recovery",
+          "subtitle": "Sign-in, recovery code",
+          "icon": "person.crop.circle",
+          "group": "You"
+         },
+         {
+          "id": "notifications",
+          "title": "Notifications",
+          "subtitle": "What can reach you, and when",
+          "icon": "bell",
+          "group": "You"
+         },
+         {
+          "id": "ai",
+          "title": "AI accounts",
+          "subtitle": "Claude, OpenAI and others, with budgets",
+          "icon": "sparkles",
+          "group": "You"
+         },
+         {
+          "id": "devices",
+          "title": "Devices",
+          "subtitle": "Your phone and computers",
+          "icon": "phone",
+          "accessory": "2 devices",
+          "group": "Devices"
+         },
+         {
+          "id": "backups",
+          "title": "Backups",
+          "subtitle": "Which Spaces are backed up",
+          "icon": "tray",
+          "group": "Devices"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "chat"
+    }
+   }
+  },
   "typed": {
    "title": "Matters",
    "screens": {
