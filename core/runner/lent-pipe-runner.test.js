@@ -130,6 +130,7 @@ test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks
   // the Harness hooks run on the lender too, from its own copy of the plugin, and ask the home through the same door as the session's own (caller harness): the home's word is the hook's answer
   proc.stdin.write("hook rules {\"session_id\":\"s_tools\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}\n");
   const hook = JSON.parse(await waitFor(() => out.find(l => l.includes("\"hook\"")), 30_000));
+  assert.ok(hook.stdout, "the hook said something: " + JSON.stringify(hook));
   assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.permissionDecision, "deny", JSON.stringify(hook));
   assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"]], ["s_tools", "/v1/tools/harness.rules", "harness"], "as a hook, not as the MCP server");
   // and Vyre's real MCP server, run inside the sandbox from that config, lists the tools the home says this session has

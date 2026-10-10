@@ -67,6 +67,7 @@ test("a chat on a computer run by the real daemon: placed with no yes, tools and
   assert.deepEqual([reply.status, JSON.parse(reply.body).data.you], [200, "mcp:thread:s_real"]);
   proc.stdin.write("hook rules {\"session_id\":\"s_real\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}\n");
   const hook = JSON.parse(await waitFor(() => out.find(l => l.includes("\"hook\"")), 60_000).catch(e => { throw new Error(`${e.message}; the program said: ${out.slice(-6).join(" | ").slice(0, 600)}`); }));
+  assert.ok(hook.stdout, "the hook said something: " + JSON.stringify(hook));
   assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.permissionDecision, "deny", JSON.stringify(hook));
   assert.equal(asked.at(-1)[2], "harness");
   // the lid shuts: the server takes the chat, the SDK hears a move
