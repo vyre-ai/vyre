@@ -10,10 +10,13 @@ export function presenceKeyFor(device, confirmed, input) {
     // the device's own word on where it keeps its key beats the relay's "unknown" (the relay fills that in when a hello says nothing): unknown only when nothing is stated anywhere
     const stated = [input && input.keyStorage, confirmed.storage].find(x => typeof x === "string" && x !== "" && x !== "unknown");
     const storage = String(stated || "");
-    const kindOk = ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"].includes(String(confirmed.signer || ""));
-    const signer = storage === "software" ? "software" : kindOk ? String(confirmed.signer) : null;
+    // the signer class and the passkey's rp are the DEVICE's own word, sent by the device itself in its adopt call (`input.keySigner`, `input.keyRp`), never what the relay holds of its hello: a relay that adds a signer the device did not state
+    // changes nothing here (trust row 56). Platform attestation of the class is backlog 0.3.5.
+    const said = input && typeof input.keySigner === "string" ? input.keySigner : "";
+    const kindOk = ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"].includes(said);
+    const signer = storage === "software" ? "software" : kindOk ? said : null;
     if (!signer) return null;
     const der = Buffer.from(confirmed.key, "base64url");
-    return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer, ...(signer === "webauthn_platform" && typeof confirmed.rp === "string" ? { rp: confirmed.rp } : {}) };
+    return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer, ...(signer === "webauthn_platform" && input && typeof input.keyRp === "string" ? { rp: input.keyRp } : {}) };
   } catch { return null; }
 }

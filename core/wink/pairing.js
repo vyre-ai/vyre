@@ -1044,7 +1044,7 @@ export function createPairing(o) {
       if (proven) {
         // A phone or computer that offered a key and whose key could not be enrolled as the owner's presence key would pair and then never be able to approve anything: that is refused now, with the reason, not found out later.
         if (["phone", "computer"].includes(String(input.deviceKind || "")) && confirmed && typeof confirmed.key === "string" && !presenceKeyFor(device, confirmed, input)) {
-          ctx.log(`wink: ${device} offered a key but did not say how it keeps it (storage: ${String(confirmed.storage || input.keyStorage || "not stated")}, signer: ${String(confirmed.signer || "not stated")}); nothing was paired`);
+          ctx.log(`wink: ${device} offered a key but did not say how it keeps it (storage: ${String(confirmed.storage || input.keyStorage || "not stated")}, signer: ${String(input.keySigner || "not stated")}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }
           throw fail("unavailable", "This device did not say how it keeps its key, so it could not be made your approving device and nothing was paired. Update Vyre on it and pair again.");
         }
@@ -1183,7 +1183,7 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, route: str, space: str, device: str, hostname: str, peerAddr: str, pin: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, keySigner: { type: "string", enum: ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"] }, keyRp: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, route: str, space: str, device: str, hostname: str, peerAddr: str, pin: str }) }, ["owner"]);
     /** The adoption itself (wink.server.adopt's body). @param {any} input @param {any} meta0 */
     const adoptBody = async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
