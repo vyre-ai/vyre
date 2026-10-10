@@ -175,7 +175,7 @@
  "core/daemon/build.test.js": 4,
  "core/daemon/client-write.test.js": 2,
  "core/daemon/crash.test.js": 4,
- "core/daemon/csp-self-hosted.test.js": 4,
+ "core/daemon/csp-self-hosted.test.js": 5,
  "core/daemon/draft-stream.test.js": 1,
  "core/daemon/flows-host-ready.test.js": 2,
  "core/daemon/host-guard.test.js": 3,
