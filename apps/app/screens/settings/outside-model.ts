@@ -24,10 +24,10 @@ export function typesOf(d: any): RecordType[] {
   return (Array.isArray(d?.types) ? d.types : []).filter((t: any) => t && typeof t.name === "string" && !t.system).map((t: any): RecordType => ({ name: t.name, label: String(t.label || t.name) }));
 }
 
-/** How long a token has left, in words. */
+/** How long a token has left, in words (no closing stop: the screen joins the lines). */
 export function endsLine(a: Agent, now: number): string {
   if (a.status === "revoked") return "Ended";
-  if (a.expires <= now) return "Expired. Make a new token to use it again.";
+  if (a.expires <= now) return "Expired, so it needs a new token";
   const days = Math.ceil((a.expires - now) / DAY);
   return days <= 1 ? "Ends today" : `Ends in ${days} days`;
 }

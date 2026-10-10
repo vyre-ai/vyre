@@ -1010,5 +1010,6 @@
  "test/design-rules.test.js": 2,
  "apps/app/ui/blocks/symbols.test.js": 2,
  "test/agent-reach-classes.test.js": 3,
- "core/vault/links.test.js": 4
+ "core/vault/links.test.js": 4,
+ "apps/app/ui/canvas/real-graph.test.js": 1
 }

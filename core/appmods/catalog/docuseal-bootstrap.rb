@@ -20,6 +20,6 @@ account.account_configs.find_or_create_by!(key: :fulltext_search) { |c| c.value 
 account.account_configs.find_or_create_by!(key: :allow_http) { |c| c.value = true }
 token = AccessToken.find_by(user: user) || AccessToken.create!(user: user)
 WebhookUrl.where(account: account).delete_all
-WebhookUrl.create!(account: account, url: ENV.fetch("VYRE_HOOK_URL"), events: %w[submission.completed form.completed], secret: { "X-Vyre-Token" => ENV.fetch("VYRE_HOOK_TOKEN") })
+WebhookUrl.create!(account: account, url: ENV.fetch("VYRE_HOOK_URL"), events: %w[submission.completed form.completed form.declined submission.expired], secret: { "X-Vyre-Token" => ENV.fetch("VYRE_HOOK_TOKEN") })
 puts "api_token=#{token.token}"
 puts "login_password=#{password}"

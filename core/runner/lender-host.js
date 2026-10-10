@@ -23,6 +23,7 @@ export function createLenderHost(o) {
   const refresh = async () => {
     let next;
     try { next = await o.invoke("lent.status", [{ device_key: o.deviceKey }]); } catch { return; }   // an unreachable home changes nothing; the lease's own expiry covers a long absence
+    if (!next || typeof next !== "object") return;   // an answer that is not an answer changes nothing
     cap = next.lenderCap || o.lenderCap; const was = state; state = { spaceAllows: Boolean(next.spaceAllows), memberAccepts: Boolean(next.memberAccepts) };
     if ((was.spaceAllows && !state.spaceAllows) || (was.memberAccepts && !state.memberAccepts)) for (const fn of told) { try { fn({ device: o.deviceId, reason: "withdrawn" }); } catch {} }
   };

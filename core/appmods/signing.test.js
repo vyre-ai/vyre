@@ -44,7 +44,7 @@ test("the matcher is by method and path, and a pretty link goes to the page", ()
 test("the Documents manifest lists the signer's routes and no admin path", () => {
   const sign = manifest.app.signing;
   const m = matcher(sign);
-  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["GET", "/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
+  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["GET", "/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
   for (const [method, path] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/settings/api"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["GET", "/api/templates"], ["GET", "/users"], ["POST", "/s/xYz123/invite"], ["POST", "/s/xYz123/delegate"], ["GET", "/sign_in"], ["GET", "/d/abc"], ["GET", "/mcp"], ["DELETE", "/s/xYz123"]]) assert.ok(!m.open(method, path), `${method} ${path} must not be public`);
   assert.equal(m.redirect("/sign/12/abc"), "/s/abc");
 });
@@ -117,7 +117,7 @@ test("a signer opens the page with no ticket: dressed, credited, uncached, and t
   assert.match(r.body, /Sign here/);
   assert.match(r.body, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
   assert.ok(r.body.includes("Signatures by"));
-  assert.equal(r.headers["referrer-policy"], "no-referrer");
+  assert.equal(r.headers["referrer-policy"], "same-origin");
   assert.match(String(r.headers["x-robots-tag"]), /noindex/);
   assert.equal(r.headers["cache-control"], "no-store");
   assert.deepEqual(r.headers["set-cookie"], ["_ds=signer1; Path=/; HttpOnly"], "the signer's cookie goes back to the signer, without its Domain");
@@ -133,7 +133,7 @@ test("a signer opens the page with no ticket: dressed, credited, uncached, and t
 
 test("what is not on the list is a plain 404 to a stranger and never reaches the app", async t => {
   const f = await front(t);
-  for (const [m, p] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["POST", "/s/abc/delegate"], ["POST", "/s/abc"], ["DELETE", "/s/abc"], ["GET", "/settings/api"]]) {
+  for (const [m, p] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["POST", "/s/abc/delegate"], ["DELETE", "/s/abc"], ["GET", "/settings/api"]]) {
     const r = await f.call(m, p);
     assert.equal(r.status, 404, `${m} ${p}`);
   }
@@ -143,12 +143,13 @@ test("what is not on the list is a plain 404 to a stranger and never reaches the
 test("a signer's actions go through: the submit, the decline, the signature upload; the pretty link redirects", async t => {
   const f = await front(t);
   assert.equal((await f.call("PUT", "/s/abc123", {}, '{"values":[]}')).status, 200);
+  assert.equal((await f.call("POST", "/s/abc123", {}, "_method=put")).status, 200, "a browser's form posts the submit and tells Rails it is a PUT");
   assert.equal((await f.call("POST", "/s/abc123/decline", {}, "{}")).status, 200);
   assert.equal((await f.call("POST", "/api/attachments", {}, "x")).status, 200);
   const red = await f.call("GET", "/sign/4411/abc123");
   assert.equal(red.status, 302);
   assert.equal(red.headers.location, "/s/abc123");
-  assert.equal(f.a.seen.filter(s => s.url === "/s/abc123").length, 1, "the redirect did not touch the app");
+  assert.equal(f.a.seen.filter(s => s.url === "/s/abc123").length, 2, "only the two submits reached the app (the PUT and the browser's POST); the redirect did not touch it");
   // a stranger cannot send a huge body: the declared length is refused before a byte is read, and the app is not touched
   const before = f.a.seen.length;
   const status = await new Promise(resolve => {

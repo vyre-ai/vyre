@@ -2,7 +2,8 @@
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { BlockScreen, Card, ChatCard, FlowCanvas, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
 import fx from "../screens/vault/real-box.fixture.json";
@@ -49,6 +50,14 @@ function Sample({ name }: { name: string }) {
     (window as unknown as { __vyreShell?: unknown }).__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} };
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
+  }
+  if (name === "flow-parallel") {
+    // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
+    const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });
+    const nodes = [n("t", "trigger", "When a client form arrives", 0, 0, "done"), n("p", "parallel", "Do these at the same time", 0, 1, "done"), n("a1", "branch", "Set the client up", 1, 2, "done"), n("a2", "create", "Create the matter", 1, 3, "running"),
+      n("b1", "subflow", "Send the welcome pack", 2, 4, "done"), n("j", "stage", "Move the matter to Intake", 0, 5), n("e", "call", "Tell the team", 0, 6)];
+    const edges: CanvasEdge[] = [{ from: "t", to: "p", kind: "next" }, { from: "p", to: "a1", kind: "lane" }, { from: "a1", to: "a2", kind: "next" }, { from: "p", to: "b1", kind: "lane" }, { from: "p", to: "j", kind: "next" }, { from: "j", to: "e", kind: "next" }];
+    return <Card flush><FlowCanvas nodes={nodes} edges={edges} /></Card>;
   }
   if (name === "vault-emergency") {
     const day = 86_400_000, t0 = Date.parse("2026-10-04T00:00:00Z");
