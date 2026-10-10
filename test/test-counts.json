@@ -66,6 +66,7 @@
  "apps/app/ui/motion/motion.test.js": 9,
  "apps/app/ui/shell/nav.test.js": 6,
  "apps/app/ui/tasks/model.test.js": 7,
+ "apps/app/ui/tasks/one-vault.test.js": 1,
  "apps/app/ui/views/logic.test.js": 14,
  "apps/app/vendor/glass/input.test.js": 2,
  "core/about/about.test.js": 3,
