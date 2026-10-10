@@ -49,3 +49,14 @@ export function parseBody(text: string): { ok: true; body: Body } | { ok: false;
 
 /** The words under a refused or failed call: the box says what and why. */
 export const errWords = (e: unknown): string => (e instanceof Error && e.message ? e.message : "That did not work.");
+
+/** The name a project is started under, or why it cannot be: a name is what the person calls the project ("Rivera Family Trust"). */
+export function startName(text: string): { ok: true; name: string } | { ok: false; why: string } {
+  const name = text.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, why: "Give the project a name, such as the client's." };
+  if (name.length > 120) return { ok: false, why: "A project name is at most 120 characters." };
+  return { ok: true, name };
+}
+
+/** The id a project page opens by, from the address the box answers with. */
+export const projectIdOf = (urn: string): string => String(urn).split("/").pop() || "";
