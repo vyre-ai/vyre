@@ -22,8 +22,6 @@ if (!take("--tree") || !fs.existsSync(path.join(tree, "package.json"))) { consol
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `dev-droplet-${Date.now()}`)));
 const journeys = take("--journeys", "J2,J4").split(",").filter(Boolean);
 const region = take("--region", "nyc3"), size = take("--size", "s-4vcpu-8gb"), keep = argv.includes("--keep");
-// --hold-minutes N: after the journeys the droplet is kept for people to look at (ssh details are printed), then destroyed by this process after N minutes or as soon as OUT/DESTROY exists, whatever happens.
-const holdMinutes = Number(take("--hold-minutes", "0")) || 0;
 fs.mkdirSync(out, { recursive: true });
 const api = async (/** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ body) => {
   const r = await fetch(`https://api.digitalocean.com/v2${p}`, { method, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -65,7 +63,7 @@ try {
   for (let i = 0; i < 60 && !up; i++) { up = remote("cloud-init status --wait >/dev/null 2>&1; echo up", "root", 120).stdout.includes("up"); if (!up) await sleep(5000); }
   if (!up) throw new Error(`ssh to ${ip} never answered`);
   console.log(`PASS  make a fresh droplet (Ubuntu 24.04, ${size}): droplet ${id} at ${ip} in ${Math.round((Date.now() - t0) / 1000)} s. THIS IS A DEVELOPMENT-BUILD WALK (no release signature, a stand-in signer gives the yes).`);
-  step("install Docker, Node 24 and the tools the journeys need", remote("export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq curl git unzip rsync ca-certificates libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 libxfixes3 libx11-6 libxext6 libxcb1 fonts-liberation >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null && (id walker >/dev/null 2>&1 || adduser --disabled-password --gecos '' walker >/dev/null) && echo 'walker ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/walker && chmod 440 /etc/sudoers.d/walker && usermod -aG docker walker && mkdir -p /home/walker/.ssh /home/walker/vyre && cp /root/.ssh/authorized_keys /home/walker/.ssh/ && chown -R walker:walker /home/walker && node -v", "root", 1500));
+  step("install Docker, Node 24 and the tools the journeys need", remote("export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq curl git unzip rsync ca-certificates >/dev/null && curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null && (id walker >/dev/null 2>&1 || adduser --disabled-password --gecos '' walker >/dev/null) && echo 'walker ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/walker && chmod 440 /etc/sudoers.d/walker && usermod -aG docker walker && mkdir -p /home/walker/.ssh /home/walker/vyre && cp /root/.ssh/authorized_keys /home/walker/.ssh/ && chown -R walker:walker /home/walker && node -v", "root", 1500));
   step("copy the build under test to the droplet", spawnSync("rsync", ["-az", "-e", `ssh ${sshBase.join(" ")} -l walker`, "--exclude", "node_modules", "--exclude", ".git", `${tree}/`, "walkdroplet:/home/walker/vyre/"], { encoding: "utf8", timeout: 900_000 }));
   step("install its dependencies and the pinned test Chrome", remote("cd vyre && npm ci --no-audit --no-fund >/dev/null 2>&1 && (cd apps/app && npm ci --ignore-scripts --no-audit --no-fund >/dev/null 2>&1) && node scripts/install-test-chrome.mjs", "walker", 1800));
   const chrome = remote("cd vyre && node scripts/install-test-chrome.mjs", "walker", 120).stdout.trim().split("\n").pop() || "";
@@ -78,11 +76,6 @@ try {
     spawnSync("rsync", ["-az", "-e", `ssh ${sshBase.join(" ")} -l walker`, `walkdroplet:/home/walker/out-${j}/`, path.join(out, `out-${j}/`)], { encoding: "utf8", timeout: 300_000 });
   }
   code = failed ? 1 : 0;
-  if (holdMinutes) {
-    console.log(`HOLD  droplet ${id} at ${ip} kept for up to ${holdMinutes} minutes: ssh -i ${keyFile} -o UserKnownHostsFile=${path.join(out, "known_hosts")} walker@${ip}   (root works too; the repo is in /home/walker/vyre, journey output in /home/walker/out-<J>). It is destroyed when ${path.join(out, "DESTROY")} exists or the time is up.`);
-    const until = Date.now() + holdMinutes * 60_000;
-    while (Date.now() < until && !fs.existsSync(path.join(out, "DESTROY"))) await sleep(15_000);
-  }
 } catch (e) {
   console.error(`FAIL  ${/** @type {Error} */ (e).message}`);
 } finally {

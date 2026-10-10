@@ -19,6 +19,7 @@ import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread } from "./ChatRows";
+import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
 import { groupToolRuns } from "./tool-runs.js";
 import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
@@ -117,6 +118,7 @@ export function ChatScreen(p: ChatScreenProps) {
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
   const placed = usePlacement(p.sessionId, !allowsMock());
+  const flowDraft = useFlowDraft();
   // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
   const att = useAttachments(allowsMock() ? undefined : p.sessionId);
   useAttachDrop(att.add);
@@ -219,7 +221,7 @@ export function ChatScreen(p: ChatScreenProps) {
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
-      onTurnIntoFlow: () => { void sendRef.current?.(TURN_INTO_FLOW); },
+      onTurnIntoFlow: () => { void flowDraft.start(); void sendRef.current?.(TURN_INTO_FLOW); },
       onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
       // a cited field opens the record it was read from
       onOpenRecord: (urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never),
@@ -418,6 +420,7 @@ export function ChatScreen(p: ChatScreenProps) {
       {realComposer ? <GroupApprovals /> : null}
       {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
       <MovedLines lines={placed.lines} />
+      <FlowDraftNote s={flowDraft.s} onClear={flowDraft.clear} />
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer

@@ -12,6 +12,8 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { AwayView } from "../screens/now/AwayCard";
+import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
 import { TimelineEntries } from "../screens/projects/TimelineList";
@@ -141,6 +143,10 @@ function Sample({ name }: { name: string }) {
         <View style={{ flexDirection: "row", gap: 8 }}><Thumb uri={P.a} name="lease-photo.png" size={120} /><Thumb uri={P.b} name="signature.png" size={120} /></View>
       </View>
     );
+  }
+  if (name === "away-card") return <AwayView lines={["3 new things need you", "1 Flow run did not finish", "2 Flow runs finished", "1 document was signed", "1 new member joined"]} onSeen={() => {}} />;
+  if (name === "flow-draft") {
+    return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }
   if (name === "runner-chip") {
     return (

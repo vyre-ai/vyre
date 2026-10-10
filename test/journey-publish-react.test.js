@@ -109,9 +109,7 @@ test("a files preview's card publishes its own folder: publish.quick { name, pre
   const opened = await as("previews.open", { title: "Northwind", path: site });
   assert.ok(!opened.error, JSON.stringify(opened.error));
   const id = opened.data.id;
-  // a Space made a moment ago is set up in the background (its name is registered with the directory); the card's tap comes after that, so the walk waits for it the way a person's tap would
-  let q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" });
-  for (let n = 0; q.error && q.error.code === "no_space" && n < 60; n++) { await new Promise(r => setTimeout(r, 500)); q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" }); }
+  const q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" });
   assert.ok(!q.error, JSON.stringify(q.error));
   assert.equal(q.data.held, true);
   assert.deepEqual(q.data.plan.files.paths, ["index.html"]);
