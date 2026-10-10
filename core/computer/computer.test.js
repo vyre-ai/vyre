@@ -172,3 +172,11 @@ test("the paired Macs are the box owner's: another member's session sees only th
   assert.equal(r.asked, true, "naming the Mac is not a way to it: the name matches nothing for this person");
   assert.ok(!b.calls.some(c => c.tool === "link.macs.call"), "no Mac was asked");
 });
+
+test("a plain chat works on its own person's assistant's computer: a member's plain chat is refused the owner's", async () => {
+  const b = await boot({ macs: MACS, answers: { "agents.list": [{ name: "juno", kind: "assistant" }] } });
+  const ok = await b.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp");
+  assert.equal(ok.computer, "Cloud computer", "the owner's plain chat");
+  await assert.rejects(b.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp", { person: "per_teammate" }), /its own person's assistant's computer/);
+  assert.equal(b.calls.filter(c => c.tool === "chrome.open").length, 1, "only the owner's chat reached the browser");
+});
