@@ -41,6 +41,13 @@ jobs:
       # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
       - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
       - run: npm ci --no-audit --no-fund
+      # The real-browser tests (a published React page drawn in headless Chrome) run everywhere they are counted: the one pinned chrome-headless-shell, hash-checked, cached by its pin (scripts/install-test-chrome.mjs).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vyre/chrome-headless-shell
+          key: chrome-headless-shell-153.0.8010.12
+      - if: ${{ hashFiles('scripts/install-test-chrome.mjs') != '' }}
+        run: node scripts/install-test-chrome.mjs
       # The phone app's tests (apps/app/**) import @noble/*, which only apps/app's own lockfile installs; scripts are off, nothing builds.
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
