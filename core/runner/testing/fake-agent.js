@@ -85,5 +85,6 @@ async function handle(line) {
   } else if (cmd === "argv") {
     out({ type: "argv", argv: process.argv.slice(2), socket: process.env.VYRE_SOCKET || null });
     out({ type: "result" });
-  } else if (cmd === "exit") process.exit(0);
+  } else if (cmd === "crash") process.exit(Number(rest[0]) || 3);
+  else if (cmd === "exit") process.exit(0);
 }
