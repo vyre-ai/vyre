@@ -4,7 +4,7 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { initsOf, sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, KEY } from "../scripts/lib/eval-honest.js";
+import { initsOf, sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, endedRow, keyOf, attemptsMade, KEY } from "../scripts/lib/eval-honest.js";
 import { loadSealed } from "../scripts/eval-honest/run.mjs";
 
 test("the pre-registration is sealed: prereg.json and heldout.json hash to PREREG.sha256, so a change after sealing is caught", () => {
@@ -116,4 +116,19 @@ test("initsOf counts init events and models, not processes: ten messages in one 
   const r = initsOf(Array(10).fill(one).join("\n"));
   assert.deepEqual([r.inits, r.model, r.models], [10, "m", ["m"]]);
   assert.equal(guards({ fresh: true, processes: 1, model: "m", models: ["m", "other"] }, { model: "m", processes: 1 }).length, 1, "a model change mid-run is invalid");
+});
+
+test("a run that was ended (a stall or the time cap) is an invalid row in the report's own shape, and a resume starts each run where it stopped", () => {
+  const a = endedRow({ name: "A h3-todo/vyre", rep: 1, n: 5, why: "stalled: the harness stopped beating for 200 s", sha: "abc" });
+  assert.deepEqual([a.eval, a.task, a.cell, a.rep, a.n, a.valid, a.outcome, a.why], ["A", "h3-todo", "vyre", 1, 5, false, "fail", "stalled"]);
+  const b = endedRow({ name: "B compact", rep: 0, n: 40, why: "timed out: no end after 10 minutes", sha: "abc" });
+  assert.deepEqual([b.eval, b.task, b.cell, b.why], ["B", "memory", "compact", "timed out"]);
+  assert.equal(keyOf(a), "A|h3-todo|vyre|1");
+  assert.match(report([a], { seal: "s" }), /\| 5 \| vyre \| h3-todo \| 1 \| NO \| invalid \| stalled/);
+  const ok = { ...a, valid: true, outcome: "pass", invalid: [] };
+  assert.equal(attemptsMade([], keyOf(a)), 0, "never run: attempt 0 is next");
+  assert.equal(attemptsMade([a], keyOf(a)), 1, "ended once: only the single re-run is left");
+  assert.equal(attemptsMade([a, { ...a, n: 9, retryOf: 5 }], keyOf(a)), 2, "ended and re-run ended: done, both reported");
+  assert.equal(attemptsMade([ok], keyOf(a)), 2, "a valid row is done");
+  assert.equal(attemptsMade([a], "A|other|vyre|1"), 0, "another run is untouched");
 });

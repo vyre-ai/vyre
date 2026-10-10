@@ -173,6 +173,30 @@ export function initsOf(stream) {
   return { inits: models.length, model: models[0] || "", models: [...new Set(models)] };
 }
 
+// ------------------------------------------------------------------ ended runs and resuming
+/** The key a run is known by across a resume: the eval, the task, the cell and the rep. @param {{ eval: string, task: string, cell: string, rep: number }} r */
+export const keyOf = (r) => `${r.eval}|${r.task}|${r.cell}|${r.rep}`;
+
+/**
+ * The row of a run that was ended before it finished (it hit its time cap, or the harness stalled): invalid and listed, and re-run once like any invalid run.
+ * @param {{ name: string, rep: number, n: number, why: string, sha: string, ms?: number }} j `name` is "A <task>/<arm>" or "B <arm>"
+ * @returns {Row}
+ */
+export function endedRow(j) {
+  const [ev, ...rest] = j.name.split(" "), id = rest.join(" ");
+  const [task, arm] = ev === "B" ? ["memory", id] : [id.split("/")[0] || "", id.split("/").pop() || ""];
+  return { eval: ev, cell: arm, task, group: "", rep: j.rep, n: j.n, valid: false, invalid: [j.why], outcome: "fail", why: j.why.split(":")[0], usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, usd: 0, ms: j.ms || 0, turns: 0, calls: 0, sha: j.sha, stream: "" };
+}
+
+/**
+ * How many attempts of one run the rows already hold, so a resumed eval starts where it stopped: 0 or 1 attempts made (the next is attempt 0 or the single re-run), and 2 when the run is done (a valid row,
+ * or the original and its re-run). @param {{ eval: string, task: string, cell: string, rep: number, valid: boolean }[]} rows @param {string} key
+ */
+export function attemptsMade(rows, key) {
+  const had = rows.filter((r) => keyOf(r) === key);
+  return had.some((r) => r.valid) ? 2 : Math.min(had.length, 2);
+}
+
 // ------------------------------------------------------------------ the report
 /**
  * @typedef {{ eval: string, cell: string, task: string, group?: string, rep: number, n: number, valid: boolean, invalid?: string[], outcome: string, why?: string, retryOf?: number|null,

@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseStream } from "../lib/token-proof.js";
-import { sealOf, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, compactedIn, initsOf, report, KEY } from "../lib/eval-honest.js";
+import { sealOf, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, compactedIn, initsOf, report, endedRow, keyOf, attemptsMade, KEY } from "../lib/eval-honest.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..", "..");
@@ -53,7 +53,9 @@ export async function evalMain(ctx) {
   // A heartbeat the front door's supervisor watches (scripts/eval-honest.mjs): if this process stops beating (its event loop is blocked), the supervisor takes a diagnostic report and ends it. A loop that
   // lags more than 30 s is also said aloud, with how long, so a stall leaves a trace even when it clears.
   let phase = "starting";
-  const beat = () => { try { fs.writeFileSync(path.join(out, ".heartbeat"), JSON.stringify({ at: Date.now(), phase })); } catch { /* the folder is gone */ } };
+  /** The run in flight, so a supervisor that ends a stalled harness can record that run as invalid. @type {{ name: string, rep: number, n: number } | null} */
+  let current = null;
+  const beat = () => { try { fs.writeFileSync(path.join(out, ".heartbeat"), JSON.stringify({ at: Date.now(), phase, job: current, sha })); } catch { /* the folder is gone */ } };
   beat();
   let lastTick = Date.now();
   setInterval(() => { const now = Date.now(); if (now - lastTick > 30_000) console.error(`WARNING: the harness event loop was blocked for ${Math.round((now - lastTick) / 1000)} s`); lastTick = now; beat(); }, 5000).unref();
@@ -275,35 +277,44 @@ export async function evalMain(ctx) {
   }
 
   // ================================================================ the plan and the loop
-  /** @type {{ n: number, rep: number, run: (num: number) => Promise<any>, name: string }[]} */ const jobs = [];
+  /** @type {{ n: number, rep: number, run: (num: number) => Promise<any>, name: string, key: string }[]} */ const jobs = [];
   let n = rows.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, r.n), 0);
+  /** A run keeps its number across a resume (the number its first attempt has in rows.json); a new one takes the next. @param {string} key */
+  const numFor = (key) => { const r = rows.find((/** @type {any} */ x) => keyOf(x) === key && !x.retryOf); return r ? r.n : ++n; };
   if (which === "A" || which === "all") {
     const tasks = [...prereg.evalA.tasks.map((/** @type {any} */ t) => ({ ...t, group: "ten" })), ...heldout.tasks.map((/** @type {any} */ t) => ({ ...t, group: "held-out" }))];
     const only = flag("only") ? flag("only").split(",") : null;
     const cellsOnly = flag("cells") ? flag("cells").split(",") : null;
     const units = tasks.filter((t) => !only || only.includes(t.id)).flatMap((t) => prereg.evalA.cells.filter((/** @type {any} */ c) => !cellsOnly || cellsOnly.includes(c.id)).map((/** @type {any} */ c) => ({ id: `${t.id}/${c.id}`, task: t, arm: c.id })));
     const reps = Number(flag("reps", String(prereg.reps)));
-    for (const p of plan({ orderSeed: prereg.orderSeed, reps }, units)) jobs.push({ n: ++n, rep: p.rep, name: `A ${p.cell.id}`, run: (/** @type {number} */ num) => runA({ task: p.cell.task, arm: p.cell.arm, group: p.cell.task.group, rep: p.rep, n: num }) });
+    for (const p of plan({ orderSeed: prereg.orderSeed, reps }, units)) jobs.push({ ...((key) => ({ key, n: numFor(key) }))(keyOf({ eval: "A", task: p.cell.task.id, cell: p.cell.arm, rep: p.rep })), rep: p.rep, name: `A ${p.cell.id}`, run: (/** @type {number} */ num) => runA({ task: p.cell.task, arm: p.cell.arm, group: p.cell.task.group, rep: p.rep, n: num }) });
   }
   if (which === "B" || which === "all") {
     const reps = Number(flag("reps", String(prereg.reps)));
     const armsOnly = flag("arms") ? flag("arms").split(",") : null;
-    for (const p of plan({ orderSeed: prereg.orderSeed + 1, reps }, prereg.evalB.arms.filter((/** @type {any} */ a) => !armsOnly || armsOnly.includes(a.id)))) jobs.push({ n: ++n, rep: p.rep, name: `B ${p.cell.id}`, run: (/** @type {number} */ num) => runB({ arm: p.cell, rep: p.rep, n: num }) });
+    for (const p of plan({ orderSeed: prereg.orderSeed + 1, reps }, prereg.evalB.arms.filter((/** @type {any} */ a) => !armsOnly || armsOnly.includes(a.id)))) jobs.push({ ...((key) => ({ key, n: numFor(key) }))(keyOf({ eval: "B", task: "memory", cell: p.cell.id, rep: p.rep })), rep: p.rep, name: `B ${p.cell.id}`, run: (/** @type {number} */ num) => runB({ arm: p.cell, rep: p.rep, n: num }) });
   }
+  // `--first N`: only the first N runs of the plan (the proof of the stall supervisor uses the first 8 cells of Eval A on the stand-in).
+  if (flag("first")) jobs.length = Math.min(jobs.length, Number(flag("first")));
   console.log(`${jobs.length} runs planned (${which}), order seed ${prereg.orderSeed}${paid ? `, cap $${cap}` : ", no cost"}`);
   if (args.includes("--plan")) { for (const j of jobs) console.log(`${j.n} rep${j.rep} ${j.name}`); return 0; }
 
   let stopped = false;
-  // `--stall-proof`: block this process's event loop on purpose as the first run starts, to prove the supervisor notices, takes the diagnostic report and ends it
-  // (node scripts/eval-honest.mjs check --home <dir> --stall-proof --stall-min 0.4).
-  if (args.includes("--stall-proof")) for (;;) { /* blocked on purpose */ }
+  // `--stall-proof [N]`: block this process's event loop on purpose as run N (default 1) starts, to prove the supervisor notices, takes the diagnostic report, records the run as invalid and ends the harness
+  // (node scripts/eval-honest.mjs check --home <dir> --stall-proof 3 --stall-min 0.4); `--again` with the same --out then carries on from that run.
+  const stallAt = args.includes("--stall-proof") ? Number(flag("stall-proof")) || 1 : 0;
+  if (rows.length && args.includes("--again")) console.log(`resuming: ${rows.length} rows already in ${rowsFile}`);
   for (const j of jobs) {
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); stopped = true; break; }
+    const made = attemptsMade(rows, j.key);
+    if (made >= 2) continue;
     /** @type {any} */ let row = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = made; attempt < 2; attempt++) {
       // the run function reads its number from the job so a re-run is a new number that names the one it repeats
       const num = attempt === 0 ? j.n : ++n;
       phase = `run ${num} (${j.name}, rep ${j.rep})`;
+      current = { name: j.name, rep: j.rep, n: num }; beat();
+      if (stallAt === j.n && attempt === 0) for (;;) { /* blocked on purpose */ }
       // One wall-clock cap for the whole run: a run that hits it is INVALID ("timed out"), its children are ended, and it is re-run once like any invalid run.
       /** @type {any} */ let capTimer = null;
       const capped = new Promise((resolve) => { capTimer = setTimeout(() => resolve("TIMED_OUT"), RUN_CAP_MS); });
@@ -312,15 +323,14 @@ export async function evalMain(ctx) {
         if (got === "TIMED_OUT") {
           for (const k of plainKids) { try { k.kill("SIGKILL"); } catch { /* gone */ } }
           await call("agents.stop", { agent: "juno" }).catch(() => null);
-          const [evalName, ...rest] = j.name.split(" ");
-          row = { eval: evalName, cell: rest.join(" ").split("/").pop() || "", task: rest.join(" ").split("/")[0] || "", group: "", rep: j.rep, n: num, valid: false, invalid: [`timed out: no end after ${Math.round(RUN_CAP_MS / 6000) / 10} minutes`], outcome: "fail", why: "timed out",
-            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, usd: 0, ms: RUN_CAP_MS, turns: 0, calls: 0, sha, stream: "" };
+          row = endedRow({ name: j.name, rep: j.rep, n: num, why: `timed out: no end after ${Math.round(RUN_CAP_MS / 6000) / 10} minutes`, sha, ms: RUN_CAP_MS });
         } else row = got;
       } catch (e) { console.error(`stopped: ${/** @type {Error} */ (e).message}`); save(); return 1; } finally { clearTimeout(capTimer); }
-      row.n = num; row.retryOf = attempt === 0 ? null : j.n;
+      row.n = num; row.retryOf = attempt === 0 ? null : (rows.find((/** @type {any} */ r) => keyOf(r) === j.key) || {}).n || j.n;
       rows.push(row); spent += row.usd; save(); console.log(line(row));
       if (row.valid) break;
     }
+    current = null;
   }
   const discl = fs.existsSync(path.join(out, "disclosures.json")) ? JSON.parse(fs.readFileSync(path.join(out, "disclosures.json"), "utf8")) : [];
   const md = report(rows, { title: `Honest eval, ${which}`, seal, disclosures: discl });

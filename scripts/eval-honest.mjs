@@ -13,7 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { report, plan, lint } from "./lib/eval-honest.js";
+import { report, plan, lint, endedRow } from "./lib/eval-honest.js";
+import { whereIsIt, inspectorUrl } from "./eval-honest/stall.mjs";
 import { loadSealed } from "./eval-honest/run.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -39,19 +40,33 @@ if (cmd === "seal") {
   const out = flag("out") || `${path.resolve(flag("home"))}-honest-${Date.now()}`;
   const rest = args.slice(1);
   if (!flag("out")) rest.push("--out", out);
-  const child = spawn(process.execPath, [path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: "inherit", env: process.env });
+  fs.mkdirSync(out, { recursive: true });
+  // The harness runs with its inspector open on loopback, so a stalled one can be paused, from here, and asked where its main thread is (a busy loop cannot refuse a pause).
+  const child = spawn(process.execPath, ["--inspect=127.0.0.1:0", path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: ["inherit", "inherit", "pipe"], env: process.env });
+  let inspector = "";
+  child.stderr.on("data", (/** @type {Buffer} */ b) => { process.stderr.write(b); inspector = inspector || inspectorUrl(String(b)); });
   const STALL_MS = Number(flag("stall-min", "3")) * 60_000;
-  const watch = setInterval(() => {
+  const watch = setInterval(async () => {
     let age = 0;
     try { age = Date.now() - fs.statSync(path.join(out, ".heartbeat")).mtimeMs; } catch { return; }   // no beat yet: still seeding
     if (age <= STALL_MS) return;
-    // What it was doing (the phase it last wrote) and whether its threads are spinning or waiting (a busy loop shows ~100% CPU; a call that waits on a process shows a sleeping state), then it is ended.
-    let phase = "unknown";
-    try { phase = JSON.parse(fs.readFileSync(path.join(out, ".heartbeat"), "utf8")).phase; } catch { /* unreadable */ }
-    console.error(`STALLED: the harness has not beaten for ${Math.round(age / 1000)} s (its event loop is blocked). It was in: ${phase}.`);
-    try { const ps = spawnSync("ps", ["-L", "-o", "tid,pcpu,stat,wchan:24", "-p", String(child.pid)], { encoding: "utf8" }); console.error(ps.stdout || ps.stderr); } catch { /* no ps */ }
     clearInterval(watch);
+    /** @type {any} */ let beat = {};
+    try { beat = JSON.parse(fs.readFileSync(path.join(out, ".heartbeat"), "utf8")); } catch { /* unreadable */ }
+    console.error(`STALLED: the harness has not beaten for ${Math.round(age / 1000)} s (its event loop is blocked). It was in: ${beat.phase || "unknown"}.`);
+    // Whether its threads are spinning or waiting (a busy loop shows ~100% CPU; a call that waits on a process shows a sleeping state), then where its main thread is, asked over the inspector.
+    try { const ps = spawnSync("ps", ["-L", "-o", "tid,pcpu,stat,wchan:24", "-p", String(child.pid)], { encoding: "utf8" }); console.error(ps.stdout || ps.stderr); } catch { /* no ps */ }
+    const frames = inspector ? await whereIsIt(inspector) : [];
+    console.error(frames.length ? `where its main thread is:\n  ${frames.join("\n  ")}` : "where its main thread is: it did not answer (it is inside a native call)");
     try { child.kill("SIGKILL"); } catch { /* gone */ }
+    // The run it was in is INVALID: recorded now, so the report lists it and a resume re-runs it once like any invalid run.
+    if (beat.job) {
+      const rowsFile = path.join(out, "rows.json");
+      /** @type {any[]} */ let rows = []; try { rows = JSON.parse(fs.readFileSync(rowsFile, "utf8")); } catch { /* none yet */ }
+      rows.push({ ...endedRow({ name: beat.job.name, rep: beat.job.rep, n: beat.job.n, why: `stalled: the harness stopped beating for ${Math.round(age / 1000)} s in "${beat.phase}" and was ended`, sha: beat.sha || "", ms: age }), retryOf: null });
+      fs.writeFileSync(rowsFile, JSON.stringify(rows, null, 1));
+      console.error(`run ${beat.job.n} (${beat.job.name}, rep ${beat.job.rep}) is recorded as INVALID in ${rowsFile}. To carry on from it: the same command with --again --out ${out}`);
+    }
   }, 15_000);
   child.on("exit", (code, sig) => { clearInterval(watch); process.exit(sig ? 3 : (code ?? 1)); });
 } else {
