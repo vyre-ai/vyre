@@ -102,12 +102,25 @@ test("an account that carries an API key is an API-key call: with no door it is 
   for (const names of [["OPENAI_API_KEY", "CODEX_API_KEY"], ["XAI_API_KEY"]]) {
     ran.length = 0;
     const got = [];
-    loginDirect(provider, {}, names).run({ id: "k", env: { [names[0]]: "sk-live-1234567890abcdef" }, onMessage: m => got.push(m), onExit() {} });
+    loginDirect(provider, {}, names).run({ id: "k", env: { [names[0]]: "sk-live-" + "1234567890abcdef" }, onMessage: m => got.push(m), onExit() {} });
     await new Promise(r => setImmediate(r));
     assert.equal(ran.length, 0, `${names[0]}: nothing started`);
     assert.match(String(got[0] && got[0].result), /inference door/);
     loginDirect(provider, {}, names).run({ id: "l", env: { HOME: "/h" }, onMessage() {}, onExit() {} });
     assert.equal(ran.length, 1, `${names[0]}: the login run started`);
+  }
+});
+
+test("a run that names its own endpoint, or says it is an API-key call, is not a subscription login whatever variable carries the key: refused with no door, nothing starts", async () => {
+  const ran = [];
+  const provider = { id: "p", run() { ran.push("ran"); return { pid: 1, alive: true, write() {}, interrupt: async () => {}, stop: async () => {} }; } };
+  for (const [name, o] of [["own endpoint", { env: { VYRE_API_BASE_URL: "https://llm.example.test/v1" } }], ["custom provider", { env: {}, custom: { id: "x" } }], ["api-key auth", { env: {}, auth: "api-key" }]]) {
+    ran.length = 0;
+    const got = [];
+    loginDirect(provider, {}, ["OPENAI_API_KEY"]).run({ id: "k", onMessage: m => got.push(m), onExit() {}, ...o });
+    await new Promise(r => setImmediate(r));
+    assert.equal(ran.length, 0, `${name}: nothing started`);
+    assert.match(String(got[0] && got[0].result), /inference door/, name);
   }
 });
 

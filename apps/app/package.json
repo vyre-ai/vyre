@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "expo": {
     "autolinking": {
       "android": {
