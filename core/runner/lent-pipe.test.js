@@ -163,6 +163,7 @@ test("an ended pipe is remembered long enough for the lender's last call to hear
   assert.equal((await pipes.poll("s_forget", 1, "dev_laptop", { wait_ms: 0 })).closed, true, "the lender's last call hears it is closed");
   for (const t of timers.filter(x => x.ms === 60_000)) t.fn();
   const gone = pipes.poll("s_forget", 1, "dev_laptop", { wait_ms: 0 });
+  for (const t of timers.splice(0)) t.fn();   // an unknown session's call is answered idle on a timer of its own
   assert.deepEqual(await gone, { down: [], acked: 0, idle: true }, "a minute later nothing is kept of it");
   void proc;
 });
