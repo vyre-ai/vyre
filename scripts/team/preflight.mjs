@@ -209,19 +209,7 @@ if (!STATIC) {
       for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
       const failsAtBase = (/** @type {string} */ f) => fs.existsSync(path.join(tmp, f)) && spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0;
       const failedOnBase = changedTests.filter(failsAtBase);
-      // The guards run on the base six at a time, four minutes each and ten minutes in all: one at a time they took most of an hour.
-      const guardsAtBase = () => {
-        const cands = GUARDS.filter(g => !red.has(g) && fs.existsSync(path.join(tmp, g)));
-        if (!cands.length) return [];
-        const pool = `const { spawn } = require("node:child_process"); const files = JSON.parse(process.argv[1]); const failed = []; let next = 0;
-          const one = () => { const f = files[next++]; if (!f) return Promise.resolve(); return new Promise(res => { const c = spawn(process.execPath, ["--test", f], { stdio: "ignore" }); const t = setTimeout(() => c.kill("SIGKILL"), 240000); c.on("exit", code => { clearTimeout(t); if (code !== 0) failed.push(f); res(); }); }).then(one); };
-          Promise.all(Array.from({ length: 6 }, one)).then(() => process.stdout.write(JSON.stringify(failed)));`;
-        const r = spawnSync(process.execPath, ["-e", pool, JSON.stringify(cands)], { cwd: tmp, encoding: "utf8", timeout: 600000 });
-        if (r.error || r.status !== 0) { warns.push(`T5: the guards did not finish on the base in ten minutes; no guard counts as proof`); return []; }
-        const failed = new Set(JSON.parse(r.stdout || "[]"));
-        return cands.filter(g => failed.has(g));
-      };
-      const guardsTurnedGreen = failedOnBase.length ? [] : guardsAtBase();
+      const guardsTurnedGreen = failedOnBase.length ? [] : GUARDS.filter(g => !red.has(g) && failsAtBase(g));
       if (failedOnBase.length) console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
       else if (guardsTurnedGreen.length) console.log(`preflight: red first OK (guards red without the change and green with it: ${guardsTurnedGreen.join(", ")})`);
       else fail("T5", changedTests.length
