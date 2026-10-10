@@ -21,10 +21,10 @@ try {
   w = await bringUp({ run, out, kind: "box", store: "plain", devBuild: true });
   const J = stepper(run, { id: "G11", owner: "operations" });
   if (!w.ready) { await J.step("the world is up", () => { throw new Error("the dev-build box world did not come up"); }); throw new Error("no world"); }
-  await J.step("a fresh install turns the agents' computers on: COMPOSE_PROFILES=computers is in the .env the installer wrote", async () => {
+  await J.step("nothing was edited: the .env the installer wrote has no COMPOSE_PROFILES line", async () => {
     const env = fs.readFileSync("/srv/vyre/.env", "utf8");
-    assert(/^COMPOSE_PROFILES=computers$/m.test(env), env);
-    return "COMPOSE_PROFILES=computers";
+    assert(!/COMPOSE_PROFILES/.test(env), env);
+    return "no COMPOSE_PROFILES in .env";
   });
   await J.step("the docker-api proxy for the agents' computers is running without any edit", async () => {
     let names = "";
@@ -41,11 +41,11 @@ try {
   await J.step("the default-browser setting is off, and turning it on adds one line to the brief every assistant is told", async () => {
     const off = await w.call("settings.get", { key: "computer.default-browser" });
     assert(off.value === false, JSON.stringify(off).slice(0, 200));
-    const briefOff = await w.call("sessions.environment", {});
+    const briefOff = await w.operator("sessions.environment", {});
     assert(!/default browser/.test(JSON.stringify(briefOff)), "the brief says nothing about it while it is off");
     const set = await w.call("settings.set", { key: "computer.default-browser", value: true });
     assert(set && !set.error, JSON.stringify(set).slice(0, 200));
-    const briefOn = await w.call("sessions.environment", {});
+    const briefOn = await w.operator("sessions.environment", {});
     assert(/Vyre Computer is this person's default browser/.test(JSON.stringify(briefOn)), JSON.stringify(briefOn).slice(0, 300));
     return "off, then on";
   });
