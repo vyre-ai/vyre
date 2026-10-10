@@ -42,7 +42,7 @@ http.createServer((q, r) => {
 }).on("upgrade", (q, sock) => {
   // a WebSocket by hand: the handshake, then one text frame that says which cookie the page was opened with
   const accept = crypto.createHash("sha1").update(q.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
-  sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n");
+  sock.write("HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: " + accept + "\\r\\n\\r\\n");
   const msg = Buffer.from(JSON.stringify({ ws: true, cookie: q.headers.cookie || null }));
   sock.write(Buffer.concat([Buffer.from([0x81, msg.length]), msg]));
   sock.on("error", () => {});
