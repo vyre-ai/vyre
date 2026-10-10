@@ -57,6 +57,30 @@
         "reach": "modules"
       },
       {
+        "name": "runner.folders",
+        "effect": "read",
+        "summary": "the folders of this computer you have approved for chats",
+        "reach": "person"
+      },
+      {
+        "name": "runner.folders.allow",
+        "effect": "write",
+        "summary": "approve a folder of this computer for chats: a chat given it works in it and stays on this computer",
+        "reach": "person"
+      },
+      {
+        "name": "runner.folders.remove",
+        "effect": "write",
+        "summary": "take a folder of this computer away from chats",
+        "reach": "person"
+      },
+      {
+        "name": "runner.folders.available",
+        "effect": "read",
+        "summary": "the folders of your ready computers a chat can be given",
+        "reach": "person"
+      },
+      {
         "name": "runner.places",
         "effect": "read",
         "summary": "where each of your chats runs: on the server or on a computer, and whether it is connected",

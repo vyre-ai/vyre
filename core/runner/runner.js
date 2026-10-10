@@ -25,7 +25,7 @@ import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { openVyreDoor } from "./vyre-door.js";
-import { createSessionSync, restore } from "./sync.js";
+import { createSessionSync, restore, ROOTS } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
@@ -95,6 +95,8 @@ export function createRunner(o) {
   /** Sessions being started now: a second start of the same session while the first is under way is refused, so no child is ever left untracked. @type {Set<string>} */ const starting = new Set();
   /** Why every session here is frozen right now ("pause": the person's Pause all; "offline": this computer cannot reach the Space's server and must not run ahead of it). Empty: they run. @type {Set<string>} */
   const frozen = new Set();
+  /** Sessions working in a folder of this computer are held still while a condition that would send others to the server holds (lid, switched off, unplugged): they have nowhere to go. */
+  let boundHeld = false;
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
@@ -193,7 +195,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, chat?: string, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, folder?: string, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
@@ -229,7 +231,7 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), ...(s.folder ? { roots: ROOTS.filter(r => r.dir !== "files") } : {}), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
@@ -260,7 +262,7 @@ export function createRunner(o) {
         if (s.vyre.plugin) { args = args.map(x => (x === HARNESS_MARK ? s.vyre.plugin : x)); penv = { ...env, VYRE_SOCKET: sock, VYRE_THREAD: s.session }; }
       }
       args = dropMark(args);
-      return plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
+      return plan({ platform, space: o.space, launcher, internet, workspace: work, ...(s.folder ? { folder: s.folder } : {}), command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
     };
     let p, doorUsed = door;
     try { p = planWith(door); }
@@ -275,7 +277,7 @@ export function createRunner(o) {
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
     try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: startedOf(Number(child.pid)) || undefined, session: s.session }), { mode: 0o600 }); } catch { /* the sweep at the next start has nothing to read */ }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, chat: s.chat || null, child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
+    const h = { session: s.session, chat: s.chat || null, bound: Boolean(s.folder), child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -309,7 +311,7 @@ export function createRunner(o) {
       if (!h.stopped) await finish(h);
       resolve({ code, signal: sig });
     }));
-    if (frozen.size) signal(h, "SIGSTOP");
+    if (frozen.size || (boundHeld && h.bound)) signal(h, "SIGSTOP");
     emit({ type: "started", session: s.session, pid: child.pid });
     return { pid: child.pid, child, resumed, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session), labels: () => h.labels };
   }
@@ -399,7 +401,7 @@ export function createRunner(o) {
     async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
     moveToServer,
     /** The sessions running here, with what each uses now. */
-    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
+    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, ...(h.bound ? { bound: true } : {}), pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
     /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
     pause() { freeze("pause"); },
     resume() { thawAll("pause"); },
@@ -408,6 +410,8 @@ export function createRunner(o) {
     get frozenNow() { return frozen.size > 0; },
     /** This computer cannot reach the Space's server: its sessions wait where they are rather than run ahead of the server, which takes them after a lapse. @param {string} why */
     freeze(why) { freeze(why); },
+    /** Hold the sessions that work in a folder of this computer still, or let them run again. */
+    holdBound(on) { if (boundHeld === Boolean(on)) return; boundHeld = Boolean(on); for (const h of live.values()) if (h.bound && !h.moving && (boundHeld || !frozen.size)) signal(h, boundHeld ? "SIGSTOP" : "SIGCONT"); },
     thaw(why) { thawAll(why); },
     get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */

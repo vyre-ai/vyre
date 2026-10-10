@@ -95,15 +95,21 @@ export function createLentHome(o) {
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
   const nudge = (/** @type {string} */ device) => { const x = waiters.get(device); if (!x) return; clearTimeout(x.t); waiters.delete(device); x.res({ directives: directivesFor(device) }); };
   /** The ready computer of this person's to start a session on, or null: it beat lately and said nothing holds it back, both Offers stand, and the server could take the session back if the lid closed. The computer already running the session wins. */
-  const pickLender = (/** @type {string} */ person, /** @type {string} */ session) => {
+  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null) => {
     const row = SESSION.test(session) ? book.get(session) : null;
-    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)));
+    // a chat given a folder of a computer runs on the computer that has that folder, and needs no server to carry it on: it never goes there
+    const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && (!folder || (l.folders || []).some(f => f.id === folder)));
+    if (folder) {
+      if (!SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server")) return null;
+      if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
+      return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
+    }
     // A chat is not started on a computer while the server could not carry it on if the lid closed: it would sit frozen on a sleeping Mac. It fails as a spawn that never started and runs on the box.
     if (!canResume() || !SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server" && !row.allowMac)) return null;
     if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
     return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
   };
-  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean }>} */ const lenders = new Map();
+  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean, folders?: { id: string, label: string }[] }>} */ const lenders = new Map();
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw err("not_found", "not found");
@@ -200,6 +206,8 @@ export function createLentHome(o) {
     book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
+    /** The folders the person's computers that beat lately offer to chats: [{ device, id, label }] (ids and labels only; the paths stay on the computers). @param {string} person */
+    foldersOf(person) { return [...lenders].filter(([, l]) => l.person === person && now() - l.at <= LENDER_FRESH_MS).flatMap(([device, l]) => (l.folders || []).map(f => ({ device, id: f.id, label: f.label }))); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
     rows() { return [...lent].map(([session, v]) => ({ session, device: v.device, ...(v.chat ? { chat: v.chat } : {}) })); },
     /** The id this home gives the computer that is calling, and the person: read from what the transport proved, never from the request. A lender lends under this id (the Offers are made for it) and presents it when it runs a session. @param {any} chain */
@@ -222,7 +230,7 @@ export function createLentHome(o) {
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       // A chat spawned on this computer (lent spawn): the SDK's flags replace the Space's bare program, and the runner pumps the process's bytes through `lent.pipe`.
       const asked = pipes.pending(String(i.session), w.device);
-      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function" };
+      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", ...(asked.folder ? { folder: asked.folder } : {}) };
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
       // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
@@ -250,7 +258,7 @@ export function createLentHome(o) {
       // Nothing of a session that is running well elsewhere is touched until the book has said this computer may have it: the refusals above and the book's own (a second computer, a session on the server) leave its
       // credentials and its row as they were.
       const before = book.get(String(i.session));
-      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null });
+      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null, ...(asked && asked.folder ? { folder: asked.folder } : {}) });
       if (asked) pipes.claimed(String(i.session), w.device);
       if (o.leases && i.lease) {
         try { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
@@ -291,7 +299,9 @@ export function createLentHome(o) {
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);
-      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true });
+      // the folders this computer's person approved for chats, by id and label only (never a path): a chat that is to work in one is placed on the computer that has it
+      const folders = i && Array.isArray(i.folders) ? i.folders.slice(0, 32).filter((/** @type {any} */ f) => f && /^fld_[0-9a-f]{12}$/.test(String(f.id))).map((/** @type {any} */ f) => ({ id: String(f.id), label: String(f.label || "").slice(0, 60) })) : [];
+      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true, folders });
       return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: directivesFor(w.device) };
     },
     /**
@@ -323,8 +333,11 @@ export function createLentHome(o) {
     spawn(i) {
       const session = String(i && i.session), person = String(i && i.person);
       if (i && i.thread) threads.set(session, String(i.thread));
-      const device = pickLender(person, session);
-      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
+      const folder = i && typeof i.folder === "string" ? i.folder : null;
+      const device = pickLender(person, session, folder);
+      // a chat given a folder runs only on the computer that has it: with that computer away it does not start on the server instead
+      if (folder && !device) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer");
+      const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
       // a spawn that never started leaves no row saying the chat is on a computer it never reached
       proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && reserved.delete(session) && !lent.has(session)) book.forget(session); });
       if (device) nudge(device);
@@ -339,9 +352,10 @@ export function createLentHome(o) {
       const session = String(i && i.session), person = String(i && i.person);
       const had = SESSION.test(session) ? book.get(session) : null;
       if (had) return had.where === "mac" && had.person === person ? { where: "mac", device: had.device, epoch: had.epoch } : { where: "box" };
-      const device = pickLender(person, session);
-      if (!device) return { where: "box" };
-      const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null });
+      const folder = i && typeof i.folder === "string" ? i.folder : null;
+      const device = pickLender(person, session, folder);
+      if (!device) { if (folder) throw err("folder_unavailable", "the computer that has that folder is not ready now: open it and turn on Run on this computer"); return { where: "box" }; }
+      const row = book.lend({ session, chat: (i && i.chat) || null, person, device, key: keys.get(device) || null, ...(folder ? { folder } : {}) });
       reserved.add(session);
       const t = setTimeout(() => { if (reserved.delete(session) && !lent.has(session)) book.forget(session); }, RESERVE_MS); t.unref?.();
       return { where: "mac", device, epoch: row.epoch };

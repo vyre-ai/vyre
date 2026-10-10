@@ -74,8 +74,8 @@ export function createLentClient(o) {
     /** The epoch the home gave this session, or undefined when it is not lent from here. */
     epochOf: session => epochs.get(session),
     /** The heartbeat: this computer's sessions with their epochs and use, and whether nothing holds them back now. The answer lists the sessions the home no longer has at that epoch (stopped here), what it offers back and what it wants done. */
-    beat: async ({ sessions, well }) => {
-      const r = await o.invoke("lent.beat", [{ sessions, ...(well === true ? { well: true } : {}) }]);
+    beat: async ({ sessions, well, folders }) => {
+      const r = await o.invoke("lent.beat", [{ sessions, ...(well === true ? { well: true } : {}), ...(Array.isArray(folders) ? { folders } : {}) }]);
       if (r && Array.isArray(r.fenced)) for (const s of r.fenced) fence(s, { code: "conflict" });
       return r;
     },

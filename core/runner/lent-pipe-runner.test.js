@@ -15,6 +15,7 @@ import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { createFolders } from "./folders.js";
 import { start } from "../daemon/index.js";
 import { openThreadSocket, lentRequest } from "../daemon/threadsock.js";
 import { tempHome } from "../../test/helpers.js";
@@ -45,7 +46,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; fs.rmSync(agentDir, { recursive: true, force: true }); });
   const run = (/** @type {string} */ tool, /** @type {any} */ input) => tools.get(tool).run(input, { caller: "cli" });
-  return { r, run, book: r.home.book, say: (/** @type {string} */ type) => ctx.events.emit(type, {}) };
+  return { r, root, run, book: r.home.book, say: (/** @type {string} */ type) => ctx.events.emit(type, {}) };
 }
 
 test("a chat spawned for a lender runs in the lender's sandbox with the SDK's flags, turns go down and answers come up, and the runner's own checkpoint is taken at the end of the turn", { skip: SKIP || false, timeout: 120_000 }, async t => {
@@ -245,4 +246,40 @@ test("the lid shuts: the chat on the Mac moves to the server, and a chat started
   const err = await new Promise(res => late.on("error", res));
   assert.equal(/** @type {any} */ (err).code, "lent_unavailable", "it fails as a spawn that never started, so the box runs it");
   assert.equal(w.book.get("s_second") ?? null, null, "and no row says it is on the Mac");
+});
+
+test("a chat given a folder of the computer works IN it, is placed only on the computer that has it, never goes to the server, and waits there when the lid shuts", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t, { canResume: () => true });
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "lp-folder-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const folder = fs.realpathSync(dir);
+  const approved = createFolders(path.join(w.root, "runner", "folders.json")).add(folder, "Acme site");
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  // the home hears the folder by id and label, from the computer's heartbeat
+  const offered = await waitFor(() => { const f = w.r.home.foldersOf(BOB); return f.length ? f : null; }, 20_000);
+  assert.deepEqual(offered.map((/** @type {any} */ f) => [f.id, f.label]), [[approved.id, "Acme site"]]);
+  assert.ok(!JSON.stringify(offered).includes(folder), "no path reaches the home");
+  // an id no computer holds: the chat does not start (and does not start on the server instead)
+  assert.throws(() => w.r.home.spawn({ session: "s_nofolder", person: BOB, folder: "fld_000000000000", args: [] }), (/** @type {any} */ e) => e.code === "folder_unavailable");
+  const proc = w.r.home.spawn({ session: "s_folder", person: BOB, folder: approved.id, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("turn hello\n");
+  await waitFor(() => out.some(l => l.includes("did hello")), 20_000);
+  assert.match(fs.readFileSync(path.join(folder, "notes.txt"), "utf8"), /hello/, "the program wrote into the person's folder itself");
+  const row = w.book.get("s_folder");
+  assert.deepEqual([row.where, row.folder], ["mac", approved.id]);
+  // nothing sends it to the server: not the person's move, not a lapse, not a condition
+  assert.throws(() => w.book.askRelease("s_folder", "you", BOB), (/** @type {any} */ e) => e.code === "conflict" && /stays there/.test(e.message));
+  assert.equal(w.book.toServer("s_folder", "offline").why, "bound");
+  // the lid shuts: the chat is held still, not handed over; it carries on when the computer is heard again
+  w.say("link.sleeping");
+  await sleep(1500);
+  assert.equal(w.book.get("s_folder").where, "mac", "still the computer's");
+  proc.stdin.write("turn later\n");
+  await sleep(1500);
+  assert.ok(!out.some(l => l.includes("did later")), "held still while the lid is shut");
+  w.say("link.woke");
+  await waitFor(() => out.some(l => l.includes("did later")), 30_000);
+  proc.kill();
 });

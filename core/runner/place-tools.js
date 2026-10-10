@@ -90,6 +90,17 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
+  ctx.tool("runner.folders.available", {
+    description: "The folders of your computers a chat can be given, each { id, label, device, computer }: only computers that are ready now. A chat given one works in it on that computer and stays there. Input: space (optional).",
+    input: obj({ space: str }),
+    run: async (i, meta) => {
+      const { person } = await who(meta, i.space);
+      const p = placements(), nameOf = await names();
+      const spaces = i.space ? [i.space] : p.spaces();
+      return { folders: spaces.flatMap((/** @type {string} */ sp) => (typeof p.foldersOf === "function" ? p.foldersOf(sp, person) : []).map((/** @type {any} */ f) => ({ id: f.id, label: f.label, device: f.device, computer: nameOf(f.device), space: sp }))) };
+    },
+  });
+
   ctx.tool("runner.why-not", {
     description: "Why a chat's session is not running on a computer: one reason code, or null when it runs where it was meant to. Input: thread.",
     input: obj({ thread: str, space: str }, ["thread"]),

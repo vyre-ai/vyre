@@ -631,6 +631,19 @@ test("runner: a hand-over the home holds back, or that fails, does not wake a se
   await waitFor(() => procState(h.pid) !== "T");
 });
 
+test("a folder of the computer the person approved becomes the session's own folder: read and write on the Mac, bound over the workspace's files on Linux, and never the home folder or one that holds a secret", () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "fp-"))); const home = path.join(dir, "home"), proj = path.join(home, "acme"); fs.mkdirSync(proj, { recursive: true });
+  try {
+    const mac = seatbeltProfile({ platform: "darwin", workspace: path.join(dir, "ws"), command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, folder: proj, home });
+    assert.ok(mac.includes(`(allow file-read* file-write* (subpath ${JSON.stringify(proj)}))`) && mac.includes(`(allow process-exec (subpath ${JSON.stringify(proj)}))`));
+    const p = plan({ platform: "darwin", workspace: path.join(dir, "ws"), command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, folder: proj, home });
+    assert.equal(p.cwd, proj, "the program starts in the person's folder");
+    assert.throws(() => seatbeltProfile({ platform: "darwin", workspace: path.join(dir, "ws"), command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, folder: home, home }), /home folder/);
+    fs.mkdirSync(path.join(proj, ".ssh"));
+    assert.throws(() => seatbeltProfile({ platform: "darwin", workspace: path.join(dir, "ws"), command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, folder: proj, home }), /\.ssh/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("seatbelt: the session may see that its door to Vyre exists (a hook checks VYRE_SOCKET before it trusts it), and open only that socket", () => {
   const sock = "/private/var/folders/zz/T/vyre-door-abc.sock";
   const p = seatbeltProfile({ platform: "darwin", workspace: "/tmp/ws", command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, vyre: { socket: sock } });

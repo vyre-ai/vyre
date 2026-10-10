@@ -83,6 +83,8 @@ export function lentPlacements(registry, extra = {}) {
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
     /** A chat that began on this server goes to one of the person's computers: { thread, person } -> { where: "mac", device, epoch }. The daemon says how (it holds the server's own store). */
     ...(typeof extra.adopt === "function" ? { adopt: extra.adopt } : {}),
+    /** The folders the person's ready computers offer to chats. */
+    foldersOf: (/** @type {string} */ space, /** @type {string} */ person) => { const h = homeOf(space); return h && typeof h.foldersOf === "function" ? h.foldersOf(person) : []; },
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }
