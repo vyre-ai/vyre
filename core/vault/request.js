@@ -31,6 +31,7 @@
 
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
+import { isAsker } from "./asker.js";
 import https from "node:https";
 import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
@@ -661,8 +662,8 @@ export class ApiRequests {
 
     // A model (an agent or the assistant) reaches a credential only through a kernel grant of its own: its project's linked vault, a vault shared with it, or a task lease (the kernel decides: access.js
     // effectFor). A read inside a grant runs with no prompt; anything outward is held for a person whatever the grant says. The person's own session and a thread the person tagged with this credential use it by right.
-    const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
-    const isModel = caller === "mcp" || caller.startsWith("mcp:");
+    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
+    const isModel = isAsker(caller); // Claude, or any agent label on any surface (cli:agent:kit is the agent, not the person)
     const access = /** @type {any} */ (this.vault).access;
     if (isModel && !tagged && access && access.K) {
       const who = access.modelName(/** @type {any} */ (meta), caller);
