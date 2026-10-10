@@ -251,7 +251,7 @@ function runAcp(entry, known, o) {
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
-  let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false;
+  let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false, imageOk = false;
   /** @type {Map<number, { resolve: (r: any) => void, reject: (e: any) => void }>} */ const calls = new Map();
   /** @type {Map<string, { rpc: number, options: any[] }>} permission questions open with a person */ const asks = new Map();
   /** @type {Set<string>} */ const announced = new Set();
@@ -571,6 +571,7 @@ function runAcp(entry, known, o) {
   async function open() {
     const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, ...(entry.clientCapabilities || {}) }, clientInfo: { name: "vyre", version: "0.2" } });
     const caps = init.agentCapabilities || {};
+    imageOk = Boolean(caps.promptCapabilities && caps.promptCapabilities.image);
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
     const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
@@ -649,7 +650,7 @@ function runAcp(entry, known, o) {
 
   function pump() {
     if (!ready || busy || exited || !queue.length) return;
-    const blocks = queue.shift();
+    const blocks = withoutImages(queue.shift());
     busy = true; cancelling = false; turnText = "";
     // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
     const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
@@ -670,6 +671,13 @@ function runAcp(entry, known, o) {
       busy = false; pump();
     });
   }
+
+  /** An agent that did not say it takes images is not sent one (it would refuse the whole prompt): the words go, with one line saying a picture came that it cannot see. @param {any[]} blocks */
+  const withoutImages = blocks => {
+    if (imageOk || !blocks.some(b => b.type === "image")) return blocks;
+    const n = blocks.filter(b => b.type === "image").length;
+    return [...blocks.filter(b => b.type !== "image"), { type: "text", text: `\n\n(${n === 1 ? "An image was" : `${n} images were`} attached, but this model cannot look at images. Say so, and ask the person to describe ${n === 1 ? "it" : "them"} or paste its text.)` }];
+  };
 
   const promptBlocks = c => {
     if (typeof c === "string") return [{ type: "text", text: c }];
