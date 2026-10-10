@@ -29,6 +29,7 @@ export function startPump(o) {
     if (queuedBytes > PIPE.UP_HIGH && !paused) { paused = true; try { child.stdout.pause(); child.stderr.pause(); } catch { /* gone */ } }
     stir();
   };
+  child.stdin?.on("error", () => { /* EPIPE: the process exited before it read; its exit says so, and an unheard error event would take vyred down */ });
   child.stdout.on("data", take("out"));
   child.stderr.on("data", take("err"));
   child.on("close", (/** @type {number | null} */ code, /** @type {string | null} */ signal) => { exit = { code, signal }; stir(); });

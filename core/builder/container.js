@@ -71,6 +71,7 @@ export async function buildImage(p) {
     let out = "", err = "";
     c.stdout?.on("data", d => { if (out.length < 1_000_000) out += d; });
     c.stderr?.on("data", d => { if (err.length < 1_000_000) err += d; });
+    c.stdin?.on("error", () => { /* EPIPE: docker exited before it read the input; the exit code says so */ });
     if (o.input) c.stdin?.end(o.input); else c.stdin?.end();
     const code = await new Promise(r => { c.on("close", x => r(x ?? 1)); c.on("error", () => r(127)); });
     return { code: Number(code), stdout: out, stderr: err };
@@ -116,6 +117,7 @@ async function defaultPipeline(/** @type {string[]} */ argv, /** @type {{ timeou
   load.stdout?.on("data", d => { loaded += d; });
   load.stderr?.on("data", d => { err += d; });
   build.stdout?.on("data", d => { bytes += d.length; if (bytes > o.maxBytes && !over) { over = true; try { build.kill("SIGKILL"); } catch { /* gone */ } } });
+  load.stdin?.on("error", () => { /* EPIPE: docker load exited early; its exit code says so */ });
   build.stdout?.pipe(/** @type {any} */ (load.stdin));
   const [bc, lc] = await Promise.all([
     new Promise(r => { build.on("close", x => r(x ?? 1)); build.on("error", () => r(127)); }),
