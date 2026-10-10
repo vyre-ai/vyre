@@ -115,15 +115,13 @@ test("a secret in the folder stops it before anything is made on GitHub", async 
   assert.equal(made.length, 0, "no repo exists for it");
 });
 
-test("only a person, or the Publish module acting inside Vyre's home, makes a repo; a model and a stranger's module do not", async t => {
+test("only a person makes a repo, and only a person lists the owners: a model and every module are refused", async t => {
   const w = await world(t);
   fakeGitHub(t, w.remotes);
   const dir = w.folder({ "index.html": "<p>hi</p>" });
-  for (const who of ["mcp", "harness", "module:notes"]) assert.equal((await w.as(who, who.startsWith("module:"))("github.repo.create", { name: "x1", dir })).error.code, "denied", who);
-  assert.equal((await w.as("module:publish")("github.repo.create", { name: "from-publish", dir })).data.full_name, "alex/from-publish");
-  const outside = tmp(t, "outside"); fs.writeFileSync(path.join(outside, "a.txt"), "x");
-  assert.match((await w.as("module:publish")("github.repo.create", { name: "elsewhere", dir: outside })).error.message, /only a folder kept under Vyre's home/);
-  const link = path.join(w.root, "sites", "sneaky"); fs.symlinkSync(outside, link);
-  assert.match((await w.as("module:publish")("github.repo.create", { name: "via-link", dir: link })).error.message, /only a folder kept under Vyre's home/, "a link out of the home is not under it");
-  assert.equal((await w.as("module:publish")("github.owners", {})).error.code, "denied", "the owner list is the person's");
+  for (const who of ["mcp", "harness", "module:notes", "module:publish"]) {
+    assert.equal((await w.as(who, who.startsWith("module:"))("github.repo.create", { name: "x1", dir })).error.code, "denied", who);
+    assert.equal((await w.as(who, who.startsWith("module:"))("github.owners", {})).error.code, "denied", who);
+  }
+  assert.equal((await w.as("cli")("github.repo.create", { name: "mine", dir })).data.full_name, "alex/mine");
 });
