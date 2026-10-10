@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { opts } from "./space-helper-rig.js";
-import { DEP, DEP2, REQUEST, read, ready } from "./space-helper-pub-rig.js";
+import { DEP, DEP2, SPC, SPC2, REQUEST, read, ready } from "./space-helper-pub-rig.js";
 
 test("pub-up: root's compose file from root's record, linted, the secrets written by root into root's env file, the server walled with no door in and proved", opts, async t => {
   const r = await ready(t);
@@ -22,7 +22,7 @@ test("pub-up: root's compose file from root's record, linted, the secrets writte
   assert.ok(!/ports:|privileged|cap_add|network_mode|env_file/.test(compose));
   assert.equal(fs.statSync(path.join(d, "secrets.env")).mode & 0o777, 0o600);
   assert.equal(read(path.join(d, "secrets.env")), "GREETING_PHRASE='hello there'\nSTRIPE_KEY='sk_live_abc123'\n");
-  assert.equal(read(path.join(d, "pubdep")).trim(), DEP);
+  assert.equal(read(path.join(d, "pubdep")).trim(), `${DEP} ${SPC}`, "the deployment and the Space that run under the name");
   assert.ok(!fs.existsSync(path.join(r.servers, DEP)), "the daemon's folder with the secrets was taken and removed");
   assert.ok(!fs.existsSync(path.join(r.priv, "pub", DEP, "up")));
   // the walls: the answers to what the daemon asked, then drop everything else on that interface; no hook port is open
@@ -86,7 +86,7 @@ test("pub-stop and pub-down take the rules away and keep the data; a deployment 
   assert.ok(!/ -v\b|volume rm/.test(r.calls().split("\n").filter(l => /compose .* down/.test(l)).join("\n")), "the data volume is kept");
   const up2 = await r.up(DEP2, { request: REQUEST({ version: "4" }) });
   assert.equal(up2.state, "ok", JSON.stringify(up2));
-  assert.equal(read(path.join(r.priv, "apps", "northwind", "pubdep")).trim(), DEP2);
+  assert.equal(read(path.join(r.priv, "apps", "northwind", "pubdep")).trim(), `${DEP2} ${SPC}`);
 });
 
 test("reattach walls a running published server again in a new vyre container, with no door in, or stops it", opts, async t => {
@@ -134,4 +134,46 @@ test("pub-up takes away a hook door left from before: a tag that once had a hook
   const inp = r.appFw().filter((/** @type {any} */ x) => x.ch === "INPUT").map((/** @type {any} */ x) => x.r);
   assert.ok(!inp.some((/** @type {any} */ x) => x.dp), "no hook port");
   assert.deepEqual(inp, [{ i: "eth1", ct: "ESTABLISHED,RELATED", c: "vyre-app:northwind", j: "ACCEPT" }, { i: "eth1", c: "vyre-app:northwind", j: "DROP" }]);
+});
+
+test("a name is one server on this box: another Space cannot take over a running server's compose, secrets and data volume, nor stop it, and a newer deployment of the same Space still replaces it", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP, { request: REQUEST({ secrets: "GREETING_PHRASE" }) })).state, "ok");
+  assert.equal((await r.up(DEP, { request: REQUEST({ secrets: "GREETING_PHRASE" }), secrets: { GREETING_PHRASE: "first-owner-secret" } })).state, "ok");
+  const dir = path.join(r.priv, "apps", "northwind");
+  const before = { compose: read(path.join(dir, "compose.yml")), secrets: read(path.join(dir, "secrets.env")), pubdep: read(path.join(dir, "pubdep")), rules: JSON.stringify(r.appFw()) };
+  // a second hosted Space builds the same name (its own deployment) and asks to start it
+  assert.equal((await r.build(DEP2, { space: SPC2 })).state, "ok", "building is allowed: it takes nothing of the first server");
+  const taken = await r.up(DEP2, { space: SPC2, secrets: { GREETING_PHRASE: "the-other-space" } });
+  assert.equal(taken.state, "failed", JSON.stringify(taken));
+  assert.match(taken.message, /another Space already has a server with that name/);
+  assert.deepEqual({ compose: read(path.join(dir, "compose.yml")), secrets: read(path.join(dir, "secrets.env")), pubdep: read(path.join(dir, "pubdep")), rules: JSON.stringify(r.appFw()) }, before, "nothing of the first Space's server changed");
+  assert.ok(!read(path.join(dir, "secrets.env")).includes("the-other-space"));
+  // it cannot stop or take it down either
+  for (const verb of ["pub-stop", "pub-down"]) {
+    const st = await r.ask(`${verb} ${DEP2}`);
+    assert.equal(st.state, "failed", `${verb}: ${JSON.stringify(st)}`);
+    assert.match(st.message, /not the server running under that name/);
+  }
+  assert.ok(fs.existsSync(path.join(r.F, "app-running-northwind")), "the first Space's server still runs");
+  // a folder for a start has to be in the Space the build was made for
+  assert.equal((await r.build(DEP2, { request: REQUEST({ version: "4" }), space: SPC })).state, "ok");
+  const elsewhere = await r.up(DEP2, { request: REQUEST({ version: "4" }), space: SPC2 });
+  assert.equal(elsewhere.state, "failed", JSON.stringify(elsewhere));
+  assert.match(elsewhere.message, /not in the Space the server was built for/);
+  // the same Space replaces its own server with the newer deployment
+  const next = await r.up(DEP2, { request: REQUEST({ version: "4" }), space: SPC });
+  assert.equal(next.state, "ok", JSON.stringify(next));
+  assert.equal(read(path.join(dir, "pubdep")).trim(), `${DEP2} ${SPC}`);
+});
+
+test("pub-stop of a deployment that is not the one running under the name is refused", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP)).state, "ok");
+  assert.equal((await r.up(DEP)).state, "ok");
+  assert.equal((await r.build(DEP2, { request: REQUEST({ version: "4" }) })).state, "ok");
+  const st = await r.ask(`pub-stop ${DEP2}`);
+  assert.equal(st.state, "failed", JSON.stringify(st));
+  assert.match(st.message, /not the server running under that name/);
+  assert.ok(fs.existsSync(path.join(r.F, "app-running-northwind")), "the running server was not stopped");
 });
