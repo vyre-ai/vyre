@@ -87,7 +87,7 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
-  ctx.tool("runner.whyNot", {
+  ctx.tool("runner.why-not", {
     description: "Why a chat's session is not running on a computer: one reason code, or null when it runs where it was meant to. Input: thread.",
     input: obj({ thread: str, space: str }, ["thread"]),
     run: async (i, meta) => {
@@ -152,9 +152,9 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
-  for (const [name, verb] of /** @type {const} */ ([["runner.pauseAll", "pause"], ["runner.resumeAll", "resume"]])) {
+  for (const [name, verb] of /** @type {const} */ ([["runner.pause-all", "pause"], ["runner.resume-all", "resume"]])) {
     ctx.tool(name, {
-      description: verb === "pause" ? "Freeze every session running on this computer until resumeAll. They keep their place; nothing is lost." : "Let the sessions frozen by pauseAll carry on.",
+      description: verb === "pause" ? "Freeze every session running on this computer until resume-all. They keep their place; nothing is lost." : "Let the sessions frozen by pause-all carry on.",
       input: obj(),
       run: async (_i, meta) => {
         await d.person(meta, "the sessions on this computer");

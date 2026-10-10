@@ -615,8 +615,8 @@ async function startLocked(opts, root, p, release) {
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
-        // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the runner module)
-        emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("runner", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
+        // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
+        emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a thread is `opts.resumeLent` (or the registry's `resumeLent`) and, until it exists, the move is recorded and said but nothing continues the session
         resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f === "function") return f(i); log(`lent: ${String(i.session).slice(0, 8)} is the server's now (${i.reason}); nothing continues it yet`); },
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route

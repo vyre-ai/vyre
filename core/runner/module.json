@@ -69,7 +69,7 @@
         "reach": "person"
       },
       {
-        "name": "runner.whyNot",
+        "name": "runner.why-not",
         "effect": "read",
         "summary": "why a chat's session is not running on a computer: one reason code",
         "reach": "person"
@@ -93,13 +93,13 @@
         "reach": "person"
       },
       {
-        "name": "runner.pauseAll",
+        "name": "runner.pause-all",
         "effect": "write",
         "summary": "freeze every session on this computer until resumed",
         "reach": "person"
       },
       {
-        "name": "runner.resumeAll",
+        "name": "runner.resume-all",
         "effect": "write",
         "summary": "let the frozen sessions on this computer carry on",
         "reach": "person"
@@ -116,8 +116,7 @@
       "runner.sealed",
       "runner.seal-failed",
       "runner.moved",
-      "runner.fenced",
-      "thread.moved"
+      "runner.fenced"
     ]
   },
   "shows": {
@@ -159,13 +158,13 @@
             {
               "id": "pause",
               "title": "Pause all",
-              "tool": "runner.pauseAll",
+              "tool": "runner.pause-all",
               "input": {}
             },
             {
               "id": "resume",
               "title": "Resume all",
-              "tool": "runner.resumeAll",
+              "tool": "runner.resume-all",
               "input": {}
             }
           ],
