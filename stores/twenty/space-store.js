@@ -111,7 +111,7 @@ export async function planStore(o) {
 /** What the first start is doing, in words a person can read, for each phase the provisioning reports (stores/twenty/provision.js `phase`). */
 export const PHASE_WORDS = Object.freeze([
   [/^reach/, "checking that it is running"], [/^pull images/, "downloading it (the first time only)"], [/^start database/, "starting its database"],
-  [/^start Records/, "starting Records (the first start takes a few minutes)"], [/^workspace and key/, "setting up its workspace"],
+  [/^start Records/, "starting Records (the first start takes a few minutes)"], [/^workspace and key/, "setting up its workspace"], [/^core types/, "preparing its record types (about a minute the first time)"],
 ]);
 /** The sentence for a store still starting: where it is and how long it has been. @param {string | undefined} phase @param {number} sinceMs */
 export function startingWords(phase, sinceMs) {
@@ -179,6 +179,8 @@ export function createStoreFor(cfg) {
     const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     const tc = Date.now();
+    { const g = progress.get(space); if (g) g.phase = "core types"; }
+    log("phase core types: started");
     await defineCore(store, log);
     log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
@@ -189,7 +191,7 @@ export function createStoreFor(cfg) {
     return store;
   };
   // `cfg.degrade` (the daemon sets it): a store that cannot be set up must not stop the daemon, or the supervisor starts it again forever. The Space gets a store that
-  // answers `unavailable` in plain words, `<dir>/store-state.json` says why, and the setup is tried again in the background (30 s, doubling to 15 min, or now with `retry`).
+  // answers `unavailable` in plain words, `<dir>/store-state.json` says why, and the setup is tried again in the background (5 s, doubling to a minute, or now with `retry`).
   // A refusal that is an answer to a person (`needs_confirmation`) and a bad VYRE_STORE value still throw.
   /** @type {Map<string, { store: any, dir: string, meta: any, attempts: number, reason: string, since: string, timer: any, running: boolean, starting?: boolean }>} */
   const waiting = new Map();
@@ -197,7 +199,7 @@ export function createStoreFor(cfg) {
   const writeState = (/** @type {any} */ w, /** @type {any} */ extra) => {
     try { fs.mkdirSync(w.dir, { recursive: true, mode: 0o700 }); fs.writeFileSync(stateFile(w.dir), JSON.stringify({ state: "unavailable", reason: w.reason, since: w.since, attempts: w.attempts, ...extra }), { mode: 0o600 }); } catch { /* the state is a convenience */ }
   };
-  const backoff = (/** @type {number} */ n) => Math.min((cfg.retryBaseMs ?? 30_000) * 2 ** Math.max(0, n - 1), cfg.retryMaxMs ?? 15 * 60_000);
+  const backoff = (/** @type {number} */ n) => Math.min((cfg.retryBaseMs ?? 5_000) * 2 ** Math.max(0, n - 1), cfg.retryMaxMs ?? 60_000);
   const attempt = async (/** @type {string} */ space) => {
     const w = waiting.get(space);
     if (!w || w.running) return;
@@ -231,7 +233,7 @@ export function createStoreFor(cfg) {
       if (got !== LATE) return got;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
       w.reason = "the record store is still starting"; w.running = true; w.starting = true;
-      if (!w.store) w.store = createDeferredStore({ reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
+      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
@@ -253,7 +255,7 @@ export function createStoreFor(cfg) {
       if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
       w.attempts++; w.reason = String(err && err.message || e);
-      if (!w.store) w.store = createDeferredStore({ reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
       waiting.set(space, w);
       const wait = backoff(w.attempts);
       writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });

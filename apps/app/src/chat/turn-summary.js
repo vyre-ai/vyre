@@ -1,8 +1,10 @@
 // @ts-check
 // What a turn did, as one line under it: "3 files, 4 commands, 1 min". Pure: it reads the items a turn folded into (tools, terminal and diff blocks) and says how many files changed,
-// how many commands ran and how long it took. A turn that changed no file and ran no command has none. The files keep their diff blocks so the changes panel can show each one.
+// how many commands ran, how many of Vyre tools it used (two or more is what "Turn this into a Flow" offers) and how long it took. A turn that did none of those has no line. The files keep their diff blocks so the changes panel can show each one.
 
 const SHELL = new Set(["terminal", "shell", "Bash"]);
+/** A tool of Vyre itself (its MCP tools, or a work, records, tasks, flows, comms, mail, calendar or projects tool by name): what a Flow could repeat. */
+const VYRE_TOOL = /^(mcp__vyre__|(work|records|tasks|flows|comms|mail|calendar|projects)[._])/;
 const count = (/** @type {number} */ n, /** @type {string} */ one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** "1 min", "40 sec", or "" when it was quick. @param {number} ms */
@@ -34,14 +36,15 @@ function unified(b) {
 /**
  * @param {readonly any[]} items the items of one turn, in order
  * @param {number} ms how long the turn took (0 when not known)
- * @returns {{ files: { path: string, op: string, add: number, del: number }[], diffs: { path: string, op: string, diff: string }[], commands: number, ms: number, line: string } | null}
+ * @returns {{ files: { path: string, op: string, add: number, del: number }[], diffs: { path: string, op: string, diff: string }[], commands: number, vyreCalls: number, ms: number, line: string } | null}
  */
 export function turnSummary(items, ms = 0) {
   /** @type {Map<string, { path: string, op: string, add: number, del: number }>} */ const files = new Map();
   /** @type {Map<string, { path: string, op: string, diff: string }>} */ const diffs = new Map();
-  let commands = 0;
+  let commands = 0, vyreCalls = 0;
   for (const it of items) {
     if (!it || (it.kind !== "tool" && it.kind !== "block")) continue;
+    if (VYRE_TOOL.test(String(it.tool))) vyreCalls++;
     if (it.block && (it.block.block === "diff" || it.block.block === "files")) {
       const hunksText = unified(it.block);
       if (it.block.block === "files") for (const f of it.block.files || []) { if (f && typeof f.path === "string") { const had = diffs.get(f.path); diffs.set(f.path, { path: f.path, op: String(f.op || "edit"), diff: (had ? had.diff + "\n" : "") + String(f.diff || "") }); } }
@@ -50,11 +53,12 @@ export function turnSummary(items, ms = 0) {
     } else if (it.tool === "file" && it.summary) { const had = files.get(it.summary); if (!had) files.set(it.summary, { path: it.summary, op: "edit", add: 0, del: 0 }); }
     else if (SHELL.has(String(it.toolKind)) || SHELL.has(String(it.tool)) || (it.block && it.block.block === "terminal")) commands++;
   }
-  if (!files.size && !commands) return null;
+  if (!files.size && !commands && vyreCalls < 2) return null;
   const parts = [];
   if (files.size) parts.push(count(files.size, "file"));
   if (commands) parts.push(count(commands, "command"));
+  if (vyreCalls >= 2) parts.push(count(vyreCalls, "action"));
   const t = took(ms);
   if (t) parts.push(t);
-  return { files: [...files.values()], diffs: [...diffs.values()], commands, ms, line: parts.join(", ") };
+  return { files: [...files.values()], diffs: [...diffs.values()], commands, vyreCalls, ms, line: parts.join(", ") };
 }

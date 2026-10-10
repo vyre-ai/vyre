@@ -227,3 +227,11 @@ test("startingWords: seconds at first, minutes after a minute and a half, and a 
   assert.equal(startingWords(undefined, 500), "the record store is still starting: getting ready (1 second so far)");
   assert.match(startingWords("something new", 10_000), /: something new \(/);
 });
+
+test("the first start says when each phase begins and that the saved database was not used; the retry starts at five seconds", () => {
+  assert.match(startingWords("core types", 30_000), /preparing its record types/);
+  const src = fs.readFileSync(new URL("./provision.js", import.meta.url), "utf8");
+  assert.match(src, /phase \$\{name\}: started/);
+  assert.match(src, /no saved database for this image/);
+  assert.match(fs.readFileSync(new URL("./space-store.js", import.meta.url), "utf8"), /retryBaseMs \?\? 5_000/);
+});

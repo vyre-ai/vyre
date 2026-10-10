@@ -151,7 +151,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
@@ -181,6 +181,10 @@ const setup = async (t, kernel = true) => {
   return { ident, w: await world(t, { kernel }) };
 };
 const rows = (w, device) => w.d.registry.deps.db.prepare("SELECT id, kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").all(device);
+
+test("a phone that offers a key and does not say how it keeps it is refused out loud, with the reason, and nothing is paired", { timeout: 120_000 }, async t => {
+  await assert.rejects(() => pairFreshServer(t, { kind: "phone", presenceStorage: /** @type {any} */ (null) }), /did not say how it keeps its key/);
+});
 
 test("typed code -> ack -> adopt, real daemon and relay: the app finishes the server's pairing, the server is owned, and the device is enrolled under the key the app reconnects with", async t => {
   typedOn(t);

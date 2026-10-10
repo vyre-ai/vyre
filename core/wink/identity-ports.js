@@ -19,7 +19,8 @@ export function identityPorts(o) {
       if (!entries.length && claimedName) {
         let r;
         try { r = await o.call("spaces.identity.lookup", { name: claimedName, id: identity, ...(pin ? { pin } : {}) }); } catch (e) { throw Object.assign(new Error("the directory could not be reached"), { code: /** @type {any} */ (e).code === "unreachable" ? "unreachable" : "failed" }); }
-        if (r && r.error) throw Object.assign(new Error(String(r.error.message || "lookup failed")), { code: r.error.code === "unreachable" ? "unreachable" : "failed" });
+        // the directory's address itself refused by the guarded client (plain http, a private address) is a refusal with its reason, never "out of reach": a stand-in directory on this machine says so
+        if (r && r.error) { const m = String(r.error.message || "lookup failed"); throw Object.assign(new Error(m), { code: r.error.code === "unreachable" ? (/address was refused/.test(m) ? "refused" : "unreachable") : "failed" }); }
         st = r && r.data !== undefined ? r.data : r;
         entries = st && Array.isArray(st.entries) ? st.entries : [];
       }

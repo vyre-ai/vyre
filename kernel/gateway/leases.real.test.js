@@ -21,7 +21,7 @@ async function rig(t) {
   t.after(async () => { await sealer.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
-  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });   // the computer asks for its own lease (lease B): the transport proves the device the request names
   const g = k.gateway.grants, role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
@@ -66,7 +66,7 @@ test("real process: withdrawing an Offer revokes the lease in the process at onc
 
 test("real process, L-5: another member naming the same device id cannot refuse-and-revoke, revoke or reinstate this member's lease", async t => {
   const r = await rig(t); await r.both(); const lease = await r.L.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
-  const carol = r.k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: "per_carol", path: "direct" }), role = { person: "per_carol", role: "member" };
+  const carol = r.k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: "per_carol", path: "direct" }), role = { person: "per_carol", role: "member" };
   await r.g.setRole(r.owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/per_carol`) });
   assert.deepEqual(await r.L.issue(carol, { device: "dev_laptop" }), { revoked: true });
   assert.equal(await r.live(r.bob, lease.id), true, "a refused issue revoked nothing");

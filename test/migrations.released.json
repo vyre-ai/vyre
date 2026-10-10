@@ -3,10 +3,17 @@
   "agents": [
    "817d40eb2be59be4",
    "b11abad059d7ccfd",
-   "31f0ab8e1004473f"
+   "31f0ab8e1004473f",
+   "10a78da736861fee",
+   "f320fb0c5523302a"
   ],
   "appearance": [
    "67c853d61011ec0f"
+  ],
+  "appmods": [
+   "c1a2f75328cf5c2f",
+   "3665d8f330d2afde",
+   "b388c751dffa8073"
   ],
   "artifacts": [
    "6f5de8ff91ac414d",
@@ -32,11 +39,10 @@
   "connectors": [
    "50c1515690714581",
    "d007a889c6d95889",
-   "4dd1de0669d09cc3"
-  ],
-  "events": [
-   "cdcb98f8bebca49e",
-   "8f86b97e12b54b5b"
+   "4dd1de0669d09cc3",
+   "ba4317fe5742f8fa",
+   "a61d69fa565d8023",
+   "c0cbceb29cc5749f"
   ],
   "files": [
    "605c95c9f61884d1"
@@ -119,14 +125,21 @@
    "a319a9e5b256febb",
    "cdead655c0b1a99f",
    "dec3ee081671b8da",
-   "6828797049dae101"
+   "6828797049dae101",
+   "92fadf57ab32ba3f"
   ],
   "planner": [
    "6cacc07f74af4985",
    "11cf64dc915555d3",
    "853c45b6d23c1d7e",
    "767cfdbffcf9c326",
-   "06b508d446a54d5c"
+   "06b508d446a54d5c",
+   "377a0299a896f736"
+  ],
+  "pluginagent": [
+   "d71670bb75220f37",
+   "d6e01112db208b76",
+   "dd3984f83dd29fa8"
   ],
   "presence": [
    "13631225085f87f5",
@@ -140,13 +153,18 @@
    "e4e625bf49b2b460",
    "9a0558690aafad00",
    "9d048749b3e846d8",
-   "deba9674cc36be61"
+   "deba9674cc36be61",
+   "2d88545963c9ffe4",
+   "c5aed147d71c09a3",
+   "fdd6b7e4e9a3fc9d",
+   "50cf55383968d95b"
   ],
   "projects": [
    "d1d23424325cab4d",
    "78c0c74e2a7c9386",
    "a3bc0eff804bee41",
-   "fe530c5669677241"
+   "fe530c5669677241",
+   "577e239d8e44356d"
   ],
   "publish": [
    "2409d528d48b85fb"
@@ -156,7 +174,8 @@
   ],
   "recall": [
    "0e7e472c37aced25",
-   "45cdd588862f2cdf"
+   "45cdd588862f2cdf",
+   "2c60a2533d5b393e"
   ],
   "relay": [
    "c595240829d9323b",
@@ -183,6 +202,9 @@
    "b7fd0fa8ba1f35cf",
    "899e9c226697e1a1"
   ],
+  "sidebar": [
+   "8b6b5a2f381baf52"
+  ],
   "sight": [
    "181999934685c35d"
   ],
@@ -193,7 +215,10 @@
    "4cd6aa1ad7f47f3f"
   ],
   "stream-groups": [
-   "60b2f13011e5044b"
+   "60b2f13011e5044b",
+   "a3425ad3856e6e71",
+   "82b142358c3d1e46",
+   "8d73589735ca328e"
   ],
   "suggest": [
    "e004a1381f634f8b"
@@ -217,7 +242,8 @@
    "0a99f05cc660104a",
    "1cabd50b868bbc1e",
    "e259446fb1d06108",
-   "a61bd0ee71af2f45"
+   "a61bd0ee71af2f45",
+   "600e0bde3bb6db77"
   ],
   "threads": [
    "938c7dff3aaabf4f",
@@ -240,7 +266,12 @@
    "b6556dd8ba36db46",
    "b5df3fe3b4a1017e",
    "6e3dc1b844cdc0f1",
-   "3d447e7f4155637a"
+   "3d447e7f4155637a",
+   "db2993e1d43d3151",
+   "1a4d6ce1dfaf2520",
+   "7842d13c482744b4",
+   "7dcaebae2933388f",
+   "cc86b73597e0e5b8"
   ],
   "tips": [
    "28f91cb54f66a6c9"
@@ -276,7 +307,8 @@
   "watchers": [
    "ed871c714bd681ee",
    "692ceb525a4c1a43",
-   "637495c2537dc93e"
+   "637495c2537dc93e",
+   "c65448c5dd115916"
   ],
   "wink": [
    "d0cd16d3592f4589",
@@ -298,7 +330,12 @@
    "2449103627255aba",
    "657d122def809fc0",
    "534be6b6b9ad3e0d",
-   "d65970292bc02a56"
+   "d65970292bc02a56",
+   "327bd902ed9c28a2",
+   "4ac908ffc31aa175",
+   "0d3d266b0291d993",
+   "5305f96bc218eac7",
+   "ee671ff35baa44bd"
   ]
  }
 }

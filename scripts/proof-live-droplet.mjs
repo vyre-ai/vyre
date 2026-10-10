@@ -2,7 +2,7 @@
 // scripts/proof-live-droplet.mjs: the live walk on a fresh droplet. Makes an 8 GB Ubuntu 24.04 droplet, runs `proof-install.mjs --live --host root@<ip>` against it, and destroys it at the end,
 // whatever happened. The droplet is the only thing that costs money, and it lives for the length of one walk.
 //
-//   DIGITALOCEAN_TOKEN=... node scripts/proof-live-droplet.mjs [--expect-version X.Y.Z] [--region nyc3] [--size s-4vcpu-8gb] [--out DIR] [--keep]
+//   DIGITALOCEAN_TOKEN=... node scripts/proof-live-droplet.mjs [--expect-version X.Y.Z] [--channel beta] [--region nyc3] [--size s-4vcpu-8gb] [--out DIR] [--keep]
 //
 // Run it on a test box (the app side of the walk runs here). The token comes from the environment and is never printed or written. The droplet carries a throwaway ssh key made for this run
 // (registered on the account for the run and removed again), and the tag vyre-live-walk so a stray one can be found: `doctl compute droplet list --tag-name vyre-live-walk`.
@@ -74,7 +74,7 @@ try {
   const block = `${marker}\n${fs.readFileSync(sshConfig, "utf8")}# end vyre-live-walk\n`;
   fs.writeFileSync(userCfg, `${before.replace(/# vyre-live-walk \(temporary\)[\s\S]*?# end vyre-live-walk\n/g, "")}${block}`, { mode: 0o600 });
   try {
-    const args = ["scripts/proof-install.mjs", "--live", "--host", "walkdroplet", "--out", out, ...(take("--expect-version") ? ["--expect-version", take("--expect-version")] : [])];
+    const args = ["scripts/proof-install.mjs", "--live", "--host", "walkdroplet", "--out", out, ...(take("--expect-version") ? ["--expect-version", take("--expect-version")] : []), ...(take("--channel") ? ["--channel", take("--channel")] : [])];
     const child = spawn(process.execPath, args, { cwd: path.join(HERE, ".."), stdio: "inherit", env: { ...process.env, DIGITALOCEAN_TOKEN: "" } });
     code = await new Promise(res => child.on("close", c => res(c ?? 1)));
   } finally {

@@ -20,7 +20,7 @@ test("builder v2: a Dockerfile folder builds to { digest, files: [], logs, runti
   fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM node:22-alpine\nEXPOSE 3000\n"); fs.writeFileSync(path.join(dir, "app.js"), "x");
   seam.buildImage = async () => ({ image: IMG, logs: "ok" });
   const tools = new Map();
-  await builder.start({ config: {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
+  await builder.start({ config: { publish: { servers: true } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   const draft = normalizeDraft({ name: "northwind", source: { kind: "folder", ref: dir }, build: { image: "dockerfile" } });
   const out = await tools.get("builder.build").run({ deployment: { id: "dep_0123456789abcdef", ...draft }, secretArgs: [] });
   assert.deepEqual(Object.keys(out).sort(), ["digest", "files", "logs", "runtime"]);
@@ -47,7 +47,7 @@ test("builder v2: the static path is as v1 said", async t => {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "index.html"), "<p>hi</p>");
   const tools = new Map();
-  await builder.start({ config: {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
+  await builder.start({ config: { publish: { servers: true } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   const out = await tools.get("builder.build").run({ deployment: { id: "dep_a", source: { kind: "folder", ref: dir }, build: { command: "", output_dir: ".", image: "static" } }, secretArgs: [] });
   assert.deepEqual(out.runtime, { kind: "static" });
   assert.deepEqual(out.files.map((/** @type {any} */ f) => f.path), ["index.html"]);

@@ -267,7 +267,7 @@ export async function provisionSpace(o) {
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
   // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
-  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); if (o.onPhase) o.onPhase(name); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
+  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); if (o.onPhase) o.onPhase(name); log(`phase ${name}: started`); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
   await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
   await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
   await phase(localGolden ? "start Records (saved database, first healthy answer)" : "start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
@@ -278,6 +278,7 @@ export async function provisionSpace(o) {
   // The password this Space's saved user has: this side made it (a runner that runs compose itself), or root did and left it for this uid alone (a server). None left: root did not use the saved database.
   let usedGolden = localGolden, adminPassword = adminPass;
   if (golden && viaHelper) { const hp = await /** @type {any} */ (runner).adminPassword(); if (typeof hp === "string" && hp) { usedGolden = true; adminPassword = hp; } else log("the server started this Space without the saved database"); }
+  log(usedGolden ? "starting from the saved database" : "no saved database for this image: Records migrate from scratch (a few minutes)");
   const adminEmail = usedGolden && golden ? golden.meta.email : `service@${o.space}.vyre.invalid`;
   if (usedGolden && golden) {
     // what the store knows of the saved types (its own plans, which types have their mirror columns): the new Space starts knowing it, so its first define finds nothing to do

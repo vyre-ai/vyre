@@ -1629,7 +1629,7 @@ test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows
   let wref;
   const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, eid) => (eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null),
     call: async (tool, input) => {
-      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 } };
+      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" } };
       if (tool === "relay.device.presence") return { data: { key: "pk1" } };
       if (tool === "spaces.owner.adopt") { ownerAtAdopt = wref.p.meta.get("owner"); return { data: { owner: input.person } }; }
       return undefined;

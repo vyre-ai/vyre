@@ -58,6 +58,8 @@ export type BlockCtx = {
   onOpenInDrive?: (path: string) => void;
   onOpenRecord?: (urn: string) => void;
   onOpenFlow?: () => void;
+  /** After a turn that used several of Vyre tools: ask the assistant to turn what it did into a Flow (flows.from-chat). */
+  onTurnIntoFlow?: () => void;
   onOpenSource?: (url: string) => void;
   onTakeOver?: () => void;
   onCopy?: (text: string) => void;

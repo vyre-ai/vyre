@@ -29,8 +29,9 @@ export default {
     /** The space a call acted in, named: its id and a plain label ("home" for the home's own space). A caller that wants a particular space passes `space`; with none the call acts in the home's own space, and says so here. @param {string} id */
     const actedIn = async id => {
       if (ctx.kernel && id === ctx.kernel.space) return { id, label: "home" };
-      let r; try { r = /** @type {any} */ (await ctx.call("spaces.self", { person: ctx.kernel.owner, space: id })); } catch { r = null; }
-      const name = r && r.data && r.data.space && r.data.space.name;
+      let r; try { r = /** @type {any} */ (await ctx.call("spaces.merge-list", { person: ctx.kernel.owner })); } catch { r = null; }
+      const row = r && r.data && Array.isArray(r.data.spaces) ? r.data.spaces.find((/** @type {any} */ x) => x.space === id) : null;
+      const name = row && row.name;
       return { id, label: typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null };
     };
     const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

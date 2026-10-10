@@ -17,7 +17,7 @@ testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.j
 import path from "node:path";
 import { open } from "../store/index.js";
 import { migrate } from "../store/index.js";
-import { Runtime, MIGRATIONS, BACKOFF_MS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS, BACKOFF_MS } from "./runtime.js";
 import { tempHome } from "../../test/helpers.js";
 
 const HOME_FOLDERS = ["/work/harlow-legal", "/work/harlow-site"];
@@ -27,7 +27,7 @@ function setup(t, { vault = {}, ask, spend, request } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
-  migrate(db, "watchers", MIGRATIONS);
+  migrate(db, "watchers", [...MIGRATIONS, ...LATE_MIGRATIONS]);
   const dir = path.join(root, "watchers");
   fs.mkdirSync(dir);
   const clock = { now: new Date("2026-03-02T10:07:00").getTime() };

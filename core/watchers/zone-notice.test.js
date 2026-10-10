@@ -5,14 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
-import { Runtime, MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
 import { tempHome } from "../../test/helpers.js";
 
 function rig(t, zoneOf) {
   const root = tempHome(t);
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
-  migrate(db, "watchers", MIGRATIONS);
+  migrate(db, "watchers", [...MIGRATIONS, ...LATE_MIGRATIONS]);
   const events = /** @type {any[]} */ ([]), notices = /** @type {string[]} */ ([]);
   const now = Date.UTC(2026, 2, 2, 10, 7);
   const rt = new Runtime({ db, dir: path.join(root, "w"), now: () => now, log: () => {}, zone: zoneOf, emit: (type, payload) => events.push({ type, ...payload }), notice: text => { notices.push(text); }, call: async () => ({}), fetch: async () => "", teach: async () => true });

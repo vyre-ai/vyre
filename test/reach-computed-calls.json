@@ -144,7 +144,7 @@
   "core/publish/index.js": {
    "count": 1,
    "owner": "windows",
-   "note": "call() runs as module:publish and names only spaces.membership and spaces.self (modules-only), plus the vault's secret tools it has been granted"
+   "note": "call() runs as module:publish and names only spaces.membership and spaces.merge-list (modules-only), plus the vault's secret tools it has been granted"
   },
   "core/settings/index.js": {
    "count": 4,
