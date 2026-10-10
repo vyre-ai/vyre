@@ -599,6 +599,7 @@ export class Switchboard {
       if (!have) return null;
       const chat = turn && turn.chat ? turn.chat : have.chat || (this.deps.chatFor ? await this.deps.chatFor({ thread: id, agent: have.agent || null, agent_kind: have.agent_kind || null, name: have.name || null, project: have.project || null }) : null);
       if (chat && chat !== have.chat) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ?").run(chat, id);
+      if (turn && turn.space) this.db.prepare("UPDATE threads_runs SET space = ? WHERE id = ?").run(turn.space, id);
       return chat || null;
     } catch (e) { this.deps.log(`threads: no chat for ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
   }
