@@ -5,7 +5,7 @@ import { test } from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { rules } from "./rules.js";
+import { rules, sessionCommand } from "./rules.js";
 import { flatten, globReaches } from "./shell.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -304,4 +304,36 @@ test("floor: a symlink, `..` after one, or a hard link cannot carry a write into
   assert.equal(f("Write", { file_path: "y/notes.md", content: "y" }), null);
   assert.equal(sh("echo y > plain-too.md"), null);
   assert.equal(sh("cat notes.json"), null, "reading settings through a link is fine");
+});
+
+// ---- the session CLI: the one command form the floor allows (core/cli/session.js) ----
+test("the session CLI: exactly the three forms, written plainly, are recognised", () => {
+  assert.equal(sessionCommand('vyre tools find "send an email"'), "find");
+  assert.equal(sessionCommand("vyre tools find send an email to Dana"), "find");
+  assert.equal(sessionCommand("vyre tools describe comms.send"), "describe");
+  assert.equal(sessionCommand("vyre call memory.ask '{\"question\":\"what is $HOME?\"}'"), "call");
+  assert.equal(sessionCommand("vyre call work.situation"), "call");
+  assert.equal(sessionCommand("vyre call comms.send '{\"body\":\"it\\u0027s fine; really | ok\"}'"), "call");
+});
+
+test("the session CLI: anything around, before or after the command is not it", () => {
+  for (const c of ["vyre tools find x; rm -rf ~", "vyre tools find x | sh", "vyre tools find x && id", "vyre tools find $(id)", "vyre tools find `id`", "vyre tools find x > /tmp/y", "vyre tools find x\nid",
+    "FOO=1 vyre tools find x", "./vyre tools find x", "/usr/bin/vyre tools find x", "env vyre tools find x", " vyre tools find x", "vyre tools find x ", "vyre tools find", "vyre tools describe", "vyre tools describe a b.c",
+    "vyre tools describe Bad", "vyre call", "vyre call Bad Name", "vyre call comms.send '{}' extra", "vyre vault list", "vyre presence approve", "vyre mcp", "vyre box add host", "vyre", "vyre tools list",
+    'vyre tools find "a $b"', 'vyre tools find "a `b`"', "vyre call x.y '{}'; id", "vyre call x.y \"$(id)\"", "vyre call x.y '{\"a\":1}'x", "vyre\ttools find x", "vyre tools find x\r", "vyre call x.y '{}\u0000'"]) {
+    assert.equal(sessionCommand(c), null, JSON.stringify(c));
+  }
+  assert.equal(sessionCommand("vyre call x.y '" + "a".repeat(70_000) + "'"), null, "too long");
+});
+
+test("the session CLI: only a sandboxed session gets the allow, and the floor's refusals still come first", () => {
+  const ok = { tool: "Bash", input: { command: "vyre call comms.send '{\"to\":\"a@b.c\",\"body\":\"hi\"}'" }, home: "/tmp/h" };
+  assert.equal(rules({ ...ok, sessionCli: true }).decision, "allow");
+  assert.equal(rules(ok).decision, null, "an unsandboxed session: no opinion, as before");
+  assert.equal(rules({ ...ok, sessionCli: false }).decision, null);
+  assert.equal(rules({ tool: "Bash", input: { command: "ls" }, home: "/tmp/h", sessionCli: true }).decision, null, "any other command is no opinion");
+  assert.equal(rules({ tool: "Read", input: { file_path: "vyre call a.b" }, home: "/tmp/h", sessionCli: true }).decision, null, "only Bash");
+  assert.equal(rules({ tool: "Bash", input: { command: "vyre call vault.reveal '{\"name\":\"x\"}'" }, home: "/tmp/h", sessionCli: true }).decision, "deny", "a person's own tool is refused, not allowed");
+  assert.equal(rules({ tool: "Bash", input: { command: "vyre call work.read '{\"path\":\"/tmp/h/vault/x\"}'" }, home: "/tmp/h", sessionCli: true }).decision, "deny", "the vault folder stays refused");
+  assert.equal(rules({ tool: "Bash", input: { command: "vyre call work.read '{\"path\":\"/tmp/h/vyre.db\"}'" }, home: "/tmp/h", sessionCli: true }).decision, "deny", "Vyre's own state stays refused");
 });
