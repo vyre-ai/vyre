@@ -165,6 +165,14 @@ function vyreArgs(name, input) {
  * `turn` (a turn ended, with its result).
  * @param {any} m
  */
+/** The name of each tool call seen lately, by id: a tool's result carries only the id, and a screenshot is known by the tool that took it (bounded). @type {Map<string, string>} */
+const TOOL_NAMES = new Map();
+/** An image a screenshot tool's result carries as a content block, for the chat to show inline (0.3.3 G25): at most 4, each under 8 MB. @param {any} b a tool_result block @returns {{ mime: string, data_b64: string, source: string }[]} */
+function screenshotsOf(b) {
+  if (!Array.isArray(b.content) || !/screenshot|screen_?capture/i.test(String(TOOL_NAMES.get(b.tool_use_id) || ""))) return [];
+  return b.content.filter((/** @type {any} */ c) => c && c.type === "image" && c.source && c.source.type === "base64" && typeof c.source.data === "string" && c.source.data.length < 8 * 1024 * 1024 && /^image\/(png|jpeg|webp|gif)$/.test(String(c.source.media_type))).slice(0, 4).map((/** @type {any} */ c) => ({ mime: String(c.source.media_type), data_b64: c.source.data, source: "content-block" }));
+}
+
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
    *   media?: { mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[],
@@ -209,6 +217,7 @@ export function translate(m) {
       // Thinking is its own event, so a surface that does not show it never takes it for the reply.
       if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.thinking", payload: { message: id, block, text: String(b.thinking).slice(0, 20000), done: true } });
       if (b.type === "tool_use") {
+        TOOL_NAMES.set(String(b.id), String(b.name)); if (TOOL_NAMES.size > 500) TOOL_NAMES.delete(TOOL_NAMES.keys().next().value);
         out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input), ...toolFields(b.name, b.input, b.vyre_kind), ...vyreArgs(b.name, b.input) } });
         // Claude's todo list is the plan: one event carrying the whole list, so a card just replaces its state.
         if (b.name === "TodoWrite" && b.input && Array.isArray(b.input.todos)) out.events.push({ type: "thread.plan", payload: { items: planItems(b.input.todos), at: Date.now() } });
@@ -225,6 +234,7 @@ export function translate(m) {
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
       if (b.type === "tool_result" && Array.isArray(b.vyre_media) && b.vyre_media.length) (out.media ||= []).push(...b.vyre_media.slice(0, 4));
+      if (b.type === "tool_result") { const shots = screenshotsOf(b); if (shots.length) (out.media ||= []).push(...shots); }
       if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error), ...(Number.isInteger(b.exit_code) ? { exit_code: b.exit_code } : {}), receipt: receiptOf(b.content, Boolean(b.is_error)) } });
     }
     return out;

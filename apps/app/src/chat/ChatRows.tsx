@@ -13,6 +13,7 @@ import { tool } from "../real/box";
 import { Face } from "./Face";
 import { sizeWord, thumbFor } from "./attach-model.js";
 import { Thumb } from "./Thumb";
+import { ArtifactShot } from "./ArtifactShot";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
@@ -461,7 +462,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
       const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
-      if (art) return <Frame wide={wide} indent><ArtifactLink title={art.title} href={artifactHref(art)} /></Frame>;
+      const shotMime = it.block && typeof it.block.mime === "string" && /^image\//.test(it.block.mime) ? String(it.block.mime) : null;
+      if (art) return <Frame wide={wide} indent>{shotMime ? <ArtifactShot id={art.id} mime={shotMime} title={art.title} href={artifactHref(art)} wide={wide} /> : <ArtifactLink title={art.title} href={artifactHref(art)} />}</Frame>;
       return (
         <Frame wide={wide} indent>
           {block ? <BlockView block={block} ctx={ctx} output={running ? it.output : undefined} running={running} /> : <ToolLine it={it} running={running} />}

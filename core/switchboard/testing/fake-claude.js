@@ -17,6 +17,7 @@
 //                   and says back the answers it got
 //   "plan"          asks ExitPlanMode with a sample plan (steps, what it will not touch, the files);
 //                   says it starts building if allowed, else that it keeps planning (with the note)
+//   "shot"          a screenshot tool call whose result is an image block, then a reply
 //   "leak"          prints $FAKE_LEAK in a tool call, streamed words and the result
 //   "tooluse2 <a> <b>"  two finished tool calls, then a reply
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
@@ -488,6 +489,13 @@ async function turn(prompt, uuid = null) {
     out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: tooluse[1], input: {} }] } });
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
     await say("done"); return result(true, "done");
+  }
+  // "shot": the browser tool took a screenshot: a tool call and its result as an image content block (a 1x1 picture), then a reply.
+  if (p === "shot") {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+    out({ type: "assistant", message: { id: "m-shot", role: "assistant", content: [{ type: "tool_use", id: "tu-shot", name: "mcp__vyre-chrome__chrome_screenshot", input: {} }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-shot", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }] }] } });
+    await say("here is the page"); return result(true, "here is the page");
   }
   // "tooluse2 <name1> <name2>": two finished tool calls in one turn, then a reply (what "Turn this into a Flow" is offered after).
   const tooluse2 = /^tooluse2 (\S+) (\S+)$/.exec(p);
