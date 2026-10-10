@@ -58,13 +58,13 @@ test("the page's WebSocket opens a stream on the box, sends and hears text and b
 
 test("a stream the page may not open is closed at once with a code the page sees; the page cannot choose a header, a host or another path", () => {
   const w = world();
-  for (const url of ["ws://host/v1/streams/term/shell", "ws://host/v1/tools/glass.open", "ws://host/v1/streams/computers/glass/../../x", "ws://host/v1/streams/computers/glass#frag", "garbage:::"]) {
+  for (const url of ["ws://host/v1/streams/term/shell", "ws://host/v1/tools/glass.open", "ws://host/v1/streams/computers/glass/../../x", "garbage:::"]) {
     const ws = new w.WS(url); let code = null; ws.onclose = e => { code = e.code; };
     w.flush();
     assert.equal(code, 1008, url);
   }
   assert.equal(w.opened.length, 0, "nothing reached the channel");
-  const rel = new w.WS("/v1/streams/computers/glass?ticket=r"); assert.equal(w.opened[0].path, "/v1/streams/computers/glass?ticket=r", "a relative URL is the same stream");
+  const rel = new w.WS("/v1/streams/computers/glass?ticket=r#frag"); assert.equal(w.opened[0].path, "/v1/streams/computers/glass?ticket=r", "a relative URL is the same stream, and a fragment goes nowhere");
   void rel;
 });
 
