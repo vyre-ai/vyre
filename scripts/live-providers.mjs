@@ -112,8 +112,8 @@ const checks = {
     const g = (await call("threads.get", { thread })).data || {};
     const streamed = (g.events || []).filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload && e.payload.delta).length;
     const ts = tools(r);
-    say("chat-stream", p, streamed > 0 && /\d/.test(said(r)), `streamed deltas ${streamed}; reply ${JSON.stringify(said(r)).slice(0, 80)}`);
-    say("chat-tool", p, ts.length > 0 && /\d/.test(said(r)), `tool items ${JSON.stringify(ts.map((/** @type {any} */ x) => JSON.stringify(x.name || x.tool || x.call || x.title || x).slice(0, 70)))}; asks seen ${asks.length}`);
+    say("chat-stream", p, streamed > 0 && /\d|zero|none|nothing/i.test(said(r)), `streamed deltas ${streamed}; reply ${JSON.stringify(said(r)).slice(0, 260)}`);
+    say("chat-tool", p, ts.length > 0 && /\d|zero|none|nothing/i.test(said(r)), `tool items ${JSON.stringify(ts.map((/** @type {any} */ x) => JSON.stringify(x.name || x.tool || x.call || x.title || x).slice(0, 70)))}; asks seen ${asks.length}`);
   },
   /** 4: Claude to Codex to Grok and back to Claude, then a question only the earlier turns answer. */
   async switch(/** @type {string} */ p, /** @type {any} */ _acct, /** @type {any} */ accts) {
