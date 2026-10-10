@@ -219,3 +219,62 @@ test("spawner place, the real script (run as the current user): 0600, whole, the
   assert.equal(run(f, "x", String(process.getuid() + 1)).status, 13);
   fs.mkdirSync(path.join(dir, "projects", "-work-a", "d.jsonl")); assert.equal(run(path.join(dir, "projects", "-work-a", "d.jsonl"), "x").status, 14);
 });
+
+/** A spawner with accounts 2000 and 2001 whose `place` is the test's own (it may be slow). */
+async function placing(t, place) {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"), work = path.join(dir, "work"); for (const u of ["2000", "2001"]) fs.mkdirSync(path.join(acct, u), { recursive: true }); fs.mkdirSync(work, { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] }, wrap: (argv) => argv, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, share: () => {}, place } });
+  t.after(() => srv.close());
+  const file = (/** @type {string} */ u, n = "s1") => path.join(acct, u, ".claude", "projects", "p", `${n}.jsonl`);
+  return { socket, acct, work, file };
+}
+
+test("spawner place (trust rows 23-25): a slow write does not hold the spawner still, an account with a running session is refused, only two at a time, and a client that goes away frees its place", async t => {
+  /** @type {(() => void)[]} */ const release = [];
+  const w = await placing(t, () => new Promise(res => { release.push(() => res(undefined)); }));
+  // 23: while a place is being written, another connection is answered at once (the spawner relays every live session)
+  const slow = placeTranscript(2000, w.file("2000"), Buffer.from("a"), { socket: w.socket });
+  await new Promise(r => setTimeout(r, 150));
+  const t0 = Date.now();
+  assert.equal(await shareTranscript(2001, w.file("2001"), { socket: w.socket }), true);
+  assert.ok(Date.now() - t0 < 100, `an other call was answered while a place was being written (${Date.now() - t0} ms)`);
+  let done = false; slow.then(() => { done = true; });
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(done, false, "and the place is not reported done until it is written");
+  // 25: two at a time
+  const second = placeTranscript(2001, w.file("2001"), Buffer.from("b"), { socket: w.socket });
+  await new Promise(r => setTimeout(r, 150));
+  await assert.rejects(placeTranscript(2000, w.file("2000", "s2"), Buffer.from("c"), { socket: w.socket }), /placing other transcripts/);
+  for (const r of release.splice(0)) r();
+  assert.equal(await slow, true); assert.equal(await second, true);
+  // 25: a client that leaves mid-body frees its place
+  for (let k = 0; k < 3; k++) {
+    const c = await new Promise(res => { const s = net.connect(w.socket, () => res(s)); });
+    c.write(JSON.stringify({ op: "place", account: 2000, path: w.file("2000", `g${k}`), size: 1000, sha256: "0".repeat(64) }) + "\n" + "partial"); await new Promise(r => setTimeout(r, 80)); c.destroy();
+  }
+  await new Promise(r => setTimeout(r, 100));
+  const again = placeTranscript(2000, w.file("2000", "after"), Buffer.from("z"), { socket: w.socket }); await new Promise(r => setTimeout(r, 100)); for (const r of release.splice(0)) r();
+  assert.equal(await again, true, "the abandoned ones left nothing counted");
+  // 24: a running session of that account: refused; of another account or none: placed
+  const live = await spawnAsAgent(["/bin/sh", "-c", "sleep 3"], { socket: w.socket, cwd: w.work, account: 2000, shared: true });
+  await assert.rejects(placeTranscript(2000, w.file("2000", "busy"), Buffer.from("x"), { socket: w.socket }), /still has a session running/);
+  const other = placeTranscript(2001, w.file("2001", "fine"), Buffer.from("x"), { socket: w.socket }); await new Promise(r => setTimeout(r, 100)); for (const r of release.splice(0)) r();
+  assert.equal(await other, true, "another account is not held up by it");
+  live.kill(); await exited(live);
+});
+
+test("spawner place, the real setpriv call (root on Linux only): the file belongs to the account, 0600, written whole", { skip: process.platform !== "linux" || process.getuid?.() !== 0 || !fs.existsSync("/usr/bin/setpriv") }, async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"), home = path.join(acct, "2000"); fs.mkdirSync(home, { recursive: true }); fs.chownSync(home, 2000, 2000); fs.chmodSync(home, 0o700); fs.chmodSync(acct, 0o755); fs.chmodSync(dir, 0o755);
+  const stat = (/** @type {string} */ d) => fs.statSync(d);
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [] }, accounts: { min: 2000, max: 2063, home: acct, shared: [], stat } });
+  t.after(() => srv.close());
+  const file = path.join(home, ".claude", "projects", "p", "s1.jsonl");
+  assert.equal(await placeTranscript(2000, file, Buffer.from("one\ntwo\n"), { socket }), true);
+  const st = fs.statSync(file);
+  assert.deepEqual([st.uid, st.mode & 0o777, fs.readFileSync(file, "utf8")], [2000, 0o600, "one\ntwo\n"]);
+});
