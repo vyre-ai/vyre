@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // app-walk-vault-shots: the Vault as a person sees it, against a real vyred with real items (never the sample world); with --routes, any other route the same way. One picture per page at 1280 and 390, light and dark. TEST ONLY; ssh login shell, foreground.
-//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--seed] [--old] [--routes u/now,u/chats]
+//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--step 2,4c] [--seed] [--old] [--routes u/now,u/chats]
 // --seed puts a handful of believable items in the vault first (vault.put with the dev stand-in), so a fresh box has something to draw.
 import fs from "node:fs";
 import http from "node:http";
@@ -15,6 +15,7 @@ const DIST = path.resolve(flag("--dist", "apps/app/dist"));
 const SOCKET = flag("--socket", "");
 const OUT = path.resolve(flag("--out", "vault-shots-out"));
 const ONLY = flag("--only", "");
+const STEPS = (flag("--step", "") || "").split(",").filter(Boolean); // only these steps (by their number: 2,4c), for a re-draw
 const ROUTES = (flag("--routes", "") || "").split(",").filter(Boolean); // draw these routes (u/now, u/chats) instead of the Vault's pages
 const OLD = args.includes("--old"); // the layout before R031-76: its own labels, for before and after pictures
 if (!SOCKET) { console.error("give --socket"); process.exit(2); }
@@ -75,7 +76,7 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
   pg.on("pageerror", (e) => errors.push(`${w}:${theme} ${String(e.message).slice(0, 160)}`));
   const shot = async (n) => { await pg.waitForTimeout(700); await pg.screenshot({ path: path.join(OUT, `${n}-${w}-${theme}.png`), fullPage: w < 600 }); };
   const click = async (name, o = {}) => { const l = pg.getByRole(o.role ?? "button", { name, exact: o.exact ?? true }).first(); await l.click({ timeout: 8000 }); await pg.waitForTimeout(o.wait ?? 600); };
-  const step = async (n, fn) => { try { await fn(); } catch (e) { console.log(`${w}:${theme} STEP ${n} FAILED: ${String(e.message).split("\n")[0]}`); await pg.screenshot({ path: path.join(OUT, `${n}-FAIL-${w}-${theme}.png`) }).catch(() => {}); } };
+  const step = async (n, fn) => { if (STEPS.length && !STEPS.includes(n.split("-")[0])) return; try { await fn(); } catch (e) { console.log(`${w}:${theme} STEP ${n} FAILED: ${String(e.message).split("\n")[0]}`); await pg.screenshot({ path: path.join(OUT, `${n}-FAIL-${w}-${theme}.png`) }).catch(() => {}); } };
   const home = async () => { await pg.goto(`${BASE}/u/vault`, { waitUntil: "domcontentloaded" }); await pg.waitForTimeout(3500); };
 
   const menu = async (item) => { await click("Add"); await pg.getByRole("menuitem", { name: item, exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(700); };
