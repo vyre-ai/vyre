@@ -896,7 +896,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       }
 
       // What the message carries beside the words, for the assistants only (a record named exactly, the files attached): read under the sender's own chain, and a bad list refuses the send before anything is stored.
-      const carried = await sendContext({ chain: (kcalls.get(meta) || {}).chain, grp, text, pasted: i.pasted, attachments: i.attachments, members: await Promise.all(to.map(async id => { const m = g.bots.get(id); return { who: id, cwd: m ? m.cwd || (m.thread ? await ctx.call("threads.get", { thread: m.thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.cwd) || null, () => null) : null) : null, session: Boolean(m && m.thread) }; })) });
+      const carried = await sendContext({ chain: (kcalls.get(meta) || {}).chain, grp, text, pasted: i.pasted, attachments: i.attachments, members: !(Array.isArray(i.attachments) && i.attachments.length) ? [] : await Promise.all(to.map(async id => { const m = g.bots.get(id); return { who: id, cwd: m ? m.cwd || (m.thread ? await ctx.call("threads.get", { thread: m.thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.cwd) || null, () => null) : null) : null, session: Boolean(m && m.thread) }; })) });
       // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
       // (its replies are appended under it). A refusal here is the send's refusal: nothing is stored.
       /** @type {string|undefined} */ let kid;
