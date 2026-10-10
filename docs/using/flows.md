@@ -44,7 +44,7 @@ A run is about the record that started it. Open that record or its project and i
 
 A **parallel** step has two to eight lanes. Each lane is its own list of steps. The lanes start together, and the step after the parallel step starts when every lane is done. A lane can wait for a person while the others finish. If a lane fails, the others still finish, then the parallel step fails and says which lane did not finish and why. Retry the run and only the lane that failed goes round again.
 
-Steps after the parallel step can read anything a lane made, by the step's name. Lanes cannot read each other.
+Steps after the parallel step can read anything a lane made, by the step's name. Lanes cannot read each other. A Flow that allows only one run at a time (`concurrency: 1`) runs its lanes one after the other, since each lane is a run.
 
 Each lane shows in the Flow's run list as a run of its own, marked as belonging to its parent, so a lane that needs a person is in your Now list like any other.
 
