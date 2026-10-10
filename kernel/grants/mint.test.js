@@ -61,3 +61,12 @@ test("a made grant survives a rebuild from the log", async () => {
   await k.gateway.grants.rebuild();
   assert.equal((await live()).length, 1);
 });
+
+test("a minted address with a literal * is refused even under the manifest's own prefix: the kernel does not rely on callers building safe addresses", async () => {
+  const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
+  const wink = k.kernelFor({ name: "wink", needs: { kernel: { actions: [], mints: [{ prefix: "member/*", actions: ["member.act"] }] } } });
+  const subject = { kind: "actor", actor: { kind: "person", id: "per_dana", space: S } };
+  await assert.rejects(() => wink.mint.make({ subject, actions: ["member.act"], resource: { prefix: `vyre://${S}/member/*` }, source: "wink:W5" }), { code: "not_allowed" });
+  await assert.rejects(() => wink.mint.make({ subject, actions: ["member.act"], resource: { prefix: `vyre://${S}/member/per_*` }, source: "wink:W5" }), { code: "not_allowed" });
+  assert.match(await wink.mint.make({ subject, actions: ["member.act"], resource: { prefix: `vyre://${S}/member/per_dana` }, source: "wink:W5" }), /^gr_/, "a plain address still works");
+});
