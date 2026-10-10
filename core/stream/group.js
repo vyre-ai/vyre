@@ -115,7 +115,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   for (const r of db.prepare("SELECT grp, space FROM stream_groups_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
   /** Say which Space a chat belongs to, once: the first call that carries the Space (the member door's, through callInSpace) records it; a chat never changes Space. @param {string} grp @param {string} space */
   const setSpace = (grp, space) => {
-    if (!/^spc_[a-z2-7]{12,26}$/.test(String(space)) || (ctx.kernel && space === ctx.kernel.space)) return;
+    if (!/^spc_[a-z2-7]{12,26}$/.test(String(space))) return;
     const had = spaceOfChat.get(grp);
     if (had) { if (had !== space) throw fail("denied", "this chat belongs to another Space"); return; }
     db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)").run(grp, space);
