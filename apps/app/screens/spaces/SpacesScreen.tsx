@@ -1,6 +1,7 @@
 import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
+import { MembersList } from "./MembersList";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
@@ -73,28 +74,7 @@ export function SpacesScreen() {
       </View>
       {cur && canInvite && !MOCK ? <ZoneSection space={cur.id} zone={(cur as { zone?: string | null }).zone ?? null} spaceName={spaceName} onSaved={() => void load()} /> : null}
       <Sec title={`Members of ${spaceName}`}>
-        <Card flush>
-          {members.map((m, i) => {
-            const self = m.id === ME;
-            const can = canManage(MY_ROLE, m.role, self);
-            const temp = m.role === "temp";
-            return (
-              <View key={m.id}>
-                {i ? <Divider inset={68} /> : null}
-                <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name}
-                  end={temp && can ? <Button kind="ghost" size="sm" label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /> : undefined}
-                  sub={temp ? (
-                    <View className="gap-s1 pt-s1">
-                      <Text size="secondary" tone="label" numberOfLines={1}>{`Only ${m.scope}`}</Text>
-                      <View className="flex-row items-center gap-s2"><Chip tone="warn">{`Temp, ends ${m.end}`}</Chip></View>
-                    </View>
-                  ) : roleLabel(m.role)}
-                  onPress={can ? () => open(m) : undefined} />
-              </View>
-            );
-          })}
-          {TEAM.map((t) => <View key={t.id}><Divider inset={68} /><Row dense lead={<Avatar of={markRef(t.id === "juno" || t.name === "juno" ? "assistant" : "teammate", t.name, t.id)} size={40} />} title={t.name} sub={t.sub} /></View>)}
-        </Card>
+        <MembersList members={members} can={(m) => canManage(MY_ROLE, m.role, m.id === ME)} team={TEAM} onOpen={open} onExtend={(m) => setSheet({ kind: "extend", id: m.id })} />
         {canInvite ? (
           <View className="gap-s1 pt-s3">
             <Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />

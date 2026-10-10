@@ -20,6 +20,9 @@ import { accessoryAsChip, rowExtras } from "./list-rules.js";
 import { AvatarStack } from "../components/Avatar";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { markRef } from "../marks/useMark";
+import { IconButton } from "../components/Button";
+import { Menu } from "../components/Menu";
+import { useUiTheme } from "../theme";
 import { TypedTable } from "./TypedTable";
 import type { Action, Block, Handlers } from "./types";
 
@@ -35,6 +38,22 @@ export function ActionBar({ k, actions, primary, h, id }: { k: string; actions?:
     <View className="flex-row flex-wrap gap-s2">
       {actions.map((a, i) => <Button key={a.id} label={a.title} kind={(primary ? primary === a.id : i === 0) ? "primary" : "secondary"} onPress={() => h.act?.(k, a.id, id)} />)}
     </View>
+  );
+}
+
+/** A row's actions: the first is a button (44 high on a phone), the rest are in a menu behind the more mark. Nothing else is drawn from them but their words. */
+function RowActions({ k, row, actions, h }: { k: string; row: any; actions: { id: string; title: string; kind: "plain" | "primary" | "hold" }[]; h: Handlers }) {
+  const { phone } = useUiTheme();
+  if (!actions.length || !h.act) return null;
+  // A held press cannot be a menu item, so a hold action is always its own button; the first action is a button; the rest are in the menu.
+  const inline = actions.filter((a, i) => i === 0 || a.kind === "hold");
+  const rest = actions.filter((a) => !inline.includes(a));
+  const go = (id: string) => h.act!(k, id, String(row.id));
+  return (
+    <>
+      {inline.map((a) => <Button key={a.id} size={phone ? "md" : "sm"} kind={a.kind === "primary" ? "primary" : a.kind === "hold" ? "holdText" : "ghost"} label={a.title} onPress={() => go(a.id)} />)}
+      {rest.length ? <Menu trigger={<IconButton icon="more" label={`More for ${row.title}`} touch={phone} />} items={rest.map((a) => ({ label: a.title, onPress: () => go(a.id) }))} /> : null}
+    </>
   );
 }
 
@@ -59,10 +78,10 @@ export function ListBlock({ k, b, h }: P) {
           <View key={x.id ?? i} style={ex.dim ? { opacity: 0.5 } : undefined}>
             {i > 0 ? <Divider inset={iconFor(x.icon, ICON_NAMES) ? 60 : 0} /> : null}
             <Row dense={tight} chevron={tight && !!h.open}
-              lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => markRef(f.kind as "person" | "assistant", f.name))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
+              lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => markRef(f.kind as "person" | "assistant" | "teammate", f.name, f.id))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
               title={x.title} sub={x.subtitle}
               end={ex.any
-                ? <>{ex.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{ex.accessories.map((a, j) => (a.as === "text" ? <Text key={j} size="caption" tone="label">{a.label}</Text> : <Chip key={j} tone={a.tone as any}>{a.label}</Chip>))}</>
+                ? <>{ex.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{ex.accessories.map((a, j) => (a.as === "text" ? <Text key={j} size="caption" tone="label">{a.label}</Text> : <Chip key={j} tone={a.tone as any}>{a.label}</Chip>))}<RowActions k={k} row={x} actions={ex.actions} h={h} /></>
                 : x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined}
               state={!ex.any && x.accessory && !accessoryAsChip(tight, x.tone) ? String(x.accessory) : undefined}
               onPress={h.open ? () => h.open!(k, x) : undefined} />

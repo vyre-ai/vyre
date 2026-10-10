@@ -15,6 +15,9 @@ import { StatusLine } from "../src/chat/StatusLine";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
+import { AssistantsList } from "../screens/settings/AssistantsList";
+import { MembersList } from "../screens/spaces/MembersList";
+import { InstalledKits, AvailableKits } from "../screens/flows/KitsLists";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -103,6 +106,23 @@ function Sample({ name }: { name: string }) {
   }
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
+  }
+  if (name === "assistants-list") {
+    const a = (name: string, kind: string, extra: object = {}) => ({ name, kind, projects: [], model: "claude-sonnet", effort: null, status: "running", thread: `t_${name}`, ...extra }) as never;
+    return <AssistantsList list={[a("Vyre Assistant", "assistant"), a("Kit", "agent", { status: "stopped" }), a("Scout", "agent", { thread: null })]} busy={null} onFlip={() => {}} onOpen={() => {}} />;
+  }
+  if (name === "members-list") {
+    const m = (id: string, name: string, role: string, extra: object = {}) => ({ id, name, role, ...extra }) as never;
+    return <MembersList members={[m("p1", "Chris Park", "owner"), m("p2", "Dana Reyes", "temp", { scope: "Smith estate", end: "14 Oct" }), m("p3", "Sam Okafor", "member")]} can={() => true} onOpen={() => {}} onExtend={() => {}} />;
+  }
+  if (name === "kits-list") {
+    const k = (id: string, version: number, status: string, extra: object = {}) => ({ id, version, status, ...extra }) as never;
+    return (
+      <View style={{ gap: 16 }}>
+        <InstalledKits shown={[k("estate-planning", 3, "installed", { by: "Chris Park" }), k("intake-forms", 1, "installed"), k("billing", 2, "pending")]} newer={{ "estate-planning": 4 }} busy={false} onUpdate={() => {}} onRemove={() => {}} />
+        <AvailableKits offer={[{ id: "probate", name: "Probate", description: "Estates, heirs and filings." } as never, { id: "immigration", name: "Immigration", description: "Cases and deadlines." } as never]} loadingCard="" onRead={() => {}} />
+      </View>
+    );
   }
   if (name === "runner-chip") {
     return (
