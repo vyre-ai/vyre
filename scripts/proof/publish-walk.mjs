@@ -84,6 +84,11 @@ try {
     await decide(g);
     return "held, decided";
   });
+  await J.step("the owner turns on Publish for servers (a setting, off by default)", async () => {
+    const r = await pw.call("settings.set", { key: "publish.servers", value: true });
+    if (r && r.error) throw new Error(JSON.stringify(r.error));
+    return JSON.stringify(r).slice(0, 120);
+  });
   await J.step("preview builds the image by the root helper (rootless BuildKit on its own network)", async () => {
     const pv = await call("publish.preview", { deployment: dep.id });
     if (!pv.deployment || pv.deployment.stage !== "Preview") throw new Error(JSON.stringify(pv).slice(0, 300));
