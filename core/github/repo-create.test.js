@@ -47,8 +47,9 @@ async function world(t) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const root = tmp(t, "home"), remotes = tmp(t, "remotes");
-  seam.gitBase = `file://${remotes}`;
-  t.after(() => { seam.gitBase = "https://github.com"; });
+  // git here speaks https only (lib/git-safe.js, covered by git.test.js); this world sends over a plain local push to the bare repo the stand-in made, so the tool's own steps are what is tested
+  seam.push = async ({ dir, branch, fullName }) => { git(dir, ["push", "-q", path.join(remotes, `${fullName}.git`), `refs/heads/${branch}:refs/heads/${branch}`]); return { pushed: true, branch, commit: git(dir, ["rev-parse", branch]).trim() }; };
+  t.after(() => { seam.push = null; });
   const tools = new Map(), events = /** @type {any[]} */ ([]);
   const ctx = { config: {}, paths: { root }, store: { db, migrate: (/** @type {string[]} */ s) => { for (const x of s) db.exec(x); } }, log() {}, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => events.push({ type, payload }) },
     vault: { fetch: async () => TOKEN }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async () => ({ data: {} }) };

@@ -58,8 +58,8 @@ const MODULE_CALLERS = {
 // `sessions` for the stage/0.1.1 fold (integrator's branch already carries both).
 const SESSION_ONLY = new Set(["module:sessions", "module:threads"]);
 
-/** Test seam: where pushes go. Production leaves it alone. */
-export const seam = { gitBase: "https://github.com" };
+/** Test seams: where pushes go, and (for a test with no https server) what sends the folder. Production leaves both alone. @type {{ gitBase: string, push: null | typeof pushFirst }} */
+export const seam = { gitBase: "https://github.com", push: null };
 
 const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), { code, ...(detail ? { detail } : {}) });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -334,7 +334,7 @@ export default {
         if (ready.hit) throw fail(`a ${ready.hit.pattern} was found at ${ready.hit.file}:${ready.hit.line}; take it out of the folder first, nothing was made on GitHub`, "secret_found", ready.hit);
         const visibility = input.visibility === "public" ? "public" : "private";
         const repo = await createRepo({ token, login: acct.login, owner: named(input.owner), name: String(input.name || ""), visibility, description: named(input.description) });
-        const out = await pushFirst({ dir, branch: ready.branch, fullName: repo.full_name, token, base: seam.gitBase });
+        const out = await (seam.push || pushFirst)({ dir, branch: ready.branch, fullName: repo.full_name, token, base: seam.gitBase });
         if (!out.pushed) throw fail(`${repo.full_name} was made but the folder did not go to it (${out.blocked || "refused"}); say so again and Vyre will send it`, "push_failed", { full_name: repo.full_name });
         ctx.events.emit("github.repo-created", { account: acct.name, full_name: repo.full_name, visibility });
         return { full_name: repo.full_name, url: repo.html_url, clone_url: repo.clone_url, branch: out.branch, commit: out.commit, visibility, left_out: ready.left_out };
