@@ -312,7 +312,7 @@ export default {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
         // A folder on this server is read off its disk by the builder: whose folder it may be is judged here, once, with the caller known.
-        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta), home: ctx.paths.root }); if (no) throw refuse(no.message, no.code); }
+        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta) }); if (no) throw refuse(no.message, no.code); }
         return { deployment: shown(await b.pub.create(b.chain, draft)) };
       },
     });
@@ -365,7 +365,7 @@ export default {
       input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
-        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta), home: ctx.paths.root });
+        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta) });
         if (no) throw refuse(no.message, no.code);
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
@@ -530,7 +530,7 @@ export default {
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
           if (!compose.services["w-" + d.id.replace(/^dep_/, "")] || (d.runtime && d.runtime.kind === "static")) continue;
-          for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
+          for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref, { deployment: d.id }), 0o600);
         }
         // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
         // Where each live static site's files wait, and the docker call that copies them into the site's volume (the box runs it; this module starts nothing).

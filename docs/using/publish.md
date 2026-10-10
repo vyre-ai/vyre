@@ -16,7 +16,7 @@ Give Publish a folder of ready files (a site that needs no build: HTML, CSS, ima
 
 From the terminal: `vyre call publish.quick '{"name":"bakery","folder":"/path/to/site"}'`. It answers with the preview and a request; `vyre call publish.decide '{"task":"...","approve":true}'` is the yes. A site with the same name replaces the live one, which is kept so you can go back with `publish.rollback`.
 
-Files that look like secrets (an `.env`, a private key), `.git` and `node_modules` are left out and named in the build log, links are never followed, and a folder over 2,000 files or 50 MB is refused. A model may name only a folder kept under Vyre's home; you may name any folder on the server.
+Files that look like secrets (an `.env`, a private key), `.git` and `node_modules` are left out and named in the build log, links are never followed, and a folder over 2,000 files or 50 MB is refused. Naming a folder on the server is your act: a model asks you to publish it (from the preview card or the terminal) and never names one itself. A file that holds a key (a GitHub token, an AWS key, a private key) stops the build with the file's name. The plan you say yes to lists how many files go public, how large they are and the first names.
 
 Making it live takes several steps if you want them separately: `publish.create`, `publish.preview`, `publish.approve` and `publish.publish` each hold for your decision. `publish.go` is the shortcut for a version that is already previewed.
 
