@@ -870,6 +870,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Tools: [41](tools.md#sessions), 12 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
+- Needs kernel: `{"actions":[]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## settings

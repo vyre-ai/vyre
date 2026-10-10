@@ -9333,6 +9333,7 @@ Which account a session on this provider uses, for a project/agent/explicit choi
   - `provider` string, required
   - `account` string
   - `agent` string
+  - `person` string
   - `project` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
@@ -9485,6 +9486,7 @@ The model a session starting now runs on, and where that comes from.
 
 - Input:
   - `model` string
+  - `person` string
   - `project` string
   - `purpose` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
