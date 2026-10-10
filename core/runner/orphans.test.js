@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { endOrphans } from "./orphans.js";
+import { endOrphans, startedOf } from "./orphans.js";
 import { watch } from "./watchdog.js";
 
 const alive = (/** @type {number} */ pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -20,7 +20,7 @@ function world(/** @type {import("node:test").TestContext} */ t) {
   /** A session left running: its own process group, and the record the runner wrote for it. */
   const left = (/** @type {string} */ space, /** @type {string} */ name) => {
     const c = spawn("sleep", ["60"], { detached: true, stdio: "ignore" }); c.unref(); kids.push(c);
-    fs.writeFileSync(path.join(base, "run", `${space}.${name}.pid`), JSON.stringify({ pid: c.pid, session: name }));
+    fs.writeFileSync(path.join(base, "run", `${space}.${name}.pid`), JSON.stringify({ pid: c.pid, started: startedOf(/** @type {number} */ (c.pid)), session: name }));
     return /** @type {number} */ (c.pid);
   };
   return { base, left };

@@ -459,7 +459,8 @@ test("an Offer that no longer stands ends the lending even while the lender keep
   assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, []);
   const id = r.accept.id;
   await r.k.gateway.grants.offers.unoffer(r.bob, id, { presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
-  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, ["s1"]);
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, [], "one beat with no Offer is a blip");
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, ["s1"], "two running are not");
   assert.deepEqual([r.home.book.get("s1").where, r.home.book.get("s1").reason], ["server", "switched-off"]);
 });
 
