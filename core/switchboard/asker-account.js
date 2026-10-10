@@ -1,18 +1,44 @@
 // @ts-check
-// A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the accounts
-// that serve that person), so when the person who asks is not the one whose account the thread is on, the turn is one turn on THEIR account: the same one-turn path an @ account chip takes, with the
-// conversation handed over, and the thread goes back to its own afterwards. A person with no account of their own for this provider keeps the thread's (their turn is not refused: a Space whose members
-// have no sign-in of their own runs as it always did).
+// A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
+// accounts that serve that person), so a turn is never run on another member's sign-in:
+//   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
+//   - none, and the thread's account serves them (the home's, or theirs, or no named account at all): the thread's account is theirs to use, nothing moves;
+//   - none, and the thread's account is ANOTHER member's: the home's own default account for the provider if there is one, else the turn is refused in plain words ("add your own sign-in");
+// a person's chip may name only an account that serves them (onceTarget resolves it with their person). A turn that arrives while another is running waits behind it (runQueuedOver) and shows as waiting.
 
 /**
  * @param {any} sb the Switchboard @param {string} id the thread @param {{ asker: string }} kernelTurn
- * @returns {Promise<{ provider: string, account: string, person: string } | null>} the one-turn target, or null when the thread's own account is the asker's (or the asker has none)
+ * @returns {Promise<{ provider: string, account: string, person: string | null } | null>} the one-turn target, or null when the thread's own account is theirs to use
  */
 export async function askerOver(sb, id, kernelTurn) {
   const rec = sb.record(id);
   if (!rec || !kernelTurn || !kernelTurn.asker) return null;
-  const provider = rec.provider || "claude";
-  const mine = await sb.accountFor({ provider, person: kernelTurn.asker, project: rec.project, agent: rec.agent }).catch(() => null);
-  if (!mine || !mine.id || mine.id === rec.account) return null;
-  return { provider, account: String(mine.id), person: kernelTurn.asker };
+  const provider = rec.provider || "claude", asker = kernelTurn.asker, scope = { project: rec.project, agent: rec.agent };
+  const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
+  if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
+  if (!rec.account) return null;
+  const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
+  if (serves) return null;
+  const home = await sb.accountFor({ provider, ...scope }).catch(() => null);
+  if (home && home.id) return home.id === rec.account ? null : { provider, account: String(home.id), person: null };
+  throw Object.assign(new Error("This chat runs on another member's sign-in, and you have none of your own here. Add your own sign-in to use it. Nothing was sent."), { code: "account_required" });
+}
+
+/** Is a turn running on this thread (so another person's one-turn must wait)? @param {any} sb @param {string} id */
+export function busyTurn(sb, id) {
+  const st = sb.live.get(id), rec = sb.record(id);
+  return Boolean(sb.once.has(id) || (st && st.turn && rec && ["working", "waiting"].includes(String(rec.status))));
+}
+
+/**
+ * A queued one-turn (the turn's facts carry `over`) is run when the thread is free: marked delivered and sent as the one-turn it was asked as. True when this took the rows.
+ * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now
+ */
+export function runQueuedOver(sb, id, rows, kt, mark, now) {
+  if (!kt || !kt.over) return false;
+  const r = rows[0];
+  if (!mark(now, r.id).changes) return true;
+  const rec = sb.record(id);
+  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, uuid: r.uuid || undefined, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
+  return true;
 }

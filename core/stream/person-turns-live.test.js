@@ -193,3 +193,73 @@ test("G04: two people each with their own Codex sign-in: the thread starts on bo
   assert.match(textOf(carol.frames), /AMBER-92[\s\S]*what was the code word/, "and her AI was handed bob's turn");
   await b.stop();
 });
+
+/** Two Codex sign-ins, bob's and carol's, each held by its own person; bob's thread started on his. */
+async function bobsThread(t) {
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watchCarol = await b.watch("carol", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex");
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work });
+  assert.ok(!first.error, first.error && `${first.error.code} ${first.error.message}`);
+  await until(() => /AMBER-92/.test(textOf(watchCarol.frames)), "bob's turn", 60_000);
+  const thread = kitThread(b, chat.id);
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  return { w, b, chat, own, bobsAcct, thread, events, watchCarol };
+}
+
+test("G04: a member with no sign-in of their own is never run on another member's: the turn is refused in words and nothing reaches bob's account", async t => {
+  const r = await bobsThread(t);
+  const before = (await r.events()).length;
+  const asked = await r.b.as("carol")("stream.send", { chat: r.chat.id, text: "what was the code word?", to: ["assistant:assistant"], cwd: r.w.work });
+  assert.ok(!asked.error, "the stream takes the message; the Switchboard refuses the turn");
+  await sleep(1500);
+  const ev = (await r.events()).slice(before);
+  assert.ok(!ev.some((/** @type {any} */ e) => e.type === "thread.sent" && /what was the code word/.test(String(e.payload.text))), "carol's words were never handed to the thread, so never to bob's sign-in");
+  assert.ok(!ev.some((/** @type {any} */ e) => e.type === "thread.provider"), "no switch of account happened");
+  const direct = await r.b.reg.call("threads.send", { thread: r.thread, text: "x", chat: r.chat.id, asker: CAROL }, "module:stream", {});
+  assert.ok(direct.error && /sign-in/.test(direct.error.message), JSON.stringify(direct.error));
+  assert.equal(direct.error && direct.error.code, "account_required");
+  await r.b.stop();
+});
+
+test("G04: a chip may name only an account that serves the sender: carol cannot pick bob's", async t => {
+  const r = await bobsThread(t);
+  await r.own("carol", "Carol's Codex");
+  const before = (await r.events()).length;
+  const asked = await r.b.as("carol")("stream.send", { chat: r.chat.id, text: "use his", to: ["assistant:assistant"], account: `codex:${r.bobsAcct}`, cwd: r.w.work });
+  assert.ok(!asked.error);
+  await sleep(1500);
+  const ev = (await r.events()).slice(before);
+  assert.ok(!ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.account === r.bobsAcct), "no turn of carol's ran on bob's account");
+  assert.ok(!ev.some((/** @type {any} */ e) => e.type === "thread.sent" && /use his/.test(String(e.payload.text))));
+  await r.b.stop();
+});
+
+test("G04: a turn that arrives while another is running waits behind it, then runs on the sender's own account", async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const carol = await b.watch("carol", chat.id);
+  const added = await b.reg.call("sessions.accounts.add", { provider: "codex", label: "Carols Codex", kind: "login" }, "deck", { token: w.tokens.carol });
+  b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
+  const long = "SECRET " + Array(500).fill("word").join(" ");
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: long, to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => textOf(carol.frames).includes("SECRET"), "bob's reply to start", 30_000);
+  const second = await b.as("carol")("stream.send", { chat: chat.id, text: "my question", to: ["assistant:assistant"], account: "codex", cwd: w.work });
+  assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
+  const thread = kitThread(b, chat.id);
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.queued"), "carol's turn to be queued", 30_000);
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === added.data.id), "carol's turn to run on her own account after bob's", 90_000);
+  await b.stop();
+});

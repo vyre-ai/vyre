@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, runQueuedOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1702,7 +1702,7 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(kernelTurn || person ? { person: kernelTurn ? kernelTurn.asker : person } : {}) });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
     const { seed, had } = await this.transferSeed(id, rec, provider);
@@ -1716,7 +1716,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (kernelTurn || person) kept.person = kernelTurn ? kernelTurn.asker : person;
+    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.person = person; else delete kept.person;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2237,6 +2237,7 @@ export class Switchboard {
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
+    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
@@ -2507,7 +2508,7 @@ export class Switchboard {
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
-      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
+      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
       if (!r.sent) throw no(String(r.note || "The turn did not start."), "busy");
@@ -2716,14 +2717,14 @@ export class Switchboard {
   /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
   canonTurn(k) {
     if (!k) return k || null;
-    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker) }) : k; } catch { return k; }
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker), ...(o.over ? { over: o.over } : {}) }) : k; } catch { return k; }
   }
 
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker }) : null);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker, ...(kernelTurn.over ? { over: kernelTurn.over } : {}) }) : null);
     const queued = Number(r.lastInsertRowid);
     const live = this.live.get(id);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
@@ -4244,7 +4245,7 @@ export default {
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
-        const kt = kernelTurnOf(i, caller, firstParty); let over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null, ...(kt ? { person: kt.asker } : {}) } : null; if (!over && kt && !(i.images && i.images.length)) over = await askerOver(sb, i.thread, kt);
+        const kt = kernelTurnOf(i, caller, firstParty); let over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null, ...(kt ? { person: kt.asker } : {}) } : null; if (!over && kt && !(i.images && i.images.length)) over = await askerOver(sb, i.thread, kt); if (over && kt && !sb.sentBefore(uuid) && busyTurn(sb, i.thread)) return sb.queue(i.thread, i.text, surfaceOf(i, caller), undefined, { uuid, kernelTurn: { ...kt, over } });
         if (over && !personTurn(caller) && !kernelTurnOf(i, caller, firstParty)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);

@@ -1172,10 +1172,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): adds or takes back an emoji reaction on a group chat message"
  },
  {
-  "tool": "stream.reply-mode",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says when the AI answers in a group chat (every message, or only an @mention or a reply to an AI message); the change shows to everyone as a line"
- },
- {
   "tool": "stream.second-opinion",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (adds a paid model to the chat and spends on the person's account)"
  },
