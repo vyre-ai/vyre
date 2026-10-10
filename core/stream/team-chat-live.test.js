@@ -108,3 +108,17 @@ test("a model's tool with no `space` in a team turn lands in the chat's Space, n
   await as(ANA, "send", { chat: made.chat, text: "vyre threads.list {}" });
   await waitFor(/not_in_team_space/, "the refusal in words");
 });
+
+test("a model's memory.space.recall in a team turn reads the TEAM Space's memory, as the member, and never the home's", { timeout: 150_000 }, async t => {
+  const { w, firm, as, lines } = await world(t);
+  const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  const made = await as(ANA, "create", { title: "Team memory", people: [BEN], agents: ["assistant"] });
+  const filed = await firm.kernel.memory.file(owner, { text: "The Harlow retainer is billed monthly", source: `chat:${made.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+  assert.ok(!filed.error, `a fact filed in the team Space's memory: ${JSON.stringify(filed).slice(0, 200)}`);
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
+  await as(ANA, "send", { chat: made.chat, text: "vyre memory.space.recall {}" });
+  let said = "";
+  await until(async () => { said = ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || "); return said.includes("retainer"); }, "the model's recall of the team's memory")
+    .catch(e => { throw new Error(`${e.message} :: ${said.slice(0, 600)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-4).join(" | ")}`); });
+  assert.deepEqual(((await w.tool("memory.space.recall", {})).data || { facts: [] }).facts.filter((/** @type {any} */ f) => /retainer/.test(String(f.text))), [], "the home's own Space memory does not have it");
+});
