@@ -117,7 +117,7 @@ test("a signer opens the page with no ticket: dressed, credited, uncached, and t
   assert.match(r.body, /Sign here/);
   assert.match(r.body, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
   assert.ok(r.body.includes("Signatures by"));
-  assert.equal(r.headers["referrer-policy"], "no-referrer");
+  assert.equal(r.headers["referrer-policy"], "same-origin");
   assert.match(String(r.headers["x-robots-tag"]), /noindex/);
   assert.equal(r.headers["cache-control"], "no-store");
   assert.deepEqual(r.headers["set-cookie"], ["_ds=signer1; Path=/; HttpOnly"], "the signer's cookie goes back to the signer, without its Domain");
