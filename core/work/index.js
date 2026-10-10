@@ -25,6 +25,7 @@ import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
+import { createChatService } from "./chat-service.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -42,7 +43,11 @@ export default {
 
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
     const kernelOf = () => { const k = ctx.kernel; if (!k || typeof k.chainFor !== "function") throw unavailable(); return k; };
-    const chainOf = (/** @type {any} */ extra) => kernelOf().chainFor(extra || {});
+    // `in_space_chain` is set only by the registry's callInSpace (the member door: a team member's own chain in that Space, after the Space's authorize allowed the tool); nothing a caller sends can make it.
+    const chainOf = (/** @type {any} */ extra) => (extra && extra.in_space_chain ? Promise.resolve(extra.in_space_chain) : kernelOf().chainFor(extra || {}));
+    // The chat tools a team member reaches through the Space's remote server (chat-service.js): kept by name, so `work.chat.serve` runs the very same code the tool runs, once.
+    /** @type {Map<string, (i: any, extra: any) => Promise<any>>} */ const memberRuns = new Map();
+    const chatTool = (/** @type {string} */ name, /** @type {any} */ def) => { memberRuns.set(name, def.run); return ctx.tool(name, def); };
     /**
      * The room this call is running in, from the running session and never from the tool's input (a model that can name the chat can leave it out). `null` means
      * the kernel says it is a chat of one person; otherwise it is the kernel's room handle (no chain of another person ever reaches this module). If the kernel cannot say which, or says group and gives no audience, the
@@ -145,7 +150,7 @@ export default {
     /** @type {any} */ let persistent = null;
     const persistentOf = () => persistent || (persistent = createPersistent({ db: ctx.store.db, kernel: kernelOf,
       agentOf: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const r = (await kernelOf().records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } })).rows[0]; return r ? String(r.data.agents || "").split(",").map(x => x.trim()).filter(Boolean) : []; } }));
-    ctx.tool("work.chat.persistent", { description: "Your pinned chat with your assistant or @Engineer (kind): its id or null if none yet, and whether you may have one.",
+    chatTool("work.chat.persistent", { description: "Your pinned chat with your assistant or @Engineer (kind): its id or null if none yet, and whether you may have one.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"], description: "One of each per person, the same chat as the session rolls over. The Engineer is for an owner or an admin" } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
     ctx.tool("work.chat.pinned", { description: "Whether a chat is a person's pinned assistant or Engineer chat: { kind: \"assistant\" | \"engineer\" | null }. For vyred, which lets only the pinned assistant chat run with the assistant's authority.", internal: true, callers: ["module"],
       input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { if (!ctx.store || !ctx.store.db) throw unavailable(); return { kind: persistentOf().kindOf(String(i.person), String(i.chat)) }; } });
@@ -197,7 +202,7 @@ export default {
         for (const r of rows) { try { await k.records.remove(chain, "file-share", r.id, r.version); removed++; } catch { /* not this person's to take back */ } }
         return { unshared: removed };
       } });
-    ctx.tool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
+    chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
@@ -456,7 +461,7 @@ export default {
       if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person" || chain.viewer === true) throw Object.assign(new Error(`${what} is the person's own act: an assistant or a model session cannot do it`), { code: "denied" });
     };
     const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
-    ctx.tool("work.chat.list", {
+    chatTool("work.chat.list", {
       description: "List chats you may see in this Space (title, project, who, when, status). Chats you are in also show run providers and the last line.",
       input: obj({ project: { type: "string", description: "the project's short name" }, q: { type: "string", description: "a word in the title" }, mine: { type: "boolean", description: "true lists only your own chats" }, limit: { type: "integer" } }),
       run: async (input, extra) => {
@@ -498,7 +503,7 @@ export default {
         return { chats: rows };
       },
     });
-    ctx.tool("work.chat.get", {
+    chatTool("work.chat.get", {
       description: "One chat you are in: its record, its slots (assistants and models running, with thread, provider, model, account, status) and transcript address.",
       input: obj({ chat: { type: "string" } }, ["chat"]),
       run: async (input, extra) => {
@@ -624,7 +629,7 @@ export default {
         return { chat, from, to: last, runs: out, sealed: "placeholders" };
       },
     });
-    ctx.tool("work.chat.create", {
+    chatTool("work.chat.create", {
       description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (your Personal project when none). Returns the chat's id.",
       input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } },
         id: { type: "string", description: "the chat's id (chat_<uuid>), chosen by the device that made the ring: the ring is bound to it" }, ring: { type: "object", description: "the chat's key ring, made on the creator's device (createRing in lib/chat-keys.js: wrapped to every device of every participant); with it the chat's folders are stored sealed. Left out, the chat is in the clear." } }),
@@ -895,6 +900,24 @@ export default {
       },
     });
 
-    return { async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); } };
+    // The member session door's one entry (chat-service.js): only the daemon's own door runs it, under a team member's chain in the team's Space (callInSpace; `in_space_chain` is the registry's alone). Which chat tools
+    // a member reaches is the service's list (kernel/remote/wire.js CALLS.chat), checked again here.
+    ctx.tool("work.chat.serve", {
+      description: "A team member's own chat call on the team's server: persistent, pin, list, get or create, as that member, in that Space. Only the daemon's own door runs it.",
+      internal: true, callers: ["module"],
+      input: obj({ call: { type: "string", enum: ["persistent", "pin", "list", "get", "create"] }, input: { type: "object" } }, ["call"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
+        const run = memberRuns.get(`work.chat.${i.call}`);
+        if (!run) throw fail("bad_input", "call is persistent, pin, list, get or create");
+        return run(i.input && typeof i.input === "object" ? i.input : {}, extra);
+      },
+    });
+
+    return {
+      async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); },
+      /** The peer door asks for the member's chat service by name from this handle (the daemon imports nothing of work). */
+      peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createChatService(o),
+    };
   },
 };
