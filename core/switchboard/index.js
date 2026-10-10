@@ -51,8 +51,7 @@ import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
-import { claudeTranscriptPlace } from "../sessions/drivers/claude-transcript.js";
-import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
+import { findSession, sessionInfo, openElsewhere, transcriptPlace, workTranscript } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
@@ -4849,9 +4848,15 @@ export default {
         const rec = sb.record(sb.threadOfNative(id) || id);
         if (!rec || (rec.provider || "claude") !== "claude" || process.env.VYRE_SUPERVISOR === "docker") return null;
         const thread = String(rec.id || id), native = sb.nativeOf(thread), folders = sb.deps.transcripts || [];
-        const at = claudeTranscriptPlace(folders, String(rec.cwd || ""), native);
+        const at = transcriptPlace(folders, String(rec.cwd || ""), native);
         return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) } : null;
       },
+    });
+    // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).
+    ctx.tool("threads.work-transcript", {
+      description: "The file where the provider keeps a session's transcript inside a runner's workspace, for the folder the session will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["work", "cwd", "session"], properties: { work: str, cwd: str, session: str } },
+      run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session)) }; },
     });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],

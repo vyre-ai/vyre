@@ -11,7 +11,6 @@
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
 import { HARNESS_MARK } from "./pipe-home.js";
-import { claudeWorkTranscript } from "../sessions/drivers/claude-transcript.js";
 import { writeInside } from "./safefs.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -217,8 +216,8 @@ export function createRunner(o) {
       const lines = await o.sync.getTranscript(s.session, 1);
       if (lines.length) {
         const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
-        const file = claudeWorkTranscript(work, seen, String(s.seed.native));
-        writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
+        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native)) : null;
+        if (file) writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
       }
     }
     if (s.resume) {

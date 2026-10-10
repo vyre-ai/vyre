@@ -41,7 +41,6 @@ import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor, lentPlacements } from "./lent-service.js";
 import { lentRequest } from "./threadsock.js";
-import { createResumeLent } from "../runner/resume-lent.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -336,6 +335,7 @@ async function startLocked(opts, root, p, release) {
     // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
     const { createOwnServerHost } = await import("./ownserver-host.js");
     /** @type {any} */ let ownServerHost = null;
+    const ownHostOf = () => (kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null);
     /** Computers by device id for the name a chat's status line shows ("Starting on Office Mac..."), read from the relay's list and kept a minute. */
     let nameAt = 0; /** @type {Map<string, string>} */ let nameMap = new Map();
     const nameCache = async () => {
@@ -350,6 +350,8 @@ async function startLocked(opts, root, p, release) {
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
       lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
+      // the lender's view of a session the home holds (checkpoint, transcript, files), for the module that carries a chat on
+      lentView: (/** @type {string} */ space, /** @type {string} */ session) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; return h && typeof h.view === "function" ? h.view(session) : null; },
       get placements() {
         return lentPlacements(registry, {
           // a chat that began on this server moves to a computer of the person's: its whole sealed turns (the server's own checkpoint store) become the session's transcript at the home, and the computer seeds its agent home from it
@@ -358,7 +360,7 @@ async function startLocked(opts, root, p, release) {
             if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here"), { code: "not_found" });
             const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread }, "module:vyred", { door: true })).data);
             if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move"), { code: "unavailable" });
-            const port = runnerHostOwn()?.port(space);
+            const port = ownHostOf()?.port(space);
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
             const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
@@ -665,15 +667,10 @@ async function startLocked(opts, root, p, release) {
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
-      // The loader that carries a chat on from a computer of the person's: a host's own (opts.resumeLent, or the registry's), else this server's (core/runner/resume-lent.js), which needs the Switchboard to say
-      // where the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
-      const ownLoader = createResumeLent({
-        target: async thread => { const r = /** @type {any} */ (await registry.call("threads.transcript-target", { thread }, "module:vyred", { door: true })); return r && r.data ? r.data : null; },
-        port: space => { try { return runnerHostOwn()?.port(space) || null; } catch { return null; } },
-        say: (type, payload) => { try { events.emit("runner", type, payload, { thread: payload && payload.thread }); } catch { /* a notice */ } },
-      });
-      const runnerHostOwn = () => (kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null);
-      const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("threads.transcript-target") && process.env.VYRE_SUPERVISOR !== "docker" ? ownLoader : undefined);
+      // The loader that carries a chat on from a computer of the person's: a host's own (opts.resumeLent, or the registry's), else the runner module's (`runner.resume-lent`), which needs the Switchboard to say where
+      // the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
+      const ownLoader = (/** @type {any} */ i) => registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread || i.chat || i.session, chat: i.chat || null, person: i.person, device: i.device, epoch: i.epoch, reason: i.reason }, "module:vyred", { door: true }).then((/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; });
+      const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && process.env.VYRE_SUPERVISOR !== "docker" ? ownLoader : undefined);
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },

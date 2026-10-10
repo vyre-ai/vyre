@@ -151,6 +151,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.work-transcript",
+        "reach": "modules"
+      },
+      {
         "name": "threads.lineage",
         "reach": "modules"
       },

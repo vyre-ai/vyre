@@ -8,6 +8,7 @@ import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
 import { createFolders } from "./folders.js";
+import { createResumeLent } from "./resume-lent.js";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -131,7 +132,7 @@ export default {
       if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available; pair this computer with the space's home first"), { code: "unavailable" });
       let r = runners.get(space);
       if (!r) {
-        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
+        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync, seedFile: async (/** @type {string} */ work, /** @type {string} */ cwd, /** @type {string} */ session) => { try { const x = /** @type {any} */ (await ctx.call("threads.work-transcript", { work, cwd, session })); return x && x.data && x.data.file ? String(x.data.file) : null; } catch { return null; } },
           grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), ...(seam.now ? { now: seam.now } : {}), ...(seam.state ? { state: seam.state } : {}), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
@@ -223,6 +224,21 @@ export default {
     /** What the place tools need from this module (place-tools.js); `moveThread` is added by them. @type {any} */
     const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, platform: seam.platform || process.platform, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
     registerPlaceTools(ctx, placeDeps);
+    // The server carries a chat on from a person's computer (resume-lent.js): the home hands this tool the lender's view of the session; where the chat's transcript belongs comes from the Switchboard,
+    // the server's own store from the host. The daemon's `resume` calls it; nothing else may.
+    const resumeLent = createResumeLent({
+      target: async thread => { const x = /** @type {any} */ (await ctx.call("threads.transcript-target", { thread })); return x && x.data ? x.data : null; },
+      port: space => { try { return hostOf()?.ownServer?.port(space) || null; } catch { return null; } },
+      say: (type, payload) => { try { ctx.events.emit(type, payload); } catch { /* a notice */ } },
+    });
+    ctx.tool("runner.resume-lent", { description: "Carry on a chat from the last whole turn its computer acknowledged. Internal: the daemon, when a lent session goes to the server.", internal: true, callers: ["module"],
+      input: obj({ space: str, session: str, thread: str }, ["space", "session"]),
+      run: async (i, meta) => {
+        if (!meta || meta.caller !== "module:vyred") throw Object.assign(new Error("only the daemon carries a chat on"), { code: "denied" });
+        const view = hostOf()?.lentView?.(String(i.space), String(i.session));
+        if (!view) throw Object.assign(new Error("that session is not held here"), { code: "not_found" });
+        return resumeLent({ ...i, view });
+      } });
     // The folders of this computer a chat may be given. Adding one is the person's yes on this computer (a folder widens what a model can reach); the home hears ids and labels, never a path.
     ctx.tool("runner.folders", { description: "The folders of this computer you have approved for chats, each { id, label, path }.", input: obj(),
       run: async (_i, meta) => { await placeDeps.person(meta, "this computer's folders"); return { folders: folders.list() }; } });

@@ -57,6 +57,12 @@
         "reach": "modules"
       },
       {
+        "name": "runner.resume-lent",
+        "effect": "write",
+        "summary": "carry on a chat from the last whole turn its computer acknowledged",
+        "reach": "modules"
+      },
+      {
         "name": "runner.folders",
         "effect": "read",
         "summary": "the folders of this computer you have approved for chats",
