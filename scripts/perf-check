@@ -124,6 +124,9 @@ async function main() {
     const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);
     // The settled size: run on until the last RSS_FLAT_SAMPLES samples sit within RSS_FLAT_MB.
     while (!rssFlat(samples) && Date.now() - idleStart < IDLE_MAX_SECONDS * 1000) samples.push(...await sampleIdle(child.pid, SAMPLE_MS / 1000, SAMPLE_MS));
+    // The idle window, for the timer check, ends with the first window: a second window (below) only gives the CPU a second look, and a 30 s timer is seen four times in 120 s and flagged as
+    // recurring where it is seen twice in 60 s and is not.
+    const idleEnd = Date.now();
     // CPU is judged on the better of two windows when the first is over budget (scripts/lib/perf-window.mjs): host load stretches one window, a real idle cost shows in both.
     if (cpuStats(samples.map(s => s.cpuPct), BUDGET).over) {
       log("idle CPU was over budget in the first window; sampling a second one and judging the better");
@@ -134,7 +137,6 @@ async function main() {
     }
     // The idle window ends here: the GC snapshot and the shutdown below set timers of their own
     // (Registry.stop races each module's stop() against a 5 s bound), which are not idle polling.
-    const idleEnd = Date.now();
     const startupPeakMB = await startup;
     const afterGc = await gcSnapshot(child, gcFile);
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
