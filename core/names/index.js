@@ -69,6 +69,7 @@ export default {
     ctx.tool("names.domain.check", {
       description: "Live DNS check of the records for using your own domain: _acme-challenge.<domain> as a CNAME to <routehash>.acme.vyre.run (required) and an optional CAA record.",
       input: obj({ domain: { type: "string" } }, ["domain"]),
+      callers: WHO,
       run: async ({ domain }) => svc.domainCheck(domain),
     });
     ctx.tool("names.unserve", {

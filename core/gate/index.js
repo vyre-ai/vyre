@@ -202,7 +202,7 @@ export default {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module", "tailnet", "device"],
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.revise({ ...input, by: input.by || c }); },
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.revise({ ...input, by: c }); },
     });
 
     ctx.tool("gate.approve", {
@@ -215,14 +215,14 @@ export default {
         session: ({ id }) => needsProof(id),
         summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; },
       },
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.approve({ ...input, by: input.by || c }); },
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.approve({ ...input, by: c }); },
     });
 
     ctx.tool("gate.reject", {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device"],
-      run: (input, { caller }) => { const c = mayApprove(caller); return gate.reject({ ...input, by: input.by || c }); },
+      run: (input, { caller }) => { const c = mayApprove(caller); return gate.reject({ ...input, by: c }); },
     });
 
     ctx.tool("gate.settle", {
@@ -234,7 +234,7 @@ export default {
         // The item's own surface: the module whose sender holds it (mcp for a hub call). Any other
         // module, and every model or guest, goes through the same rule as approving.
         const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : mayApprove(caller);
-        return gate.settle({ ...input, by: input.by || own });
+        return gate.settle({ ...input, by: own });
       },
     });
 
