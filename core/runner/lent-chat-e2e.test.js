@@ -25,20 +25,19 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
 test("a new chat is placed on the person's computer, runs there, answers in the chat, and says where it runs", { skip: SKIP || false, timeout: 240_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
-  // the fake Claude, copied where the lender's sandbox can read it, is what both the lender and the box run
-  const agentDir = fs.mkdtempSync(path.join(SCRATCH, "lce-agent-"));
-  const agent = path.join(agentDir, "claude.js");
-  fs.copyFileSync(FAKE, agent);
+  // the fake Claude, run where it is, is what both the lender and the box run; the lender's sandbox reads the repo so the fake can reach Vyre's client the way Claude's own tools do
+  const agent = FAKE;
+  const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   const root = tempHome(t);
   const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
   Object.assign(process.env, { VYRE_CLAUDE_BIN: agent, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts, VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1" });
-  t.after(() => { fs.rmSync(agentDir, { recursive: true, force: true }); for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 
   // the home: link's lent world, whose tool requests go to the daemon's own session socket for the thread
   const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => lentRequest(thread, method, p, headers, body),
-    specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+    specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [REPO], labels: {}, network: "provider", credentialRoutes: [] }) });
 
   // the daemon: kernel on, the stream and the switchboard real; the lent home is the rig's, and a loader exists so the server could carry a session on (the loader itself is agent-core's)
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
@@ -96,4 +95,11 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 2, "the second turn", 60_000);
   const again = (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
   assert.match(again, /echo: and again/);
+
+  // a Vyre tool call from inside the lent session is answered by the home as that session: the fake Claude calls the tool the way the MCP server does, down the lender's door
+  await ok("threads.send", { thread: th.id, text: "vyre threads.list {}" });
+  await until(async () => (await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 3, "the tool turn", 60_000);
+  const tool = String((await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1));
+  const answer = JSON.parse(tool);
+  assert.ok(!answer.error && Array.isArray(answer.data ? answer.data : answer.threads || answer), "the home answered the tool call from the lent session: " + tool.slice(0, 300));
 });
