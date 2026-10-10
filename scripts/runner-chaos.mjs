@@ -77,6 +77,17 @@ if (role === "home") {
           else if (c.cmd === "transcript") { const v = home.view(c.session); out = (await v.transcript(1, 100000).catch(() => [])).map(e => e.line); }
           else if (c.cmd === "resumes") out = fs.existsSync(resumes) ? fs.readFileSync(resumes, "utf8").split("\n").filter(Boolean).map(x => JSON.parse(x)) : [];
           else if (c.cmd === "forget") { home.book.forget(c.session); out = true; }
+          // a chat's process on the lender (lent spawn): spawn it, write its stdin, read what it said, kill it
+          else if (c.cmd === "spawn") {
+            const proc = home.spawn({ session: c.session, person: BOB, args: ["--output-format", "stream-json"] });
+            const rec = { proc, lines: [], buf: "", closed: null, error: null };
+            proc.stdout.on("data", d => { rec.buf += d; let i; while ((i = rec.buf.indexOf("\n")) >= 0) { rec.lines.push(rec.buf.slice(0, i)); rec.buf = rec.buf.slice(i + 1); } });
+            proc.on("close", (code, sig) => { rec.closed = [code, sig]; }); proc.on("error", e => { rec.error = e.code; });
+            (globalThis.__procs ||= new Map()).set(c.session, rec); out = true;
+          }
+          else if (c.cmd === "write") { globalThis.__procs.get(c.session).proc.stdin.write(c.text); out = true; }
+          else if (c.cmd === "read") { const r = globalThis.__procs.get(c.session); out = { lines: r.lines, up: Boolean(r.proc.lent), closed: r.closed, error: r.error }; }
+          else if (c.cmd === "kill") { out = globalThis.__procs.get(c.session).proc.kill(); }
           else out = { error: "unknown" };
         } catch (e) { out = { error: String(e.message || e) }; }
         sock.write(JSON.stringify({ out }) + "\n");
@@ -122,6 +133,7 @@ else if (role === "lender") {
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: DEVICE, deviceKey: DEVICE }) }) },
   };
   seams.set(base, { heartbeatMs: BEAT_MS, now: () => Date.now() + faults.skew, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
+  process.env.VYRE_CLAUDE_BIN = path.join(agentDir, "agent.js");   // a chat's process the home spawns here runs the fake agent ("claude" resolves to it)
   const h = await mod.start(ctx);
   const run = (tool, input) => tools.get(tool).run(input, { caller: "cli" });
   const r = await run("runner.start", { space: SPACE, session });
@@ -222,6 +234,23 @@ else {
       await whole(l.sess, "kill -9");
       await until("the workspace to close", () => !mountedIn(l.base), 40_000).then(() => check(true, "the workspace was closed by the watchdog"), () => check(false, "the workspace was closed by the watchdog"));
       await until("the agent to end", () => sandboxOf(path.join(agentHome, "agent.js")).length === 0, 40_000).then(() => check(true, "no process of the dead runner's session is left"), () => { check(false, "no process of the dead runner's session is left"); killAll(path.join(agentHome, "agent.js")); });
+    },
+    // A chat's process on the lender (lent spawn): turns go down and answers come up; a cut link in the middle loses nothing and repeats nothing.
+    async pipe() {
+      const l = await lend("pipe");
+      const sess = "chatpipe1";
+      await ctl({ cmd: "spawn", session: sess });
+      await until("the chat's process to start on the lender", async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+      const said = async text => (await ctl({ cmd: "read", session: sess })).lines.filter(x => x.includes(text)).length;
+      await ctl({ cmd: "write", session: sess, text: "turn alpha\n" });
+      await until("the first answer", async () => (await said("did alpha")) >= 1, 30_000);
+      proxy.cut(); log("link cut"); await ctl({ cmd: "write", session: sess, text: "turn beta\n" }); await sleep(2000); proxy.heal(); log("link healed");
+      await until("the answer to the turn asked during the cut", async () => (await said("did beta")) >= 1, 60_000);
+      await sleep(1500);
+      check((await said("did alpha")) === 1 && (await said("did beta")) === 1, "each turn was answered once, none lost and none repeated");
+      await ctl({ cmd: "kill", session: sess });
+      await until("the chat's process to end", async () => (await ctl({ cmd: "read", session: sess })).closed, 30_000).then(() => check(true, "a kill from the SDK ended the process"), () => check(false, "a kill from the SDK ended the process"));
+      l.send({ cmd: "exit" });
     },
     async sleep() {
       const l = await lend("sleep");
