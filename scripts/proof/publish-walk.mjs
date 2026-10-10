@@ -82,9 +82,9 @@ try {
     return j;
   };
   /** A stranger at the apps' front, from inside the box's container: the Host is the site's own, the cookie is made up, nothing of Vyre's. */
-  const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}, /** @type {string} */ body = "") => {
+  const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}, /** @type {string | number} */ body = "") => {
     const host = siteHost(), port = frontPort(host);
-    const script = `const http=require("http");const r=http.request({host:"127.0.0.1",port:${Number(port)},path:${JSON.stringify(p)},method:${JSON.stringify(method)},headers:Object.assign({host:${JSON.stringify(host)}},${JSON.stringify(headers)})},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>console.log(JSON.stringify({status:res.statusCode,headers:res.headers,body:b})))});${body ? `r.write(${JSON.stringify(body)});` : ""}r.on("error",e=>console.log(JSON.stringify({error:String(e)})));r.end();`;
+    const script = `const http=require("http");const r=http.request({host:"127.0.0.1",port:${Number(port)},path:${JSON.stringify(p)},method:${JSON.stringify(method)},headers:Object.assign({host:${JSON.stringify(host)}},${JSON.stringify(headers)})},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>console.log(JSON.stringify({status:res.statusCode,headers:res.headers,body:b})))});${typeof body === "number" ? `r.write(JSON.stringify({blob:"x".repeat(${Number(body)})}));` : body ? `r.write(${JSON.stringify(body)});` : ""}r.on("error",e=>console.log(JSON.stringify({error:String(e)})));r.end();`;
     const r = sh(`docker exec -u vyre vyre-vyre-1 node -e ${JSON.stringify(script)}`);
     try { return JSON.parse(String(r.stdout).trim().split("\n").pop() || "null"); } catch { return null; }
   };
@@ -143,9 +143,9 @@ try {
     assert(post.headers["access-control-allow-origin"] === "https://client.example", "the app's own CORS header reaches the caller");
     const pre = visit("OPTIONS", "/api/orders", { origin: "https://client.example", "access-control-request-method": "POST" });
     assert(pre && pre.status === 204 && /POST/.test(String(pre.headers["access-control-allow-methods"])), JSON.stringify(pre).slice(0, 200));
-    const big = JSON.stringify({ blob: "x".repeat(200_000) });
-    const put = visit("PUT", "/api/blob", { "content-type": "application/json" }, big);
-    assert(put && put.status === 200 && JSON.parse(put.body).received === big.length, `a 200 KB body arrives whole: ${String(put && put.body).slice(0, 120)}`);
+    const size = JSON.stringify({ blob: "x".repeat(200_000) }).length;
+    const put = visit("PUT", "/api/blob", { "content-type": "application/json" }, 200_000);
+    assert(put && put.status === 200 && JSON.parse(put.body).received === size, `a 200 KB body arrives whole: ${String(put && put.body).slice(0, 120)}`);
     return "POST, PUT and OPTIONS";
   });
   await J.step("the root-side walls: no host mount, capabilities dropped, no way out, no door in", async () => {
