@@ -19,11 +19,12 @@ test("each rule finds its own case and leaves the ordinary alone", () => {
     `const b = StyleSheet.create({ x: { flex: 1 } });`,
     `const c = "https://example.test/#section";`,
     `const d = color["accent"];`,
+    `const e = "Run vyre vault pair on your home";`,
   ].join("\n"));
-  assert.deepEqual(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "second-primitive": 1 } });
-  assert.deepEqual(problems(scan(dir), {}).length, 4);
+  assert.deepEqual(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "command-line": 1, "second-primitive": 1 } });
+  assert.deepEqual(problems(scan(dir), {}).length, 5);
   assert.deepEqual(problems(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "second-primitive": 1 } }), []);
-  assert.deepEqual(RULES.map((r) => r.id), ["raw-colour", "type-literal", "style-sheet", "second-primitive"]);
+  assert.deepEqual(RULES.map((r) => r.id), ["raw-colour", "type-literal", "style-sheet", "command-line", "second-primitive"]);
   fs.rmSync(dir, { recursive: true });
 });
 

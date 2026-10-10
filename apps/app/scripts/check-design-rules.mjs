@@ -6,6 +6,7 @@
 //   raw-colour       a colour literal ("#1a2b3c", rgb(), rgba(), hsl()): use a token colour from useUiTheme or a class from the theme
 //   type-literal     fontSize, fontFamily, fontWeight, lineHeight or letterSpacing set by hand: use a Text size and weight
 //   style-sheet      StyleSheet.create: a hand-built layout beside the block set and the ui primitives
+//   command-line     a `vyre ...` command inside a string a person may read: do it with a button, never ask for a terminal (FOUNDATION 4.3)
 //   second-primitive an import of src/ui Button, Card, Row, IconButton, Banner, Icon, Avatar, List or Tag: @vyre/ui has the one of each (A1, one mechanism per job)
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +28,7 @@ export const RULES = /** @type {{ id: string, test: (line: string) => boolean }[
   { id: "raw-colour", test: (l) => /["'`]#[0-9a-fA-F]{3,8}["'`]/.test(l) || /\b(rgba?|hsla?)\(/.test(l) },
   { id: "type-literal", test: (l) => /\b(fontSize|fontFamily|fontWeight|lineHeight|letterSpacing)\s*:/.test(l) },
   { id: "style-sheet", test: (l) => /\bStyleSheet\.create\b/.test(l) },
+  { id: "command-line", test: (l) => /["'`][^"'`]*\bvyre (vault|hooks|phone|box|status|link|up|down|name|words|call)\b[^"'`]*["'`]/.test(l) },
   { id: "second-primitive", test: (l) => /^\s*import\b[^;]*\bfrom\s+["'](?:\.{1,2}\/)+(?:src\/)?ui\/(Button|Card|Row|IconButton|Banner|Icon|Avatar|List|Tag)["']/.test(l) || /^\s*import\b[^;]*\bfrom\s+["']\.\/(Button|Card|Row|IconButton|Banner|Icon|Avatar|List|Tag)["']/.test(l) },
 ]);
 
