@@ -48,8 +48,12 @@ test("outside agents: the source calls the box's tools and surfaces a refusal in
   assert.equal((await o.register("Muse", "news")).token, "vext_t");
   await o.grant("x", { kind: "records", types: ["contact"] });
   await o.ungrant("x", "rc_1");
+  await o.token("x", 30);
+  assert.deepEqual(seen.at(-1), { tool: "outside.token", input: { id: "x", days: 30 } }, "a new token can keep the agent for longer");
+  await o.token("x");
+  assert.deepEqual(seen.at(-1)?.input, { id: "x" });
   await assert.rejects(o.revoke("x"), /only a person does this/);
-  assert.deepEqual(seen.map((s) => s.tool), ["outside.list", "outside.register", "outside.grant", "outside.ungrant", "outside.revoke"]);
+  assert.deepEqual(seen.map((s) => s.tool), ["outside.list", "outside.register", "outside.grant", "outside.ungrant", "outside.token", "outside.token", "outside.revoke"]);
   assert.deepEqual(seen[1].input, { name: "Muse", note: "news" });
   assert.deepEqual(seen[2].input, { id: "x", what: { kind: "records", types: ["contact"] } });
 });
