@@ -477,6 +477,18 @@ test("install-box.sh v2: a box that says why it did not take the setup code is b
   assert.doesNotMatch(r.stdout, /The four words did not show yet/);
 });
 
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned packs the checkout as a development build and signs nothing; the default still signs", t => {
+  for (const [mode, want] of [["unsigned", "SIGN=0"], [undefined, "SIGN=1"]]) {
+    const b = box(t, {});
+    const env = { ...b.env, VYRE_NO_UP: "1" };
+    if (mode) env.VYRE_DEV_SIGN = mode; else delete env.VYRE_DEV_SIGN;
+    const r = run(env, ["--yes", "--from", REPO]);
+    // the stub docker makes no files, so the pack step ends the run; what it was asked to do is the point
+    assert.match(b.calls(), new RegExp(`-e ${want} `), `${mode || "default"}: the pack step was told ${want}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, mode ? /packing the checkout as a development build \(not signed\)/ : /packing the checkout and signing it/);
+  }
+});
+
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
 
 test("install-box.sh v2: IR-2 with a setup code the terminal shows the check words only, no pairing QR, long code or typed code", t => {

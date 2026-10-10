@@ -33,7 +33,7 @@ export async function startInstallerServer(o) {
   // A DEVELOPMENT build of the box (install-box.sh --from with VYRE_DEV_SIGN=0: no release signature), whose sealing process takes the three developer switches from vyre.env: a stand-in owner key can then
   // give the person's yes. A packaged build ignores all of them (kernel/devbuild.js). Only for a throwaway test box; this is how Publish's card and the signed yes are walked without a hardware key.
   if (o.devBuild) fs.writeFileSync(path.join(dir, "vyre.env"), "VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\nVYRE_SEAL_UNATTESTED=1\nVYRE_KERNEL_PATH_RULE=1\n", { mode: 0o600 });
-  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir, ...(o.devBuild ? { VYRE_DEV_SIGN: "0" } : {}) };
+  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir, ...(o.devBuild ? { VYRE_DEV_SIGN: "unsigned" } : {}) };
   // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
   // not a published release: it packs the checkout and signs it with a throwaway key for this server only (dev_sign), since a build that is not signed by Vyre's release key cannot run its modules.
   const child = o.release
