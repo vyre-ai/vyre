@@ -66,10 +66,10 @@ test("a matter entering the stage is sent for signature with one yes; the signed
   w.kernel.inbound("documents.signed", ev({ submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Signed");
-  // the signed copy: a 30-day link made and emailed to the signer, one yes
+  // the signed copy: a link made and emailed to the signer, one yes (it has no end unless the setting gives one)
   await answer();
   assert.equal(asks, 2, "two yeses for the whole signing");
-  assert.deepEqual(calls[1], { action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: "abc123", email: "dana@harlow.test", days: 30 } });
+  assert.deepEqual(calls[1], { action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: "abc123", email: "dana@harlow.test" } });
   // a different submission moves nothing
   const again = mine(w, "matter")[0];
   await w.kernel.records.update(alex, "matter", again.id, { stage: "Intake" }, again.version);

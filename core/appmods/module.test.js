@@ -33,6 +33,11 @@ async function world(t, opt = {}) {
         if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
         return void r.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify([{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }]));
       }
+      if (q.url.startsWith("/api/submissions?") && q.method === "GET") {
+        seen.listed = seen.listed || []; seen.listed.push({ token: q.headers["x-auth-token"] || "", url: q.url });
+        if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
+        return void r.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data: seen.pending || [], pagination: { count: (seen.pending || []).length } }));
+      }
       if (q.url === "/sign_in" && q.method === "GET") return void r.writeHead(200, { "content-type": "text/html", "set-cookie": "sess=anon; path=/; HttpOnly" }).end('<html><head><meta name="csrf-token" content="tok123"></head><body><form action="/sign_in" method="post"><input type="hidden" name="authenticity_token" value="tok123"><input name="user[email]"><input name="user[password]"></form></body></html>');
       if (q.url === "/sign_in" && q.method === "POST") {
         const f = new URLSearchParams(body); seen.sign.push(Object.fromEntries(f));
@@ -385,6 +390,71 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal((await ask({ email: "not an address" })).error.code, "bad_input");
   assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
+});
+
+test("appmods.signed.link: no days is a link with no end, days gives one, only the app's own module asks; appmods.signed.revoke makes every earlier link useless", async t => {
+  const w = await world(t);
+  const link = (input = {}, caller = "module:documents") => w.d.registry.call("appmods.signed.link", { name: "documents", slug: "abc123", ...input }, caller);
+  await w.cli("appmods.install", { name: "documents" });
+  const a = await link();
+  assert.equal(a.error, undefined, JSON.stringify(a.error));
+  assert.equal(a.data.expires, null);
+  assert.match(a.data.url, /\/signed\/0\.abc123\.[A-Za-z0-9_-]{43}$/);
+  const b = await link({ days: 7 });
+  assert.ok(b.data.expires > Date.now() && b.data.expires < Date.now() + 8 * 86_400_000);
+  for (const days of [0, 3651, 1.5, "7"]) assert.equal((await link({ days })).error.code, "bad_input", String(days));
+  assert.equal((await link({}, "module:comms")).error.code, "denied");
+  assert.ok((await w.cli("appmods.signed.link", { name: "documents", slug: "abc123" })).error, "nor a person at the terminal");
+  const same = await link();
+  assert.equal(same.data.url, a.data.url, "the same key makes the same link");
+  assert.equal((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:comms")).error.code, "denied");
+  assert.ok((await w.cli("appmods.signed.revoke", { name: "documents" })).error, "nor a person at the terminal");
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: true });
+  const c = await link();
+  assert.notEqual(c.data.url, a.data.url, "a link made after the revoke is under a new key, so the earlier one no longer matches");
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: true });
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: false }, "nothing left to end");
+});
+
+test("appmods.signing.waiting: only the app's own module asks, a stopped app has none, and a running one answers from its own list with the signer's link", async t => {
+  const w = await world(t);
+  const ask = (caller = "module:documents") => w.d.registry.call("appmods.signing.waiting", { name: "documents" }, caller);
+  assert.deepEqual((await ask()).data, { requests: [] }, "not installed: nothing waits");
+  await w.cli("appmods.install", { name: "documents" });
+  w.seen.pending = [{ id: 4411, status: "pending", created_at: "2026-10-09T10:00:00Z", template: { name: "Engagement letter" }, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow", slug: "abc123", completed_at: null }] },
+    { id: 4400, status: "pending", created_at: "2026-10-01T10:00:00Z", template: { name: "NDA" }, submitters: [{ email: "sam@harlow.test", slug: "xyz789", completed_at: "2026-10-02T00:00:00Z" }] }];
+  const got = await ask();
+  assert.equal(got.error, undefined, JSON.stringify(got.error));
+  assert.equal(got.data.requests.length, 1, "the signed one is not waiting");
+  assert.deepEqual({ ...got.data.requests[0], url: "x" }, { submission: 4411, slug: "abc123", url: "x", email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: Date.parse("2026-10-09T10:00:00Z") });
+  assert.match(got.data.requests[0].url, /^https?:\/\/documents\..*\/sign\/4411\/abc123$/);
+  assert.equal(w.seen.listed[0].token, "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "asked with the app's own key");
+  assert.match(w.seen.listed[0].url, /status=pending/);
+  assert.equal((await ask("module:comms")).error.code, "denied", "another module cannot ask");
+  assert.ok((await w.cli("appmods.signing.waiting", { name: "documents" })).error, "nor a person at the terminal");
+  await w.cli("appmods.stop", { name: "documents" });
+  assert.deepEqual((await ask()).data, { requests: [] }, "a stopped app has none");
+});
+
+test("Needs you: a document nobody has signed is one quiet card from the real approvals queue, naming the signer with no link on it, and it closes when the app stops listing it", async t => {
+  const w = await world(t);
+  const items = async () => (await w.cli("approvals.items")).data;
+  assert.deepEqual((await items()).items.filter((/** @type {any} */ c) => c.kind === "signing"), [], "no app, no card, and no 'partial' warning for it");
+  assert.ok(!((await items()).partial || []).includes("documents"));
+  await w.cli("appmods.install", { name: "documents" });
+  w.seen.pending = [{ id: 4411, status: "pending", created_at: "2026-10-09T10:00:00Z", template: { name: "Engagement letter" }, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow", slug: "abc123", completed_at: null }] }];
+  const open = (await items()).items.filter((/** @type {any} */ c) => c.kind === "signing");
+  assert.equal(open.length, 1, JSON.stringify(await items()));
+  assert.equal(open[0].title, "Dana Harlow has not signed Engagement letter");
+  assert.equal(open[0].quiet, true);
+  assert.deepEqual(open[0].answer, { tool: "documents.signing.remind", input: { submission: 4411 }, fill: [] });
+  assert.ok(!JSON.stringify(open[0]).includes("abc123") && !JSON.stringify(open[0]).includes("/sign/"), "the signer's code stays on the box");
+  assert.equal((await w.cli("waiting.count")).data.by_kind.signing, 1, "and the one list counts it");
+  // signed: the app stops listing it and the card closes with its outcome
+  w.seen.pending = [];
+  const after = await items();
+  assert.deepEqual(after.items.filter((/** @type {any} */ c) => c.kind === "signing"), []);
+  assert.equal(after.recent.filter((/** @type {any} */ c) => c.kind === "signing").length, 1);
 });
 
 test("own domains: the owner points a domain at the signing app, the front answers it by alias and nothing else, and a model or a bad host is refused", async t => {
