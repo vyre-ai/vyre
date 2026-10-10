@@ -6,6 +6,7 @@
 // Nothing here replaces a Vyre part. The people's clicks are the app modules called directly, as scripts/lib/proof does.
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../../lib/proof/app.mjs";
@@ -16,14 +17,16 @@ import { startInstallerServer } from "../../lib/proof/server-installer.mjs";
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
- * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain" }} o
+ * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain", devBuild?: boolean }} o
  */
 export async function bringUp(o) {
   const { run } = o;
   const dir = path.join(o.out, `world-${o.kind}`);
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const S = (/** @type {string} */ n) => `world (${o.kind}): ${n}`;
-  const hostIp = process.env.PROOF_HOST_IP || "";
+  // A box in a container reaches this runner's stand-ins at the address of Docker's bridge (its gateway), unless the runner says otherwise.
+  const bridge = () => { try { return String(spawnSync("docker", ["network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}"], { encoding: "utf8" }).stdout || "").trim(); } catch { return ""; } };
+  const hostIp = process.env.PROOF_HOST_IP || (o.kind === "box" ? bridge() : "");
   const ins = await startStandins({ out: dir, ...(o.kind === "box" ? { host: "0.0.0.0", ...(hostIp ? { publicHost: hostIp } : {}) } : {}) });
   const person = `journey${Math.random().toString(36).slice(2, 7)}`;
   const mac = createApp({ label: "Journey Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
@@ -62,7 +65,7 @@ export async function bringUp(o) {
     assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
   }, { needs: [NAME] });
   await run.step(S(`the server installs from that line (${o.kind})`), async () => {
-    const a = { dir: path.join(dir, "server"), repo: REPO, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: o.store };
+    const a = { dir: path.join(dir, "server"), repo: REPO, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: o.store , ...(o.devBuild ? { devBuild: true, ownerId: mac.identity.id } : {}) };
     srv = o.kind === "box" ? await startInstallerServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store: o.store, ownerId: mac.identity.id });
     return srv.kind;
   }, { needs: [S("add a server: the app shows the install line")] });

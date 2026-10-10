@@ -467,6 +467,36 @@ test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with
   assert.ok(r.stdout.indexOf("four words did not show") < r.stdout.indexOf("Go back to the Vyre app to finish."));
 });
 
+test("install-box.sh v2: a box that says why it did not take the setup code is believed at once, and the person is told what to do, not left on the fallback line", t => {
+  const why = "the relay or this box refused the setup code: too many setup requests; wait a minute";
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"none","failed":true,"why":"${why}"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_WORDS_TRIES: "50" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Vyre could not start the pairing: the relay or this box refused the setup code: too many setup requests; wait a minute/);
+  assert.match(r.stdout, /Make a new install line in the Vyre app and run it again\./);
+  assert.doesNotMatch(r.stdout, /The four words did not show yet/);
+});
+
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned packs the checkout as a development build and signs nothing; the default still signs", t => {
+  for (const [mode, want] of [["unsigned", "SIGN=0"], [undefined, "SIGN=1"]]) {
+    const b = box(t, {});
+    const env = { ...b.env, VYRE_NO_UP: "1" };
+    if (mode) env.VYRE_DEV_SIGN = mode; else delete env.VYRE_DEV_SIGN;
+    const r = run(env, ["--yes", "--from", REPO]);
+    // the stub docker makes no files, so the pack step ends the run; what it was asked to do is the point
+    assert.match(b.calls(), new RegExp(`-e ${want} `), `${mode || "default"}: the pack step was told ${want}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stdout, mode ? /packing the checkout as a development build \(not signed\)/ : /packing the checkout and signing it/);
+  }
+});
+
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned is refused on a released install (no --from), before anything is downloaded or installed", t => {
+  const b = box(t, {});
+  const r = run({ ...b.env, VYRE_DEV_SIGN: "unsigned", VYRE_NO_UP: "1" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /VYRE_DEV_SIGN=unsigned is only for an install from a checkout/);
+  assert.doesNotMatch(b.calls(), /compose .* up|docker run/, "nothing was started");
+});
+
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
 
 test("install-box.sh v2: IR-2 with a setup code the terminal shows the check words only, no pairing QR, long code or typed code", t => {
