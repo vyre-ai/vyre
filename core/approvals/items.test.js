@@ -198,3 +198,13 @@ test("R031-79: a website Connection that waits for a person is one `signin` card
   const hint = owner.watch[0][1];
   assert.deepEqual(hint && hint("connectors.connection-checked", { id: "linkedin", light: "green" }), ["connectors:linkedin", "signed in"]);
 });
+
+test("fromJobs: a live job whose last run failed is one card that names it and runs it again", async () => {
+  const { fromJobs, OWNERS } = await import("./items.js");
+  const rows = fromJobs([{ deployment: "dep_0123456789abcdef", name: "nightly-report", at: 5, message: "the job ended with exit 3 in 4 seconds" }, { deployment: "../x", name: "bad" }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].title, "The job nightly-report failed");
+  assert.equal(rows[0].kind, "run");
+  assert.deepEqual(rows[0].answer, { tool: "publish.job.run", input: { deployment: "dep_0123456789abcdef" }, fill: [] });
+  assert.ok(OWNERS.some(o => o.name === "publish-jobs" && o.tool === "publish.job.attention"));
+});
