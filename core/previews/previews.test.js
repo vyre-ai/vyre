@@ -70,7 +70,7 @@ test("a port becomes a preview, opened on its own origin with a one-time ticket;
 
   // access: only its maker and the Space's people; a model asks for nothing but a card
   assert.equal((await call("previews.share", { id, access: "team" })).data.preview.access, "team");
-  assert.equal((await call("previews.share", { id, access: "public" })).error.code, "unavailable");
+  assert.equal((await call("previews.share", { id, access: "public" })).error.code, "bad_input", "a running server is not a folder of files: it is published from its project, not made public from here");
   assert.equal((await call("previews.url", { id }, "mcp")).error && (await call("previews.url", { id }, "mcp")).error.code !== undefined, true, "a model gets no address");
   const agentOpen = await call("previews.open", { title: "Agent page", port }, "mcp");
   assert.ok(agentOpen.data || agentOpen.error, JSON.stringify(agentOpen));
