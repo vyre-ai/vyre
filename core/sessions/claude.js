@@ -82,7 +82,7 @@ export function optionsFor(o) {
  * Start one session on the SDK. Same contract as runner.run.
  * @param {any} sdk the loaded SDK module (core/sessions/sdk.js load)
  * @param {Parameters<typeof optionsFor>[0] & { subreaper?: string|null, uid?: number, gid?: number,
- *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
+ *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string, moved?: { to: string, reason?: string, epoch?: number }) => void }} o
  */
 export function run(sdk, o) {
   const input = inbox();
@@ -91,7 +91,7 @@ export function run(sdk, o) {
   let err = "", exited = false, n = 0, code = /** @type {number|null} */ (null), sig = /** @type {string|null} */ (null);
   let pumped = false, died = false;
   const say = m => { try { o.onMessage(m); } catch {} };
-  const done = () => { if (exited || !pumped || !(died || !child)) return; exited = true; o.onExit(code, sig, err); };
+  const done = () => { if (exited || !pumped || !(died || !child)) return; exited = true; o.onExit(code, sig, err, /** @type {any} */ (child) && /** @type {any} */ (child).moved); };
 
   const canUseTool = (tool, toolInput, opts) => new Promise(resolve => {
     const rid = `vyre-${++n}`;

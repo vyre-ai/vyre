@@ -1083,6 +1083,14 @@ test("modules v1: default-deny, an added caller reaches only a declared reach, a
   assert.deepEqual(await reg.call("notes.add", { text: "hi" }, "module:mail"), { data: { saved: "hi" } });
 });
 
+test("modules v1: an added module may not declare needs.daemon (agentActor, chatFor, kernelSession ...); a first-party one may", () => {
+  for (const name of ["agentActor", "chatFor", "kernelSession", "flowsHost"]) {
+    assert.match(validate({ ...good, needs: { daemon: [name] } }).join(), /needs\.daemon is built in only/, name);
+    assert.deepEqual(validate({ ...good, needs: { daemon: [name] } }, { firstParty: true }).filter(p => /needs\.daemon/.test(p)), [], name);
+  }
+  assert.deepEqual(validate({ ...good, needs: { daemon: [] } }).filter(p => /needs\.daemon/.test(p)), [], "an empty list asks for nothing");
+});
+
 test("modules v1: an added module may not replace one of Vyre's, and reserved events key on first-party identity", () => {
   assert.match(validate({ ...good, replaces: "notes" }).join(), /the 0\.2 allowlist of replaceable modules is empty/);
   assert.deepEqual(validate({ ...good, replaces: "notes" }, { firstParty: true }), []);

@@ -95,7 +95,7 @@ export function TimelinePane({ slug }: { slug: string }) {
             {g.items.map((e, i) => (
               <View key={`${e.type}:${e.id}`}>
                 {i ? <Divider /> : null}
-                <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={e.line} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
+                <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={<Text medium size="body">{e.line}</Text>} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
                   onPress={e.type === "stage" || e.type === "project-start" || e.type === "file-share" ? undefined : () => open(e)} />
               </View>
             ))}

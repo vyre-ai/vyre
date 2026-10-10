@@ -1,0 +1,49 @@
+name: lent-mac
+# A chat on a lent computer, on a hosted Mac (and Linux): the lender is the app's real daemon with its runner module, the agent is the fake Claude in the real sandbox (seatbelt on the Mac), the home is the lent
+# home with a real kernel. Placed with no yes, tools and a hook through the door, a send held at the home, the lid shutting and the fallback to the box, a crash with its own exit code; then the chaos scenarios
+# for the pipe, the door and the lid shutting mid-turn. Never a person's Mac (hosted-guard). Push to work/lent-mac, or by hand. Owner: link.
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/lent-mac]
+permissions:
+  contents: read
+concurrency:
+  group: lent-mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lent:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      VYRE_REQUIRE_SANDBOX: "1"
+      VYRE_TEST_HOSTED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: bubblewrap, gocryptfs, fuse
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap gocryptfs fuse3
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: npm ci --no-audit --no-fund
+      - name: a chat on a computer run by the real daemon, and the runner's lent-chat tests
+        shell: bash
+        run: node --test --test-timeout=240000 core/runner/lent-daemon.test.js core/runner/lent-pipe-runner.test.js core/runner/lent-pipe.test.js core/runner/lent-wire.test.js 2>&1 | tee lent.txt
+      - name: the chaos scenarios for a chat's pipe, its door and the lid shutting mid-turn
+        shell: bash
+        run: node scripts/runner-chaos.mjs pipe door lidMidTurn 2>&1 | tee chaos.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lent-mac-${{ matrix.os }}
+          path: |
+            lent.txt
+            chaos.txt

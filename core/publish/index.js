@@ -78,8 +78,8 @@ export default {
     const publishDir = (/** @type {string} */ spaceId) => path.join(home, "publish", spaceId);
 
     /** Call another module's tool. A missing tool is { missing: true }, any other refusal throws. @param {string} tool @param {any} input */
-    async function call(tool, input) {
-      const r = await ctx.call(tool, input);
+    async function call(tool, input, opts) {
+      const r = await ctx.call(tool, input, opts);
       if (r && r.error) {
         if (NO_TOOL.has(r.error.code)) return { missing: true, data: null };
         throw refuse(r.error.message, r.error.code);
@@ -387,10 +387,18 @@ export default {
     });
     ctx.tool("publish.quick", {
       callers: WITH_MODELS,
-      description: "Publish a folder of ready files as a site: build, preview, then hold for one yes that puts it live. Answers the task and plan.",
-      input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
+      description: "Publish a folder of ready files, or a files preview by id: build, preview, hold for one yes. Answers the task and plan.",
+      input: obj({ name: str, folder: str, preview: str, project: str }, ["name"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
+        // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path
+        if (!!i.folder === !!i.preview) throw refuse("name the folder to publish, or the preview to publish, not both and not neither", "bad_input");
+        if (i.preview) {
+          if (!isPerson(meta)) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
+          const f = await call("previews.folder", { id: String(i.preview) }, { relay: true });
+          if (f.missing) throw refuse("this server has no previews to publish from", "no_previews");
+          i = { ...i, folder: String(f.data.root) };
+        }
         const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta) });
         if (no) throw refuse(no.message, no.code);
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });

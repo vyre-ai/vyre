@@ -8,16 +8,18 @@ import { Image } from "react-native";
 import { openPreview } from "./previewPane";
 import { usePreviewThumb } from "./usePreviewThumb";
 import { tool } from "../real/box";
-import { previewActions, previewWord, shareWord, lifeWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
+import { PublishSheet } from "./PreviewPublish";
+import { canPublish, previewActions, previewWord, shareWord, lifeWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
 export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: string }) {
-  const { color } = useUiTheme();
+  const { color, phone } = useUiTheme();
   const [now, setNow] = useState<Partial<PreviewBlock> | null>(null);
   const b = { ...block, ...(now ?? {}) } as PreviewBlock;
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState(false);
+  const [publish, setPublish] = useState(false);
   const [log, setLog] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const a = previewActions(b);
@@ -55,14 +57,16 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
         </View>
         <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the assistant to start it again." : `${shareWord(b.access)}${lifeWord(b.mode, b.state) ? ` · ${lifeWord(b.mode, b.state)}` : ""}`}</Text>
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {a.open ? <Button kind="primary" size="sm" icon="external" label="Open" disabled={busy} onPress={open} />
-            : a.restart ? <Button kind="primary" size="sm" icon="refresh" label="Restart" disabled={busy} onPress={() => run(() => tool("previews.restart", { id: b.id }))} />
-            : a.log ? <Button kind="primary" size="sm" label="Look at the log" disabled={busy} onPress={showLog} /> : null}
-          <Button kind="ghost" size="sm" icon="share" label="Share" disabled={busy} onPress={() => setShare(true)} />
-          {more.length ? <Menu trigger={<IconButton icon="more" label="More" />} items={more} /> : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+          {a.open ? <Button kind="primary" size={phone ? "md" : "sm"} icon="external" label="Open" disabled={busy} onPress={open} />
+            : a.restart ? <Button kind="primary" size={phone ? "md" : "sm"} icon="refresh" label="Restart" disabled={busy} onPress={() => run(() => tool("previews.restart", { id: b.id }))} />
+            : a.log ? <Button kind="primary" size={phone ? "md" : "sm"} label="Look at the log" disabled={busy} onPress={showLog} /> : null}
+          <Button kind="ghost" size={phone ? "md" : "sm"} icon="share" label="Share" disabled={busy} onPress={() => setShare(true)} />
+          {canPublish(b) ? <Button kind="ghost" size={phone ? "md" : "sm"} icon="publish" label="Publish" disabled={busy} onPress={() => setPublish(true)} /> : null}
+          {more.length ? <Menu trigger={<IconButton icon="more" label="More" touch={phone} />} items={more} /> : null}
         </View>
       </View>
+      {canPublish(b) ? <PublishSheet open={publish} onClose={() => setPublish(false)} preview={{ id: b.id, title: b.title }} /> : null}
       <Sheet open={share} onClose={() => setShare(false)} title="Who can open this">
         <View style={{ gap: 12 }}>
           <Segmented label="Who can open this" value={(b.access as "me" | "project" | "team")} onChange={(v) => run(() => tool("previews.share", { id: b.id, access: v }), () => showToast(`${shareWord(v)}.`))} options={SHARE_CHOICES} />

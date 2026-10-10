@@ -6,7 +6,7 @@ import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { Section } from "./Section";
 import { DraftBlock, TaskFacts } from "./TaskFacts";
-import { cardFor, draftOf, HOW_LABEL, recordTitle, stateTone, STATE_LABEL, taskFacts, type World } from "./model";
+import { briefOf, cardFor, draftOf, HOW_LABEL, recordTitle, stateTone, STATE_LABEL, taskFacts, type World } from "./model";
 
 /**
  * One task, as a page (DESIGN-tasks.md): who does it (one doer, accountable), who checks it, what done looks like, how it is made and what it starts from.
@@ -19,6 +19,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
   const rec = world.records.get(task.record);
   const titles = new Map(world.tasks.map((t) => [t.id, t.title] as [string, string]));
   const draft = draftOf(world, task);
+  const brief = briefOf(task);
   const showHow = ["sent", "draft", "note"].includes(task.output?.kind);
   const tpl = task.template ? world.records.get(task.template) : null;
   const acts = task.state !== "stuck" && m.reason ? m.actions.filter((a) => a.id !== "open" && a.id !== "save") : [];
@@ -38,6 +39,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
           </View>
         </Banner>
       ) : null}
+      {brief ? <Section title="What to do"><Text>{brief}</Text></Section> : null}
       <TaskFacts world={world} facts={taskFacts(world, task, { titles })} how={showHow ? (
         <View className="items-start gap-s2">
           <Segmented label="How" value={task.how || "person"} onChange={onHow} options={Object.entries(HOW_LABEL) as [string, string][]} />

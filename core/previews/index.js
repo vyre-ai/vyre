@@ -155,8 +155,8 @@ export default {
 
     // ---- who ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** The person behind a call and their role in this Space: { id, role }, or null for anyone who is not a person. @param {any} meta */
-    const whoIs = async meta => {
-      if (!isPerson(meta)) return null;
+    const whoIs = async (/** @type {any} */ meta, /** @type {boolean} */ relayed = false) => {
+      if (!relayed && !isPerson(meta)) return null; // relayed: a module carrying the person's own call (the chain below is theirs, from the kernel)
       if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return { id: "owner", role: "owner" }; // a build without its kernel has one person
       const chain = await ctx.kernel.chain(meta).catch(() => null);
       const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
@@ -282,6 +282,20 @@ export default {
         const who = await whoIs(meta); const r = mustRow(i.id);
         if (who && !mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
         return { preview: view(r, Boolean(who)) };
+      },
+    });
+
+    ctx.tool("previews.folder", {
+      description: "The folder a files preview serves, for Publish: { root }. Internal: Publish only, for the person who pressed the card.", internal: true,
+      input: obj({ id: str }, ["id"]), callers: ["module"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!meta || meta.caller !== "module:publish") throw refuse("only Publish asks for a preview's folder", "denied");
+        const who = await whoIs(meta, true), r = mustRow(i.id);
+        if (!who) throw refuse("only a person at their own surface does this", "denied");
+        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        if (r.source !== "files" || !r.root) throw refuse("that preview is a running server, not a folder of files: publish a folder of ready files instead", "bad_input");
+        if (r.file) throw refuse("that preview is one file, not a folder: publish the folder it sits in by naming it", "bad_input");
+        return { root: String(r.root) };
       },
     });
 
