@@ -15,12 +15,12 @@ export function runnerSource(call: Call) {
     },
     async move(thread: string, to: "mac" | "server"): Promise<Placement | null> { return pickPlacement(await ask<any>("runner.move", { thread, to })); },
     /** Why a session did not run here: one reason code, or null. */
-    async whyNot(thread: string): Promise<string | null> { const d = await maybe<any>("runner.whyNot", { thread }); return d && typeof d.reason === "string" ? d.reason : null; },
+    async whyNot(thread: string): Promise<string | null> { const d = await maybe<any>("runner.why-not", { thread }); return d && typeof d.reason === "string" ? d.reason : null; },
     async settings(): Promise<MacSettings | null> { const d = await maybe<any>("runner.settings"); return d ? pickSettings(d) : null; },
     async setSettings(s: MacSettings): Promise<MacSettings> { return pickSettings(await ask("runner.settings.set", { enabled: s.enabled, pluggedInOnly: s.pluggedInOnly, cpuPercent: s.cpuPercent, memoryMb: s.memoryMb })); },
     async here() { return pickHere(await maybe("runner.here")); },
-    pauseAll: () => ask("runner.pauseAll"),
-    resumeAll: () => ask("runner.resumeAll"),
+    pauseAll: () => ask("runner.pause-all"),
+    resumeAll: () => ask("runner.resume-all"),
     defaults: DEFAULT_SETTINGS,
   };
 }
