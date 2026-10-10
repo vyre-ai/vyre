@@ -373,7 +373,8 @@ test("acp: terminal/create runs through the floor: a command that reads the vaul
   const s = open(w);
   assert.match(await s.say("term pwd"), new RegExp(`^term: .*${path.basename(w.cwd)}$`));
   const bad = await s.say(`term cat ${path.join(w.home, "vault", "secret.txt")}`);
-  assert.match(bad, /^term failed: Vyre keeps vault values off every screen/);
+  // a refused command is answered as a command that ran and failed (its output the reason), not as an error: Grok Build ends the whole turn on an error from terminal/create
+  assert.match(bad, /^term: Vyre keeps vault values off every screen/);
   assert.ok(!bad.includes("the vault value"));
   await s.proc.stop(1000);
 });
@@ -382,7 +383,7 @@ test("acp: terminal/create with the whole command line in `command` and no args 
   const w = world(t);
   const s = open(w);
   assert.match(await s.say("termline echo from-a-line && pwd"), /term: from-a-line\n/);
-  assert.match(await s.say(`termline cat ${path.join(w.home, "vault", "secret.txt")}`), /term failed|denied|refus/i, "the floor still judges it");
+  assert.match(await s.say(`termline cat ${path.join(w.home, "vault", "secret.txt")}`), /^term: .*(off every screen|refus|denied|own state)/i, "the floor still judges it, and answers it as output");
   await s.proc.stop(500);
 });
 
