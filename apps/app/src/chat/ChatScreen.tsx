@@ -104,6 +104,9 @@ function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; 
   );
 }
 
+/** What the Turn this into a Flow button says to the assistant: it has the values of what it did, so it makes the draft (flows.from-chat) and says what is left to fill in. */
+const TURN_INTO_FLOW = "Turn what you just did into a Flow: use flows.from-chat with the calls you made and their inputs, then tell me the draft name and what is left for me to fill in.";
+
 export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
   const insets = useSafeAreaInsets();
@@ -197,6 +200,7 @@ export function ChatScreen(p: ChatScreenProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
@@ -214,6 +218,8 @@ export function ChatScreen(p: ChatScreenProps) {
         : {}),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
+      // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
+      onTurnIntoFlow: () => { void sendRef.current?.(TURN_INTO_FLOW); },
       onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
       // a cited field opens the record it was read from
       onOpenRecord: (urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never),
@@ -261,6 +267,7 @@ export function ChatScreen(p: ChatScreenProps) {
     },
     [store, editing, actions, replyTo, highlights, att],
   );
+  sendRef.current = (text: string) => onSend(text);
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
   base.current = Math.min(base.current, rows.length);

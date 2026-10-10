@@ -278,7 +278,10 @@ export function TurnChip({ it, ctx, session, defaultOpen = false }: { it: any; c
     .catch((e) => setSaid((m) => ({ ...m, [path]: e instanceof Error && e.message ? e.message : "That did not go through." })));
   return (
     <View>
-      <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+        {it.vyreCalls >= 2 && ctx.onTurnIntoFlow ? <Button size="sm" kind="ghost" label="Turn this into a Flow" onPress={ctx.onTurnIntoFlow} /> : null}
+      </View>
       {has ? (
         <Sheet open={open} onClose={() => setOpen(false)} title="Changes in this turn">
           <View style={{ padding: 16, gap: 12 }}>

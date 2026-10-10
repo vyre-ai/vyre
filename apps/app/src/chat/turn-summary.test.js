@@ -40,3 +40,52 @@ test("the chat folds a finished turn into one summary row after its last row, on
   feed("status", { state: "waiting", turn: "t2" }, 71_000);
   assert.equal(f.rows.filter((r) => r.kind === "turnsummary").length, 1, "a turn that did nothing leaves no line");
 });
+
+test("a turn that used two or more of Vyre tools says so and offers a Flow; one does not; the other tools do not count", () => {
+  const vyre = (tool) => ({ kind: "tool", tool, summary: "" });
+  const s = turnSummary([vyre("mcp__vyre__work_call"), vyre("mcp__vyre__records_create"), { kind: "tool", tool: "Read" }], 0);
+  assert.equal(s && s.vyreCalls, 2);
+  assert.equal(s && s.line, "2 actions");
+  assert.equal(turnSummary([vyre("records.create"), { kind: "tool", tool: "Read" }], 0), null, "one is not a pattern to repeat");
+  const both = turnSummary([edit("a.js"), vyre("flows.list"), vyre("tasks.create")], 0);
+  assert.equal(both && both.line, "1 file, 2 actions");
+});
+
+test("the folder gives a turn of two Vyre tool calls a summary line that offers the Flow", () => {
+  const f = createFolder();
+  const fr = (cur, type, data, time) => ({ v: 1, id: `f${cur}`, cur, session: "s", turn: "t1", type: "session." + type, time, corr: null, data });
+  let cur = 0;
+  const feed = (type, data, time) => f.apply(fr(++cur, type, data, time));
+  feed("status", { state: "working", turn: "t1" }, 1000);
+  feed("tool-started", { tool_id: "a", tool: "mcp__vyre__work_call", kind: "tool", summary: "" }, 1100);
+  feed("tool-finished", { tool_id: "a", ok: true }, 1200);
+  feed("tool-started", { tool_id: "b", tool: "mcp__vyre__records_create", kind: "tool", summary: "" }, 1300);
+  feed("tool-finished", { tool_id: "b", ok: true }, 1400);
+  feed("status", { state: "waiting", turn: "t1" }, 2000);
+  const last = f.rows[f.rows.length - 1];
+  assert.equal(last.kind, "turnsummary", JSON.stringify(f.rows.map((r) => r.kind)));
+  assert.equal(f.item(last.key).vyreCalls, 2);
+});
+
+test("a group chat has no status frames: a closed step gives the turn its line, kept under the last message, and it offers the Flow once", () => {
+  const f = createFolder();
+  const fr = (cur, type, data, time) => ({ v: 1, id: `f${cur}`, cur, session: "s", turn: "t1", type: "chat." + type, time, corr: null, data });
+  let cur = 0;
+  const feed = (type, data, time) => f.apply(fr(++cur, type, data, time));
+  feed("user-message", { message: "m1", text: "do both", state: "sent" }, 1000);
+  feed("tool-started", { tool_id: "a", tool: "mcp__vyre__work_call", kind: "other", summary: "" }, 1200);
+  feed("tool-finished", { tool_id: "a", ok: true }, 1300);
+  feed("tool-started", { tool_id: "b", tool: "mcp__vyre__records_create", kind: "other", summary: "" }, 1400);
+  feed("tool-finished", { tool_id: "b", ok: true }, 1500);
+  feed("step-summary", { step: "s1", count: 2, kinds: { other: 2 }, summary: "2 steps", ok: true }, 1550);
+  feed("text-delta", { message: "m1.claude", index: 0, text: "done" }, 1600);
+  feed("text-done", { message: "m1.claude", index: 0 }, 1700);
+  const kinds = f.rows.map((r) => r.kind);
+  assert.deepEqual(kinds.filter((k) => k === "turnsummary").length, 1, JSON.stringify(kinds));
+  assert.equal(kinds[kinds.length - 1], "turnsummary", "the line is under the last message");
+  const it = f.item(f.rows[f.rows.length - 1].key);
+  assert.equal(it.vyreCalls, 2);
+  assert.equal(it.line, "2 actions");
+  feed("user-message", { message: "m2", text: "again", state: "sent" }, 2000);
+  assert.equal(f.rows.filter((r) => r.kind === "turnsummary").length, 1, "the next turn starts with no line of its own yet");
+});
