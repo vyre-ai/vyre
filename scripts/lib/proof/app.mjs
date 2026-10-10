@@ -68,9 +68,10 @@ export function createApp(o) {
   const presenceSigner = (() => {
     const spki = personKey.publicKey.export({ type: "spki", format: "der" });
     const key_id = presenceKeyId(spki), signerKind = "software";
-    return { key_id, proof(/** @type {any} */ ch, /** @type {string} */ op, /** @type {object} */ fields, life = 60_000) {
+    return { key_id, enrolment: (/** @type {string} */ person) => ({ person, key_id, signer: signerKind, spki: spki.toString("base64") }),
+      proof(/** @type {any} */ ch, /** @type {string} */ op, /** @type {object} */ fields, { life = 60_000, extra = {} } = {}) {
       const issued = Date.now();
-      const p = { signer: signerKind, key_id, payload_hash: payloadHash(op, ch.space, fields), decision: op, chain_hash: chainCtx(ch).chain_hash, issued_at: issued, expires_at: issued + life, nonce: crypto.randomBytes(8).toString("base64url") };
+      const p = { ...extra, signer: signerKind, key_id, payload_hash: payloadHash(op, ch.space, fields), decision: op, chain_hash: chainCtx(ch).chain_hash, issued_at: issued, expires_at: issued + life, nonce: crypto.randomBytes(8).toString("base64url") };
       return { ...p, signature: crypto.sign("sha256", proofBytes(p), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
     } };
   })();
