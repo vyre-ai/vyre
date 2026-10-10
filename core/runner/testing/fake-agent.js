@@ -106,9 +106,14 @@ async function handle(line) {
     // what the hook's own imports and its first call say, so a hook that prints nothing can be told from one that could not start
     const diag = await new Promise(done => {
       if (!plugin) return done("");
-      const script = `const root=${JSON.stringify(path.resolve(plugin, ".."))};const bad=[];for(const f of ["core/daemon/client.js","core/harness/rules.js","core/harness/index.js","core/learn/checks.js","core/learn/offline.js","core/config/index.js","core/switchboard/sessions.js"]){try{await import("file://"+root+"/"+f)}catch(e){bad.push(f+": "+String(e&&e.message).slice(0,160))}}try{const {call}=await import("file://"+root+"/core/daemon/client.js");const r=await call("harness.rules",{tool_name:"Bash",tool_input:{}},{caller:"harness",timeout:3000});bad.push("call: "+JSON.stringify(r).slice(0,200))}catch(e){bad.push("call threw: "+e.message)}console.log(bad.join(" ; "))`;
+      const script = `const root=${JSON.stringify(path.resolve(plugin, ".."))};const bad=[];for(const f of ["core/daemon/client.js","core/harness/rules.js","core/harness/index.js","core/learn/checks.js","core/learn/offline.js","core/config/index.js","core/switchboard/sessions.js"]){try{await import("file://"+root+"/"+f)}catch(e){bad.push(f+": "+String(e&&e.message).slice(0,160))}}try{const v=await import("file://"+root+"/harness/lib/vyre.js");bad.push("locate: "+JSON.stringify(v.locate(root+"/harness",process.env)))}catch(e){bad.push("locate threw: "+e.message)}try{const {call}=await import("file://"+root+"/core/daemon/client.js");const r=await call("harness.rules",{tool_name:"Bash",tool_input:{}},{caller:"harness",timeout:3000});bad.push("call: "+JSON.stringify(r).slice(0,200))}catch(e){bad.push("call threw: "+e.message)}console.log(bad.join(" ; "))`;
       const c = spawn(process.execPath, ["--input-type=module", "-e", script], { env: { PATH: process.env.PATH, HOME: process.env.HOME, VYRE_SOCKET: process.env.VYRE_SOCKET } });
-      let o = ""; c.stdout.on("data", d => { o += d; }); c.stderr.on("data", d => { o += d; }); c.on("close", () => done(o.slice(0, 700)));
+      let o = ""; c.stdout.on("data", d => { o += d; }); c.stderr.on("data", d => { o += d; }); c.on("close", () => {
+        // and the hook itself, started directly with the same input
+        const h = spawn(process.execPath, [path.join(plugin, "hooks", "hook.js"), rest[0]], { env: { PATH: process.env.PATH, HOME: process.env.HOME, VYRE_SOCKET: process.env.VYRE_SOCKET, VYRE_THREAD: process.env.VYRE_THREAD, CLAUDE_PLUGIN_ROOT: plugin } });
+        let q = ""; h.stdout.on("data", d => { q += d; }); h.stderr.on("data", d => { q += d; }); h.on("close", code => done((o + " || hook.js directly: exit " + code + " out " + q).slice(0, 1200)));
+        h.stdin.end(rest.slice(1).join(" "));
+      });
     });
     out({ type: "hook", ...res, diag });
     out({ type: "result" });
