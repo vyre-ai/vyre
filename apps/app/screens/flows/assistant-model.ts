@@ -1,8 +1,9 @@
 // The pure half of @Engineer on the real box: the Engineer is an assistant (an agent named engineer) you talk to in the app's chat. It proposes Flows, types and Kits; each proposal lands where a person
 // approves it (a Flow version waiting in Flows, a Kit waiting for a yes, a task). Nothing here composes a proposal: the cards are what the box lists.
+import { listWaits, titleOf } from "./real-model.js";
 
 export type Agent = { name: string; kind: string; status?: string; doing?: string; thread?: string | null };
-export type FlowRow = { id: string; name?: string; status: string; active?: boolean; versions?: number };
+export type FlowRow = { id: string; name?: string; label?: string; status: string; active?: unknown; versions?: number };
 export type KitRow = { id: string; version: number; status: string };
 export type TaskRow = { id: string; kind?: string; title?: string; state?: string; form?: { kind?: string; what?: string }; by?: unknown };
 
@@ -23,7 +24,7 @@ export const openProposals = (tasks: TaskRow[]): TaskRow[] => tasks.filter((t) =
 /** Proposals waiting on a person, as cards: each proposal task in Now (opens its approve card), a Flow version not yet approved, a Kit waiting for a yes. */
 export function proposals(flows: FlowRow[], kits: KitRow[], tasks: TaskRow[] = []): { key: string; title: string; sub: string; href: string | null }[] {
   const t = openProposals(tasks).map((x) => ({ key: `task:${x.id}`, title: x.title || "A proposal", sub: "A proposal waiting for your approval", href: `/u/task/${x.id}` }));
-  const f = flows.filter((x) => x.status !== "approved").map((x) => ({ key: `flow:${x.id}`, title: x.name || x.id, sub: "A Flow waiting for your approval", href: `/u/flows/${x.id}` }));
+  const f = flows.filter((x) => listWaits(x)).map((x) => ({ key: `flow:${x.id}`, title: titleOf(x, x.id), sub: "A Flow waiting for your approval", href: `/u/flows/${x.id}` }));
   const k = kits.filter((x) => x.status === "pending").map((x) => ({ key: `kit:${x.id}`, title: x.id.replace(/[-_]+/g, " "), sub: "A Kit waiting for your yes", href: null }));
   return [...t, ...f, ...k];
 }
