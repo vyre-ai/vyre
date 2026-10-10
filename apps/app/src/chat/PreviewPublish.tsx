@@ -6,7 +6,7 @@ import { AskCard, Banner, Button, Sheet, Text } from "@vyre/ui";
 import { presenceText } from "../../screens/shell/FaceIdSheet";
 import { decision, heldOf, planLines, publishRefusal, type Held } from "../../screens/sites/real-model";
 import { tool } from "../real/box";
-import { addressOf, publishWords, siteNameOf } from "./preview-model.js";
+import { addressOf, publishWords, siteNameOf, whileSettingUp } from "./preview-model.js";
 
 type Step = { kind: "building" } | { kind: "asking"; held: Held; later: string } | { kind: "deciding"; held: Held; later: string } | { kind: "done"; address: string; later: string } | { kind: "declined" } | { kind: "problem"; text: string };
 
@@ -20,7 +20,7 @@ export function PublishSheet({ open, onClose, preview }: { open: boolean; onClos
     if (started.current) return;
     started.current = true;
     setStep({ kind: "building" });
-    tool<any>("publish.quick", { name: siteNameOf(preview.title), preview: preview.id })
+    whileSettingUp(() => tool<any>("publish.quick", { name: siteNameOf(preview.title), preview: preview.id }))
       .then((r) => { const held = heldOf(r); setStep(held ? { kind: "asking", held, later: publishWords(r).later } : { kind: "problem", text: "Publishing did not ask for your yes. Nothing went live." }); })
       .catch((e) => setStep({ kind: "problem", text: say(e) }));
   }, [open, preview.id, preview.title]);
