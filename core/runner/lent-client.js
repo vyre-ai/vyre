@@ -89,7 +89,7 @@ export function createLentClient(o) {
         let r = await o.invoke("lent.http", [{ session, epoch: epochs.get(session), method: method === "GET" ? "GET" : "POST", path, body, caller }]);
         // A call that outlasts one wire call is kept at the home under a ticket; ask for it again until it answers (the home gives up on it after its own limit).
         for (const until = Date.now() + (o.callMaxMs ?? 31 * 60_000); r && typeof r.pending === "string"; ) {
-          if (Date.now() > until) throw Object.assign(new Error("the tool call took too long"), { code: "timeout" });
+          if (Date.now() > until) throw Object.assign(new Error("the tool call took too long: ask for it again, or check the computer it runs on is awake"), { code: "timeout" });
           r = await o.invoke("lent.http", [{ session, epoch: epochs.get(session), ticket: r.pending }]);
         }
         return r;
