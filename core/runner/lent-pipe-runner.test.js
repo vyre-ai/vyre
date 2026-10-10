@@ -146,7 +146,7 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   // the box: a real daemon, and the session's own socket opened the way the switchboard opens it (its route, its caller binding)
   process.env.VYRE_SEAL_DEV = "1";
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const manifest = JSON.parse(fs.readFileSync(new URL("../switchboard/module.json", import.meta.url), "utf8"));
