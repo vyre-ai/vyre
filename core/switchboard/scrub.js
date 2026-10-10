@@ -8,7 +8,14 @@ import { redact } from "../../lib/credential-shapes.js";
 /** @param {any} v @param {number} depth @returns {any} the same value when nothing in it changed */
 function clean(v, depth) {
   if (typeof v === "string") return v.length < 12 ? v : redact(v);
-  if (!v || typeof v !== "object" || depth > 12) return v;
+  if (!v || typeof v !== "object") return v;
+  // Too deep to walk (a model or a tool controls how deep its output nests): the rest is cleaned as one piece of text, so a key at any depth goes.
+  if (depth > 12) {
+    let s; try { s = JSON.stringify(v); } catch { return "[too deep to show]"; }
+    const r = redact(s);
+    if (r === s) return v;
+    try { return JSON.parse(r); } catch { return "[too deep to show]"; }
+  }
   if (Array.isArray(v)) {
     let out = /** @type {any[] | null} */ (null);
     v.forEach((x, i) => { const c = clean(x, depth + 1); if (c !== x) { out = out || v.slice(); out[i] = c; } });

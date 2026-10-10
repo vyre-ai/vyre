@@ -29,3 +29,13 @@ test("a message with nothing to take out is the very same object; the scrub read
   assert.equal(other.subtype, "init");
   assert.equal(scrubOut(null), null);
 });
+
+test("a key nested far below the walk's depth is gone too, in an object and in a list; a deep value with no key is the same object", () => {
+  const nest = (leaf, n, list = false) => { let v = leaf; for (let i = 0; i < n; i++) v = list ? [v] : { a: v }; return v; };
+  for (const list of [false, true]) {
+    const m = { type: "assistant", message: { content: [{ type: "tool_use", input: nest(`cat auth.json # ${KEY}`, 20, list) }] } };
+    assert.ok(!JSON.stringify(scrubOut(m)).includes(KEY), `a key at depth 20 stays (list: ${list})`);
+  }
+  const deepClean = { type: "x", v: nest("nothing here", 20) };
+  assert.equal(scrubOut(deepClean), deepClean);
+});
