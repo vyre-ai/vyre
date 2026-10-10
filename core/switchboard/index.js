@@ -817,7 +817,7 @@ export class Switchboard {
    * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
    * guess between two paid accounts). Null when the provider has only this machine's own login.
    * `resuming`: the thread this is for, whose account must still exist.
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} q @param {string|null} [resuming]
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} q `person`: whose turn it is, so only that person's own accounts (and the home's own for the owner) can be chosen @param {string|null} [resuming]
    */
   async accountFor(q, resuming = null) {
     const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
@@ -914,7 +914,7 @@ export class Switchboard {
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
@@ -962,7 +962,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null;
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
