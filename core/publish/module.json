@@ -151,6 +151,7 @@
       "deployment.previewed",
       "deployment.approved",
       "deployment.published",
+      "deployment.restarted",
       "deployment.rolled-back",
       "deployment.retired"
     ]
