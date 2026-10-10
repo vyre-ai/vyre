@@ -39,7 +39,7 @@ export const whoAsked = (by: string): string => (by.includes("agent:") ? by.spli
 /** The line for one waiting ask. */
 export function waitingLine(x: Pending): string {
   const who = whoAsked(x.by);
-  return x.kind === "grant" ? `${who} asked to let ${x.module}${x.watcher ? `/${x.watcher}` : ""} use ${x.name}` : `${who} asked to share ${x.items.join(", ")} with ${x.holder}, ${x.mode}`;
+  return x.kind === "grant" ? `${who} asked to let ${x.module}${x.watcher ? `/${x.watcher}` : ""} use ${x.name}` : `${who} asked to share ${x.items.join(", ")} with ${x.holder}${x.mode === "sealed" ? ", as a copy" : ""}`;
 }
 
 /** vault.devices: browsers paired for autofill. */
@@ -80,11 +80,12 @@ export function healthGroups(h: Health): { code: string; title: string; why: str
 }
 
 /** The Vault home's one line about health: how many items need attention and the biggest reasons, or nothing when all is well. Counts only; no name and no value. */
-export function healthSummary(h: Health): { total: number; line: string } {
+export function healthSummary(h: Health): { total: number; line: string; title: string; detail: string } {
   const flagged = new Set(h.items.filter((i) => i.reasons.some((r) => REASON_ORDER.includes(r) && r !== "2fa-available")).map((i) => i.name));
   const parts = REASON_ORDER.filter((c) => c !== "2fa-available" && h.counts[c]).map((c) => `${h.counts[c]} ${REASON[c][0].toLowerCase()}`);
   const total = flagged.size;
-  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${parts.join(", ")}.` : "" };
+  const detail = parts.join(", ");
+  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${detail}.` : "", title: total ? `${total} ${total === 1 ? "item needs" : "items need"} a look` : "", detail };
 }
 
 /** What a breach check answers: the names that appear in known breaches, and how many were checked. */
@@ -148,10 +149,10 @@ export function deviceLines(d: Device, now = Date.now()): { sub: string; session
     : { sub: `Paired ${ago(d.created, now)}, last seen ${ago(d.lastSeen, now)}`, sessions: d.sessions ? `${d.sessions} open ${d.sessions === 1 ? "session" : "sessions"}` : "Locked" };
 }
 
-/** A pass's row: who, what, how and until when. */
+/** One share's row: who, what, how and until when. */
 export function passLine(p: Pass): { title: string; sub: string; state: string } {
   return { title: `${p.direction === "to" ? "To" : "From"} ${p.holder}${p.person ? `, ${p.person}` : ""}`, sub: [p.items.join(", "), p.scope].filter(Boolean).join(", "),
-    state: `${p.state === "waiting" ? "Waiting" : p.mode === "sealed" ? "Sealed" : "Relayed"}, ${expiryWord(p.expires).toLowerCase()}` };
+    state: `${p.state === "waiting" ? "Waiting" : p.mode === "sealed" ? "A copy was sent" : "Stays on your server"}, ${expiryWord(p.expires).replace(/^./, (c) => c.toLowerCase())}` };
 }
 
 /** Words for a refusal of one of these acts. A proof the person did not give is "Not done", never an error. */
@@ -214,7 +215,7 @@ export function pickReveals(d: unknown): Reveal[] {
 export const revealLine = (r: Reveal): string => `${r.pass}'s agent asks to see ${r.item}${r.why ? `: ${r.why}` : ""}`;
 
 /** What revoking a pass tells the person: sealed ones left a copy, so those items must be replaced. */
-export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a sealed copy.` : `Ended. ${holder} cannot use it any more.`);
+export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a copy.` : `Ended. ${holder} cannot use it any more.`);
 
 // ---- changing an item ----
 
