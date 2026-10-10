@@ -58,7 +58,7 @@
  "core/spawner/server.js": 3,
  "core/switchboard/adopt.js": 4,
  "core/switchboard/asks.js": 3,
- "core/switchboard/index.js": 43,
+ "core/switchboard/index.js": 42,
  "core/switchboard/runner.js": 10,
  "core/switchboard/translate.js": 12,
  "core/sync/index.js": 6,
@@ -70,7 +70,6 @@
  "harness/mcp/server.js": 1,
  "lib/agent-sandbox.js": 4,
  "lib/door-bridge.js": 2,
- "lib/skill-library.js": 2,
  "local/hands-chrome-mac/standalone/harness/real.mjs": 1,
  "local/hands-chrome-mac/standalone/trace.js": 3
 }

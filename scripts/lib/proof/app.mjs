@@ -10,6 +10,8 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
+import { payloadHash, proofBytes, chainCtx } from "../../../kernel/seal/wire.js";
+import { presenceKeyId } from "../../../lib/presence-key-id.js";
 import { claimIdentity } from "../../../apps/app/src/identity/claim.js";
 import { claimServerSpace } from "../../../apps/app/src/identity/claim-space.js";
 import { generateDeviceKey } from "../../../apps/app/src/identity/keys.js";
@@ -61,7 +63,17 @@ export function createApp(o) {
   const relayCrypto = nodeCrypto();
   // the key this device reports at pairing and signs its session start with (a browser's person key, ES256); software, since a runner has no secure chip
   const personKey = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: personKey.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 };
+  const presenceKey = { public_key: personKey.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  // This app's own presence key as a signer of the person's yes (the shape kernel/seal/testing.js signer gives): the key it handed to the server at pairing, which a development-build server enrolled as software.
+  const presenceSigner = (() => {
+    const spki = personKey.publicKey.export({ type: "spki", format: "der" });
+    const key_id = presenceKeyId(spki), signerKind = "software";
+    return { key_id, proof(/** @type {any} */ ch, /** @type {string} */ op, /** @type {object} */ fields, life = 60_000) {
+      const issued = Date.now();
+      const p = { signer: signerKind, key_id, payload_hash: payloadHash(op, ch.space, fields), decision: op, chain_hash: chainCtx(ch).chain_hash, issued_at: issued, expires_at: issued + life, nonce: crypto.randomBytes(8).toString("base64url") };
+      return { ...p, signature: crypto.sign("sha256", proofBytes(p), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+    } };
+  })();
   // The yes a call may need (lib/one-yes.js): the server answers presence_required with the exact act to sign (`sign`: op, space, fields), and the device sends the call again with its signed yes in
   // x-vyre-yes (apps/app/src/real/box.ts). A runner has no secure chip, so the world hands in a development signer where the server takes one (setYes); with none, the call fails as it does for a
   // device that cannot give a yes.
@@ -303,7 +315,7 @@ export function createApp(o) {
 
   return {
     label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
-    get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
+    get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
   };

@@ -101,13 +101,15 @@ export function startInstall(host, line, out) {
 const tailOf = (/** @type {string} */ s) => s.split("\n").filter(l => l.trim() && !/█|▀|▄/.test(l)).slice(-6).join(" | ").slice(0, 500);
 
 /**
- * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, host: string, out: string, expectVersion?: string }} w
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, host: string, out: string, expectVersion?: string, channel?: string }} w
  *   expectVersion: the release under test. The first server installs whatever vyre.run serves now (the previous release, until the new one is published and deployed), then the walk waits for
  *   the box to see expectVersion and updates from the app as the Settings button does. A second install, after the new release is out, must land on expectVersion at once.
  */
 export async function walkLive(w) {
   const { run, host } = w;
   const expectVersion = w.expectVersion || "";
+  // channel "beta": the server installs the stable release the line serves, then is put on the beta channel (VYRE_CHANNEL in its .env, the way a person opts in), so its update offers the release candidate.
+  const channel = w.channel === "beta" ? "beta" : "";
   const dir = path.join(w.out, "live");
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   /** @type {string[]} */ const names = [];
@@ -226,6 +228,14 @@ export async function walkLive(w) {
       const sshVersion = async () => { const v = await asWalker(host, "sudo vyre call system.info '{}' 2>&1", { pty: false }); return (v.out.match(/"version"\s*:\s*"([^"]+)"/) || [])[1] || ""; };
       await run.step(U("the notice names the release under test"), async () => {
         if (installedVersion === expectVersion) throw Object.assign(new Error(`the server installed ${expectVersion} already (it was published before this walk began), so there is nothing to update`), { skip: true });
+        if (channel) {
+          // The person opts in to the beta channel the way the docs say: update.channel in the daemon's config and VYRE_CHANNEL for the root updater, then the server starts again.
+          const c = await asWalker(host, `echo VYRE_CHANNEL=${channel} | sudo tee -a /srv/vyre/.env >/dev/null && sudo docker exec -u vyre vyre-vyre-1 node -e 'const fs=require("fs"),p=process.env.HOME+"/.vyre/config.json";const c=JSON.parse(fs.readFileSync(p,"utf8"));c.update={...(c.update||{}),channel:"${channel}"};fs.writeFileSync(p,JSON.stringify(c))' && sudo docker restart vyre-vyre-1 >/dev/null && echo set`, { pty: false });
+          assert.match(c.out, /set/, `could not set the ${channel} channel: ${c.out.slice(-160)}`);
+          let back = false;
+          for (let i = 0; i < 30 && !back; i++) { await new Promise(r => setTimeout(r, 6000)); try { await mac.reconnect(); await mac.callTool("system.info", {}); back = true; } catch { /* still starting */ } }
+          assert.ok(back, "the server did not come back after the channel was set");
+        }
         // The box looks at the releases once a day; update.check is the button's "look now". The walk waits for the release to be tagged, published and deployed.
         const end = Date.now() + 90 * 60_000;
         let st = null;

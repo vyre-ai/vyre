@@ -132,7 +132,6 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
 const OUTWARD = ["send", "post", "pay", "delete"]; // `outward: true` is the plain mark (one yes): leaves Vyre and reaches someone outside your spaces and devices; a word names the Gate kind
 
-
 /**
  * The SDK's added-module check, as a load reads it: the graces applied first, so only the 1.0
  * rules that keep a module inside its doors are problems (person reach, presence-free tools,
@@ -338,8 +337,7 @@ function checkCredentials(list) {
 }
 
 /**
- * A module hands something UP to the daemon by a fixed name: only the vault, only `credentialsPort`. The vault may provide again (a crash restart, a disable and enable) and the new port replaces
- * the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
+ * A module hands something UP to the daemon by a fixed name: only the vault, only `credentialsPort`. The vault may provide again (a crash restart, a disable and enable) and the new port replaces the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {

@@ -2326,7 +2326,12 @@ export default {
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { entries: [] };
       let r;
       const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
-      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached; wait a minute and try again.", "unreachable"); }
+      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) {
+        // Name the cause when the guarded client refused the address itself (a plain-http or non-public directory is refused before any request): the next real failure must say what it was.
+        const w = String(/** @type {any} */ (e)?.why || "");
+        const why = w === "not_https" ? " The directory address was refused: it is plain http." : /^(not_public|bad_url|credentials_in_url)$/.test(w) ? ` The directory address was refused (${w}).` : "";
+        throw refuse(`The names directory could not be reached; wait a minute and try again.${why}`, "unreachable");
+      }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     }, { internal: true });

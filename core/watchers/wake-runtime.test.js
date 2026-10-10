@@ -7,14 +7,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
-import { Runtime, MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
 import * as folder from "./folder.js";
 import { tempHome } from "../../test/helpers.js";
 
 function setup(t, { threads = { "t-1": { project: "harlow-legal" }, "t-2": { project: "northwind" } }, refuse = null, call = async () => ({ error: { code: "no_such_tool" } }) } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "vyre.db")); t.after(() => db.close());
-  migrate(db, "watchers", MIGRATIONS);
+  migrate(db, "watchers", [...MIGRATIONS, ...LATE_MIGRATIONS]);
   const dir = path.join(root, "watchers"); fs.mkdirSync(dir);
   const clock = { now: new Date("2026-03-02T10:00:00Z").getTime() }, posts = [], events = [], taught = [];
   const rt = new Runtime({ db, dir, now: () => clock.now, log: () => {}, emit: (type, payload) => events.push({ type, ...payload }),

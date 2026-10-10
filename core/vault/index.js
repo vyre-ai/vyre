@@ -27,6 +27,7 @@ import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
+import { isAsker } from "./asker.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
@@ -272,14 +273,14 @@ export default {
       obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
-        { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
+        { skip: ({ caller }) => isAsker(caller), session: () => true }));
 
     tool("vault.revoke", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
         const c = String(caller);
         const k = callerKind(c);
         // The person's surfaces revoke any grant. A model session (named agent, thread or bare mcp) and another module may only withdraw a request they made themselves (group D LOW).
-        return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
+        return vault.revoke(input, c, isAsker(c) || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
     // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
@@ -356,17 +357,17 @@ export default {
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
       (input, { caller }) => {
-        if (callerKind(caller) === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
+        if (isAsker(caller) && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
         // Into an existing name is a put by another name (it replaces a login's password), so
         // Claude may only create (ADR 0006 finding 7).
-        if (callerKind(caller) === "mcp" && vault.row(input.name)) throw new Error(`${input.name} already exists; Claude may only generate into a new name`);
+        if (isAsker(caller) && vault.row(input.name)) throw new Error(`${input.name} already exists; Claude may only generate into a new name`);
         return vault.generate(input, caller);
       });
 
     // Preview opens the file and the existing logins, so it asks for the same presence as import
     // (ADR 0028, decision 1). It returns names and counts, never a value.
     // The app sends the bytes of the file the person picked (`content`, base64, with its `filename`); an assistant never does, so a value cannot pass through Claude.
-    const noContentFromClaude = (input, caller) => { if (input.content !== undefined && callerKind(caller) === "mcp") throw new Error("Claude reads a file by its path on this machine; the bytes are never passed through Claude"); };
+    const noContentFromClaude = (input, caller) => { if (input.content !== undefined && isAsker(caller)) throw new Error("Claude reads a file by its path on this machine; the bytes are never passed through Claude"); };
     const what = ({ file, filename }) => (file ? path.resolve(String(file)) : String(filename || "the exported file"));
     tool("vault.import.preview", [...SURFACES, ...PHONE, "mcp"], "Preview an import by name and count only: what it adds, skips or finds in conflict, plus a token binding vault.import to this file.",
       obj({ file: { type: "string", description: "path to a file, or a folder scanned for .env files (variables come back with type and secret flag)" }, format: str, content: str, filename: str }), (input, { caller }) => { noContentFromClaude(input, caller); if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content"); return vault.importPreview(input, caller); },
@@ -434,7 +435,7 @@ export default {
         let until = "";
         try { until = `, until ${new Date(parseExpiry(expires)).toISOString().slice(0, 10)}`; } catch {}
         return `Share ${list(items)} with ${String(holder).slice(0, 64)}, ${mode === "sealed" ? "sealed (a copy leaves this Vyre)" : "relayed"}${until}`;
-      }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
+      }, { skip: ({ caller }) => isAsker(caller) }));
 
     // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
     // callers only: an agent caller has no business mapping who can reach what.
@@ -454,7 +455,7 @@ export default {
       presence("Accept a pass someone sent", ({ ticket }) => {
         const t = decodeTicket(ticket);
         return `Accept a ${t.mode} pass from ${t.owner} holding ${list(t.items)}`;
-      }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
+      }, { skip: ({ caller }) => isAsker(caller) }));
 
     tool("vault.relay", ["cli", "local", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
