@@ -90,6 +90,23 @@ test("acp: an entry that says it takes images sends the image block to an agent 
   await s.proc.stop(1000);
 });
 
+test("acp: an entry that needs its MCP servers to come up holds the session's first prompt for that long, and only when it was given servers", async t => {
+  const servers = [{ name: "vyre", command: "node", args: ["-e", "0"], env: [] }];
+  const settled = world(t, { mcpSettleMs: 500 }), plain = world(t, { mcpSettleMs: 500 });
+  const t0 = Date.now();
+  const a = open(settled, { mcpServers: servers });
+  await a.until(m => m.type === "system" && m.subtype === "init", "init");
+  const held = Date.now() - t0;
+  await a.proc.stop(1000);
+  assert.ok(held >= 450, `the session was ready after ${held} ms, before its MCP servers had a chance to come up`);
+  const t1 = Date.now();
+  const b = open(plain);
+  await b.until(m => m.type === "system" && m.subtype === "init", "init");
+  const free = Date.now() - t1;
+  await b.proc.stop(1000);
+  assert.ok(free < held, `a session with no servers waited ${free} ms, as long as one with servers (${held} ms)`);
+});
+
 test("acp: the client advertises fs and terminal, and the entry's args and env reach the agent (never read from the agent's own config)", async t => {
   const w = world(t, { args: o => ["--ask", "untrusted", "--cwd", o.cwd], env: { HOME: "/acct/home" } });
   const s = open(w);
