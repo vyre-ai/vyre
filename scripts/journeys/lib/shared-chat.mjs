@@ -222,11 +222,11 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.ok(mine && mine.uid != null, "the owner's account exists and runs as a user of its own");
     for (const p of people) assert.notEqual(mine.uid, accounts[p.name].uid, "and it is not a member's");
     ownerAcctId = mine.id;
-    const before = answers(await seen(grace, chat)).length;
     await w.call("stream.send", { chat, space: team.space, text: "@assistant whoami, owner here", to: ["assistant:assistant"], account: `codex:${mine.id}` });
-    const after = await untilAnswers(grace, chat, before + 1);
-    const got = String(after[before].text);
-    assert.ok(got.includes(`/${mine.uid}`) && !got.includes(`/${accounts[grace.name].uid}`) && !got.includes(`/${accounts[edith.name].uid}`), `the owner's turn ran on the owner's account (user ${mine.uid}): ${got}`);
+    let got = "";
+    for (let i = 0; i < 40 && !got; i++) { await sleep(4000); got = String((answers(await seen(grace, chat)).find(m => String(m.text).includes(`/${mine.uid}`)) || {}).text || ""); }
+    assert.ok(got, `the owner's turn answered on the owner's account (user ${mine.uid})`);
+    assert.ok(!got.includes(`/${accounts[grace.name].uid}`) && !got.includes(`/${accounts[edith.name].uid}`), `and on no member's: ${got}`);
     return got;
   }, { needs: [G], owner: "chat" });
 
@@ -238,8 +238,11 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const transcript = /** @type {string[]} */ ([]);
     const note = (/** @type {string} */ who, /** @type {string} */ cmd, /** @type {string} */ out) => transcript.push(`${who}$ ${cmd}\n${out}\n`);
     // answers() only counts the "home:" lines of the stand-in; the terminal answers are "walk-term ..." lines, counted here
-    const R = async (/** @type {any} */ who, /** @type {string} */ cmd) => { const before = (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text))).length; await (who === "owner" ? w.call("stream.send", { chat, space: team.space, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` }) : edith.joined.call("chat.send", [{ chat, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${accounts[edith.name].id}` }]));
-      for (let i = 0; i < 40; i++) { const t = (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text))); if (t.length > before) { const out = String(t[before].text); note(who, cmd, out); return out; } await sleep(4000); }
+    const walkTerms = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+    const R = async (/** @type {any} */ who, /** @type {string} */ cmd) => {
+      const known = new Set((await walkTerms()).map(m => m.message));
+      await (who === "owner" ? w.call("stream.send", { chat, space: team.space, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` }) : edith.joined.call("chat.send", [{ chat, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${accounts[edith.name].id}` }]));
+      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await walkTerms()).filter(m => !known.has(m.message)); if (fresh.length) { const out = String(fresh[0].text); note(who, cmd, out); return out; } }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     const sock = "$(ls /home/vyre/.vyre/vyred.sock 2>/dev/null || echo /home/vyre/.vyre/vyred.sock)";
