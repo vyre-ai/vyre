@@ -4,6 +4,9 @@
 // message, which is why this is the only way tests get a home.
 
 import fs from "node:fs";
+// An agent teammate does the task it is given (core/daemon/task-wake.js). The tests that only put an agent on a task for the reach rules do not want a turn started on it, so a test world has the wake off
+// unless a test turns it on (core/daemon/task-wake.test.js does).
+process.env.VYRE_TASK_WAKE ??= "off";
 import os from "node:os";
 import path from "node:path";
 import { SCRATCH, HOMES } from "./scratch.mjs";

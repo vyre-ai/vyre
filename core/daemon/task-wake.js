@@ -96,6 +96,12 @@ export function createTaskWakeHost(o) {
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
+    // Off only where a test world asks for it (VYRE_TASK_WAKE=off): the tests that put an agent on a task for the reach rules (test/helpers.js putOnTask) must not have a turn start on it. Never off by default.
+    if (process.env.VYRE_TASK_WAKE === "off") {
+      const inert = Object.freeze({ wake: async () => null, recover: async () => {}, resumePaused: async () => {}, sweep: async () => {}, reports: async () => {}, idle: async () => {}, stop() {} });
+      spaces.set(s.space, /** @type {any} */ (inert));
+      return inert;
+    }
     const ledger = ledgerFor(s.space);
     const nameOf = s.nameOf || ((/** @type {string} */ p) => p);
     let stopped = false;
@@ -116,7 +122,8 @@ export function createTaskWakeHost(o) {
       if (!ref || !ref.slug) return null;
       const agents = await o.callModule("agents.list", {}).catch(() => null);
       const list = Array.isArray(agents) ? agents : agents && Array.isArray(agents.agents) ? agents.agents : [];
-      const agent = list.find((/** @type {any} */ a) => a && a.uid === t.doer.id);
+      // a template's team row names its agent by the agent's name, an agent made in the app by its stable id: either is the same agent
+      const agent = list.find((/** @type {any} */ a) => a && (a.uid === t.doer.id || String(a.name).toLowerCase() === String(t.doer.id).toLowerCase()));
       if (!agent) return null;
       const rows = (await s.gw.records.query(s.ownerChain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: ref.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
       const onTeam = rows.some((/** @type {any} */ r) => r.data && r.data.actor && r.data.actor.actor && r.data.actor.actor.kind === "agent" && String(r.data.actor.actor.id) === t.doer.id);
@@ -136,7 +143,7 @@ export function createTaskWakeHost(o) {
       const agents = await o.callModule("agents.list", {}).catch(() => null);
       const list = Array.isArray(agents) ? agents : agents && Array.isArray(agents.agents) ? agents.agents : [];
       return rows.filter((/** @type {any} */ x) => x.data && x.data.role && x.data.actor && x.data.actor.actor && x.data.actor.actor.kind === "agent").map((/** @type {any} */ x) => {
-        const id = String(x.data.actor.actor.id), a = list.find((/** @type {any} */ y) => y && y.uid === id);
+        const id = String(x.data.actor.actor.id), a = list.find((/** @type {any} */ y) => y && (y.uid === id || String(y.name).toLowerCase() === id.toLowerCase()));
         return { agent: a ? String(a.name) : id, role: String(x.data.role), actor: x.data.actor.actor };
       });
     }
@@ -162,8 +169,8 @@ export function createTaskWakeHost(o) {
       return leadBrief({ kind, project: r.name, ...(miss ? { skipped: miss[1].split("; ").slice(0, 20) } : {}), roster: roster.map((/** @type {any} */ m) => ({ agent: m.agent, role: m.role })), tasks });
     }
 
-    /** Check a lead's picks and turn each into a recommendation for the person: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. Nothing is moved here. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
-    async function recommendPicks(t, r, picks) {
+    /** Check a lead's picks and apply the ones the kernel's lead authority allows: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. The kernel refuses anything else. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
+    async function applyPicks(t, r, picks) {
       const rec = ledger.get(t.id) || {}, map = Array.isArray(rec.map) ? rec.map : [], roster = await rosterOf(r.urn), out = [];
       for (const p of picks) {
         const entry = map.find((/** @type {any} */ m) => m.n === p.task), target = roster.find((/** @type {any} */ m) => m.role === p.to && m.agent.toLowerCase() !== r.agent.toLowerCase());
@@ -173,8 +180,12 @@ export function createTaskWakeHost(o) {
         if (!target) { out.push(`I did not move ${title}: no one else on the team holds the role ${p.to}.`); continue; }
         if (((ledger.get(cur.id) || {}).stuckTimes || 1) >= MAX_STUCK_TIMES) { out.push(`I did not move ${title}: it has been stuck twice. It needs you.`); continue; }
         if (!cur.doer || cur.doer.kind !== "agent") { out.push(`I did not move ${title}: a person has it.`); continue; }
-        // The lead only RECOMMENDS: the daemon never acts as a person who is not there, and the lead has no authority of its own over another task yet. The person moves it in one tap.
-        out.push(`I recommend moving ${title} to ${target.agent}, who holds the role ${p.to}. Open the task and choose to give it to ${target.agent}.`);
+        // The move is the LEAD's own act under the kernel's lead authority (a stuck task of its own project, to a teammate of the same role): the daemon only carries the lead's chain, never a person's.
+        try {
+          await s.gw.ask.reassignAsLead(doerChain(t), cur.id, { to: target.actor });
+          log(`task-wake ${s.space}: the lead ${r.agent} moved a stuck task to ${target.agent} (${p.to})`);
+          out.push(`I moved ${title} to ${target.agent}, who holds the role ${p.to}.`);
+        } catch (e) { out.push(`I could not move ${title} to ${target.agent} (${cut(/** @type {Error} */ (e).message, 100)}). It needs you: open the task and choose who gets it.`); }
       }
       return out;
     }
@@ -301,7 +312,7 @@ export function createTaskWakeHost(o) {
       let note = text;
       if (rec.lead && r) {
         const parsed = parseLead(text);
-        const lines = parsed.picks.length ? await recommendPicks(t, r, parsed.picks) : [];
+        const lines = parsed.picks.length ? await applyPicks(t, r, parsed.picks) : [];
         if (parsed.ignored) lines.push("I could not read my own list of moves, so I made none.");
         note = [parsed.message || "No message.", ...lines].join("\n");
         try { if (s.say) await s.say({ project: r.urn, slug: r.slug, agent: r.agent, text: note }); } catch (e) { log(`task-wake ${s.space}: the lead's message was not posted (${/** @type {Error} */ (e).message})`); }

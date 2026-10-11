@@ -26,8 +26,8 @@ export function leadBrief(q) {
     q.kind === "plan"
       ? "Write a short plan in plain words for the person: what happens first, who does it, and what you need from them. No ids, no jargon."
       : "Write a short report in plain words for the person: what is done, what is stuck and why, what is overdue, and what you need from them. No ids, no jargon.",
-    "You may recommend giving a stuck task to a teammate whose role fits it, once, by ending your reply with one line: REASSIGN: {\"picks\":[{\"task\":3,\"to\":\"design\"}]} (task is its number above, to is the teammate's role).",
-    "The person makes the move. Anything else (no fitting teammate, a task stuck twice, a task a person is doing) you do not recommend: say it in the message and what the person should do next.",
+    "You may give a stuck task to a teammate whose role fits it, once, by ending your reply with one line: REASSIGN: {\"picks\":[{\"task\":3,\"to\":\"design\"}]} (task is its number above, to is the teammate's role).",
+    "Anything else (no fitting teammate, a task stuck twice, a task a person is doing) you do not change: say it in the message and what the person should do next.",
   ];
   return lines.join("\n");
 }

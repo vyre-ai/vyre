@@ -12,6 +12,8 @@ import { start } from "./index.js";
 import { tempHome, present, kernelCaller, putOnTask } from "../../test/helpers.js";
 import { createTaskWakeHost, briefOf, taskGrantSpec, classifyRefusal } from "./task-wake.js";
 
+// the wake is on in this file (test/helpers.js turns it off for every other test world)
+process.env.VYRE_TASK_WAKE = "on";
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
 const until = async (/** @type {() => Promise<any>} */ fn, /** @type {string} */ what, ms = 15_000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 50)); } };
@@ -72,7 +74,7 @@ function rig(/** @type {{ report?: number | null, say?: any, lead?: string, othe
       complete: async (_c, id, ev) => { calls.push(`complete ${id} ${ev.note}`); task.state = "done"; },
       list: async () => o.others || [],
       request: async (_c, spec) => { calls.push(`request ${spec.title}`); },
-      unblock: async (_c, id, x) => { calls.push(`unblock ${id} ${x.reassign_to.id}`); },
+      reassignAsLead: async (_c, id, x) => { if (o.leadRefuses) throw new Error("not allowed"); calls.push(`unblock ${id} ${x.to.id}`); },
       stuck: async (_c, id, x) => { calls.push(`stuck ${id} ${x.reason}`); fixes.push(x.suggested_fix); task.state = "stuck"; },
     },
     records: {
@@ -347,15 +349,15 @@ test("the project lead's plan names the team and the tasks without ids, and its 
   assert.doesNotMatch(said[0].text, /tsk_/);
 });
 
-test("the lead recommends moving a stuck task to a teammate whose role fits, once; anything else is flagged to the person; nothing is moved", async () => {
+test("the lead moves a stuck task to a teammate whose role fits, once, by its own call; anything else is flagged to the person", async () => {
   const mk = () => ({ id: "tsk_rep", state: "ready", title: "Report on P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" });
   const r = rig({ lead: "kit", task: mk(), others: [stuckTask("tsk_9"), stuckTask("tsk_8", { doer: { kind: "person", id: "per_x" } })] });
   r.ready(); await r.h.idle();
   await r.finish('Two things are stuck.\nREASSIGN: {"picks":[{"task":1,"to":"design"},{"task":2,"to":"design"},{"task":1,"to":"nobody"}]}');
-  assert.ok(!r.calls.some(c => c.startsWith("unblock")), "nothing is moved: the lead only recommends");
+  assert.ok(r.calls.includes("unblock tsk_9 agt_dana"), "the stuck task went to the teammate holding the role, by the lead's own call");
   assert.ok(!r.calls.some(c => c.startsWith("unblock tsk_8")), "a task a person has is not moved");
   const note = r.calls.at(-1);
-  assert.match(note, /I recommend moving "Draft tsk_9" to dana/);
+  assert.match(note, /I moved "Draft tsk_9" to dana/);
   assert.match(note, /a person has it/);
   assert.match(note, /no one else on the team holds the role nobody/);
 });
@@ -470,4 +472,43 @@ test("the lead's plan lands as one line under its name in the project's shared c
   t.after(() => d2.stop());
   const kept = d2.events.since(0, { limit: 5000 }).find(line);
   assert.ok(kept && kept.thread === thread, "the line is still in the log after a restart");
+});
+
+test("when the kernel refuses the lead's move, the message says so and what to do", async () => {
+  const task = { id: "tsk_rep", state: "ready", title: "Report on P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
+  const r = rig({ lead: "kit", task, others: [stuckTask("tsk_9")], leadRefuses: true });
+  r.ready(); await r.h.idle();
+  await r.finish('Stuck.\nREASSIGN: {"picks":[{"task":1,"to":"design"}]}');
+  assert.match(r.calls.at(-1), /I could not move "Draft tsk_9" to dana \(not allowed\)\. It needs you: open the task and choose who gets it\./);
+});
+
+test("on the real kernel the lead is read from the Project record and its team rows: it moves a stuck task to a teammate of the same role, and not to another role or when it is not the lead", { timeout: 180_000 }, async t => {
+  const { d, root, project } = await boot(t);
+  const kcall = kernelCaller(d, root);
+  const space = d.kernel.id.space, owner = d.kernel.id.owner;
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const uids = /** @type {Record<string, string>} */ ({});
+  for (const n of ["kit", "dana", "eli", "zed"]) {
+    assert.ok(!(await kcall("agents.create", { name: n, projects: [project.slug] })).error, n);
+    uids[n] = String((await d.registry.call("agents.uid", { name: n }, "module:projects")).data.uid);
+    try { await d.kernel.gateway.grants.addActor(admin, { kind: "agent", id: uids[n], space }, { presence: { method: "stand-in" } }); } catch { /* already an actor */ }
+  }
+  const ref = (await kcall("work.project.ref", { project: project.slug })).data;
+  // a task for dana, made while no one is on the team (so the wake leaves it alone), then worked by dana to stuck
+  const made = await kcall("tasks.request", { task: { title: "Draft the form", output: { kind: "note" }, doer: uids.dana, checker: owner, project: ref.urn } });
+  assert.ok(!made.error, JSON.stringify(made));
+  const id = String(made.data.task.id);
+  const handle = d.kernel.kernelFor({ name: "task-wake", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+  await handle.mint.make(taskGrantSpec(space, uids.dana, id, Date.now() + 3600_000));
+  const chainOf = (/** @type {string} */ n) => d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: owner, agent: uids[n], session: `s-${n}` });
+  await d.kernel.gateway.ask.start(chainOf("dana"), id);
+  await d.kernel.gateway.ask.stuck(chainOf("dana"), id, { reason: "no template" });
+  const rec = await d.kernel.gateway.records.get(admin, "project", ref.id);
+  await d.kernel.gateway.records.update(admin, "project", ref.id, { lead: "kit" }, rec.version);
+  for (const [n, role] of [["kit", "lead"], ["dana", "design"], ["eli", "design"], ["zed", "legal"]]) await d.kernel.gateway.records.create(admin, "team-member", { name: n, actor: { actor: { kind: "agent", id: uids[n], space } }, kind: "assistant", role, project: { urn: ref.urn } });
+  const to = (/** @type {string} */ n) => ({ kind: "agent", id: uids[n], space });
+  await assert.rejects(() => d.kernel.gateway.ask.reassignAsLead(chainOf("eli"), id, { to: to("zed") }), { code: "not_allowed" });   // eli is not the lead
+  await assert.rejects(() => d.kernel.gateway.ask.reassignAsLead(chainOf("kit"), id, { to: to("zed") }), { code: "not_allowed" });   // zed holds another role
+  const moved = await d.kernel.gateway.ask.reassignAsLead(chainOf("kit"), id, { to: to("eli") });
+  assert.deepEqual([moved.state, moved.doer.id], ["ready", uids.eli]);
 });

@@ -419,8 +419,8 @@ export default {
       input: obj({ project: { type: "string" }, agent: { type: "string" }, text: { type: "string" } }, ["project", "agent", "text"]),
       callers: ["module"],
       run: async (input, extra) => {
-        if (String((extra && extra.caller) || "") !== "module:vyred") throw Object.assign(new Error("only the daemon's task wake posts a project lead's message; the lead's reply reaches the chat through it"), { code: "denied" });
         const k = kernelOf(), svc = k.serviceChain("work");
+        if (String((extra && extra.caller) || "") !== "module:vyred") throw Object.assign(new Error("only the daemon's task wake posts a project lead's message; the lead's reply reaches the chat through it"), { code: "denied" });
         const rec = await hubOf().projectOf(String(input.project || ""));
         if (!rec || String(rec.data.lead || "").toLowerCase() !== String(input.agent || "").toLowerCase() || !rec.data.lead) throw Object.assign(new Error("only a project's flagged lead posts its message; the project record names the lead (projects.list shows the project)"), { code: "denied" });
         const all = (await k.records.query(svc, "chat-record", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 100 } }).catch(() => ({ rows: [] }))).rows || [];

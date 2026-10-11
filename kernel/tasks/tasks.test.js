@@ -57,7 +57,8 @@ function rig(over = {}) {
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
-    projectExists: async u => u.endsWith("/project/p1"),
+    projectExists: async u => u.endsWith("/project/p1") || u.endsWith("/project/p2"),
+    ...(over.leadRules ? { leadRules: over.leadRules } : {}),
     release: async (t, body, by) => { if (over.releaseDelay) await new Promise(res => setTimeout(res, over.releaseDelay)); if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
   const sign = (chain, who, op, fields, over2 = {}) => {
@@ -790,4 +791,58 @@ test("tasks: a task names its project as a link to a Project record of this Spac
   assert.equal((await r.tasks.list(owner(), { project: P1 })).length, 2);
   assert.equal((await r.tasks.edit(owner(), b.id, { project: null })).project, undefined);
   await assert.rejects(() => r.tasks.edit(owner(), b.id, { project: "vyre://spc_bbbbbbbbbbbb/project/p1" }), { code: "bad_input" });
+});
+
+// ---- G08: a project's lead moves its stuck tasks, and nothing else ----
+const P1 = `vyre://${SPACE}/project/p1`, P2 = `vyre://${SPACE}/project/p2`;
+const ROLES = { research: "lead", intake: "design", rogue: "design", assistant: "legal" };
+const leadRules = { isLead: async (a, urn) => a.id === "research" && urn === P1, roleOf: async (a, urn) => (urn === P1 || urn === P2 ? ROLES[a.id] || null : null) };
+const asAgent = (name, person = ALICE) => chains.fromFacts({ kind: "agent_session", agent: name, session: `s-${name}`, thread: "t", vouched: true, person });
+const stuckTask = async (r, { project = P1, doer = actor("agent", "intake") } = {}) => {
+  const t = await r.tasks.request(alice(), { title: "Draft the intake form", doer, output: { kind: "note" }, project });
+  if (doer.kind === "agent") { await r.tasks.start(asAgent(doer.id), t.id); await r.tasks.stuck(asAgent(doer.id), t.id, { reason: "no template" }); }
+  return t;
+};
+
+test("the lead of a project gives a stuck task of that project to a teammate of the same role; the log names the lead", async () => {
+  const r = rig({ leadRules });
+  const t = await stuckTask(r);
+  const moved = await r.tasks.reassignAsLead(asAgent("research"), t.id, { to: actor("agent", "rogue") });
+  assert.deepEqual([moved.state, moved.doer.id], ["ready", "rogue"]);
+  const ev = r.log.read({ type: "task.unblocked" }).at(-1);
+  assert.equal(ev.data.by_lead, "research");
+  assert.equal(ev.data.reassigned, true);
+  assert.match(ev.actor, /^agent:research/, "the actor in the log is the lead");
+});
+
+test("nothing else: not a ready or working task, not a person's task, not another project's, not to itself, not to another role, not to a stranger", async () => {
+  const r = rig({ leadRules });
+  const lead = asAgent("research");
+  const refuse = async (id, to, code) => assert.rejects(() => r.tasks.reassignAsLead(lead, id, { to }), { code });
+  const ready = await r.tasks.request(alice(), { title: "Ready one", doer: actor("agent", "intake"), output: { kind: "note" }, project: P1 });
+  await refuse(ready.id, actor("agent", "rogue"), "bad_state");
+  const working = await r.tasks.request(alice(), { title: "Working one", doer: actor("agent", "intake"), output: { kind: "note" }, project: P1 });
+  await r.tasks.start(asAgent("intake"), working.id);
+  await refuse(working.id, actor("agent", "rogue"), "bad_state");
+  const mine = await stuckTask(r, { doer: actor("person", BOB) }).catch(() => null);
+  if (mine) await refuse(mine.id, actor("agent", "rogue"), "bad_state");
+  const other = await stuckTask(r, { project: P2 });
+  await refuse(other.id, actor("agent", "rogue"), "not_allowed");   // research leads p1 only
+  const t = await stuckTask(r);
+  await refuse(t.id, actor("agent", "research"), "not_allowed");   // not to itself
+  await refuse(t.id, actor("agent", "intake"), "not_allowed");     // not back to the one who is stuck
+  await refuse(t.id, actor("agent", "assistant"), "not_allowed");  // a different role
+  await refuse(t.id, actor("agent", "stranger"), "not_a_member");
+  await refuse(t.id, actor("person", BOB), "not_a_member");
+  assert.equal((await r.tasks.get(owner(), t.id)).state, "stuck", "and it stays stuck");
+});
+
+test("only the project's flagged lead: not another agent, not a person, not a Space with no lead rules", async () => {
+  const r = rig({ leadRules });
+  const t = await stuckTask(r);
+  await assert.rejects(() => r.tasks.reassignAsLead(asAgent("intake"), t.id, { to: actor("agent", "rogue") }), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.reassignAsLead(alice(), t.id, { to: actor("agent", "rogue") }), { code: "not_allowed" });
+  const bare = rig();
+  const u = await stuckTask(bare);
+  await assert.rejects(() => bare.tasks.reassignAsLead(asAgent("research"), u.id, { to: actor("agent", "rogue") }), { code: "not_allowed" });
 });

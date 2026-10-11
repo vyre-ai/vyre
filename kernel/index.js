@@ -93,6 +93,22 @@ export async function createKernel(cfg) {
     // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
     // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
     records: store,
+    // Who is a project's lead, and what role a teammate holds in it, read from the Project record and its team rows (G08). The lead is the agent the Project record names, and is a teammate of it.
+    leadRules: (() => {
+      const idOf = (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/project\/([^/]+)$/.exec(String(u)); return m ? m[1] : null; };
+      const rows = async (/** @type {string} */ urn) => { try { return ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn } }, page: { limit: 500 } })).rows || []).filter((/** @type {any} */ r) => r.data && r.data.actor && r.data.actor.actor); } catch { return []; } };
+      const rowOf = async (/** @type {any} */ actor, /** @type {string} */ urn) => (await rows(urn)).find((/** @type {any} */ r) => r.data.actor.actor.kind === actor.kind && String(r.data.actor.actor.id) === String(actor.id));
+      return Object.freeze({
+        isLead: async (/** @type {any} */ actor, /** @type {string} */ urn) => {
+          const id = idOf(urn); if (!id) return false;
+          let p; try { p = await store.get("project", id); } catch { return false; }
+          const lead = String(p && p.data && p.data.lead || "").toLowerCase();
+          const mine = lead ? await rowOf(actor, urn) : null;
+          return Boolean(mine && String(mine.data.name || "").toLowerCase() === lead);
+        },
+        roleOf: async (/** @type {any} */ actor, /** @type {string} */ urn) => { const r = await rowOf(actor, urn); return r && r.data.role ? String(r.data.role) : null; },
+      });
+    })(),
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).

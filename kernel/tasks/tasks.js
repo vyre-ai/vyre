@@ -570,6 +570,31 @@ export function createTasks(cfg) {
       return tasks.get(id);
     },
 
+    /**
+     * A project's flagged lead gives a STUCK task of its own project to another agent teammate of that project who holds the same role as the task's current doer, and nothing else (G08). Not a ready or
+     * working task, not a person's task, not another project's, not to itself, not to an agent outside the team or in a different role. The lead is read from the Project record through the kernel
+     * (`leadRules`), never from what the caller says; the actor in the log is the lead. A chain that is not an agent's, or a Space with no lead rules, refuses.
+     * @param {any} chain @param {string} id @param {{ to?: any }} [o]
+     */
+    async reassignAsLead(chain, id, o = {}) {
+      const lead = acting(chain);
+      if (!cfg.leadRules || !lead || lead.kind !== "agent" || chain.hops.length < 2) throw new KernelError("not_allowed", "only a project's flagged lead reassigns its stuck tasks");
+      const t = get_(id);
+      if (t.state !== "stuck") throw new KernelError("bad_state", "a lead moves only a stuck task");
+      if (!t.doer || t.doer.kind !== "agent") throw new KernelError("not_allowed", "a task a person has is not the lead's to move");
+      if (typeof t.project !== "string" || !(await cfg.leadRules.isLead(lead, t.project))) throw new KernelError("not_allowed", "only the flagged lead of this task's own project moves it");
+      const to = o.to;
+      if (!to || to.kind !== "agent" || to.space !== cfg.space || !cfg.members.has(to)) throw new KernelError("not_a_member", "that teammate is not an agent of this Space");
+      if (same(to, lead) || same(to, t.doer)) throw new KernelError("not_allowed", "the lead gives a stuck task to another teammate, not to itself or to the one who is stuck");
+      const roleNow = await cfg.leadRules.roleOf(t.doer, t.project), roleTo = await cfg.leadRules.roleOf(to, t.project);
+      if (!roleNow || !roleTo || roleNow !== roleTo) throw new KernelError("not_allowed", "the task goes only to a teammate of this project who holds the same role as the one it is stuck with");
+      rule(t, "ready", "project_lead");
+      const { stuck: _s, ...rest } = t;
+      stage(id, freeze({ ...rest, doer: freeze({ ...to }), state: "ready", updated_at: clock() }));
+      note(chain, "task.unblocked", tasks.get(id), { reassigned: true, by_lead: lead.id, role: roleTo });
+      return tasks.get(id);
+    },
+
     /** Skip: the doer's or a person's act for an unguarded task; for a guarded one it raises a proposal a person with presence decides. */
     /**
      * Change a task's words, note, due time, form or parent. Whoever may do the same to their own work: the doer (an assistant doer only as the assistant its assigner gave it to), a person, or the
@@ -835,7 +860,7 @@ export function createTasks(cfg) {
       return { created, existing };
     };
     // Every call that can change a task's state tells the record afterwards; the kernel's state is the truth if the record cannot be reached.
-    for (const m of ["request", "start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix", "unblock", "skip", "edit", "reopen"]) {
+    for (const m of ["request", "start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix", "unblock", "reassignAsLead", "skip", "edit", "reopen"]) {
       const f = api[m];
       api[m] = async (/** @type {any[]} */ ...a) => { try { return await f.apply(api, a); } finally { await mirrorAll(); } };
     }
