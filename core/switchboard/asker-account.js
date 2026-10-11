@@ -49,6 +49,7 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
   // One hop at a time: the previous hop back is finished first, the target is checked BEFORE the stream is told a turn began (a hop that cannot start says so in words and began nothing), and the drain
   // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
   void (async () => {
+    let announced = false;
     try {
       if (!(await revertSettled(sb, id, false))) {
         // the hop back is still going past the wait: nothing is judged on the hop's state; the row goes back to the queue and the next turn's end (or resume) drains it
@@ -63,13 +64,14 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
         return;
       }
       await sb.onceTarget(id, kt.over);
+      announced = true;
       sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
       const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
       if (started === null) await sb.deliverRow(id, r, kt);   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
       sb.drainDone(id, true);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
-      sb.endAnnouncedTurn(id, rec ? rec.project : null);   // the turn announced as begun for these words ends here
+      if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // the turn announced as begun for these words ends here (nothing was announced if the target was refused first)
       sb.drainDone(id, true);
     }
   })();
