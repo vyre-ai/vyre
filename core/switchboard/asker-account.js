@@ -239,10 +239,12 @@ const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? 
 /**
  * The whole check of an agent or teammate launch, for the tool that launches (threads.launch) and for the check a module asks for BEFORE it queues work (threads.launch-check, team.ask): who asks is the
  * first person on the call's chain, else the person the module says the work is for (for_person; "automation" is an owner's or a Flow's own setting, named by the module); then agentLaunchGuard judges. Answers who was found.
- * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @returns {Promise<string | null>}
+ * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @param {string} [origin] the caller class the running call came from ("cli" and "local": the box's own terminal, the owner's) @returns {Promise<string | null>}
  */
-export async function checkLaunch(sb, i, chain, owner) {
-  const who = firstPerson(chain);
+export async function checkLaunch(sb, i, chain, owner, origin) {
+  // a terminal (the command line on the box itself) carries no chain of its own through a module's hop: the daemon's listener made it the home's owner, and the work it asks for is the owner's
+  const terminal = !firstPerson(chain) && (origin === "cli" || origin === "local") && owner ? owner : null;
+  const who = firstPerson(chain) || terminal;
   await agentLaunchGuard(sb, i, who, owner);
   return who || (typeof i.for_person === "string" && i.for_person && i.for_person !== "automation" ? i.for_person : null);
 }

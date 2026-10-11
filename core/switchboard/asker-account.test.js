@@ -133,6 +133,11 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   await assert.rejects(checkLaunch(none, { for_person: ANA }, null, OWNER), /runs on the machine's own sign-in/, "agentless with tools, for a member");
   assert.equal(await checkLaunch(none, {}, chain(OWNER), OWNER), OWNER, "agentless with tools, the owner");
   assert.equal(await checkLaunch(none, {}, null, OWNER), null, "agentless with tools, nobody: today's behaviour (the planner refuses a member's job itself)");
+  // the box's own terminal carries no chain through a module's hop: it is the owner's
+  assert.equal(await checkLaunch(none, tm, null, OWNER, "cli"), OWNER, "cli");
+  assert.equal(await checkLaunch(none, tm, null, OWNER, "local"), OWNER, "local");
+  await assert.rejects(checkLaunch(none, tm, null, OWNER, "mcp"), /nobody is recorded/, "a session is not a terminal");
+  await assert.rejects(checkLaunch(none, tm, null, OWNER, "device"), /nobody is recorded/, "a device with no chain is nobody");
 });
 
 test("trustedLaunch keeps for_person only from a first-party module's call", () => {
