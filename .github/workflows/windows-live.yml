@@ -1,6 +1,6 @@
 # The Windows app on a real, hosted Windows runner, paired with a throwaway Vyre box that runs on the testbox and
 # is reached through the hosted relay. Manual only (Windows minutes cost double). Installs the app from a
-# capsule-win build, runs --selftest, pairs, and exercises the confirm window, the link window and the hotkey,
+# lumen-win build, runs --selftest, pairs, and exercises the confirm window, the link window and the hotkey,
 # with screenshots. See scripts/windows-live/run.ps1.
 name: windows-live
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "capsule-win run to take the installer from (blank: build it in this run)"
+        description: "lumen-win run to take the installer from (blank: build it in this run)"
         required: false
         type: string
 permissions:
@@ -21,12 +21,12 @@ concurrency:
   group: windows-live-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
-  # The installer is built IN this run by the same reusable capsule-win workflow a release uses (artifact app-windows-<this commit>), so a branch
-  # that has no earlier green capsule-win run, or a run on another event, never leaves this job with an empty run id. Giving run_id skips
+  # The installer is built IN this run by the same reusable lumen-win workflow a release uses (artifact app-windows-<this commit>), so a branch
+  # that has no earlier green lumen-win run, or a run on another event, never leaves this job with an empty run id. Giving run_id skips
   # the build and takes that run's installer instead.
   build:
     if: ${{ inputs.run_id == '' }}
-    uses: ./.github/workflows/capsule-win.yml
+    uses: ./.github/workflows/lumen-win.yml
     permissions:
       contents: read
   live:
@@ -42,7 +42,7 @@ jobs:
         with:
           name: app-windows-${{ github.sha }}
           path: ${{ runner.temp }}/installer
-      - name: The installer, from the capsule-win run you named
+      - name: The installer, from the lumen-win run you named
         if: ${{ inputs.run_id != '' }}
         shell: pwsh
         env:
@@ -50,8 +50,8 @@ jobs:
         run: |
           $id = "${{ inputs.run_id }}"
           $sha = gh run view $id --json headSha --jq .headSha
-          if (-not $sha) { throw "no capsule-win run $id" }
-          "capsule-win run $id on $sha"
+          if (-not $sha) { throw "no lumen-win run $id" }
+          "lumen-win run $id on $sha"
           gh run download $id -n "app-windows-$sha" -D "$env:RUNNER_TEMP\installer"
       - name: Find the installer
         shell: pwsh

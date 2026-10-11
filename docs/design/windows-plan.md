@@ -30,7 +30,7 @@ macOS. Mac-only code is concentrated and gated:
 
 - **Swift native**: `local/capsule/native` (the Capsule app), `local/hands-mac`, `local/screen-mac`,
   `local/sideview`, `local/voice/swift`, `core/vault/mac`, `core/presence/touchid`, `core/link/se`,
-  plus the iOS app (`apps/ios`). All `local/*-mac` modules, built via `capsule-mac.yml`.
+  plus the iOS app (`apps/ios`). All `local/*-mac` modules, built via `lumen-mac.yml`.
 - **`process.platform === 'darwin'` gates** (~60 files): vault (keychain, Touch ID, login-keychain),
   clipboard (`pbcopy`/`pbpaste`), `local/apps` (installed-app discovery via `osascript`), CLI
   commands (`box`, `capsule`, `up`, `vault`, `doctor`, `connect`, `relay`), `core/system`,
@@ -127,7 +127,7 @@ per file.
   `node-windows.yml`) running the same `npm test`, this alone would catch path/shell assumptions
   today, since nothing currently runs the suite on Windows.
 - A dedicated `local/*-win` module's Swift/native-equivalent build (Tauri/Rust or C#) needs its own
-  workflow, same shape as `capsule-mac.yml`/`ios.yml`/`android.yml`, a `capsule-win.yml` building
+  workflow, same shape as `lumen-mac.yml`/`ios.yml`/`android.yml`, a `lumen-win.yml` building
   on `windows-latest`.
 - A Windows VM (Parallels/UTM on the Mac, or a cloud Windows PC) is the only way to hand-test UIA,
   Windows Hello and the hotkey, recommend this only once Tier C is actually being built, not for
@@ -388,7 +388,7 @@ stays server-side, in `core/`/`local/capsule-win`, never duplicated into Rust):
   Ctrl+Alt+Space is the fallback and the person is told once (a toast, not a silent swap).
   Configurable in Settings either way. **Needs a hands-on check on real Windows** (app-design's
   and the lead's shared flag): windows owns verifying the focused-panel case specifically, most
-  reliably via a `capsule-win.yml` CI job that opens the panel and asserts which handler wins,
+  reliably via a `lumen-win.yml` CI job that opens the panel and asserts which handler wins,
   falling back to a manual pass on the first Windows VM available if CI can't drive real OS
   keyboard focus.
 - **Tray icon + menu**: Tauri's tray API, Acrylic backdrop on the menu only (per app-design's
@@ -424,8 +424,8 @@ sibling `local/capsule/native-win` (the Tauri project) and `native()`/the autost
 new manifest entity, per section 4 above; `docs/design/windows-plan.md`'s own text above (module
 shape bullets under Native bits) should be read with this correction in mind.
 
-**CI, no Windows hardware**: a `capsule-win.yml` workflow on `windows-latest`, same shape as
-`capsule-mac.yml`: build the Tauri shell (`cargo tauri build` or `build.rs`-driven, TBD once the
+**CI, no Windows hardware**: a `lumen-win.yml` workflow on `windows-latest`, same shape as
+`lumen-mac.yml`: build the Tauri shell (`cargo tauri build` or `build.rs`-driven, TBD once the
 project scaffold exists), run its Rust unit tests, and as much of the hotkey/tray/toast surface as
 CI can actually drive headlessly (likely: unit-test the hotkey-conflict handler and the
 Authenticode-pin check in isolation; a real focused-window Alt+Space race may not be CI-drivable
@@ -437,7 +437,7 @@ scaffold started per the lead's instruction to begin before capsule-pro's contra
 the shell hosts Deck's web views and doesn't need it yet: `local/capsule/native-win` (corrected
 module shape, above) now holds `hotkey.rs`, the Alt+Space-default / Ctrl+Alt+Space-fallback
 decision and the system-menu-preemption logic, host-independent, unit-tested (9 tests), and
-`capsule-win.yml` runs them on `windows-latest`. **Not yet built**: the actual Tauri app (tray,
+`lumen-win.yml` runs them on `windows-latest`. **Not yet built**: the actual Tauri app (tray,
 WebView2 panel, Windows Hello, sign/pin), `local/capsule/index.js`'s `native()`/autostart gate
 extended to `win32`, or `core/cli/commands/capsule.js`'s Windows equivalent of
 `capsule-native.js`'s build-and-launch flow (deliberately not wired yet: claiming `native: true`

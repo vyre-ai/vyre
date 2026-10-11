@@ -1,16 +1,16 @@
 # The Capsule on macOS: the native app, its Swift tests, and the Node tests that only run on a Mac. Built here so no one compiles it on their own Mac.
-name: capsule-mac
+name: lumen-mac
 on:
   push:
     branches: ["main", "work/**"]
-    paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/lumen-mac.yml"]
   pull_request:
     paths: ["local/capsule/**", "!local/capsule/native-win/**"]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: capsule-mac-${{ github.ref }}
+  group: lumen-mac-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   detect:
@@ -150,7 +150,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()
         with:
-          name: capsule-mac-${{ github.sha }}
+          name: lumen-mac-${{ github.sha }}
           path: dist/*.zip
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

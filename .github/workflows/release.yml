@@ -315,12 +315,12 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           retention-days: 7
 
-  # The Windows installer, built inside this run by the reusable capsule-win workflow (its own pinned toolchain, --locked, NSIS, unsigned for 0.2),
+  # The Windows installer, built inside this run by the reusable lumen-win workflow (its own pinned toolchain, --locked, NSIS, unsigned for 0.2),
   # so a release can never race it or ship without it: `release` needs this job and fails if the installer is not in the artifact. It holds no key;
   # the installer is listed in SHA256SUMS and the signed manifest like every other file.
   windows:
     needs: prepare
-    uses: ./.github/workflows/capsule-win.yml
+    uses: ./.github/workflows/lumen-win.yml
     permissions:
       contents: read
     with:

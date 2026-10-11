@@ -42,8 +42,8 @@ test("release.yml: the step that holds the signing key runs only checked-in scri
   assert.match(step, /node scripts\/sign-manifest\.mjs/);
 });
 
-test("release.yml and capsule-win.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
-  const win = fs.readFileSync(path.join(REPO, ".github/workflows/capsule-win.yml"), "utf8");
+test("release.yml and lumen-win.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
+  const win = fs.readFileSync(path.join(REPO, ".github/workflows/lumen-win.yml"), "utf8");
   const loose = [...(yml + "\n" + win).matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
   assert.deepEqual(loose.map(m => `${m[1]}@${m[2]}`), []);
 });
@@ -60,7 +60,7 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
 });
 
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
-  assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/capsule-win\.yml/);
+  assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/lumen-win\.yml/);
   assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");

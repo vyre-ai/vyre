@@ -1,6 +1,6 @@
 # The Node suite: core, web, modules, the box and the tests that run anywhere, plus the perf
 # budget gate (SPEC principle 8: vyred idle under 0.5% CPU / 150 MB, nothing polling faster than
-# once a minute). The Mac-only tests run in capsule-mac.yml.
+# once a minute). The Mac-only tests run in lumen-mac.yml.
 name: node
 on:
   push:

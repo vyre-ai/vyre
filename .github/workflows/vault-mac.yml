@@ -2,7 +2,7 @@
 # agent's signing all need a real macOS keychain (`security`) and are skipped everywhere else
 # (`{ skip: process.platform !== "darwin" }`, core/vault/keys.js's defaultKind). node.yml's
 # ubuntu-latest run never exercises them. This job runs them on a throwaway GitHub-hosted Mac, the
-# same "never on the person's own account, never on the real server" pattern capsule-mac.yml
+# same "never on the person's own account, never on the real server" pattern lumen-mac.yml
 # already uses for its own keychain-signing step: a fresh per-run keychain, never the runner's
 # login one, and the whole VM is discarded after the job either way.
 name: vault-mac

@@ -6,12 +6,12 @@
 # itself (tray, WebView2, Windows Hello, Authenticode sign/pin) is not scaffolded yet; this
 # workflow will grow with it. Runs on windows-latest per the plan, even though the crate today
 # builds anywhere, so a future win32-only dependency doesn't silently break here first.
-name: capsule-win
+name: lumen-win
 on:
   push:
-    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+    paths: ["local/capsule/native-win/**", ".github/workflows/lumen-win.yml"]
   pull_request:
-    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+    paths: ["local/capsule/native-win/**", ".github/workflows/lumen-win.yml"]
   workflow_dispatch:
   # release.yml calls this for every release and waits for it, so an installer is never missing.
   workflow_call:
@@ -23,7 +23,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: capsule-win-${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
+  group: lumen-win-${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   # web: the app's web export (apps/app, no install scripts), once for the installer and once pointed at the stand-in names directory for the proof.

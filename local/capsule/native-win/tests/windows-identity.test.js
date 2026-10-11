@@ -100,7 +100,7 @@ test("the typed code is on in a release build, on Windows too: only VYRE_TYPED_C
   assert.match(html, /<section id="typed">/, "the typed path shows by default");
   assert.ok(!/<section id="typed" hidden>/.test(html));
   assert.match(read("../app/ui/first-run.js"), /s\.typed_code === false\) document\.getElementById\("typed"\)\.hidden = true/, "hidden only when the shell says it was built off");
-  const wf = readFileSync(new URL("../../../../.github/workflows/capsule-win.yml", import.meta.url), "utf8");
+  const wf = readFileSync(new URL("../../../../.github/workflows/lumen-win.yml", import.meta.url), "utf8");
   assert.ok(!/VYRE_TYPED_CODE\s*[:=]\s*["']?0/.test(wf), "no workflow sets it to 0");
 });
 
@@ -138,5 +138,5 @@ test("one origin and one first run: the window is always the bundled app, a buil
   assert.match(/fn show_first_run\([\s\S]*?\n}\n/.exec(rs)[0], /show_app\(app, ""\)/);
   assert.match(rs, /if !setup_done\(&handle\) \{ show_first_run/);
   assert.match(read("../app/build.rs"), /app-web\/index\.html is missing/);
-  assert.match(readFileSync(new URL("../../../../.github/workflows/capsule-win.yml", import.meta.url), "utf8"), /name: win-web-app\n\s+path: local\/capsule\/native-win\/app\/app-web/);
+  assert.match(readFileSync(new URL("../../../../.github/workflows/lumen-win.yml", import.meta.url), "utf8"), /name: win-web-app\n\s+path: local\/capsule\/native-win\/app\/app-web/);
 });
