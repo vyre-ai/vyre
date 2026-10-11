@@ -35,4 +35,15 @@ test("a transcript is placed only in the chat of the person it is for", { timeou
   const byNative = await ask({ thread: th.id, person: "per_" + "x".repeat(26) });
   assert.ok(!byNative.data, "and gets nothing, by whatever name the thread is called");
   assert.ok((await ask({ thread: th.id })).error, "a call that names no person is refused");
+  // a caller cannot name the person of a new thread: the chat turn's asker is the only source
+  const liar = "per_" + "y".repeat(26);
+  const started2 = await d.registry.call("threads.start", { cwd: work, prompt: "hello again", surface: "deck", chat: chat.id, asker: ownerId, person: liar }, "module:stream");
+  assert.ok(!started2.error, JSON.stringify(started2));
+  const th2 = started2.data;
+  await until(async () => (await d.registry.call("threads.get", { thread: th2.id, limit: 50 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the second thread's turn", 60_000);
+  assert.ok((await ask({ thread: th2.id, person: liar })).error, "the person a caller named is not the thread's person");
+  assert.ok((await ask({ thread: th2.id, person: ownerId })).data, "the chat turn's asker is");
+  // a thread started with no chat turn has no person and is refused for a transcript
+  const bare = await d.registry.call("threads.start", { cwd: work, prompt: "bare", surface: "cli" }, "cli");
+  if (bare.data && bare.data.id) { await until(async () => (await d.registry.call("threads.get", { thread: bare.data.id, limit: 50 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the bare turn", 60_000); assert.ok((await ask({ thread: bare.data.id, person: ownerId })).error, "no person recorded, nothing is placed"); }
 });
