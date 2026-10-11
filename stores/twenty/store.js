@@ -358,6 +358,7 @@ export class TwentyStore {
   // ---- definitions -----------------------------------------------------------------------------
   /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
   #defineLine = Promise.resolve();
+  /** @type {Set<string>} types a define made but could not finish the mirror columns of */ #halfMade = new Set();
   /** One define at a time on this store: Twenty rebuilds a table for each field it adds and two at once fail with a lock timeout (55P03), so every caller (modules, Kits, Flows, a person's records.define) waits its turn here. */
   define(diff, o = {}) {
     const run = async () => { const t0 = this.now(); try { return await this.#defineNow(diff, o); } finally { this.say(defineLine(diff, this.now() - t0)); } };
@@ -427,6 +428,7 @@ export class TwentyStore {
       const p = planType(def, { ...(known ? { plural: known.plural } : {}), space: this.space, inverseLabels });
       let obj = objs.get(p.singular);
       if (known && canonical(known.def) === canonical(def) && obj && !(/** @type {any} */ (o).force)) return;
+      const isNew = !obj;
       if (!obj) {
         const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: p.singular, namePlural: p.plural, labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon, ...(audit ? { isAuditLogged: false } : {}) } } });
         obj = { id: r.createOneObject.id, nameSingular: p.singular, labelSingular: p.label, icon: p.icon, fields: { edges: [] } }; objs.set(p.singular, obj);
@@ -460,6 +462,18 @@ export class TwentyStore {
           for (const v of exVals) if (!f.options.some((o) => o.value === v)) throw new StoreError("unsupported", `An option of ${def.name}.${f.vyre} was removed: that is a migration, not a define`);
           if (f.options.some((o) => !exVals.has(o.value))) { await this.client.gql("metadata", "mutation UpdField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { options: f.options } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         }
+      }
+      // The four mirror columns of a type made by this define are made with it (it has no rows): Twenty adds each field in a migration of its own, a second or more apiece, and made at the type's first write
+      // they were paid by whoever wrote first (a member's first chat waited ~20 s). The define runs while the Space is set up, where nobody is waiting.
+      // A define that failed on one of them is retried whole: the type is remembered as half made and the retry makes what is missing.
+      if (isNew || this.#halfMade.has(p.vyre)) {
+        this.#halfMade.add(p.vyre);
+        for (const [k, col] of Object.entries(ATTR_COLUMNS)) {
+          if (have.has(col)) continue;
+          await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: obj.id, type: "TEXT", name: col, label: `Vyre ${k}`, isNullable: true } } });
+        }
+        this.attrCols.add(p.vyre);
+        this.#halfMade.delete(p.vyre);
       }
       // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
       for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
