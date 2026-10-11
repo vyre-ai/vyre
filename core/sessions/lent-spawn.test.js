@@ -317,3 +317,33 @@ test("on the real home: another person's turn that reaches a chat whose live pro
   const stuck = { deps: { lentTakeBack: () => Promise.resolve("held") }, chatOf: () => null, nativeOf: () => SESSION };
   assert.equal(await lentYield(stuck, SESSION, live, CAROL), true, "a held take-back still does not run the turn on the computer");
 });
+
+test("another person's turn: the computer is asked to hand the chat over first and the server waits for it; only a computer that does not answer is taken from", async () => {
+  /** @type {string[]} */ const calls = [];
+  let where = "mac";
+  const places = (/** @type {boolean} */ answers) => ({ spaces: () => [SPACE], find: () => ({ session: SESSION, chat: "chat_bob", person: BOB, where }),
+    askRelease: (/** @type {string} */ _s, /** @type {string} */ _id, /** @type {string} */ reason) => { calls.push("ask:" + reason); if (answers) setTimeout(() => { where = "server"; }, 150); },
+    takeBack: async () => { calls.push("force"); where = "server"; return { changed: true }; } });
+  const kernel = (/** @type {boolean} */ answers) => ({ runnerHost: () => ({ placements: places(answers) }) });
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION, asker: CAROL };
+  assert.equal(await takeBackFor(kernel(true), q), "taken");
+  assert.deepEqual(calls, ["ask:another-person"], "a computer that answers is not taken from");
+  calls.length = 0; where = "mac";
+  assert.equal(await takeBackFor(kernel(false), { ...q, waitMs: 300 }), "taken");
+  assert.deepEqual(calls, ["ask:another-person", "force"], "a computer that does not answer in time is taken from");
+});
+
+test("the other person's message that waited while the chat came back is the next turn once the server has carried on", async () => {
+  const { lentDrain } = await import("../../lib/lent-placement.js");
+  /** @type {any[]} */ const ended = [];
+  const before = { turn: null }, fresh = { turn: null, switching: false, proc: { where: "box" } };
+  const sb = (/** @type {any} */ live, /** @type {boolean} */ queued) => ({ live: new Map([["t", live]]), db: { prepare: () => ({ get: () => (queued ? { 1: 1 } : undefined) }) }, record: () => ({ project: null }), turnEnded: (/** @type {any} */ ...a) => ended.push(a) });
+  lentDrain(sb(before, true), "t", before);
+  assert.equal(ended.length, 0, "the old process is still the live one: carryOn hands the queue over itself");
+  lentDrain(sb(fresh, false), "t", before);
+  assert.equal(ended.length, 0, "nothing queued, nothing to hand over");
+  lentDrain(sb({ ...fresh, proc: { where: "lent" } }, true), "t", before);
+  assert.equal(ended.length, 0, "never into a process that is on a computer");
+  lentDrain(sb(fresh, true), "t", before);
+  assert.equal(ended.length, 1, "the fresh idle process on the server takes the waiting message as its turn");
+});
