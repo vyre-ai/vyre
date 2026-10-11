@@ -1529,6 +1529,11 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   await K.gateway.grants.removeMember(ownerChain, { person: gil.id }, { presence: sign("removeMember", { person: gil.id }) });
   assert.equal(await sees(gil, casey), 0, "a removed member reads nothing of a current one");
   assert.equal(await sees(casey, gil), 0, "and a current one reads nothing of a removed one");
+  // a manager is a member of the home Space: the role counts like any other that is a member (a temp member needs a scope, and is not made here)
+  await add(tess, "manager");
+  assert.equal(await sees(tess, casey), 1, "a manager reads a member's");
+  // NOT BUILT here: a person who shares only a HOSTED second Space with the target. This rig sends every Space id to the one home kernel, so a hosted Space cannot be told from the home Space. By code read the home check
+  // asks only the home Space's membership, so it cannot widen what such a person learns; the walk covers it.
   // a target that is not a person (an agent actor's id) is refused by shape
   assert.deepEqual(await d.ok("spaces.identity.devices.read", { person: "agt_" + "a".repeat(30) }, "module:work", { token: ownerTok }), { devices: [] });
   void K.membership;
