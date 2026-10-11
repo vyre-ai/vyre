@@ -718,7 +718,7 @@ export default {
     });
     ctx.tool("publish.job.runs", {
       callers: WITH_MODELS,
-      description: "Last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }, secrets cut out.",
+      description: "Last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }.",
       input: obj({ deployment: str, limit: { type: "integer", minimum: 1, maximum: 20 } }, ["deployment"]),
       run: async (i, meta) => {
         const w = await whoIs(i, meta);
