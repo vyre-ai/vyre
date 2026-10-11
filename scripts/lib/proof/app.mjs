@@ -7,6 +7,7 @@
 //                      phone's modules, so Node cannot import it; its call into pairServer is repeated in pairWithServer below and must be kept in step)
 //   a tool call        apps/app/src/auth/paired.ts startPaired over relay/client/client.js connect, as the app's openPairedSession does
 // The person's clicks are the only thing replaced: pasting the code, choosing Records, saying the four words match.
+import { createECDH } from "node:crypto";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
@@ -97,7 +98,9 @@ export function createApp(o) {
 
   /** Step 2, in the app: paste the code; the app makes the identity key here and finishes the claim with it. @param {{ name: string, code: string }} a */
   async function becomeYourself(a) {
-    const made = await claimIdentity({ name: a.name, code: a.code, base: o.directory, forceSoftware: true, params: stretch, deviceLabel: o.label });
+    // the device's key-agreement point, as the app's device has one (a chat with several people is sealed to each device's point; a person whose device lists none cannot be put in a chat)
+    const agreeKey = createECDH("prime256v1"); agreeKey.generateKeys();
+    const made = await claimIdentity({ name: a.name, code: a.code, base: o.directory, forceSoftware: true, params: stretch, deviceLabel: o.label, agree: agreeKey.getPublicKey().toString("base64url") });
     me = made;
     return { id: made.id, name: made.name, recoveryCode: made.recoveryCode };
   }
