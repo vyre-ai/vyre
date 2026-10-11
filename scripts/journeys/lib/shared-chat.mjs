@@ -61,6 +61,7 @@ async function untilAnswers(person, chat, n) {
  * @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: Grace and Edith, each { name, app, joined }
  */
 export async function sharedChatSteps({ J, w, team, people, needs }) {
+  const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
   const accounts = /** @type {Record<string, any>} */ ({});
   const A = "the box has a stand-in Codex login and agent for the walk";
@@ -89,7 +90,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   /** @type {string} */ let chat = "";
   const C = "Grace starts one chat with Edith and the AI in it, and sets it so the AI answers every message";
   await J.step(C, async () => {
-    const made = await grace.joined.call("chat.create", [{ title: "Team day", people: [edith.app.identity.id], agents: ["assistant"] }]);
+    const made = await grace.joined.call("chat.create", [{ title: "Team day", people: [edith.app.identity.id, owner.id], agents: ["assistant"] }]);
     chat = String(made.chat);
     assert.match(chat, /^chat_/);
     await grace.joined.call("chat.reply-mode", [{ chat, mode: "every" }]);
@@ -137,4 +138,12 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.ok(String(after[before].text).includes(`/${accounts[edith.name].uid}`), `the mention ran on Edith's account: ${after[before].text}`);
     return `answers ${before} to ${after.length}`;
   }, { needs: [D], owner: "chat" });
+
+  const G = "the owner, who is in the chat too, reads the same history from their own app";
+  await J.step(G, async () => {
+    const r = await w.call("stream.catchup", { chat, space: team.space });
+    const texts = /** @type {any[]} */ (r.messages || []).map(m => String(m.text));
+    assert.ok(texts.some(t => t.includes("Edith here")) && texts.some(t => t.includes("home:")), `the owner reads the members' words and the AI's answers: ${JSON.stringify(texts)}`);
+    return `${texts.length} messages`;
+  }, { needs: [F], owner: "chat" });
 }
