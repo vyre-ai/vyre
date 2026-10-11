@@ -60,6 +60,12 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const c2 = (await svc.card(bob, { id: od.id, version: v2.version })).changes, c3 = (await svc.card(bob, { id: od.id, version: v3.version })).changes;
   assert.ok(c2.length > 0, "the first draft changes something");
   for (const c of c2) assert.ok(c3.some((/** @type {any} */ x) => JSON.stringify(x) === JSON.stringify(c)), `the second draft's card still shows the first draft's change: ${JSON.stringify(c)}`);
+  // attention shows a member Flow runs only, never the Space's stuck tasks
+  assert.deepEqual(Object.keys(await svc.attention(bob, {})), ["runs"], "attention carries runs and nothing else");
+  // drafts waiting on one Flow are capped per member
+  let made = 2;
+  for (; made < 20; made++) { const x = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "draft " + made }) }); assert.ok(x.ok, JSON.stringify(x)); }
+  assert.match(await words(svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "one too many" }) })), /20 drafts.*Ask the person it runs for/s, "the 21st waiting draft is refused, with a next step");
   assert.match(await words(svc.approve(bob, { id: od.id, version: v2.version, hash: v2.hash })), /runs on someone else's authority.*Propose it/s, "her own yes does not approve a new version of the owner's Flow");
   assert.equal((await host().flows.store.active(od.id)).version, od.version, "the owner's version still runs");
   // she proposes it: a card goes to the person the Flow runs for (the owner), who approves it with their own yes; it then runs on the owner's authority

@@ -19,6 +19,8 @@ import { KernelError } from "../../kernel/core/errors.js";
  * "own-manual" is the narrower bound (manual trigger, no outward, AI or code step), kept as the one constant a later role setting can turn.
  * @type {"own-manual" | "own-any"}
  */
+/** Drafts one member may have waiting on one Flow. */
+const MAX_DRAFTS = 20;
 export const MEMBER_APPROVAL = "own-any";
 
 /** Each call of the wire's `flows` group and the Flows tool that serves it. kind: open (no Flow), read (a Flow's definition), write (a Flow's author), start, runs, run (one run), approve, propose. */
@@ -65,7 +67,9 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
 
   switch (spec.kind) {
     case "open": return call();
-    case "list": case "runs": case "attention": return mark(await tools[spec.tool](chain, i));
+    case "list": case "runs": return mark(await tools[spec.tool](chain, i));
+    // The Flow runs that need a look. The stuck tasks of the whole Space are not Flows matters, so a member is shown none of them.
+    case "attention": { const a = await tools[spec.tool](chain, i); return { runs: a && Array.isArray(a.runs) ? a.runs : [] }; }
     case "health": if (i.id) await there(need("id", "the Flow's id")); return call();
     case "read": {
       await there(need("id", "the Flow's id"));
@@ -77,7 +81,15 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     }
     case "describe": if (i.run) { await runOf(String(i.run)); return call(); } await there(need("id", "the Flow's id")); return call();
     // Setting up and improving: any member writes a new version, a patch or a test of any Flow of the Space as a DRAFT. Which version runs, and on whose authority, is decided only at approval (below).
-    case "define": case "write": case "simulate": return call();
+    case "define": case "write": case "simulate": {
+      // Drafts she has made of one Flow and nobody has approved are capped, so one member cannot fill the Flow with versions (the vault caps pending requests the same way).
+      if (typeof i.id === "string" && i.id && spec.kind !== "simulate") {
+        const r = await rowOf(i.id);
+        const mine = r ? r.versions.filter((/** @type {any} */ v) => v.by && v.by.kind === "person" && String(v.by.id) === me && (r.active === null || v.version > r.active)).length : 0;
+        if (mine >= MAX_DRAFTS) throw new KernelError("too_many", `you already have ${MAX_DRAFTS} drafts of this Flow waiting. Ask the person it runs for to look at them (flows.propose), then try again.`);
+      }
+      return call();
+    }
     case "start": {
       const id = need("id", "the Flow's id");
       await there(id);
