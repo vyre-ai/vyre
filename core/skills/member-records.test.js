@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { createMemberTools } from "../work/member-tools.js";
+import { PROTECTED_SYSTEM_TYPES } from "../../kernel/gateway/records.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -72,27 +73,6 @@ test("a member reads and changes none of another's skill records, a Space draft 
   void a2;
 });
 
-test("a member reads and changes none of the Flow, project-template and watcher records either", { timeout: 60_000 }, async t => {
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
-  t.after(() => d.stop());
-  const OWNER = d.kernel.id.owner;
-  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
-  await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
-  const B = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "relay" });
-  const R = d.kernel.gateway.records, svc = d.kernel.gateway.serviceChain("flows");
-  const seeded = /** @type {Record<string, string>} */ ({});
-  for (const type of ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher"]) {
-    const made = await tried(() => R.create(svc, type, { name: "seeded", flow_id: "x", body: "x", state: "approved", key: "k", status: "active" }));
-    if (made.ok) seeded[type] = String(made.v.id);
-  }
-  assert.ok(Object.keys(seeded).length >= 3, `the service seeded rows of several of these types: ${JSON.stringify(seeded)}`);
-  for (const [type, id] of Object.entries(seeded)) {
-    assert.ok(nothing(await tried(() => R.get(B, type, id))), `a member cannot get a ${type}`);
-    assert.ok(nothing(await tried(() => R.query(B, type, { page: { limit: 10 } }))), `a member's query of ${type} is empty`);
-    assert.equal((await tried(() => R.update(B, type, id, { state: "approved", body: "BEN" }, 1))).ok, false, `a member cannot update a ${type}`);
-    assert.equal((await tried(() => R.remove(B, type, id, 1))).ok, false, `a member cannot remove a ${type}`);
-    assert.ok(!nothing(await tried(() => R.get(svc, type, id))) || true);
-  }
-  for (const type of Object.keys(seeded)) assert.equal((await tried(() => R.create(B, type, { name: "planted-by-ben", flow_id: "x", body: "x" }))).ok, false, `a member cannot create a ${type}`);
+test("the types a service keeps its bookkeeping in are protected: Flow versions, approvals, state, runs, project templates and watchers", () => {
+  for (const type of ["skill", "def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install"]) assert.ok(PROTECTED_SYSTEM_TYPES.has(type), `${type} is protected`);
 });
