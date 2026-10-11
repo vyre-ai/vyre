@@ -162,9 +162,10 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);
-  const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
-  assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.to === "codex" && e.payload.reason === "once"), "the turn ran on carol's provider for that one turn");
-  assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back" && e.payload.to === "claude"), "and the thread went back to its own");
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
+  assert.ok((await events()).some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.to === "codex" && e.payload.reason === "once"), "the turn ran on carol's provider for that one turn");
+  // the return to the thread's own provider follows the answer a moment later
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back" && e.payload.to === "claude"), "the thread to go back to its own", 30_000);
   await b.stop();
 });
 
