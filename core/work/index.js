@@ -450,6 +450,12 @@ export default {
         return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
+    ctx.tool("work.project.seat", {
+      description: "Where a person stands on a project (its owner, on its team, or neither): { exists, owner, team }. For the teammates module, which sends work only for a person who has a seat.",
+      internal: true, callers: ["module"],
+      input: obj({ project: { type: "string" }, person: { type: "string" } }, ["project", "person"]),
+      run: async (/** @type {any} */ input) => { kernelOf(); const seat = await hubOf().seatOf(String(input.project || ""), String(input.person || "")); return seat ? { exists: true, ...seat } : { exists: false, owner: false, team: false }; },
+    });
     ctx.tool("work.project.members", {
       description: "Who is on a Project's team: each assistant or person with the role it fills, from the project's team records ({ members: [{ agent, role }] }). Read under the caller's own chain: a Project the caller may not read is not found.",
       input: obj({ project: { type: "string", description: "The Project's record id, address or short name" } }, ["project"]),

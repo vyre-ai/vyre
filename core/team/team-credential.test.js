@@ -21,10 +21,28 @@ test("a teammate filled by an agent with a picked sign-in launches on that sign-
   assert.equal(launches().at(-1).oauth, true, "the filler's picked sign-in rode on the teammate's launch");
 });
 
-test("team.ask on a daemon with no kernel records nobody as having asked, and a teammate on a picked sign-in still launches (there are no members to protect)", { timeout: 120_000 }, async t => {
+test("team.ask on a daemon with no kernel records the owner (the box's own terminal) as having asked, and a teammate on a picked sign-in still launches", { timeout: 120_000 }, async t => {
   const { tool, project, d } = await boot(t);
   await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
   const r = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"x","notes":"unchanged","reason":"test"}' });
   const row = d.registry.deps.db.prepare("SELECT asker FROM team_requests WHERE id = ?").get(r.request);
-  assert.equal(row && row.asker, null, "no person on a bare caller, and no kernel: nobody is recorded");
+  const owner = d.kernel && d.kernel.id && d.kernel.id.owner;
+  assert.ok(row && (row.asker === null || row.asker === owner), `the box's own terminal asked: the owner is recorded (or nobody, with no kernel): ${row && row.asker}`);
+});
+
+test("a member who is not on a project's team cannot send its teammates work: refused in words, nothing queued, no thread; the owner can", { timeout: 120_000 }, async t => {
+  const { tool, project, d } = await boot(t);
+  const OWNER = d.kernel.id.owner, BEN = "per_" + "c".repeat(26);
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const benChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "direct", session: "sb" });
+  const benToken = { token: (await d.kernel.surfaces.open(benChain, {})).token };
+  await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
+  const before = d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_requests").get().n;
+  const refused = await d.registry.call("team.ask", { to: "design", project: project.record, text: "do something with the owner's project" }, "cli", benToken);
+  assert.equal(refused.error && refused.error.code, "denied", JSON.stringify(refused));
+  assert.match(refused.error.message, /not on this project's team/);
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_requests").get().n, before, "nothing was queued");
+  const mine = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"owner","notes":"unchanged","reason":"test"}' });
+  assert.ok(mine.request, "the owner's request is queued as before");
 });

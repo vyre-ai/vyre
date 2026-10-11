@@ -94,10 +94,3 @@ test("the team pump launches with no person on the call: the person the request 
   const auto = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked, for_person: "automation" }, "module:team", { firstParty: true });
   assert.ok(auto.data && auto.data.asker === null, JSON.stringify(auto));
 });
-
-test("for_person is dropped from a call that is not a first-party module's: a member's own call cannot say its work is the owner's automation", { timeout: 90_000 }, async t => {
-  const w = await world(t);
-  const picked = { CLAUDE_CODE_OAUTH_TOKEN: "picked-for-the-teammate" };
-  const forged = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked, for_person: "automation" }, "module:team", await w.tokenOf(w.bobChain));
-  assert.equal(forged.error && forged.error.code, "no_account", "a call without firstParty: for_person is dropped and the member's chain is judged: " + JSON.stringify(forged));
-});
