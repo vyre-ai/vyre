@@ -18,7 +18,8 @@ export async function askerOver(sb, id, kernelTurn) {
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
   // Nobody but the owner runs on the owner's login, nor on the machine's own credential: a person with no sign-in of their own here is refused, whatever account the thread names (or none).
   const owner = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
-  if (owner && asker !== owner) throw needOwnSignIn();
+  // (with no account named, the thread runs on the machine's own login only where this machine has one to give: on a box, the vault's setup token)
+  if (owner && asker !== owner && (rec.account || sb.deps.auth)) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -64,6 +65,7 @@ const needOwnSignIn = () => Object.assign(new Error("You have no sign-in of your
 export async function memberAccount(sb, rec, o, id) {
   const asker = o.kernelTurn && o.kernelTurn.asker, owner = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
   if (!asker || !owner || asker === owner || o.agent || o.account) return o;
+  if ((rec.provider || o.provider || "claude") === "claude" && !sb.deps.auth) return o;   // no machine login here to take: the launch has no one's credential to run on
   const mine = await sb.accountFor({ provider: rec.provider || o.provider || "claude", person: asker, project: rec.project, agent: rec.agent }).catch(() => null);
   if (mine && mine.id) return { ...o, account: String(mine.id) };
   if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
