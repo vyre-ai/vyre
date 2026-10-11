@@ -33,7 +33,7 @@ test("runQueuedOver: a hop that cannot start says so in words, tells the stream 
 test("a write that throws while a queued turn is handed over releases the drain lock, and the row behind it still runs", async () => {
   /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }), deps: { log() {} },
     write() { throw new Error("lent: the words may not go into a process on a computer"); },
     dropQueuedChatTurn: (/** @type {string} */ id) => drained.push("notice"),   // the room is told the words were not sent
