@@ -27,35 +27,35 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
 
 test("the person narrows their assistant: that tool is refused for the assistant in a real session, in plain words, and the person's own call still works", async t => {
   const w = await world(t);
-  assert.ok(!(await w.assistant("waiting.count")).error, "the assistant may use it at first");
+  assert.ok(!(await w.assistant("threads.list")).error, "the assistant may use it at first");
   const before = (await w.person("assistant.access.get", {})).data;
   assert.deepEqual(before.tools, []);
   assert.ok(before.screens.every(/** @type {any} */ s => s.off === false));
-  const narrowed = await w.person("assistant.access.narrow", { tools: ["waiting.count"] });
+  const narrowed = await w.person("assistant.access.narrow", { tools: ["threads.list"] });
   assert.ok(!narrowed.error, JSON.stringify(narrowed.error));
-  assert.deepEqual(narrowed.data.tools.map(/** @type {any} */ x => x.name), ["waiting.count"]);
-  const refused = await w.assistant("waiting.count");
+  assert.deepEqual(narrowed.data.tools.map(/** @type {any} */ x => x.name), ["threads.list"]);
+  const refused = await w.assistant("threads.list");
   assert.equal(refused.error?.code, "access_narrowed", JSON.stringify(refused.error));
-  assert.equal(refused.error.message, "You turned off waiting.count for your assistant, so it cannot use waiting.count. You can change this in Settings, Assistant access.");
-  assert.ok(!(await w.person("waiting.count")).error, "the person's own call is never limited");
+  assert.equal(refused.error.message, "You turned off threads.list for your assistant, so it cannot use threads.list. You can change this in Settings, Assistant access.");
+  assert.ok(!(await w.person("threads.list")).error, "the person's own call is never limited");
   assert.ok(!(await w.assistant("agents.list")).error, "a tool that was not narrowed still works for the assistant");
   // the assistant can read what it may not do, and say so
-  assert.deepEqual((await w.assistant("assistant.access.get")).data.tools.map(/** @type {any} */ x => x.name), ["waiting.count"]);
+  assert.deepEqual((await w.assistant("assistant.access.get")).data.tools.map(/** @type {any} */ x => x.name), ["threads.list"]);
 });
 
 test("a whole area: turning a screen off stops every tool of it for the assistant", async t => {
   const w = await world(t);
-  assert.ok(!(await w.person("assistant.access.narrow", { screens: ["projects"] })).error);
-  const r = await w.assistant("work.project.list");
+  assert.ok(!(await w.person("assistant.access.narrow", { screens: ["vault"] })).error);
+  const r = await w.assistant("vault.list");
   assert.equal(r.error?.code, "access_narrowed", JSON.stringify(r.error));
   assert.match(r.error.message, /^You turned off Projects and tasks for your assistant, so it cannot use work\.project\.list/);
-  assert.equal((await w.person("assistant.access.get")).data.screens.find(/** @type {any} */ s => s.id === "projects").off, true);
+  assert.equal((await w.person("assistant.access.get")).data.screens.find(/** @type {any} */ s => s.id === "vault").off, true);
 });
 
 test("only the person narrows or restores: never the assistant, and a name that is not a tool is refused", async t => {
   const w = await world(t);
-  assert.equal((await w.assistant("assistant.access.narrow", { tools: ["waiting.count"] })).error?.code, "denied");
-  assert.equal((await w.assistant("assistant.access.restore", { tools: ["waiting.count"] })).error?.code, "denied");
+  assert.equal((await w.assistant("assistant.access.narrow", { tools: ["threads.list"] })).error?.code, "denied");
+  assert.equal((await w.assistant("assistant.access.restore", { tools: ["threads.list"] })).error?.code, "denied");
   for (const bad of [{ tools: ["not a tool"] }, { tools: ["assistant.access.narrow"] }, { screens: ["everything"] }, {}, { tools: "records.*" }]) {
     const r = await w.person("assistant.access.narrow", bad);
     assert.equal(r.error?.code, "bad_input", JSON.stringify([bad, r.error]));
@@ -65,10 +65,10 @@ test("only the person narrows or restores: never the assistant, and a name that 
 
 test("narrowing only ever makes it smaller: it cannot be undone through narrow, and restoring is the person's own yes", async t => {
   const w = await world(t);
-  assert.ok(!(await w.person("assistant.access.narrow", { tools: ["waiting.count"] })).error);
-  assert.ok(!(await w.person("assistant.access.narrow", { tools: ["waiting.count"] })).error, "narrowing twice is the same");
+  assert.ok(!(await w.person("assistant.access.narrow", { tools: ["threads.list"] })).error);
+  assert.ok(!(await w.person("assistant.access.narrow", { tools: ["threads.list"] })).error, "narrowing twice is the same");
   assert.equal((await w.person("assistant.access.get")).data.tools.length, 1);
   // there is no input of narrow that widens: nothing here removes a row
   const again = await w.person("assistant.access.narrow", { tools: ["agents.list"] });
-  assert.deepEqual(again.data.tools.map(/** @type {any} */ x => x.name), ["agents.list", "waiting.count"]);
+  assert.deepEqual(again.data.tools.map(/** @type {any} */ x => x.name), ["agents.list", "threads.list"]);
 });
