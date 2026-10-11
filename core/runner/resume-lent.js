@@ -29,11 +29,12 @@ const SAFE_REL = /^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\0]{1,400}$/;
 export function createResumeLent(o) {
   const fsx = o.fsx || fs;
   return async function resumeLent(i) {
-    const thread = String(i.thread || i.chat || i.session);
+    const thread = i.thread || i.chat ? String(i.thread || i.chat) : "";
+    if (!thread) throw err("unavailable", "this chat is not known on this server any more, so it cannot be carried on from the computer: start it again from its chat");
     const cp = await i.view.checkpoint();
     // nothing whole was ever acknowledged: there is nothing to carry, and the chat starts its turn again from its prompt
     if (!cp || !Number.isInteger(cp.seq) || cp.seq < 1) return { resumed: false, turn: 0, lines: 0, files: 0, conflicts: [] };
-    const tg = await o.target(thread);
+    const tg = await o.target(thread, i.person);
     if (!tg) throw err("unavailable", "this server has no transcript place for that chat");
     const lines = /** @type {string[]} */ ([]);
     for (let from = 1; from <= cp.seq; ) {
@@ -46,7 +47,8 @@ export function createResumeLent(o) {
     // the checkpoint covers THIS transcript and THIS manifest (the hashes the runner sealed into it): a history that was changed after the checkpoint, or a manifest swapped, is not carried on (trust row 21; the seal itself
     // is the lender's, which the home cannot verify: the person's own computer is trusted with their chat by the lend, and what comes back is untrusted history either way, row 22)
     const want = cp.state && cp.state.cover;
-    if (want) {
+    if (!want) throw err("unavailable", "the computer's checkpoint has no seal over its history, so it is not carried on: update Vyre on that computer, then move the chat again");
+    {
       const got = coverOf(cp.manifest || {}, lines.map((line, k) => ({ seq: k + 1, line })), cp.seq, cp.turn);
       if (want.transcript !== got.transcript || want.manifest !== got.manifest || want.seq !== cp.seq || want.turn !== cp.turn) throw err("unavailable", "the lender's checkpoint does not match its transcript: it is not carried on");
     }

@@ -58,3 +58,9 @@ test("a tunnel's queue toward the computer is bounded: a browser that sends fast
   assert.ok(taken < sent * 1.4 + 1024, "nothing is lost");
   assert.ok(taken <= sent * 4 / 3 + 4096);
 });
+
+test("a preview is never of a port the sandbox itself owns (its credentialed egress shim), nor outside 1024 to 65535, and the refusal says what to do", async () => {
+  const pv = createPreviews();
+  const { SANDBOX_PORTS } = await import("./homesandbox.js");
+  for (const port of [...SANDBOX_PORTS, 80, 70000]) await assert.rejects(() => pv.open("s1", port), (/** @type {any} */ e) => e.code === "bad_input" && /start the dev server on/.test(e.message), `port ${port}`);
+});

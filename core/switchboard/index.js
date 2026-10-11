@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -1024,7 +1024,7 @@ export class Switchboard {
       const note = heard.length ? tagNote(heard) : "";
       await slow();
       at("first prompt send");
-      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), ...(o.kernelTurn && o.kernelTurn.asker ? { askedBy: o.kernelTurn.asker } : {}), cancelled: () => box.cancelled });
       else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(withoutVyre(String(o.prompt)), 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
@@ -2161,6 +2161,8 @@ export class Switchboard {
    */
   write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "" } = {}) {
     const st = this.live.get(id);
+    // the last door: nothing reaches a process on a person's computer unless the turn it belongs to is that person's (fail closed: a process that does not say where it runs is judged by the home's book)
+    if (lentBlocks(this, id, st, this.turnAsker.get(id) || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
@@ -2235,6 +2237,8 @@ export class Switchboard {
     // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
+    // a chat on a person's computer is handed only that person's queued turns: anyone else's wait for the server to have the chat (the take-back starts now)
+    { const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })(); if (lentBlocks(this, id, st, kt0 && kt0.asker ? kt0.asker : null)) { void lentYield(this, id, st, kt0 && kt0.asker ? kt0.asker : null).catch(() => {}); return; } }
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
@@ -2400,7 +2404,7 @@ export class Switchboard {
     return run;
   }
 
-  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, askedBy = null, cancelled = undefined } = {}) {
     // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
     const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); }; { const r0 = this.record(id); if (r0) await checkResidency(this.deps, r0.provider || "claude"); }   // a running chat is held to the vendor policy at each turn too
     given();
@@ -2430,6 +2434,8 @@ export class Switchboard {
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
+    // The door every message into a live process passes: a process on a person's own computer takes that person's turns only. A message with no chat turn behind it (an agent's, a Flow's, a notice) has no person, so it never reaches one.
+    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); } }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
@@ -3814,7 +3820,7 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
