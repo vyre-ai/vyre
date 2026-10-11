@@ -10,7 +10,6 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open as openDb, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
@@ -21,6 +20,7 @@ import { wrapWithCode, unwrapWithCode, codeLooksRight } from "../../lib/code-wra
 export const KEEP_DEFAULT = 14;
 export const DAY_MS = 24 * 3_600_000;
 const KEY_ITEM = "vyre-backup-key";
+export const DRILL_PREFIX = ".drill-";
 const AAD = "vyre:vault-autobackup:v1";
 const err = (/** @type {string} */ code, message = code) => Object.assign(new Error(message), { code });
 const b64 = (/** @type {Uint8Array} */ b) => Buffer.from(b).toString("base64");
@@ -117,9 +117,16 @@ export async function drill(vault, { code, password = "", file, params }) {
   if (!s) throw err("not_enrolled", "automatic backups are not turned on");
   const name = file || (s.last && s.last.file);
   if (!name) throw err("no_backup", "there is no backup to try yet: make one first");
-  const full = path.isAbsolute(name) ? name : path.join(dirOf(vault), name);
+  const full = path.resolve(path.isAbsolute(name) ? name : path.join(dirOf(vault), name));
+  let st;
+  try { st = fs.lstatSync(full); } catch { throw err("no_backup", "that backup file is not there"); }
+  if (!st.isFile()) throw err("not_a_backup", "that is not a backup file (it must be a regular file, not a link or a folder)");
   const opened = unseal(fs.readFileSync(full, "utf8"), code, password);
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-drill-"));
+  // The scratch vault is a readable copy of the whole vault with its key beside it: it lives in a 0700 folder of the home (never the system temp folder), and is removed in the finally clause;
+  // `cleanLeftovers` removes one a crash left behind.
+  fs.mkdirSync(dirOf(vault), { recursive: true, mode: 0o700 });
+  const home = fs.mkdtempSync(path.join(dirOf(vault), `${DRILL_PREFIX}`));
+  fs.chmodSync(home, 0o700);
   const db = openDb(path.join(home, "vyre.db"));
   try {
     migrate(db, "vault", MIGRATIONS);
@@ -141,4 +148,11 @@ export async function drill(vault, { code, password = "", file, params }) {
     vault.audit("restore", null, "drill", ok, result.note);
     return result;
   } finally { try { db.close(); } catch { /* closed */ } fs.rmSync(home, { recursive: true, force: true }); }
+}
+
+/** Remove a scratch vault a crash left behind (a drill folder from an earlier run). Called when the Vault starts. @param {{ dir: string }} vault */
+export function cleanLeftovers(vault) {
+  let n = 0;
+  try { for (const f of fs.readdirSync(dirOf(vault))) if (f.startsWith(DRILL_PREFIX)) { fs.rmSync(path.join(dirOf(vault), f), { recursive: true, force: true }); n++; } } catch { /* no folder yet */ }
+  return n;
 }

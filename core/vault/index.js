@@ -182,6 +182,7 @@ export default {
       obj({ code: str, password: str, file: str }, ["code"]), async ({ code, password, file }) => autobackup.drill(vault, { code, password, file }),
       presence("Try restoring the latest vault backup", () => "Restore the newest vault backup into a scratch vault and compare it with this vault (nothing here changes)"));
     // the daily tick: a first look a minute after start, then every hour; only an enrolled vault has anything due (a vault with none makes no key here)
+    autobackup.cleanLeftovers(vault);
     const scheduleBackup = (/** @type {number} */ ms) => vault.later(async () => { try { await autobackup.tick(vault); } catch (e) { ctx.log(`vault: the automatic backup failed: ${/** @type {Error} */ (e).message}`); } scheduleBackup(3_600_000); }, ms);
     scheduleBackup(60_000);
 
