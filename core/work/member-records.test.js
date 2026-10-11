@@ -72,6 +72,9 @@ test("a member lists, makes, reads and changes records of the team's Space as he
   assert.equal(await code(w.as(ANA, "records.create", { type: "team-member", data: {} })), "not_allowed", "the project team is kept by the team's own tools");
   assert.ok((await w.as(ANA, "records.types")).types.every((/** @type {any} */ x) => x.name !== "skill" && x.name !== "def-flow"));
   assert.notEqual(await code(w.as(w.OWNER, "records.list", { type: "skill" })), "not_found", "the owner keeps access to the kept types");
+  // the Projects screen lists through records.list { type: "project" }: a member gets a page (a project is hers to see; the gateway's ownership rule decides which rows)
+  const projects = await w.as(ANA, "records.list", { type: "project", limit: 10 });
+  assert.ok(Array.isArray(projects.rows), "a member's project list answers a page, not a refusal: " + JSON.stringify(projects));
   // a stranger (not a member) and a chain with an agent behind it
   assert.equal(await code(w.as(ZED, "records.list", { type: "contact" })), "not_found", "a person who is not a member gets nothing");
   const agentChain = { ...w.chainOf(ANA), hops: [...w.chainOf(ANA).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
