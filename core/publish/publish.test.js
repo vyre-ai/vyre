@@ -52,6 +52,8 @@ const fakeSource = `export default { async start(ctx) {
     t("appmods.publish.run", async i => { pf().runs.push(i.deployment); const r = pf().runResult; if (r instanceof Error) throw r; return r; });
   } else if (tools === "projects") {
     t("projects.reach", async () => ({ all: true }));
+  } else if (tools === "work") {
+    t("work.project.people", async i => pf().projectPeople?.[i.project] || { people: [], personal_of: null, missing: true });
   } else if (tools === "tasks") {
     t("tasks.create", async i => { pf().tasks.push(i); return { id: "tsk_" + pf().tasks.length }; });
   }
@@ -59,7 +61,7 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership", "spaces.merge-list"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove", "appmods.publish.run"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], work: ["work.project.people"], spaces: ["spaces.self", "spaces.membership", "spaces.merge-list"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove", "appmods.publish.run"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
@@ -728,4 +730,39 @@ test("publish: a job goes live with one yes and no address, runs now and on its 
   await new Promise(res => setTimeout(res, 200));
   assert.equal(b.pf.runs.length, before + 1, "and only once: it is not due again");
   assert.equal((await b.ok("publish.job.attention", {})).jobs.length, 0, "the card is gone when the job runs well");
+});
+
+test("publish: a job's runs and its failure card are the project's people's, not every member's; a job with no project is the Space's; no answer about the project reads as closed", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "appmods", "work"] });
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [], logs: "ok", runtime: { kind: "image", image: "sha256:" + "f".repeat(64), port: 8080, health: { path: "/", ok: [200] } } });
+  const folder = path.join(b.home, "nightly"); fs.mkdirSync(folder, { recursive: true });
+  const live = async (/** @type {string} */ name, /** @type {any} */ extra) => {
+    const made = await b.ok("publish.create", { name, source: { kind: "folder", ref: folder }, build: { image: "dockerfile" }, job: { every_minutes: 5, timeout_s: 120 }, ...extra });
+    await b.ok("publish.preview", { deployment: made.deployment.id });
+    const a = await b.ok("publish.approve", { deployment: made.deployment.id });
+    await b.ok("publish.decide", { task: a.task, approve: true });
+    const p = await b.ok("publish.publish", { deployment: made.deployment.id });
+    await b.ok("publish.decide", { task: p.task, approve: true });
+    return made.deployment.id;
+  };
+  const acme = await live("acme-nightly", { project: "acme" });
+  const loose = await live("space-nightly", {});
+  b.pf.runResult = { ok: false, message: "failed", output: "exit=3 seconds=4\nboom\n" };
+  b.pf.actAs["*"] = "per_alex";
+  await b.ok("publish.job.run", { deployment: acme });
+  // the project's people are Alex and Sam; Kit is a Space admin, not on it
+  b.pf.projectPeople = { acme: { people: ["per_alex", "per_sam"], personal_of: null } };
+  const as = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => { b.pf.actAs["*"] = who; return b.call(tool, input); };
+  assert.equal((await as("per_sam", "publish.job.runs", { deployment: acme })).data.runs.length, 1, "a person on the project reads its runs");
+  assert.equal((await as("per_sam", "publish.job.attention")).data.jobs.length, 1, "and sees its failure card");
+  assert.equal((await as("per_sam", "publish.job.runs", { deployment: loose })).error, undefined, "a job with no project is the Space's: any member reads it");
+  b.pf.members.per_bob = { space: SPACE.id, person: "per_bob", role: "member", added_by: "per_alex", added_at: 1 };
+  assert.equal((await as("per_bob", "publish.job.runs", { deployment: acme })).error?.code, "not_found", "a member who is not on the project cannot read its runs or output");
+  assert.deepEqual((await as("per_bob", "publish.job.attention")).data.jobs, [], "nor sees its failure card");
+  assert.equal((await as("per_kit", "publish.job.runs", { deployment: acme })).data.runs.length, 1, "a Space admin reads any project's job");
+  b.pf.projectPeople = { acme: { people: ["per_sam"], personal_of: "per_sam" } };
+  assert.equal((await as("per_kit", "publish.job.runs", { deployment: acme })).error?.code, "not_found", "not an admin into someone's Personal project");
+  b.pf.projectPeople = {};
+  assert.equal((await as("per_sam", "publish.job.runs", { deployment: acme })).error?.code, "not_found", "no answer about the project: closed");
+  assert.deepEqual((await as("per_sam", "publish.job.attention")).data.jobs, [], "and no failure card either");
 });

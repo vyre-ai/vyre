@@ -720,6 +720,18 @@ export default {
         return runJob(b.space.id, d);
       },
     });
+    /** A job belongs to its project: only that project's people (and the Space's owner and admins, but never into someone's Personal project) read its runs. A job with no project is the Space's. No answer about the project: closed.
+     * @param {string} spaceId @param {string} person @param {any} d @param {Map<string, any>} [memo] */
+    async function mayReadJob(spaceId, person, d, memo = new Map()) {
+      if (!d.project) return true;
+      const key = String(d.project);
+      if (!memo.has(key)) memo.set(key, await call("work.project.people", { project: key }).then(r => (r.missing ? null : r.data)).catch(() => null));
+      const pj = memo.get(key);
+      if (!pj || pj.missing || !Array.isArray(pj.people)) return false;
+      if (pj.people.includes(person)) return true;
+      const m = await member(spaceId, person);
+      return Boolean(m) && (m.role === "owner" || m.role === "admin") && !(pj.personal_of && pj.personal_of !== person);
+    }
     ctx.tool("publish.job.runs", {
       callers: WITH_MODELS,
       description: "Last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }.",
@@ -727,7 +739,7 @@ export default {
       run: async (i, meta) => {
         const w = await whoIs(i, meta);
         const d = await storeFor(w.space.id).get("deployments", String(i.deployment || ""));
-        if (!d || !d.job) throw refuse("no such job: publish.list shows them", "not_found");
+        if (!d || !d.job || !(await mayReadJob(w.space.id, w.person, d))) throw refuse("no such job: publish.list shows them", "not_found");
         const rows = /** @type {any[]} */ (db.prepare("SELECT at, ok, code, seconds, message, output FROM publish_job_runs WHERE space = ? AND deployment = ? ORDER BY n DESC LIMIT ?").all(w.space.id, d.id, Math.min(20, Math.max(1, Number(i.limit) || 5))));
         return { runs: rows.map(r => ({ at: r.at, ok: Boolean(r.ok), code: r.code, seconds: r.seconds, message: r.message, output: r.output })) };
       },
@@ -738,9 +750,9 @@ export default {
       input: obj({}),
       run: async (i, meta) => {
         const w = await whoIs(i, meta);
-        const jobs = [];
+        const jobs = [], memo = new Map();
         for (const d of await storeFor(w.space.id).list("deployments")) {
-          if (d.stage !== "Production" || !d.job) continue;
+          if (d.stage !== "Production" || !d.job || !(await mayReadJob(w.space.id, w.person, d, memo))) continue;
           const last = lastRun(d.id);
           if (last && !last.ok) jobs.push({ deployment: d.id, name: d.name, at: last.at, message: last.message });
         }
