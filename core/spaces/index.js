@@ -2405,6 +2405,7 @@ export default {
       // ("no key-agreement point"). The kernel is asked: both are members of the home Space now.
       if (!shares && K && typeof K.space === "string" && typeof K.membership === "function") {
         const [a, b] = await Promise.all([K.membership(caller, K.space).catch(() => null), K.membership(target, K.space).catch(() => null)]);
+        // The role is not looked at on purpose: any role that is a member counts. What a role may do with a point is decided later, where a chat key is wrapped.
         if (a && a.member === true && b && b.member === true) shares = true;
       }
       if (!shares) return { devices: [] };
