@@ -235,3 +235,21 @@ test("the first start says when each phase begins and that the saved database wa
   assert.match(src, /no saved database for this image/);
   assert.match(fs.readFileSync(new URL("./space-store.js", import.meta.url), "utf8"), /retryBaseMs \?\? 5_000/);
 });
+
+test("degrade: while a retry runs the store says it is starting, not the first attempt's error", async () => {
+  const home = tmp();
+  /** @type {() => void} */ let release = () => {};
+  let n = 0;
+  const f = createStoreFor({ home, mode: "twenty", degrade: true, retryBaseMs: 60_000, log: () => {}, helper: false,
+    preflight: async () => { n++; if (n === 1) return { ok: false, reasons: ["compose file could not be regenerated"], facts: {} }; await new Promise((r) => { release = /** @type {any} */ (r); }); return { ok: false, reasons: ["still no room"], facts: {} }; },
+    provision: async () => ({ url: "http://127.0.0.1:1", keyFile: "x", webhookSecretFile: "y" }) });
+  const st = await f(SP, { personal: true });
+  f.bootDone();
+  assert.throws(() => st.get("t", "i"), (e) => /compose file could not be regenerated/.test(e.message), "after the first failure it says why");
+  const retrying = f.retry(SP);   // the second attempt starts and waits
+  await new Promise((r) => setTimeout(r, 30));
+  assert.throws(() => st.get("t", "i"), (e) => /still starting/.test(e.message) && !/compose file/.test(e.message), "while the retry runs it says it is starting");
+  assert.match(f.waiting()[0].reason, /still starting/);
+  release(); await retrying;
+  assert.throws(() => st.get("t", "i"), (e) => /still no room/.test(e.message), "and when that attempt fails it says its own reason");
+});
