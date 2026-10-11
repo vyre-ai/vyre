@@ -1555,7 +1555,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // (a session of the home's own Space names that Space in its token too: it is no team turn)
     const turnSpace = typeof sessionToken === "string" ? (sp => (sp && sp !== (kernelOf && kernelOf() && kernelOf().id.space) ? sp : null))(teamSpaceOfToken(sessionToken)) : null;
     /** @type {any} */ let teamResult = null;
-    if (turnSpace && input && typeof input === "object" && !Array.isArray(input)) {
+    // (a team token with a body that is not a plain object of arguments is an error, never a call that falls through to the home)
+    if (turnSpace && !(input && typeof input === "object" && !Array.isArray(input))) teamResult = { error: { code: "bad_input", message: "a call made inside a team chat takes an object of arguments: send { } with the tool's inputs" } };
+    else if (turnSpace) {
       const def = registry.tools.get(name);
       // Whatever tool it is and whatever label the call carries, a team turn's token acts in its own Space or nowhere: another Space named in the input is refused here, once, not left to each tool's own door.
       if (input.space !== undefined && input.space !== turnSpace) teamResult = { error: { code: "denied", message: "this chat's tools act in its own Space: leave `space` out, or name this chat's Space" } };

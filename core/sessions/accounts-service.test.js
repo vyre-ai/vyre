@@ -105,3 +105,14 @@ test("nobody else reaches the service: a non-member, an agent's chain, another S
     assert.ok(r.error, `${caller} is refused: ${JSON.stringify(r).slice(0, 160)}`);
   }
 });
+
+test("the door never passes a missing person: serve refuses an empty, missing or odd person, and a chain with no person hop gets nothing", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  for (const person of [undefined, "", null, "per bad", 7]) {
+    const r = await w.d.registry.call("sessions.accounts.serve", { call: "list", person, space: w.firm.space, input: {} }, "module:vyred", { door: true });
+    assert.ok(r.error, `a person of ${JSON.stringify(person)} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  const noPerson = { space: w.firm.space, hops: [{ actor: { kind: "agent", id: "kit", space: w.firm.space } }] };
+  await assert.rejects(() => w.svc.list(noPerson, {}), /not found/);
+  await assert.rejects(() => w.svc.list({ space: w.firm.space, hops: [] }, {}), /not found/);
+});
