@@ -169,11 +169,14 @@ test("a model's memory.space.recall in a team turn reads the TEAM Space's memory
   assert.deepEqual(((await w.tool("memory.space.recall", {})).data || { facts: [] }).facts.filter((/** @type {any} */ f) => /retainer/.test(String(f.text))), [], "the home's own Space memory does not have it");
 });
 
-test("a model's files.drive.space.list in a team turn reads the TEAM Space's Drive, as the admin who spoke; the model cannot write to it, and a plain member's model lists none of it (the member holds no Drive right unless the owner gives one)", { timeout: 150_000 }, async t => {
+test("a model's files.drive.space.list in a team turn reads the TEAM Space's Drive, as the person who spoke, who holds the Drive right; the model cannot write to it, and a plain member's model lists none of it (the member holds no Drive right unless the owner gives one)", { timeout: 150_000 }, async t => {
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const made = await as(ADA, "create", { title: "Team files", people: [BEN], agents: ["assistant"] });
   await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
+  // the owner gives Ada the Drive (a member holds none unless the owner gives it): her model then reads it as her
+  const gi = { subject: { kind: "actor", actor: { kind: "person", id: ADA, space: firm.space } }, actions: ["drive.read"], resource: { prefix: `vyre://${firm.space}/file/*` }, conditions: {}, source: "test" };
+  await firm.gateway.grants.create(owner, gi, { presence: proof() });
   await as(ADA, "reply-mode", { chat: made.chat, mode: "every" });
   const said = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || ");
   await as(ADA, "send", { chat: made.chat, text: "vyre files.drive.space.list {}" });
