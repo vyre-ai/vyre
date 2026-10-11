@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -348,4 +348,56 @@ test("the last door: Switchboard.write refuses a message for a process on a comp
   const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
   const stub = (/** @type {any} */ asker) => ({ live: new Map([[SESSION, { proc: { where: undefined, write() { throw new Error("reached the process"); } } }]]), turnAsker: new Map(asker === undefined ? [] : [[SESSION, asker]]), deps: { lentRow: () => row }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
   for (const asker of [undefined, null, CAROL]) assert.throws(() => Switchboard.prototype.write.call(stub(asker), SESSION, "hello"), (/** @type {any} */ e) => e.code === "held" && /waits/.test(e.message), `asker ${String(asker)}: refused before the process`);
+});
+
+
+test("another person's turn: the computer is asked to hand the chat over first and the server waits for it; only a computer that does not answer is taken from", async () => {
+  /** @type {string[]} */ const calls = [];
+  let where = "mac";
+  const places = (/** @type {boolean} */ answers, /** @type {any} */ extra = {}) => ({ spaces: () => [SPACE], find: () => ({ session: SESSION, chat: "chat_bob", person: BOB, where, ...extra }),
+    askRelease: (/** @type {string} */ _s, /** @type {string} */ _id, /** @type {string} */ reason) => { calls.push("ask:" + reason); if (answers) setTimeout(() => { where = "server"; }, 150); },
+    takeBack: async () => { calls.push("force"); where = "server"; return { changed: true }; } });
+  const kernel = (/** @type {boolean} */ answers, /** @type {any} */ extra) => ({ runnerHost: () => ({ placements: places(answers, extra) }) });
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION, asker: CAROL };
+  assert.equal(await takeBackFor(kernel(true), q), "taken");
+  assert.deepEqual(calls, ["ask:another-person"], "a computer that answers is not taken from");
+  calls.length = 0; where = "mac";
+  assert.equal(await takeBackFor(kernel(false), { ...q, waitMs: 300 }), "taken");
+  assert.deepEqual(calls, ["ask:another-person", "force"], "a computer that does not answer in time is taken from");
+});
+
+test("a burst of messages from other people makes the server wait for the hand-over once, not once each", async () => {
+  /** @type {string[]} */ const calls = [];
+  let where = "mac";
+  const kernel = { runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => ({ session: SESSION, chat: "chat_bob", person: BOB, where }),
+    askRelease: () => { calls.push("ask"); setTimeout(() => { where = "server"; }, 250); }, takeBack: async () => { calls.push("force"); return { changed: true }; } } }) };
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION };
+  const all = await Promise.all([takeBackFor(kernel, { ...q, asker: CAROL }), takeBackFor(kernel, { ...q, asker: CAROL }), takeBackFor(kernel, { ...q, asker: "per_dave" }), takeBackFor(kernel, { ...q, asker: null })]);
+  assert.deepEqual(all, ["taken", "taken", "taken", "taken"]);
+  assert.deepEqual(calls, ["ask"], "one request to the computer, shared by every waiting message");
+});
+
+test("a chat that works in a folder of the computer is never taken from it: the other person's message waits and is told why and what to do", async () => {
+  /** @type {string[]} */ const calls = [], said = [];
+  const kernel = { runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => ({ session: SESSION, chat: "chat_bob", person: BOB, where: "mac", folder: "f1" }), askRelease: () => calls.push("ask"), takeBack: async () => { calls.push("force"); return { changed: true }; } } }) };
+  assert.equal(await takeBackFor(kernel, { thread: SESSION, chat: "chat_bob", native: SESSION, asker: CAROL }), "folder");
+  assert.deepEqual(calls, [], "neither asked nor forced");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB, folder: "f1" };
+  const sb = { deps: { lentRow: () => row, lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, x) }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ t, /** @type {any} */ p) => said.push(p.text) };
+  assert.equal(await lentYield(sb, SESSION, { proc: { where: "lent" } }, CAROL), true);
+  assert.ok(said.length === 1 && /Ask the chat's owner/.test(said[0]), "the person is told: " + said.join("|"));
+});
+
+test("the other person's message that waited while the chat came back is the next turn once the server has carried on", async () => {
+  /** @type {any[]} */ const ended = [];
+  const before = { turn: null }, fresh = { turn: null, switching: false, proc: { where: "box" } };
+  const sb = (/** @type {any} */ live, /** @type {boolean} */ queued) => ({ live: new Map([["t", live]]), deps: {}, db: { prepare: () => ({ get: () => (queued ? { 1: 1 } : undefined) }) }, record: () => ({ project: null }), turnEnded: (/** @type {any} */ ...a) => ended.push(a) });
+  lentDrain(sb(before, true), "t", before);
+  assert.equal(ended.length, 0, "the old process is still the live one: carryOn hands the queue over itself");
+  lentDrain(sb(fresh, false), "t", before);
+  assert.equal(ended.length, 0, "nothing queued, nothing to hand over");
+  lentDrain(sb({ ...fresh, proc: { where: "lent" } }, true), "t", before);
+  assert.equal(ended.length, 0, "never into a process that is on a computer");
+  lentDrain(sb(fresh, true), "t", before);
+  assert.equal(ended.length, 1, "the fresh idle process on the server takes the waiting message as its turn");
 });
