@@ -42,7 +42,7 @@ test("a member's chat tools go through the team door: only the five, and only fo
 
 test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
   const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
-  for (const t of ["work.project.create", "work.project.members", "work.start-project", "work.template.list", "work.template.golive", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add"]) {
+  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add"]) {
     assert.ok(isTeamWork(t), `${t} is the team's work`);
     assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
   }
@@ -56,4 +56,12 @@ test("a member's Flows go through the door under the same name; the ones the doo
   assert.equal(memberWire("flows.test.save"), "flows.test-save");
   assert.equal(memberWire("flows.test.run"), "flows.test-run");
   for (const c of ["pause", "resume", "rollback", "budget", "control", "settle", "advance", "kit.list", "connections"]) { assert.equal(memberWire(`flows.${c}`), null, c); assert.ok(isTeamWork(`flows.${c}`), `${c} is refused in words`); }
+});
+
+test("a member starts her own projects through the door: a blank project, one from an installed template, and the live templates she can pick", async () => {
+  const { memberWire, isTeamWork } = await import("./with-space.js");
+  assert.equal(memberWire("work.project.create"), "work.project-create");
+  assert.equal(memberWire("work.start-project"), "work.start-project");
+  assert.equal(memberWire("work.template.list"), "work.templates");
+  for (const t of ["work.template.install", "work.template.define", "work.template.golive", "work.template.library"]) { assert.equal(memberWire(t), null, t); assert.ok(isTeamWork(t), `${t} is the owner's, refused in words`); }
 });

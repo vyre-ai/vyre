@@ -25,6 +25,8 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
 /** A member's Flows (core/flows member tools, group `flows` on the door): the registry tool of the same name, the same input. Not on the door, so refused in words: pause, resume, rollback, budget, control, settle, advance, kit.*, connections. */
 const FLOW_CALLS = Object.freeze(["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"]);
 const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(FLOW_CALLS.map((c) => [`flows.${c}`, `flows.${c}`])),
+  // a member's own projects (core/work/member-projects.js, door group `work`): the installed templates, a blank project, a project from a template; install, write and put-live stay the owner's and are refused in words
+  "work.template.list": "work.templates", "work.project.create": "work.project-create", "work.start-project": "work.start-project",
   "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" });
 
 /** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
