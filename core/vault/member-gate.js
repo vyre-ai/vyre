@@ -1,6 +1,6 @@
 // @ts-check
 // core/vault/member-gate.js: the vault is the Space owner's. One place, before any vault tool runs: a call whose kernel chain has a person who is not the Space's owner (a member directly, or the person
-// behind that member's assistant or a named agent of theirs) is refused, whatever the tool and whatever presence says. A module's call and an outside agent's pass call carry no person and are unchanged; every other call must show a readable chain whose every person hop is the owner (the owner's terminal does: the daemon proves it on the socket), or it is refused. The owner is read from the kernel, never from the input.
+// behind that member's assistant or a named agent of theirs) is refused, whatever the tool and whatever presence says. A module's call, an outside agent's pass call and a call that claims no person at all (the owner's terminal, the daemon itself) are unchanged; a call that claims a person (a session token or the daemon's connection facts) must show a readable chain whose every person hop is the owner, or it is refused. The owner is read from the kernel, never from the input.
 //
 // Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module), a tool added later is refused for members unless its name is added to MEMBER_ALLOWED, and a
 // test lists every registered vault tool and fails for one that is not wrapped.
@@ -36,7 +36,12 @@ export function gateTools(ctx) {
     if (!k || typeof k.chain !== "function") return;   // a home with no kernel has no members to keep out
     const caller = String((meta && meta.caller) || "");
     if (NO_PERSON(caller)) return;
-    // Every other call must show a chain whose every person is the owner. A chain that cannot be read, or has no person in it (facts that did not hold), is refused: unreadable is not "no one".
+    // A call CLAIMS a person when it carries a session token or the daemon's proven facts about a person's connection. Every member reaches the server that way (the member door, a peer session, a paired
+    // device, their assistant's session): there is no member path without one. A call that claims none is not made for anyone: the owner's own terminal over the 0600 unix socket (the same convention as
+    // core/spaces/kernel-members.js, where a person-surface call with no token and no facts is the owner's), or the daemon itself. Those are unchanged.
+    const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
+    if (!claims) return;
+    // A claimed person must be proven, and be the owner at every hop: a chain that cannot be read, or whose facts did not hold (a service chain with no person), is refused.
     const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
     let persons;
     try { persons = await personsOf(k, meta); } catch { throw refuse(); }

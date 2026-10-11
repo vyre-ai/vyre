@@ -22,7 +22,7 @@ const kernelOf = (/** @type {(meta: any) => any} */ chain) => ({ owner: OWNER, c
 
 test("a call for the owner passes; a member, a member's assistant or agent, and any chain with a non-owner person are refused", async () => {
   const r = rig(kernelOf(m => ({ hops: m.hops })));
-  const ok = async (/** @type {any[]} */ hops) => (await r.call("vault.test", { caller: "cli", hops })).data === "ran";
+  const ok = async (/** @type {any[]} */ hops) => (await r.call("vault.test", { caller: "cli", token: "t", hops })).data === "ran";
   assert.equal(await ok([hop("person", OWNER)]), true, "the owner");
   assert.equal(await ok([hop("person", OWNER), hop("agent", "assistant")]), true, "the owner's assistant");
   assert.equal(await ok([hop("person", BOB)]), false, "a member");
@@ -30,30 +30,32 @@ test("a call for the owner passes; a member, a member's assistant or agent, and 
   assert.equal(await ok([hop("person", BOB), hop("agent", "kit")]), false, "a member's named agent");
   assert.equal(await ok([hop("person", OWNER), hop("person", BOB)]), false, "an owner-started chain that passes through a member");
   assert.equal(await ok([hop("person", BOB), hop("person", OWNER)]), false, "a member-started chain that passes through the owner");
-  const e = (await r.call("vault.test", { caller: "cli", hops: [hop("person", BOB)] })).error;
+  const e = (await r.call("vault.test", { caller: "cli", token: "t", hops: [hop("person", BOB)] })).error;
   assert.equal(e.code, "denied");
   assert.equal(e.message, MEMBER_REFUSAL);
 });
 
-test("fails closed: a chain that cannot be read, or has no person, is refused for any caller but a module or an outside pass", async () => {
+test("fails closed for a call that claims a person: an unreadable chain, or facts that did not hold, is refused; a call that claims none is not made for anyone and is unchanged", async () => {
   const thrower = rig(kernelOf(() => { throw new Error("no chain"); }));
-  assert.equal((await thrower.call("vault.test", { caller: "cli" })).error.code, "denied", "a chain that throws is refused");
-  assert.equal((await thrower.call("vault.test", { caller: "mcp:agent:kit" })).error.code, "denied");
+  assert.equal((await thrower.call("vault.test", { caller: "cli", token: "t" })).error.code, "denied", "a token whose chain throws is refused");
+  assert.equal((await thrower.call("vault.test", { caller: "mcp:agent:kit", kernelFacts: { kind: "agent_session" } })).error.code, "denied", "connection facts whose chain throws are refused");
   const service = rig(kernelOf(() => ({ hops: [hop("service", "vault")] })));
-  assert.equal((await service.call("vault.test", { caller: "local" })).error.code, "denied", "facts that did not hold give a service chain with no person: refused");
-  assert.equal((await thrower.call("vault.test", { caller: "module:sessions" })).data, "ran", "a module's call has no person behind it and passes");
+  assert.equal((await service.call("vault.test", { caller: "local", kernelFacts: { kind: "device" } })).error.code, "denied", "facts that did not hold give a service chain with no person: refused");
+  assert.equal((await service.call("vault.test", { caller: "cli", token: "gone" })).error.code, "denied", "a token that maps to no person is refused");
+  assert.equal((await service.call("vault.test", { caller: "cli", firstParty: true })).data, "ran", "a call that claims no person (the owner's terminal, the daemon) is unchanged");
+  assert.equal((await thrower.call("vault.test", { caller: "mcp", firstParty: true, peerSession: "x" })).data, "ran", "so is an owner's local session on the socket");
+  assert.equal((await thrower.call("vault.test", { caller: "module:sessions", token: "t" })).data, "ran", "a module's call has no person behind it and passes");
   assert.equal((await thrower.call("vault.test", { caller: "ext:abc" })).data, "ran", "an outside agent's pass call passes");
   const noOwner = rig({ chain: async () => ({ hops: [hop("person", OWNER)] }) });
-  assert.equal((await noOwner.call("vault.test", { caller: "cli" })).error.code, "denied", "with no owner identity to compare, nobody passes");
-  assert.equal(rig(null).reg.size, 2, "a home with no kernel registers the tools");
-  assert.equal((await rig(null).call("vault.test", { caller: "cli" })).data, "ran", "and has no members to keep out");
+  assert.equal((await noOwner.call("vault.test", { caller: "cli", token: "t" })).error.code, "denied", "with no owner identity to compare, a claimed person does not pass");
+  assert.equal((await rig(null).call("vault.test", { caller: "cli", token: "t" })).data, "ran", "a home with no kernel has no members to keep out");
 });
 
 test("the allow-list is by exact name: a name on it passes a member, every other name does not", async () => {
   const r = rig(kernelOf(() => ({ hops: [hop("person", BOB)] })));
-  assert.equal((await r.call("vault.member.put", { caller: "cli" })).error.code, "denied", "not on the list");
+  assert.equal((await r.call("vault.member.put", { caller: "cli", token: "t" })).error.code, "denied", "not on the list");
   MEMBER_ALLOWED.add("vault.member.put");
-  try { assert.equal((await r.call("vault.member.put", { caller: "cli" })).data, "ran"); assert.equal((await r.call("vault.test", { caller: "cli" })).error.code, "denied", "and a sibling still is not"); }
+  try { assert.equal((await r.call("vault.member.put", { caller: "cli", token: "t" })).data, "ran"); assert.equal((await r.call("vault.test", { caller: "cli", token: "t" })).error.code, "denied", "and a sibling still is not"); }
   finally { MEMBER_ALLOWED.delete("vault.member.put"); }
   assert.ok(GATED.has("vault.test") && GATED.has("vault.member.put"));
 });
