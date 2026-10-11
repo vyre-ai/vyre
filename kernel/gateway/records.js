@@ -17,9 +17,6 @@ import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/e
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
-/** The record types a service keeps its own bookkeeping in: created and read only by an owner or admin or a service, never by a member through the gateway (the member door's records group included): the Kits' bookkeeping, the skill library, Flows and their approvals and runs, project templates and watchers. */
-export const PROTECTED_SYSTEM_TYPES = Object.freeze(new Set(["kit-proposal", "kit-install", "skill", "def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher"]));
-
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
   { action: "records.create", resource_type: "record", risk: "write", label: "add records", gloss: "Create new records." },
@@ -185,7 +182,7 @@ export function createRecords(cfg) {
     const role = (members.membership({ kind: "person", id: rest.join(":"), space }) || {}).role;
     return role === "owner" || role === "admin";
   };
-  const PROTECTED_BUILTIN = PROTECTED_SYSTEM_TYPES;
+  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install"]);
   /** @type {Set<string> | null} */ let protectedTypes = null;
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
