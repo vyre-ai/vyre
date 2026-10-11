@@ -153,6 +153,14 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.equal(seenDefs, 0, "nor Flow definitions");
   assert.ok(await words(d.kernel.gateway.records.create(carolMember, "flow-approval", { flow_id: bd.id, version: 1, hash: bd.hash, approver: "person:" + owner, at: 1 })), "and cannot write an approval naming the owner");
 
+  // a chain that is a member with the Flows service hop appended is not the Flows service: it changes or removes no Flow row (the two-hop case)
+  const twoHop = d.kernel.chains.appendService(carolMember, "flows", true);
+  const stateRow = (await d.kernel.gateway.records.query(chainOf(owner), "flow-state", { page: { limit: 1 } })).rows[0];
+  assert.ok(stateRow, "there is a Flow state row to try");
+  assert.ok(await words(d.kernel.gateway.records.update(twoHop, "flow-state", stateRow.id, { status: "disabled" }, stateRow.version)), "[member, flows service] cannot change a Flow's state");
+  assert.ok(await words(d.kernel.gateway.records.remove(twoHop, "flow-state", stateRow.id, stateRow.version)), "nor remove it");
+  assert.equal((await d.kernel.gateway.records.get(chainOf(owner), "flow-state", stateRow.id)).data.status, stateRow.data.status, "and the row is as it was");
+
   // a Flow of hers that runs by itself stops when she is removed from the Space, and the owner sees it
   const sched = await svc.define(bob, { flow: find("bobs_morning", { on: "time", cron: "* * * * *" }, {}) });
   assert.ok(sched.ok, JSON.stringify(sched));
