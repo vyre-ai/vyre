@@ -132,7 +132,8 @@ test("a member's model has the member's authority and no more: Ana's model reads
   };
   // the stream shows each answer cut short, so what matters is whether the facts list has anything in it
   assert.ok((await ask(ANA, "Ana asks")).includes('"facts":[{'), "Ana's model reads the fact");
-  assert.ok(!(await ask(TOM, "Tom asks")).includes('"facts":[{'), "Tom's model reads no fact: the member may not");
+  // a temp member may not even start a chat in the Space now (the tip's room rules), so there is no model of theirs to ask: refused in the kernel's words, which is the "no more" half
+  await assert.rejects(() => as(TOM, "create", { title: "Tom asks", people: [], agents: ["assistant"] }), /no right to do that/, "Tom starts no chat, so no model of his reads the memory");
 });
 
 test("the Drive's read tools are open to a model, but a model in a HOME chat (a home session token) reads none of a team Space's files, even when it names the Space", { timeout: 150_000 }, async t => {
@@ -181,7 +182,7 @@ test("a model's files.drive.space.list in a team turn reads the TEAM Space's Dri
     .catch(e => { throw new Error(`${e.message} :: ${got.slice(0, 600)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-4).join(" | ")}`); });
   assert.ok(!JSON.stringify((await w.tool("files.drive.space.list", {})).data || {}).includes("retainer.txt"), "the home's own Drive does not have it");
   await as(ADA, "send", { chat: made.chat, text: `vyre files.drive.upload {"path":"x.txt","base64":"eA=="}` });
-  await until(async () => { got = await said(); return /denied|not available|not_in_team_space/i.test(got.split("retainer.txt").pop() || ""); }, "the write refused").catch(e => { throw new Error(`${e.message} :: ${got.slice(-500)}`); });
+  await until(async () => { got = await said(); return /denied|not available|not_in_team_space|held_for_approval/i.test(got.split("retainer.txt").pop() || ""); }, "the write refused or held for the person's yes").catch(e => { throw new Error(`${e.message} :: ${got.slice(-500)}`); });
   await assert.rejects(() => firm.gateway.drive.get(owner, "x.txt"), "the model's write did not land in the team's Drive");
   // a plain member's model reads the Drive too: the member role holds drive.read and drive.write
   const m = await as(ANA, "create", { title: "Member files", people: [], agents: ["assistant"] });
