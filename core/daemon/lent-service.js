@@ -22,7 +22,7 @@ const defaultSpec = account => ({
   // nothing but its own per-session token: the credential is put on the request at the proxy.
   routes: account ? [{ prefix: "/provider", upstream: account.base_url || "https://api.anthropic.com",
     credential: account.oauth ? { header: "authorization", prefix: "Bearer " } : { header: "x-api-key" }, ...(account.oauth ? { headers: { "anthropic-beta": "oauth-2025-04-20" } } : {}), allow: PROVIDER_ALLOW }] : [],
-  readOnly: [], labels: {}, network: "provider",
+  readOnly: devSwitch(process.env.VYRE_LENT_AGENT_DEV, undefined) && process.env.VYRE_LENT_AGENT ? [path.dirname(process.env.VYRE_LENT_AGENT)] : [], labels: {}, network: "provider",
   credentialRoutes: account ? [{ route: "/provider", ref: account.item, allow: PROVIDER_ALLOW, provider: true }] : [],
 });
 
