@@ -575,6 +575,36 @@ test("install-box.sh v2: IR-7 when Docker's install fails the screen names the l
   assert.match(fs.readFileSync(log, "utf8"), /NOISE_FROM_DOCKER_SCRIPT/);
 });
 
+test("install-box.sh v2: a root run on Ubuntu with no Docker installs it from Docker's signed apt repository, with one printed line and no question", t => {
+  const b = noDocker(t);
+  const bin = path.join(b.base, "bin");
+  const calls = path.join(b.base, "apt.calls");
+  const inst = `printf '#!/bin/sh\\ncase "$1 $2" in "compose version") echo 2.29.1 ;; esac\\nexit 0\\n' > "${path.join(bin, "docker")}"; chmod 755 "${path.join(bin, "docker")}"`;
+  fs.writeFileSync(path.join(bin, "apt-get"), `#!/bin/sh\necho "apt-get $*" >> "${calls}"\ncase "$*" in *docker-ce*) ${inst} ;; esac\nexit 0\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "dpkg"), `#!/bin/sh\necho amd64\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\necho "curl $*" >> "${calls}"\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && echo KEY > "$2"; shift; done\nexit 0\n`, { mode: 0o755 });
+  const osr = path.join(b.base, "os-release");
+  fs.writeFileSync(osr, 'ID=ubuntu\nVERSION_CODENAME=noble\n');
+  const aroot = path.join(b.base, "aroot");
+  const r = run({ ...b.env, TMPDIR: b.base, VYRE_APT_AS_ROOT: "0", VYRE_OS_RELEASE: osr, VYRE_APT_ROOT: aroot }, ["--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Installing Docker \(about a minute\)\./);
+  assert.doesNotMatch(r.stdout + r.stderr, /get\.docker\.com|\[y\/N\]/);
+  const log = fs.readFileSync(calls, "utf8");
+  assert.match(log, /curl .*download\.docker\.com\/linux\/ubuntu\/gpg/);
+  assert.match(log, /apt-get install -y docker-ce docker-ce-cli containerd\.io docker-buildx-plugin docker-compose-plugin/);
+  assert.doesNotMatch(log, /get\.docker\.com/);
+  assert.match(fs.readFileSync(path.join(aroot, "etc/apt/sources.list.d/docker.list"), "utf8"), /^deb \[arch=amd64 signed-by=\/etc\/apt\/keyrings\/docker\.asc\] https:\/\/download\.docker\.com\/linux\/ubuntu noble stable\n?$/);
+  // Another system keeps the older way: nothing from apt runs.
+  fs.rmSync(calls);
+  fs.rmSync(path.join(bin, "docker"), { force: true });
+  fs.writeFileSync(osr, 'ID=fedora\nVERSION_CODENAME=\n');
+  const c = noDocker(t);
+  const r2 = run({ ...c.env, TMPDIR: c.base, VYRE_APT_AS_ROOT: "0", VYRE_OS_RELEASE: osr }, ["--yes", "--from", REPO]);
+  assert.match(r2.stdout, /Installing Docker\. This takes a minute or two\./);
+  assert.equal(fs.existsSync(calls), false, "apt was not used on a system that is not Ubuntu or Debian");
+});
+
 test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE: auto (the default) or sqlite, written once into vyre.env; anything else stops the install", t => {
   const b = box(t);
   let r = run({ ...b.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", REPO]);
@@ -727,4 +757,18 @@ test("install-box.sh v2: Docker is made to start at boot when it is not, so the 
   const r2 = run({ ...b2.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
   assert.equal(r2.status, 0, r2.stdout + r2.stderr);
   assert.doesNotMatch(b2.calls(), /systemctl enable/);
+});
+
+// The install line is run as root on most servers (a fresh droplet logs in as root), and the release `vyre` command refuses a root run that inherits any VYRE_ setting (its root_guard):
+// the installer must keep VYRE_STORE and VYRE_CODE out of the environment of every vyre command it runs. The stub `vyre` writes what it inherited into a file.
+const SEES_ENV_WRAPPER = `#!/bin/sh\nprintf '%s|%s\\n' "$VYRE_STORE" "$VYRE_CODE" >>"$WRAP_SAW"\ncase "$*" in "call relay.setup.status") echo '{"data":{"words":"lantern quiet river oak"}}' ;; esac\nexit 0\n`;
+test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command's environment, and the store choice still reaches vyre.env", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const saw = path.join(b.base, "saw.log");
+  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_NO_UP: "0" }, ["--yes"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const seen = fs.existsSync(saw) ? fs.readFileSync(saw, "utf8").trim().split("\n") : [];
+  assert.ok(seen.length > 0, "the installer ran the vyre command at least once");
+  assert.deepEqual([...new Set(seen)], ["|"], "no run of the vyre command inherited VYRE_STORE or VYRE_CODE");
+  assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the choice the line carried is in vyre.env");
 });
