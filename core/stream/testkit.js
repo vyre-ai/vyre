@@ -113,14 +113,5 @@ export function makeLink(o) {
   };
 }
 
-/**
- * Does a frame, a list of frames or any structure hold `needle` as a VALUE? A number must equal it; a string must hold it as a whole word, not inside a longer run of letters, digits, `-` or `_`.
- * Searching `JSON.stringify(log)` for a short number says "yes" about a random uuid, a message id or a millisecond timestamp about one run in a hundred; this does not. Keys are not searched.
- * @param {unknown} value @param {string | number} needle
- */
-export function holds(value, needle) {
-  const n = String(needle).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`(?<![A-Za-z0-9_-])${n}(?![A-Za-z0-9_-])`);
-  const walk = (/** @type {any} */ v) => v == null ? false : typeof v === "string" ? re.test(v) : typeof v === "number" || typeof v === "boolean" ? String(v) === String(needle) : Array.isArray(v) ? v.some(walk) : typeof v === "object" ? Object.values(v).some(walk) : false;
-  return walk(value);
-}
+// the one shared matcher lives in test/holds.js (kernel, core and lib tests import it too)
+export { holds } from "../../test/holds.js";

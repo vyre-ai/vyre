@@ -12,6 +12,7 @@ import { Indexer } from "./indexer.js";
 import { scrubText, scanIndex, scrubIndex, scrubLog } from "./sealed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
+import { leaks } from "../../test/holds.js";
 
 const SSN = "078-05-1120";
 const CARD = "4242 4242 4242 4242";
@@ -86,7 +87,7 @@ test("scrub rewrites only matched spans, drops only the matched turns' vectors, 
   const log = scrubLog(db);
   assert.equal(log.length, 1);
   assert.equal(log[0].at, 42);
-  assert.ok(!JSON.stringify(log).includes(SSN) && !JSON.stringify(log).includes("4242"));
+  assert.ok(!JSON.stringify(log).includes(SSN) && !leaks(log, "4242"));
   assert.deepEqual(scanIndex(db).found, []);
   const again = scrubIndex(db);
   assert.deepEqual([again.turns, again.titles, again.vectors], [0, 0, 0]);
