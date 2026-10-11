@@ -46,7 +46,7 @@ export default {
           const r = await app.reserve(`${who.toLowerCase()}${Math.random().toString(36).slice(2, 6)}`);
           await app.becomeYourself({ name: r.name, code: r.code });
           const owner = chainOf(team.space, mac.identity.id);
-          const invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: r.name, signPresence: async (/** @type {any} */ card) => mac.presenceSigner.proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
+          const invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: r.name, signPresence: async (/** @type {any} */ card) => (srv.team ? srv.team.ownerSigner : mac.presenceSigner).proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });   // a daemon world holds the owner's key as its own team rig (J1 does the same)
           invite.close();
           const sg = app.presenceSigner, chain = chainOf(team.space, app.identity.id);
           const joined = await app.joinTeam({ link: invite.link, signPresence: async (/** @type {any} */ req) => sg.proof(chain, req.op, req.fields), presenceKey: async () => sg.enrolment(app.identity.id) });
