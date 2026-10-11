@@ -146,6 +146,8 @@ test("the Drive's read tools are open to a model, but a model in a HOME chat (a 
   await until(async () => { said = ((await w.tool("stream.catchup", { chat })).data.messages || []).filter((/** @type {any} */ m) => /^(assistant|model):/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || "); return said.length > 0; }, "the home model's answer")
     .catch(e => { throw new Error(`${e.message} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-5).join(" | ")}`); });
   assert.ok(!said.includes("retainer.txt"), `a home session names the team's Space and reads none of its Drive: ${said.slice(0, 300)}`);
+});
+
 test("a model's memory.space.recall in a team turn reads the TEAM Space's memory, as the member, and never the home's", { timeout: 150_000 }, async t => {
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
