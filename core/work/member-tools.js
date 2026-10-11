@@ -26,10 +26,11 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
   "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
   "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
+  // (cheatsheet, list and attention take no input: each names one key its tool ignores, because the table test wants every row to name at least one)
   // a member's own Flows (core/flows/member.js): Flows belong to the Space; any member drafts, a version runs on the authority of whoever approved it, and she approves her own with any trigger
-  "flows.cheatsheet": { tool: "flows.serve", call: "cheatsheet", keys: [], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
+  "flows.cheatsheet": { tool: "flows.serve", call: "cheatsheet", keys: ["format"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.compile-text": { tool: "flows.serve", call: "compile-text", keys: ["text", "id", "format"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
-  "flows.list": { tool: "flows.serve", call: "list", keys: [], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
+  "flows.list": { tool: "flows.serve", call: "list", keys: ["limit"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.health": { tool: "flows.serve", call: "health", keys: ["id"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.get": { tool: "flows.serve", call: "get", keys: ["id", "version"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.card": { tool: "flows.serve", call: "card", keys: ["id", "version"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
@@ -49,7 +50,7 @@ export const MEMBER_TOOLS = Object.freeze({
   "flows.runs": { tool: "flows.serve", call: "runs", keys: ["id", "state", "limit"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.run": { tool: "flows.serve", call: "run", keys: ["run"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.timeline": { tool: "flows.serve", call: "timeline", keys: ["run", "step"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
-  "flows.attention": { tool: "flows.serve", call: "attention", keys: [], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
+  "flows.attention": { tool: "flows.serve", call: "attention", keys: ["limit"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.cancel": { tool: "flows.serve", call: "cancel", keys: ["run", "reason"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.retry": { tool: "flows.serve", call: "retry", keys: ["run", "skip", "value", "version"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.approve": { tool: "flows.serve", call: "approve", keys: ["id", "version", "hash"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
