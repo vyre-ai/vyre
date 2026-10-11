@@ -1552,7 +1552,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
     // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
-    const turnSpace = typeof sessionToken === "string" ? teamSpaceOfToken(sessionToken) : null;
+    // (a session of the home's own Space names that Space in its token too: it is no team turn)
+    const turnSpace = typeof sessionToken === "string" ? (sp => (sp && sp !== (kernelOf && kernelOf() && kernelOf().id.space) ? sp : null))(teamSpaceOfToken(sessionToken)) : null;
     /** @type {any} */ let teamResult = null;
     if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) {
       const def = registry.tools.get(name);
