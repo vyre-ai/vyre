@@ -88,6 +88,7 @@ jobs:
         timeout-minutes: 8
         env:
           VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
+          VYRE_CAPSULE_DIAG: ${{ runner.temp }}/lumen-diag
         run: |
           npm ci --no-audit --no-fund
           node scripts/capsule-paired-check.mjs local/capsule/native/.build/Vyre.app
@@ -158,6 +159,13 @@ jobs:
         with:
           name: Vyre-dmg-${{ github.sha }}
           path: dist/Vyre.dmg
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success() || failure()
+        with:
+          name: lumen-diag-${{ github.sha }}
+          path: ${{ runner.temp }}/lumen-diag/*
           if-no-files-found: ignore
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
