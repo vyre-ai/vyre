@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { createMemberTools } from "../work/member-tools.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -777,7 +778,7 @@ async function startLocked(opts, root, p, release) {
       registry.deps.lentRows = (/** @type {string} */ space) => { registry.deps.lentHome(space); return lent.rows(space); };
       registry.deps.lentSpaces = () => lent.spaces();
       registry.deps.lentStop = () => lent.stop();
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"), ss = of("sessions"); return { ...(ss && typeof ss.peerService === "function" ? { accounts: ss.peerService({ space, kernel: k, registry }) } : {}), ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"), ss = of("sessions"); return { ...createMemberTools({ space, kernel: k, registry }), ...(ss && typeof ss.peerService === "function" ? { accounts: ss.peerService({ space, kernel: k, registry }) } : {}), ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

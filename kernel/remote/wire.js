@@ -33,6 +33,8 @@ export const CALLS = Object.freeze({
   // assistant, the chats they are in, starting one. A member never reaches a registry tool; the list of calls is fixed here.
   // A member's own AI sign-in on the team's server (0.3.3 G03; core/sessions/accounts-service.js): a login of theirs, run as its own user, serving only their turns. A key needs a Vault of their own (0.3.4).
   accounts: ["list", "signin", "remove", "default"],
+  // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
+  skills: ["list", "get", "draft", "approve", "versions"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
 });
 
