@@ -16,9 +16,10 @@ export const CALLS = Object.freeze({
   grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "invites.list", "invites.revoke", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
   // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
   moves: ["out", "outMany"],
-  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"],
+  // the Store calls of a team member's app (list, me, actors, types, events) are the member door's rows (core/work/member-tools.js); get, create and update answer in the gateway's shape and, with the Store's keys, in the Store's
+  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events"],
   memory: ["file", "recall", "retire"],
-  tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
+  tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou", "list", "move", "submit"],
   events: ["read"],
   // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal carries the person's proof for the home's own challenge: the home checks it at its sealing process)
   seal: ["put", "reveal", "wrapKey", "import"],

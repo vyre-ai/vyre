@@ -86,7 +86,9 @@ test("a member reads or changes none of a kept type through the door's dispatch,
 });
 
 test("every call of the member door's records and events groups is classified: a call added later cannot skip the guard", () => {
-  const known = ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"];
+  const known = ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore",
+    // the app Store's own calls, rows of the member door's table (core/work/member-tools.js): the tool refuses the kept types itself
+    "list", "me", "actors", "types", "events"];
   assert.deepEqual([...CALLS.records].sort(), [...known].sort(), "a new records call must be classified in kernel/remote/member-guard.js (and here)");
   assert.deepEqual(CALLS.events, ["read"], "a new events call must be filtered like events.read (the gateway's canSee) and added here");
   assert.ok(MEMBER_BLOCKED_TYPES.has("skill"));
