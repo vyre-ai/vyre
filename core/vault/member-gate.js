@@ -17,7 +17,7 @@ export const GATED = new Set();
 export const MEMBER_REFUSAL = "this is the owner's vault: ask the owner to share the item with you, or add your own key in your account settings";
 
 /** Every person hop of a call's chain, from the kernel. Throws when the chain cannot be read. @param {any} k @param {any} meta @returns {Promise<string[]>} */
-async function personsOf(k, meta) {
+async function ids(k, meta) {
   const c = await k.chain(meta || {});
   return (c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id));
 }
@@ -44,7 +44,7 @@ export function gateTools(ctx) {
     // A claimed person must be proven, and be the owner at every hop: a chain that cannot be read, or whose facts did not hold (a service chain with no person), is refused.
     const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
     let persons;
-    try { persons = await personsOf(k, meta); } catch { throw refuse(); }
+    try { persons = await ids(k, meta); } catch { throw refuse(); }
     if (!persons.length || !k.owner || persons.some(p => p !== String(k.owner))) throw refuse();
   };
   const tool = (/** @type {string} */ name, /** @type {any} */ def) => {
