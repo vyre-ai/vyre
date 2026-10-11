@@ -39,3 +39,13 @@ test("a member's chat tools go through the team door: only the five, and only fo
   assert.equal(chatSpace({}, "all"), null);
   assert.equal(chatSpace(undefined, undefined), null);
 });
+
+test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
+  const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
+  for (const t of ["work.project.create", "work.project.members", "work.start-project", "work.template.list", "work.template.golive", "flows.approve", "flows.run", "flows.list", "team.add"]) {
+    assert.ok(isTeamWork(t), `${t} is the team's work`);
+    assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
+  }
+  for (const t of ["work.chat.list", "stream.send", "planner.add", "spaces.list", "sessions.accounts.list", "vault.list", "records.me"]) assert.ok(!isTeamWork(t), `${t} is not refused`);
+  assert.match(NOT_FOR_MEMBERS_YET, /Ask the owner/, "it names a next step");
+});

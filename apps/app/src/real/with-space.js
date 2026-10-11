@@ -22,8 +22,18 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
   // A member's own AI sign-in (kernel/remote CALLS.accounts): the Settings screen's calls reach the team's server the same way.
   "sessions.accounts.list": "accounts.list", "sessions.accounts.signin": "accounts.signin", "sessions.accounts.remove": "accounts.remove", "sessions.accounts.bind": "accounts.default" });
 
-/** The team-door call for a chat tool, or null when this tool is not one a member reaches that way. @param {string} tool @returns {string | null} */
+/** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
 export function memberChatWire(tool) { return Object.hasOwn(MEMBER_CHAT, tool) ? /** @type {any} */ (MEMBER_CHAT)[tool] : null; }
+export const memberWire = memberChatWire;
+
+/** The tools that do a Space's own work. While a team the person JOINED is showing, none of them may go to her own home as if it were the team: the ones with a member door call go through it (memberWire), the rest are refused in words. Her own things (planner, settings, accounts, her sidebar, her devices) are not in this list. Records, tasks, assistants and lessons are NOT here yet either: screens such as the chat composer read them today and only a door row for them (rc2-people) can replace those reads, so they wait for their rows instead of being refused. */
+const TEAM_WORK = Object.freeze(["work.project.", "work.start-project", "work.template.", "flows.", "team."]);
+
+/** Does this tool do a team's own work (so it never goes to her own home while the team shows)? @param {string} tool */
+export const isTeamWork = (tool) => TEAM_WORK.some((p) => tool.startsWith(p));
+
+/** What a member is told when a tool of the team's has no door call for her yet. */
+export const NOT_FOR_MEMBERS_YET = "Doing this in the team is the owner's for now. Ask the owner, or do it in your own Space.";
 
 /** The team Space a chat call is for: the one the screen named, else the one showing; null when it names no real Space. @param {Record<string, unknown> | undefined} input @param {string | undefined} showing */
 export function chatSpace(input, showing) {
