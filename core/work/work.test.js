@@ -45,6 +45,13 @@ test("with no kernel wired, every tool answers unavailable and nothing is built"
   for (const name of Object.keys(tools)) await assert.rejects(() => call(name, { project: "vyre://x/y/z", question: "q", query: "q", record: "vyre://x/y/z", text: "t", id: "1", source: "s", proof: {}, tool: "t", role: { name: "r" } }), { code: "unavailable" }, name);
 });
 
+test("with no kernel wired, the cross-Space twins answer unavailable to the door itself, not denied", async () => {
+  const { tools } = await boot({ wired: false });
+  const twins = Object.keys(tools).filter(n => n.endsWith("-in-space"));
+  assert.ok(twins.length > 0, "the template twins are registered");
+  for (const n of twins) await assert.rejects(() => tools[n].run({}, { caller: "module:work", in_space_chain: true }), { code: "unavailable" }, n);
+});
+
 test("work.tools lists the Space's own nouns and the outward act; work.call returns a component, never raw JSON", async () => {
   const { call } = await boot();
   const { tools } = await call("work.tools");
