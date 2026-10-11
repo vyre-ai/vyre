@@ -16,10 +16,9 @@ export async function askerOver(sb, id, kernelTurn) {
   const provider = rec.provider || "claude", asker = kernelTurn.asker, scope = { project: rec.project, agent: rec.agent };
   const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
-  // Nobody but the owner runs on the owner's login, nor on the machine's own credential: a person with no sign-in of their own here is refused, whatever account the thread names (or none).
+  // Nobody but the owner runs on the owner's login, nor on the machine's own credential or the ambient login of the user the server runs as (a Mac mini server's Claude Code login is the owner's): a person with no sign-in of their own is refused ALWAYS, whatever account the thread names or none, and whether or not any credential is visible to take.
   const owner = ownerOf(sb);
-  // (with no account named, the thread runs on the machine's own login only where this machine has one to give: on a box, the vault's setup token)
-  if (owner && sb.canon(asker) !== owner && (rec.account || await holdsLogin(sb))) throw needOwnSignIn();
+  if (owner && sb.canon(asker) !== owner) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -71,7 +70,6 @@ export async function memberAccount(sb, rec, o, id) {
     await sb.accountFor({ provider, account: o.account, person: asker, project: rec.project, agent: rec.agent }).catch(() => { if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id); throw Object.assign(new Error("That account is not yours to use here. Nothing was sent."), { code: "account_unavailable" }); });
     return o;
   }
-  if (provider === "claude" && !(await holdsLogin(sb))) return o;   // no machine login here to take: the launch has no one's credential to run on
   const mine = await sb.accountFor({ provider, person: asker, project: rec.project, agent: rec.agent }).catch(() => null);
   if (mine && mine.id) return { ...o, account: String(mine.id) };
   if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
@@ -82,11 +80,4 @@ export async function memberAccount(sb, rec, o, id) {
 function ownerOf(sb) {
   const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
   return o ? sb.canon(o) : "";
-}
-
-/** Does this machine hold a credential of its own that a launch with no account would run on (on a box, the vault's setup token or key)? Ambient (Claude Code's own login on a Mac) names none here. @param {any} sb */
-async function holdsLogin(sb) {
-  if (!sb.deps || typeof sb.deps.auth !== "function") return false;
-  const a = await sb.deps.auth({ agent: null }).catch(() => null);
-  return Boolean(a && a.env && Object.keys(a.env).length);
 }

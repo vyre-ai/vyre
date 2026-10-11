@@ -33,10 +33,10 @@ test("a member with no sign-in of their own is refused where the owner's login w
   await refused(askerOver(sb({ accounts: [{ id: "bens", provider: "claude", person: BEN }], rec: { provider: "claude", account: "bens" } }), "t", { asker: ANA }));
 });
 
-test("the owner is unchanged, a member with an account of their own moves to it, and a thread with no machine login to take is left alone", async () => {
+test("the owner is unchanged, a member with an account of their own moves to it, and a Mac-server thread (no credential visible) is refused all the same", async () => {
   assert.equal(await askerOver(sb({ login: true }), "t", { asker: OWNER }), null);
   assert.deepEqual(await askerOver(sb({ accounts: [{ id: "anas", provider: "claude", person: ANA }], login: true }), "t", { asker: ANA }), { provider: "claude", account: "anas", person: ANA });
-  assert.equal(await askerOver(sb({ login: false }), "t", { asker: ANA }), null, "ambient: no one's credential is there to be taken");
+  await refused(askerOver(sb({ login: false }), "t", { asker: ANA }));   // a Mac mini server: no credential visible, the owner's Claude Code login is ambient in that HOME
 });
 
 test("a launch for a member names their own account, refuses one with none, and is not given the owner's or another member's account by input", async () => {
@@ -46,6 +46,15 @@ test("a launch for a member names their own account, refuses one with none, and 
   assert.equal((await memberAccount(sb(world), rec, kt(ANA), "t")).account, "anas", "their own account is named for the launch");
   assert.equal((await memberAccount(sb(world), rec, kt(OWNER), "t")).account, undefined, "the owner's launch is unchanged");
   await refused(memberAccount(sb({ ...world, accounts: [{ id: "own", provider: "claude", person: null }] }), rec, kt(ANA), "t"));
+  // the Mac-server case: no deps.auth credential at all, a member with no account: refused, the thread row removed, nothing launched
+  const mac = sb({ ...world, accounts: [{ id: "own", provider: "claude", person: null }], login: false });
+  await refused(memberAccount(mac, rec, kt(ANA), "t"));
+  assert.deepEqual(mac.deleted, ["t"]);
+  // the open cases: a turn with no asker, a named agent, and a home with no kernel (no owner to compare with)
+  assert.deepEqual(await memberAccount(sb(world), rec, {}, "t"), {});
+  assert.equal((await memberAccount(sb(world), rec, { ...kt(ANA), agent: "kit" }, "t")).account, undefined);
+  const noKernel = sb(world); noKernel.deps.owner = () => "";
+  assert.equal((await memberAccount(noKernel, rec, kt(ANA), "t")).account, undefined);
   for (const named of ["own", "bens"]) {
     const w = sb(world);
     await assert.rejects(memberAccount(w, rec, { ...kt(ANA), account: named }, "t"), (/** @type {any} */ e) => e.code === "account_unavailable", `naming ${named} gets a member nothing`);
