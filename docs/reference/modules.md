@@ -1114,7 +1114,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Tools: [157](tools.md#vault), 23 of them only for other modules
 - Emits: [58 events](events.md#vault)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"reach":true}`
+- Needs kernel: `{"reach":true,"membership":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## views
