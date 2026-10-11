@@ -36,10 +36,11 @@ test("builder v2: the tools are Publish's alone (module callers) and the draft v
   const b = manifest("builder").does.tools.find((/** @type {any} */ x) => x.name === "builder.build");
   assert.equal(b.reach, "modules");
   const a = manifest("appmods").does.tools.filter((/** @type {any} */ x) => /^appmods\.publish\./.test(x.name));
-  assert.deepEqual(a.map((/** @type {any} */ x) => x.name).sort(), ["appmods.publish.install", "appmods.publish.remove", "appmods.publish.stop"]);
+  assert.deepEqual(a.map((/** @type {any} */ x) => x.name).sort(), ["appmods.publish.install", "appmods.publish.remove", "appmods.publish.run", "appmods.publish.stop"]);
   assert.ok(a.every((/** @type {any} */ x) => x.reach === "modules"), "no person, no model reaches them");
   assert.equal(normalizeDraft({ name: "a1", source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile", port: 80 } }).build.port, 80);
   assert.throws(() => normalizeDraft({ name: "a1", source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile", command: "make" } }));
+  assert.deepEqual(normalizeDraft({ name: "a1", source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" }, job: { every_minutes: 30 } }).job, { every_minutes: 30, timeout_s: 900 }, "a job is a Dockerfile app with a schedule");
 });
 
 test("builder v2: the static path is as v1 said", async t => {
