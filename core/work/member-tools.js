@@ -46,6 +46,7 @@ export const MEMBER_TOOLS = Object.freeze({
   "flows.timeline": ["flows.serve", "timeline"],
   "flows.attention": ["flows.serve", "attention"],
   "flows.cancel": ["flows.serve", "cancel"],
+  "flows.retry": ["flows.serve", "retry"],
   "flows.approve": ["flows.serve", "approve"],
   "flows.propose": ["flows.serve", "propose"],
 });
