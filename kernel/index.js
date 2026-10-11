@@ -157,6 +157,8 @@ export async function createKernel(cfg) {
     const ready = () => { if (!readyP) { const p = readyP = Promise.all([installed, wanted.length ? defineExtending(store, wanted) : Promise.resolve()]); p.catch((/** @type {any} */ e) => { if (readyP === p && e && e.code === "unavailable") readyP = null; }); } return readyP; };
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready().catch(() => {});
+    // and when a store that was away joins, they are defined at once in the background, so the first call after it does not pay for them
+    if (wanted.length && store && typeof store.whenReady === "function" && typeof store.attached === "function" && !store.attached()) store.whenReady(() => { ready().catch(() => {}); });
     // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
     // may assign to it, delete from it or redefine a method on it, so no holder can replace what another caller gets.
     const records = new Proxy({ ...gateway.records }, {

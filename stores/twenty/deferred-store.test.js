@@ -143,6 +143,8 @@ test("a module that took its kernel handle while the store was away has working 
   const handle = k.kernelFor({ name: "probe", needs: { kernel: { actions: [], types: [T] } } });
   await assert.rejects(() => handle.records.query(owner, "dossier3", { page: { limit: 5 } }), e => /** @type {any} */ (e).code === "unavailable", "while the store is away the module's records answer unavailable");
   await d.attach(createMemoryStore());
+  for (let i = 0; i < 50 && !(await d.types()).some((/** @type {any} */ x) => x.name === "dossier3"); i++) await new Promise(r => setTimeout(r, 20));
+  assert.ok((await d.types()).some((/** @type {any} */ x) => x.name === "dossier3"), "the module's types were defined when the store joined, before any call asked");
   const rows = (await handle.records.query(owner, "dossier3", { page: { limit: 5 } })).rows;
   assert.deepEqual(rows, [], "once the store joined, the same handle reads its type (the earlier refusal is not kept)");
   clearInterval(keep);
