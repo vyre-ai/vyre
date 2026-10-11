@@ -48,7 +48,7 @@ test("a whole area: turning a screen off stops every tool of it for the assistan
   assert.ok(!(await w.person("assistant.access.narrow", { screens: ["vault"] })).error);
   const r = await w.assistant("vault.list");
   assert.equal(r.error?.code, "access_narrowed", JSON.stringify(r.error));
-  assert.match(r.error.message, /^You turned off Projects and tasks for your assistant, so it cannot use work\.project\.list/);
+  assert.match(r.error.message, /^You turned off Vault for your assistant, so it cannot use vault\.list\./);
   assert.equal((await w.person("assistant.access.get")).data.screens.find(/** @type {any} */ s => s.id === "vault").off, true);
 });
 
