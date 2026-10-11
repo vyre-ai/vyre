@@ -86,10 +86,28 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await agentLaunchGuard(sb(), { ...i, account: "anas" }, ANA, OWNER);
   await agentLaunchGuard(sb(), {}, ANA, OWNER);
   // an agent with a credential picked for it runs on that for a member (its vault token or key is in the launch); one with nothing picked is refused
-  await agentLaunchGuard(sb(), { ...i, env: { CLAUDE_CODE_OAUTH_TOKEN: "x" } }, ANA, OWNER);
-  await agentLaunchGuard(sb(), { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
-  await agentLaunchGuard(sb(), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER);
-  await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));
+  // a picked credential is the owner's: someone else's turn runs on it only when the launch delivers it unreadable to the turn's tools (delivered "fd"); an env var, a file, or a delivery nobody reports is refused
+  const withDelivery = (/** @type {any} */ how) => { const x = sb(); x.deps.credentialDelivery = () => how; return x; };
+  const refusedYet = (/** @type {Promise<any>} */ p, /** @type {RegExp} */ words) => assert.rejects(p, (/** @type {any} */ e) => e.code === "no_account" && words.test(e.message) && /Nothing was started/.test(e.message));
+  for (const env of [{ CLAUDE_CODE_OAUTH_TOKEN: "x" }, { ANTHROPIC_API_KEY: "x" }]) {
+    await agentLaunchGuard(withDelivery("fd"), { ...i, env }, ANA, OWNER);
+    await refusedYet(agentLaunchGuard(withDelivery("env"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(withDelivery("file"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(withDelivery("???"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(sb(), { ...i, env }, ANA, OWNER), /The owner can run it for you/);   // before any delivery is reported
+    await agentLaunchGuard(withDelivery("env"), { ...i, env }, OWNER, OWNER);   // the owner's own turn is unchanged
+    await agentLaunchGuard(withDelivery("env"), { ...i, env }, null, OWNER);    // so is a call with no person
+  }
+  await agentLaunchGuard(withDelivery("fd"), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(withDelivery("env"), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER), /API key or a setup token/);
+  // a teammate's launch (team-credential) is judged the same
+  await agentLaunchGuard(withDelivery("fd"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(withDelivery("env"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER), /API key or a setup token/);
+  // an admin's turn is the owner's kind of turn
+  const adminSb = sb(); adminSb.deps.membershipOf = async (/** @type {string} */ p) => (p === ANA ? { role: "admin" } : { role: "member" });
+  await agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, BEN, OWNER), /The owner can run it for you/);
+  await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));   // nothing picked
   await refusedAgent(agentLaunchGuard(sb(), i, ANA, ""));
   await refusedAgent(agentLaunchGuard(sb(), i, OWNER, ""));
   const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);

@@ -3943,7 +3943,7 @@ export default {
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       startTimeoutMs: cfg.start_timeout_s ? cfg.start_timeout_s * 1000 : undefined,
       requireAccount: Boolean(ctx.config && ctx.config.role === "box" && ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable && !process.env.VYRE_CLAUDE_BIN),
-      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome, owner: () => (ctx.kernel ? String(ctx.kernel.owner || "") : null),
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome, owner: () => (ctx.kernel ? String(ctx.kernel.owner || "") : null), membershipOf: async (/** @type {string} */ p) => (ctx.kernel && typeof ctx.kernel.membership === "function" ? ctx.kernel.membership(p) : null),
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
