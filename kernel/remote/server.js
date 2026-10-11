@@ -100,8 +100,10 @@ export function createRemoteServer(cfg) {
     "leases.issue": () => (/** @type {any} */ chain, /** @type {any} */ i, /** @type {any} */ o) => k.gateway.leases.issue(chain, { ...(i && typeof i === "object" ? i : {}), proof: o && typeof o === "object" ? o.presence : undefined }),
     "leases.reinstate": () => (/** @type {any} */ chain, /** @type {any} */ i, /** @type {any} */ o) => k.gateway.leases.reinstate(chain, { member: i && i.member, device: i && i.device, proof: o && typeof o === "object" ? o.presence : undefined }),
     "records.definitions": () => (/** @type {any} */ chain) => k.gateway.definitions(chain),
-    "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => k.surfaces.revoke(session, chain),
+    // A session token for the person's whole chain is for an owner or an admin: no member screen, Lumen or harness opens one over the door (a member's chats mint their own, server side), so a member's call is refused with a next step
+    "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => { if (!trustedChain(chain)) throw new KernelError("not_allowed", "A session on the team's server is opened by its owner or an admin. Chat from the app, or ask the owner."); return k.surfaces.revoke(session, chain); },
     "surfaces.open": () => async (/** @type {any} */ chain, /** @type {any} */ o = {}) => {
+      if (!trustedChain(chain)) throw new KernelError("not_allowed", "A session on the team's server is opened by its owner or an admin. Chat from the app, or ask the owner.");
       // A session may name only an assistant this Space has; the chain it yields is [person, agent], so authority is still the intersection.
       if (o && o.agent !== undefined && k.grants && !k.grants.members.has({ kind: "agent", id: String(o.agent), space: cfg.space })) throw new KernelError("not_found", "no such assistant");
       return k.surfaces.open(chain, o);
