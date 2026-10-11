@@ -49,6 +49,8 @@ export function createGateway(cfg) {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
     sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records, logical: cfg.drive && cfg.drive.logical }),
+    noteReach: (/** @type {any} */ chain, /** @type {any} */ data, /** @type {string} */ resource) => { cfg.log.append(chain, { type: "project.reached", sv: 1, subject: resource, data }); },
+    projectOf: (/** @type {string} */ u) => { const p = (attrs(u) || {}).project; return typeof p === "string" ? p : null; },
     projectHas: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.member(p, project),
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
@@ -277,7 +279,7 @@ export function createGateway(cfg) {
     /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
     serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
-    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
+    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i), listModels: (/** @type {any} */ i) => cfg.door.listModels(i) }) } : {}),
     records,
     migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),

@@ -2587,7 +2587,7 @@ Change who may use a connection: { name, scope } where scope is { projects: "*" 
 
 ### `connectors.site.attention`
 
-Website Connections that wait for a person (login out, security check, no browser): { sites: [{ id, host, class, words, agent? }] }.
+Connections waiting on a person: login out, security check, no browser, refused key. { sites: [{ id, host, class, words, key? }] }.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
@@ -10067,11 +10067,12 @@ Draft a skill or plugin into the library; nothing uses it until the level's owne
 
 ### `skills.draft.learned`
 
-Draft a skill learn proposed from a repeated procedure, for the owner of this install: at the project level when it names a project, else the owner's own. A draft; the owner approves it.
+Draft a skill learn proposed from a repeated procedure: at the agent's own level when one agent repeated it, else the project's, else the owner's own. A draft; its level's owner approves it.
 
 - Input:
   - `body` string, required
   - `name` string, required
+  - `agent` string
   - `project` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
@@ -12475,7 +12476,7 @@ Switch a thread's model, as /model does in Claude Code. A running thread switche
 
 ### `threads.models-fetch`
 
-Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.
+Each API-key account's model names from the inference door, as { provider, account, ok, models | error }. For the model registry (core/models); never returns a key.
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
