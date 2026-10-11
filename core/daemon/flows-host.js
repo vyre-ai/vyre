@@ -335,6 +335,12 @@ export function createFlowsHost(o) {
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
       personChain: () => personChain(ownerOf()),
+      /** Would the Space's kernel allow this (a member's approval checks the actions her Flow declares against HER chain), without doing it? */
+      authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
+      /** Would the Space's kernel allow this (a member's approval checks the actions her Flow declares against HER chain), without doing it? */
+      authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
+      /** The role the Space's kernel gives a person, or "" (the member door's rows judge a write by it). */
+      roleOf: (/** @type {string} */ person) => { try { const r = gw.members.roleOf({ kind: "person", id: person, space }); return typeof r === "string" ? r : ""; } catch { return ""; } },
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
       stop: () => { wake.stop(); if (typeof offDevice === "function") offDevice(); } });

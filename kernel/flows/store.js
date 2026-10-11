@@ -287,7 +287,7 @@ export class RecordsFlowStore {
     const defs = await this.#find("def-flow", "flow_id", id);
     if (!defs.length) return null;
     const st = (await this.#find("flow-state", "flow_id", id))[0];
-    const versions = defs.map((/** @type {any} */ d) => ({ version: Number(d.data.version), hash: d.data.hash, at: Number(d.data.at) || 0 })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.version - b.version);
+    const versions = defs.map((/** @type {any} */ d) => { const [bk, ...br] = String(d.data.by || "").split(":"); return { version: Number(d.data.version), hash: d.data.hash, at: Number(d.data.at) || 0, by: bk ? { kind: bk, id: br.join(":") } : null }; }).sort((/** @type {any} */ a, /** @type {any} */ b) => a.version - b.version);
     return { id, name: defs[0].data.name, space: defs[0].data.space, versions, active: st && st.data.active !== null ? Number(st.data.active) : null, status: st ? st.data.status : "draft" };
   }
   async list() {
