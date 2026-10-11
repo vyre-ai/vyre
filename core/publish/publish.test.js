@@ -667,6 +667,7 @@ test("publish: granting a new secret to a live server restarts it with the secre
   const g2 = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/other", name: "BUILD_ONLY", use: ["build"] });
   await b.ok("publish.decide", { task: g2.task, approve: true });
   assert.equal(installs(), before + 1, "a secret used only to build does not restart it");
+});
 
 test("publish: a job goes live with one yes and no address, runs now and on its schedule one at a time with a five-minute floor, keeps what it printed without secret shapes, and a failed run is a card", async t => {
   const { seams } = await import("./index.js");
