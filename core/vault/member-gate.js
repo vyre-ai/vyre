@@ -12,6 +12,8 @@
 //     (core/daemon/index.js) builds kernelFacts for a device whose row names the owner, and that claim proves. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module's
 //     call made for a member carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
 //     On a one-person server this gate is not the only barrier for remote callers who are not members: the registry's per-tool `callers` lists still refuse them.
+//     KNOWN OPEN (rc.2): on a server whose owner has not yet claimed an identity, a member's paired device is treated as the owner's (callerFacts, core/daemon/index.js). The product path makes the owner choose a name
+//     before a team Space or an invite exists; the kernel does not enforce it. Fix planned for rc.2.
 //  5. Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module); a tool added later is refused for members unless its name is in MEMBER_ALLOWED; and a
 //     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
