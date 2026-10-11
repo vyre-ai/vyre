@@ -6,10 +6,11 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Loa
 import { Page } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
 import { errorNote } from "../../src/real/error-note.js";
-import { backupLine, whenLine, type SpaceBackup } from "./backups-model.js";
+import { backupLine, whenLine, vaultBackupLines, type SpaceBackup } from "./backups-model.js";
 
 export default function BackupsScreen() {
   const [rows, setRows] = useState<SpaceBackup[] | null>(null);
+  const [vb, setVb] = useState<Parameters<typeof vaultBackupLines>[0]>(null);
   const [err, setErr] = useState("");
   const [errNote, setErrNote] = useState<{ code: string; recourse: string } | null>(null);
   const [open, setOpen] = useState("");
@@ -19,6 +20,7 @@ export default function BackupsScreen() {
   const load = useCallback(() => {
     setErr(""); setErrNote(null);
     void callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {}).then((r) => { if (r.error) { const n = errorNote(r.error, "Backups could not be read."); setErr(n.reason); setErrNote({ code: n.code, recourse: n.recourse }); } else setRows(r.data?.spaces ?? []); });
+    void callT<NonNullable<Parameters<typeof vaultBackupLines>[0]>>("vault.autobackup.status", {}).then((r) => { if (!r.error) setVb(r.data ?? null); });
   }, []);
   useEffect(load, [load]);
   const turnOn = async (space: string) => {
@@ -52,6 +54,12 @@ export default function BackupsScreen() {
           ))}
         </Card>
       ) : null}
+      {vb ? (() => { const v = vaultBackupLines(vb); return (
+        <Card flush>
+          <Row title={v.title} sub={v.backup} end={<Chip>{vb.enrolled ? "On" : "Off"}</Chip>} />
+          {v.drill ? <><Divider /><Row title="Restore drill" sub={v.drill} end={vb.drill ? <Chip>{vb.drill.ok ? "Passed" : "Failed"}</Chip> : undefined} /></> : null}
+        </Card>
+      ); })() : null}
     </Page>
   );
 }

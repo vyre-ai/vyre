@@ -45,9 +45,8 @@ let STDIN = false;
 /** The words that ran this verb, for a prompt frame to run again with --stdin. */
 let AGAIN = /** @type {string[]} */ (["vault"]);
 /** The last reply from vyred, and whether --json has already printed a line for this command. */
-let last = /** @type {any} */ (null);
-let printed = false;
-const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
+let last = /** @type {any} */ (null), printed = false;
+export const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
 const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : undefined); printed = true; } };
 
@@ -56,7 +55,7 @@ const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : un
  * and exit 2. Null when the verb may go on and read it.
  * @param {string} label what to type
  */
-function secretGate(label) {
+export function secretGate(label) {
   if (!viewing() || STDIN) return null;
   jsonLine({ prompt: "secret", label });
   return EXIT.USAGE;
@@ -67,7 +66,7 @@ function secretGate(label) {
  * tool that needs the person (put, grant, reveal, copy and the rest) asks for their proof at this
  * terminal, as `vyre learn` does; a tool that does not answers the first call as before.
  */
-async function tool(name, input = {}, opts) {
+export async function tool(name, input = {}, opts) {
   const r = await callAsPerson(name, input, { timeout: opts && opts.timeout, io: personIO() });
   last = r;
   return r;
@@ -83,19 +82,18 @@ export function exitFor(r) {
 }
 
 const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => {
+export const fail = r => {
   last = r;
   if (JSON_MODE) jsonLine({ error: r.error });
   else if (r.error.code === "no_such_tool") out(beacon(`  this vyred has no ${String(r.error.message || "").replace(/^no tool /, "") || "such tool"} yet `) + dim("· update Vyre and run vyre restart"));
   else out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return exitFor(r);
 };
-const oops = msg => {
-  if (JSON_MODE) jsonLine({ error: { code: "bad_input", message: msg } });
-  else out(beacon(`  ${msg}`));
+export const oops = msg => {
+  if (JSON_MODE) jsonLine({ error: { code: "bad_input", message: msg } }); else out(beacon(`  ${msg}`));
   return 1;
 };
-const plural = (n, w) => `${n} ${w}${n === 1 ? "" : w.endsWith("s") ? "es" : "s"}`;
+export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : w.endsWith("s") ? "es" : "s"}`;
 // Kinds, and the field each hands over, come from the vault so the two never disagree.
 const KINDS = [...VAULT_KINDS];
 
@@ -104,7 +102,7 @@ function origin(url) {
   try { return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : "https://" + url).origin; } catch { return null; }
 }
 
-const day = ms => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
+export const day = ms => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
 
 const grantText = g => g.module + (g.watcher ? `/${g.watcher}` : "");
 
@@ -1762,8 +1760,8 @@ async function backupCmd(args) {
 }
 
 async function restoreCmd(args) {
-  const f = flags(args, { boolean: ["replace"] });
-  if (f._.length !== 1) return oops("vyre vault restore <file> [--replace]");
+  const f = flags(args, { boolean: ["replace", "drill"] });
+  if (f.drill || f._.length !== 1) return f.drill && f._.length <= 1 ? import("./vault-autobackup.js").then(m => m.drillCmd(f._[0])) : oops("vyre vault restore <file> [--replace] | --drill [<file>]");
   const file = path.resolve(f._[0]);
   let info;
   try { info = inspect(fs.readFileSync(file, "utf8").trim()); } catch (e) { return oops(`${file} is not a Vyre backup: ${e.message}`); }
@@ -1951,6 +1949,7 @@ const HELP = [
   ["pair [--name n] [--phone] | devices [revoke|unlock <id>]", "browser extensions, and phones (--phone), that autofill logins"],
   ["unlock-passphrase", "what an extension asks for before it fills"],
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
+  ["autobackup [status|enrol|run] | restore --drill", "daily automatic backups, and a drill that proves they restore"],
   ["--json", "on any command: the tool's {data} or {error} as one line; exit 3 presence, 4 locked"],
   ["--view --stdin", "for the Capsule, chat and the phone: frames; a secret comes piped in with --stdin, else exit 2"],
 ];
@@ -2059,7 +2058,7 @@ function viewOf(obj) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, autobackup: args => import("./vault-autobackup.js").then(m => m.autobackupCmd(args)), restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 /** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
@@ -2078,7 +2077,8 @@ const VERBS = [
   { verb: "devices", summary: "paired browser extensions; revoke or unlock one", usage: "[revoke|unlock] [id]", read: true },
   { verb: "unlock-passphrase", summary: "what an extension asks for before it fills", usage: "[--stdin]", person: true },
   { verb: "backup", summary: "the whole vault, sealed to a passphrase of its own", usage: "<file> [--stdin]", person: true },
-  { verb: "restore", summary: "put a vault backup back", usage: "<file> [--replace] [--stdin]", person: true },
+  { verb: "restore", summary: "put a vault backup back, or --drill to prove the newest automatic one restores", usage: "<file> [--replace] [--stdin] | --drill [<file>]", person: true },
+  { verb: "autobackup", summary: "daily automatic backups: status, enrol (once, with the recovery code), run", usage: "[status | enrol | run]", person: true },
   { verb: "relay", summary: "use an item relayed to you; the value is added on its owner's box", usage: "<item> <url> [--method m] [--header h] [--data d] [--owner o]", person: true },
   { verb: "grant", summary: "let a module use an item", usage: "<name> <module> [--watcher w]", person: true },
   { verb: "revoke", summary: "take a grant back", usage: "<name> <module> [--watcher w]" },

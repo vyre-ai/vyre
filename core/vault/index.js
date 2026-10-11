@@ -56,6 +56,7 @@ import { UsedBy } from "./used-by.js";
 import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
+import * as autobackup from "./autobackup.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -171,6 +172,23 @@ export default {
       obj({ file: str, passphrase: str, mode: { type: "string", enum: ["merge", "replace"] } }, ["file", "passphrase"]),
       ({ file, passphrase, mode }, { caller }) => restore(vault, fs.readFileSync(path.resolve(file), "utf8").trim(), passphrase, { mode, who: caller }),
       presence("Restore a vault backup", ({ file, mode }) => `Restore the backup ${path.resolve(String(file))} into this vault (${mode === "replace" ? "replace" : "merge"})`));
+
+    // Automatic backups (G20): daily, sealed so only the owner's recovery code opens them, the newest 14 kept; the drill proves a backup restores. The code is a secret, so enrolling and the drill are for
+    // people at the terminal; the status (when, how many, how the last drill went) is for every surface of theirs, and holds no secret.
+    tool("vault.autobackup.enrol", PEOPLE, "Turn on the daily automatic vault backup. Asks for your recovery code once; every backup opens with that code alone.",
+      obj({ code: str, password: str, keep: { type: "number" } }, ["code"]), async ({ code, password, keep }) => autobackup.enrol(vault, { code, password, keep }),
+      presence("Turn on automatic vault backups", () => "Back up the vault every day, sealed so only your recovery code opens it"));
+    tool("vault.autobackup.status", [...SURFACES, ...PHONE], "When the vault was last backed up automatically, how many backups are kept, and how the last restore drill went.",
+      obj({}), async () => autobackup.status(vault));
+    tool("vault.autobackup.run", PEOPLE, "Make an automatic vault backup now.", obj({}), async () => autobackup.run(vault),
+      presence("Back up the vault now", () => "Write a sealed backup of the vault now"));
+    tool("vault.autobackup.drill", PEOPLE, "Prove the newest backup restores: restore it into a scratch vault and compare every item with the live vault. Asks for your recovery code.",
+      obj({ code: str, password: str, file: str }, ["code"]), async ({ code, password, file }) => autobackup.drill(vault, { code, password, file }),
+      presence("Try restoring the latest vault backup", () => "Restore the newest vault backup into a scratch vault and compare it with this vault (nothing here changes)"));
+    // the daily tick: a first look a minute after start, then every hour; only an enrolled vault has anything due (a vault with none makes no key here)
+    autobackup.cleanLeftovers(vault);
+    const scheduleBackup = (/** @type {number} */ ms) => vault.later(async () => { try { await autobackup.tick(vault); } catch (e) { ctx.log(`vault: the automatic backup failed: ${/** @type {Error} */ (e).message}`); } scheduleBackup(3_600_000); }, ms);
+    scheduleBackup(60_000);
 
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
