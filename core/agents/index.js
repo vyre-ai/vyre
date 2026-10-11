@@ -56,6 +56,9 @@ export const MIGRATIONS = [
   // this table is the one place that says a thread is one, so agents.scope can narrow it and the activity feed can nest it.
   `CREATE TABLE agents_subs (id TEXT PRIMARY KEY, parent TEXT NOT NULL, parent_thread TEXT NOT NULL, thread TEXT, label TEXT NOT NULL, only TEXT, project TEXT, state TEXT NOT NULL DEFAULT 'running', result TEXT, at INTEGER NOT NULL, ended INTEGER);
    CREATE INDEX agents_subs_thread ON agents_subs (thread)`,
+  // The AI account an agent teammate's unattended work runs on (G08): one pick per project, and an optional one per agent in it. The account is the person's own (it serves them and nobody else);
+  // `person` is the member who picked it. The daily limit bounds how many turns the task wake starts on its own in a project in a day.
+  `CREATE TABLE agents_workset (project TEXT NOT NULL, agent TEXT NOT NULL DEFAULT '', account TEXT, person TEXT, daily_limit INTEGER, at INTEGER NOT NULL, PRIMARY KEY (project, agent))`,
 ];
 
 /**
@@ -642,21 +645,68 @@ export default {
     });
 
 
-    // A task given to an agent teammate, done in a side thread on the account of the person who gave it (G08, core/daemon/task-wake.js). Never the agent's own credentials, never another member's account:
-    // a person with no usable account makes this refuse with account_required, and the daemon turns that into a stuck task that names the next step.
+    // The AI account for an agent teammate's unattended work (G08), and the daily bound on the turns the task wake starts by itself. A pick belongs to the person who made it: the account must serve them,
+    // and it is only ever used from the vault for that project's work. Nothing is copied out or shown.
+    const worksetRow = (/** @type {string} */ project, /** @type {string} */ agent) => /** @type {any} */ (db.prepare("SELECT account, person, daily_limit FROM agents_workset WHERE project = ? AND agent = ?").get(project, agent));
+    const worksetOf = (/** @type {string} */ project, /** @type {string} */ agent) => {
+      const a = worksetRow(project, String(agent).toLowerCase()), p = worksetRow(project, "");
+      return { account: (a && a.account) || (p && p.account) || null, person: (a && a.account ? a.person : p && p.person) || null, daily_limit: (p && p.daily_limit) || null, agent_pick: Boolean(a && a.account) };
+    };
+    ctx.tool("agents.work.setting", {
+      description: "The AI account agent teammates work on in a project, and the daily limit on turns they start on their own: { account, person, daily_limit, agent_pick }. Give agent for one teammate's own pick.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" }, agent: { type: "string" } } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "device", "module"],
+      run: async (i) => worksetOf(String(i.project), String(i.agent || "")),
+    });
+    ctx.tool("agents.work.set", {
+      description: "Choose the AI account agent teammates work on in a project (or for one agent in it), and optionally the daily limit on turns started on their own. The account must be your own; account null clears the pick.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" }, agent: { type: "string" }, account: { type: ["string", "null"] }, daily_limit: { type: "integer", minimum: 1, maximum: 100000 } } },
+      callers: ["cli", "local", "deck", "capsule", "mobile", "device"],
+      run: async (i, meta) => {
+        // the person behind THIS call, from the kernel's chain: personOf's fallback to the owner is for reads, not for a pick that spends someone's account
+        let person = "";
+        try { const c = K ? await K.chain(meta) : null; const h = c && c.hops && c.hops[0]; if (h && h.actor.kind === "person") person = String(h.actor.id); } catch { /* no person behind this call */ }
+        if (!person) throw Object.assign(new Error("choosing the account agents work on is a person's: sign in as yourself, then choose the account again"), { code: "denied" });
+        const project = String(i.project), agent = i.agent ? must(String(i.agent)).name.toLowerCase() : "";
+        let account = i.account === undefined ? undefined : i.account;
+        if (typeof account === "string" && account) {
+          // it must be an account that serves this person: resolve with their id refuses anyone else's (not_found)
+          const r = await ctx.call("sessions.accounts.resolve", { provider: "claude", account, person });
+          if (r.error || !r.data || r.data.synthetic) throw Object.assign(new Error(`${account} is not one of your AI accounts (sessions.accounts.list shows yours); pick one of those`), { code: "not_found" });
+        }
+        const prior = worksetRow(project, agent);
+        const pickedAccount = account === undefined ? (prior ? prior.account : null) : account || null;
+        const limit = i.daily_limit !== undefined ? i.daily_limit : prior ? prior.daily_limit : null;
+        db.prepare("INSERT INTO agents_workset (project, agent, account, person, daily_limit, at) VALUES (?,?,?,?,?,?) ON CONFLICT(project, agent) DO UPDATE SET account = excluded.account, person = excluded.person, daily_limit = excluded.daily_limit, at = excluded.at")
+          .run(project, agent, pickedAccount, pickedAccount ? person : null, limit ?? null, Date.now());
+        return worksetOf(project, agent);
+      },
+    });
+
+    // A task given to an agent teammate, done in a side thread on a person's own AI account (G08, core/daemon/task-wake.js): the account picked for the project's agent work if there is one (its picker is the
+    // person), else the account of the person who gave the task. Never the agent's own credentials, never another member's account. A pick that cannot be used refuses with account_attention and a missing
+    // account with account_required, and the daemon turns either into a stuck task that names the next step. The home's own login (no account added yet) is the home owner's and nobody else's.
     ctx.tool("agents.work", {
-      description: "Run one task for an agent as a side thread on the giving person's own AI account, in the task's project. For the daemon's task wake.",
+      description: "Run one task for an agent as a side thread on the AI account chosen for agent work in the project, else the giving person's own account. For the daemon's task wake.",
       internal: true, callers: ["module"],
       input: { type: "object", required: ["agent", "prompt", "project", "person"], properties: { agent: { type: "string" }, prompt: { type: "string" }, project: { type: "string" }, person: { type: "string" }, owner: { type: "boolean", description: "the person owns this home, so the machine's own login is theirs" } } },
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the daemon's task wake starts a task for an agent"), { code: "denied" });
         const a = must(i.agent);
         if (a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
-        const acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", person: i.person, project: i.project, agent: a.name });
+        const pick = worksetOf(String(i.project), a.name);
+        let who = i.person, acct;
+        if (pick.account) {
+          who = String(pick.person);
+          acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", account: pick.account, project: i.project, agent: a.name, person: who });
+          if (acct.error || !acct.data || acct.data.synthetic || !acct.data.id) throw Object.assign(new Error(`person:${who} the AI account picked for agent work in ${i.project} cannot be used: pick another or sign in again`), { code: "account_attention" });
+        } else acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", person: who, project: i.project, agent: a.name });
         // The home's own login (no account added yet) is the home owner's and nobody else's: it is never a stand-in for another member's account.
-        const own = !acct.error && acct.data && (acct.data.synthetic || !acct.data.id) && i.owner === true;
-        if (!own && (acct.error || !acct.data || acct.data.synthetic || !acct.data.id)) throw Object.assign(new Error(`no AI account for ${i.person}: they connect one in Settings, then the task runs`), { code: "account_required" });
-        const t = await use("threads.launch", { agent: a.name, agent_kind: a.kind, append: preamble(a), scope: await scope(a), prompt: i.prompt, purpose: "job", once: true, project: i.project, name: a.name, ...(own ? {} : { account: String(acct.data.id), person: i.person }) });
+        const own = !pick.account && !acct.error && acct.data && (acct.data.synthetic || !acct.data.id) && i.owner === true;
+        if (!own && (acct.error || !acct.data || acct.data.synthetic || !acct.data.id)) throw Object.assign(new Error(`no AI account for ${who}: they connect one in Settings, then the task runs`), { code: "account_required" });
+        let t;
+        try { t = await use("threads.launch", { agent: a.name, agent_kind: a.kind, append: preamble(a), scope: await scope(a), prompt: i.prompt, purpose: "job", once: true, project: i.project, name: a.name, ...(own ? {} : { account: String(acct.data.id), person: who }) }); }
+        catch (e) { if (pick.account) throw Object.assign(new Error(`person:${who} the AI account picked for agent work in ${i.project} did not start: ${/** @type {Error} */ (e).message}`), { code: "account_attention" }); throw e; }
         return { agent: a.name, thread: t.id };
       },
     });

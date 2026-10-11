@@ -48,6 +48,18 @@
         "reach": "modules"
       },
       {
+        "name": "agents.work.setting",
+        "summary": "the AI account agent teammates work on in a project, and the daily limit",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "agents.work.set",
+        "summary": "choose the AI account agent teammates work on in a project (your own account), and the daily limit",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "agents.work",
         "summary": "run one task for an agent on the giving person's own AI account (the daemon's task wake only)",
         "reach": "modules"

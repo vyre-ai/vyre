@@ -15,6 +15,8 @@ import path from "node:path";
 const WAKE_EVENTS = /^task\.(created|readied|unblocked|reopened)$/;
 const MAX_TURNS = 2;
 const WORK_MS = 6 * 3600_000;
+const DEFAULT_DAILY_LIMIT = 100;
+const RESUME_EVERY_MS = 30 * 60_000;
 const cut = (/** @type {unknown} */ s, /** @type {number} */ n) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 
 /**
@@ -56,15 +58,18 @@ export function createTaskWakeHost(o) {
   /** A small JSON ledger per Space: which tasks were woken, how many turns each has had. */
   function ledgerFor(/** @type {string} */ space) {
     const file = path.join(dir, `${space}.json`.replace(/[^A-Za-z0-9._-]/g, "_"));
-    /** @type {{ tasks: Record<string, any> }} */ let data = { tasks: {} };
-    try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch { data = { tasks: {} }; }
+    /** @type {{ tasks: Record<string, any>, days: Record<string, number> }} */ let data = { tasks: {}, days: {} };
+    try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch { data = { tasks: {}, days: {} }; }
     if (!data.tasks) data.tasks = {};
+    if (!data.days) data.days = {};
     const save = () => { try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { log(`task-wake: the ledger was not saved (${/** @type {Error} */ (e).message})`); } };
-    return { get: (/** @type {string} */ id) => data.tasks[id], set: (/** @type {string} */ id, /** @type {any} */ v) => { data.tasks[id] = { ...(data.tasks[id] || {}), ...v }; save(); }, all: () => data.tasks };
+    return { get: (/** @type {string} */ id) => data.tasks[id], set: (/** @type {string} */ id, /** @type {any} */ v) => { data.tasks[id] = { ...(data.tasks[id] || {}), ...v }; save(); }, all: () => data.tasks,
+      /** turns the wake started today in a project, and one more */
+      turns: (/** @type {string} */ key) => data.days[key] || 0, count: (/** @type {string} */ key) => { data.days[key] = (data.days[key] || 0) + 1; for (const k of Object.keys(data.days)) if (!k.endsWith(key.slice(-10))) delete data.days[k]; save(); } };
   }
 
   /**
-   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number }} s
+   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
@@ -78,6 +83,7 @@ export function createTaskWakeHost(o) {
 
     /** The doer's own chain for a task: [the assigner, the agent], vouched by this daemon, which started the session. @param {any} t */
     const doerChain = (/** @type {any} */ t) => s.chains.fromFacts({ kind: "agent_session", vouched: true, person: assignerOf(t), agent: t.doer.id, session: `wake-${t.id}` });
+    const dayKey = (/** @type {string} */ slug) => `${slug}|${new Date((s.clock || Date.now)()).toISOString().slice(0, 10)}`;
     const assignerOf = (/** @type {any} */ t) => (t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : s.ownerId());
 
     /** The project's short name, the agent's name, and whether the agent is on the project's team. @param {any} t */
@@ -105,15 +111,34 @@ export function createTaskWakeHost(o) {
     async function run(t, r, turn) {
       const person = assignerOf(t);
       let started;
+      ledger.count(dayKey(r.slug));
       try {
         started = await o.callModule("agents.work", { agent: r.agent, project: r.slug, person, owner: person === s.ownerId(), prompt: briefOf({ title: t.title, note: t.note, project: r.name }) });
       } catch (e) {
         const code = /** @type {any} */ (e).code;
+        if (code === "account_attention") { const who = (/person:(\S+)/.exec(/** @type {Error} */ (e).message) || [])[1] || person; return stuck(t, `${nameOf(who)}'s AI account for agent work needs attention`, "Pick another account for agent work in the project's settings, or sign in to it again, then move this task back to ready."); }
         if (code === "account_required") return stuck(t, `needs ${nameOf(person)} to connect an AI account`, `${nameOf(person)} adds an AI account under Settings, then moves this task back to ready.`);
         return stuck(t, `the turn could not start: ${cut(/** @type {Error} */ (e).message, 160)}`, "Check the agent and its project, then move this task back to ready.");
       }
       threads.set(String(started.thread), { space: s.space, task: t.id, text: "" });
       ledger.set(t.id, { state: "woken", thread: String(started.thread), turns: turn, at: (s.clock || Date.now)() });
+    }
+
+    /** The day's limit on turns the wake starts by itself is spent: the task waits (it stays ready), and the person who gave it is told once a day. @param {any} t @param {{ slug: string, name: string }} r @param {number} limit */
+    async function pause(t, r, limit) {
+      ledger.set(t.id, { state: "paused", reason: "daily limit", at: (s.clock || Date.now)() });
+      const key = `${dayKey(r.slug)}|told`;
+      if (!ledger.get(key)) {
+        ledger.set(key, { state: "notice" });
+        const person = assignerOf(t);
+        try { if (s.notify) await s.notify({ person, project: String(t.project), title: `Agent work paused on ${r.name}: daily limit`, note: `Agents have started ${limit} turns on ${r.name} today by themselves, which is this project's daily limit, so tasks given to them wait as "paused: daily limit". They start again tomorrow, or a member raises the limit in the project's agent work settings.` }); } catch (e) { log(`task-wake ${s.space}: the daily-limit notice was not raised (${/** @type {Error} */ (e).message})`); }
+      }
+      return ledger.get(t.id);
+    }
+
+    /** Paused tasks start again once the day's count allows it. */
+    async function resumePaused() {
+      for (const [id, rec] of Object.entries(ledger.all())) if (!stopped && rec && rec.state === "paused") await wake(id);
     }
 
     /** A task is ready for an agent: wake it, once. @param {string} id */
@@ -128,6 +153,9 @@ export function createTaskWakeHost(o) {
       if (!t || t.state !== "ready" || !t.doer || t.doer.kind !== "agent") return null;
       const r = await resolve(t);
       if (!r) return null;
+      const set = await o.callModule("agents.work.setting", { project: r.slug }).catch(() => null);
+      const limit = (set && set.daily_limit) || DEFAULT_DAILY_LIMIT;
+      if (ledger.turns(dayKey(r.slug)) >= limit) return pause(t, r, limit);
       ledger.set(id, { state: "starting", turns: 0, at: (s.clock || Date.now)() });
       try {
         await s.grantWork.make(t.doer.id, id, (s.clock || Date.now)() + WORK_MS);
@@ -190,12 +218,14 @@ export function createTaskWakeHost(o) {
       return track(wake(String(t.id)));
     });
 
+    const timer = setInterval(() => { void track(resumePaused()); }, s.resumeEveryMs || RESUME_EVERY_MS); if (typeof timer.unref === "function") timer.unref();
     const host = Object.freeze({
       wake: (/** @type {string} */ id) => wake(id),
-      recover: () => track(recover()),
+      recover: () => track(recover().then(resumePaused)),
+      resumePaused: () => track(resumePaused()),
       /** Wait for the work in flight (a test, or a stop). */
       async idle() { while (inflight.size) await Promise.all([...inflight]); },
-      stop() { stopped = true; finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },
+      stop() { stopped = true; clearInterval(timer); finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },
     });
     spaces.set(s.space, host);
     return host;

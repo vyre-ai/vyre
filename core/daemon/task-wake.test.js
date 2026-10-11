@@ -59,7 +59,7 @@ test("the brief names the task and the way to answer", () => {
 });
 
 /** A Space's kernel pieces, faked: one task, the calls the wake makes. */
-function rig(/** @type {{ root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
+function rig(/** @type {{ limit?: number, now?: () => number, root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
   const calls = /** @type {string[]} */ ([]);
   const handlers = /** @type {Record<string, (e: any) => any>} */ ({});
   const task = o.task || { id: "tsk_1", state: "ready", title: "Write the letter", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
@@ -78,15 +78,17 @@ function rig(/** @type {{ root?: string, ledgerState?: any, agentsWork?: (i: any
     callModule: async (tool, input) => {
       if (tool === "work.project.ref") return { slug: "p1", name: "P One", urn: "vyre://spc_a/project/p1" };
       if (tool === "agents.list") return [{ uid: "agt_kit", name: "kit" }];
+      if (tool === "agents.work.setting") return { daily_limit: o.limit || null };
       if (tool === "agents.work") { calls.push(`work ${input.person} owner=${input.owner}`); return o.agentsWork ? o.agentsWork(input) : { agent: "kit", thread: "th_1" }; }
       throw new Error(`unexpected ${tool}`);
     },
   });
   let push = (/** @type {any} */ _e) => {};
-  const h = host.attach({ space: "spc_a", gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
+  const notes = /** @type {any[]} */ ([]);
+  const h = host.attach({ space: "spc_a", ...(o.now ? { clock: o.now } : {}), notify: async n => { notes.push(n); }, gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
   const ready = (/** @type {string} */ type = "task.created") => push({ type, data: { state: "ready", task } });
   const finish = async (/** @type {string} */ text) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: {} }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
-  return { root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
+  return { notes, root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
 }
 
 test("one task is woken once, the turn runs on the assigner's account, and the reply is the result", async () => {
@@ -151,4 +153,60 @@ test("a task that was claimed but never started is woken as new after a restart"
   const b = rig({ root, task: a.task });
   await b.h.recover(); await b.h.idle();
   assert.deepEqual(b.calls.slice(0, 2), ["grant agt_kit tsk_1", "start tsk_1"]);
+});
+
+test("a picked AI account that cannot be used makes the task stuck, naming whose account needs attention, and nothing else runs", async () => {
+  const r = rig({ agentsWork: async () => { throw Object.assign(new Error("person:per_alice the AI account picked for agent work in p1 cannot be used"), { code: "account_attention" }); } });
+  r.ready(); await r.h.idle();
+  assert.equal(r.calls.at(-1), "stuck tsk_1 per_alice's AI account for agent work needs attention");
+});
+
+test("the daily limit holds the turns the wake starts by itself: the task waits, the assigner is told once, and it starts again the next day", async () => {
+  let now = Date.parse("2026-10-11T10:00:00Z");
+  const root = `/tmp/task-wake-limit-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const first = rig({ root, limit: 1, now: () => now });
+  first.ready(); await first.h.idle();
+  assert.equal(first.calls.filter(c => c.startsWith("work ")).length, 1);
+  // a second task in the same project the same day
+  const two = { id: "tsk_2", state: "ready", title: "Second", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
+  const second = rig({ root, limit: 1, now: () => now, task: two });
+  second.ready(); await second.h.idle();
+  assert.equal(second.calls.filter(c => c.startsWith("work ")).length, 0, "no turn past the limit");
+  assert.equal(two.state, "ready", "the task keeps waiting");
+  assert.equal(second.notes.length, 1);
+  assert.match(second.notes[0].title, /daily limit/);
+  assert.equal(second.notes[0].person, "per_bob");
+  second.ready(); await second.h.idle();
+  assert.equal(second.notes.length, 1, "told once a day");
+  now = Date.parse("2026-10-12T10:00:00Z");
+  await second.h.resumePaused(); await second.h.idle();
+  assert.equal(second.calls.filter(c => c.startsWith("work ")).length, 1, "the next day it starts");
+});
+
+test("the AI account for agent work is picked from your own accounts: yours is kept and shown, another's or a made-up one is refused, and a limit can be set", { timeout: 120_000 }, async t => {
+  const { d, root, project } = await boot(t);
+  const kcall = kernelCaller(d, root);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: [project.slug] })).error);
+  const acct = await kcall("sessions.accounts.add", { provider: "claude", label: "Mine", kind: "login" });
+  assert.ok(!acct.error, JSON.stringify(acct));
+  const id = acct.data.id;
+  const before = await kcall("agents.work.setting", { project: project.slug });
+  assert.equal(before.data.account, null, "nothing picked yet");
+  const bogus = await kcall("agents.work.set", { project: project.slug, account: "acc_nobody" });
+  assert.equal(bogus.error && bogus.error.code, "not_found");
+  assert.match(bogus.error.message, /pick one of those/);
+  const set = await kcall("agents.work.set", { project: project.slug, account: id, daily_limit: 12 });
+  assert.ok(!set.error, JSON.stringify(set));
+  assert.equal(set.data.account, id);
+  assert.equal(set.data.daily_limit, 12);
+  assert.equal(set.data.person, d.kernel.id.owner, "the pick belongs to the person who made it");
+  const one = await kcall("agents.work.set", { project: project.slug, agent: "kit", account: id });
+  assert.equal(one.data.agent_pick, true, "one teammate can have its own pick");
+  const cleared = await kcall("agents.work.set", { project: project.slug, account: null });
+  assert.equal(cleared.data.account, null, "the project's pick is cleared");
+  assert.equal((await kcall("agents.work.setting", { project: project.slug, agent: "kit" })).data.account, id, "the teammate's own pick stays");
+  const none = await kcall("agents.work.set", { project: project.slug, agent: "kit", account: null });
+  assert.equal(none.data.account, null);
+  const noPerson = await d.registry.call("agents.work.set", { project: project.slug, account: id }, "cli", {});
+  assert.ok(noPerson.error, "a call with no person behind it picks nothing");
 });

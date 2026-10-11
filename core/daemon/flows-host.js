@@ -351,7 +351,7 @@ export function createFlowsHost(o) {
       });
     };
     // An agent teammate does the task it is given (core/daemon/task-wake.js): in the home's own Space, where the agents and their teams are.
-    if (o.taskWake && o.agentsSpace && o.agentsSpace() === space) { try { const wakeHost = o.taskWake.attach({ space, gw, chains: k.chains, ownerChain: owner, ownerId: ownerOf, grantWork: taskWorkGrants(), subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("task-wake", {}, cb) }); void whenStoreReady(k.store, async () => { if (wakeHost && wakeHost.recover) await wakeHost.recover(); }); } catch (err) { log(`flows ${space}: task wake did not start (${/** @type {Error} */ (err).message})`); } }
+    if (o.taskWake && o.agentsSpace && o.agentsSpace() === space) { try { const wakeHost = o.taskWake.attach({ space, gw, chains: k.chains, ownerChain: owner, ownerId: ownerOf, grantWork: taskWorkGrants(), notify: (/** @type {any} */ n) => gw.ask.request(flowsChain(), { title: n.title, record: n.project, doer: actor(n.person), output: { kind: "decision" }, source: "manual", note: n.note }), subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("task-wake", {}, cb) }); void whenStoreReady(k.store, async () => { if (wakeHost && wakeHost.recover) await wakeHost.recover(); }); } catch (err) { log(`flows ${space}: task wake did not start (${/** @type {Error} */ (err).message})`); } }
     return host;
   }
 
