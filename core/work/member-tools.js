@@ -17,7 +17,7 @@ import { KernelError } from "../../kernel/core/errors.js";
 /**
  * door call ("<group>.<call>") -> the registry tool that serves it, the call name it is run with (null: the tool is run with the input itself), the input keys the door lets through (every other key is dropped,
  * so a member never names the person, the agent, the project or the Space), and the record types the row keeps (each must be in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES: a test fails otherwise).
- * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[] }>>}
+ * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[], target?: "project" }>>}
  */
 export const MEMBER_TOOLS = Object.freeze({
   // a member's own skills (core/skills/member-ops.js): her personal skill is drafted and approved by her alone; a draft at a higher level waits for its owner; kind "skill" only
@@ -28,9 +28,9 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
   // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive
-  "files.list": { tool: "work.serve", call: "files-list", keys: ["project"], types: [] },
-  "files.read": { tool: "work.serve", call: "files-read", keys: ["project", "name"], types: [] },
-  "files.upload": { tool: "work.serve-write", call: "files-upload", keys: ["project", "name", "data"], types: [] },
+  "files.list": { tool: "work.serve", call: "files-list", keys: ["project"], types: [], target: "project" },
+  "files.read": { tool: "work.serve", call: "files-read", keys: ["project", "name"], types: [], target: "project" },
+  "files.upload": { tool: "work.serve-write", call: "files-upload", keys: ["project", "name", "data"], types: [], target: "project" },
   "work.templates": { tool: "work.serve", call: "templates", keys: [], types: ["project-template"] },
   "work.project-create": { tool: "work.serve-write", call: "create-project", keys: ["name", "slug"], types: [] },
   "work.start-project": { tool: "work.serve-write", call: "start-project", keys: ["template", "name", "slug"], types: ["project-template"] },
