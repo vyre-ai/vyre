@@ -162,6 +162,21 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
 
   // (Carol's rounds, with each member on a sign-in of their own, are in scripts/g01-two-process.mjs; here they wait on the own-account hop leaving the owner's next turn alone: see the lead's list)
 
+  // Carol writes in Bob's chat: her turn runs on the server with Bob's last turn in its history, and Bob's next turn goes back to his computer by itself; twice
+  for (const round of [1, 2]) {
+    const n0 = await finished();
+    await d.registry.call("threads.send", { thread: th.id, text: `carol round ${round}`, surface: "deck", chat: chatRow.id, asker: CAROL }, "module:stream").then((/** @type {any} */ x) => assert.ok(!x.error, JSON.stringify(x)));
+    await until(async () => (await finished()) > n0, "carol's turn", 90_000);
+    assert.equal(where(), "server", "another person's turn ran on the server");
+    { const said = await lastSaid(); assert.match(said, new RegExp(`carol round ${round}`)); assert.match(said, /hello from the phone/, "her turn on the server started from the chat's earlier turns"); }
+    const n1 = await finished();
+    await asChat("threads.send", { thread: th.id, text: `bob round ${round}` });
+    await until(async () => (await finished()) > n1, "bob's next turn", 90_000);
+    assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
+    { const said = await lastSaid(); assert.match(said, new RegExp(`bob round ${round}`)); assert.match(said, new RegExp(`carol round ${round}`), "back on the computer, the turn starts from what the chat held, her turn included"); }
+  }
+
+
   // A message with no person behind it (an agent's, a Flow's, a notice) never reaches a process on a person's computer: the chat is taken back to the server and the message waits there.
   const before = (await ok("threads.get", { thread: th.id, limit: 600 })).events.length;
   const sent = await call("threads.send", { thread: th.id, text: "a message with no person" });
