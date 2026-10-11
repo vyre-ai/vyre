@@ -99,10 +99,10 @@ async function world(t) {
     };
     await reg.start(discover([CORE]).filter(f => f.manifest && (["stream", "threads", "sessions"].includes(f.manifest.name))), { role: "box" });
     for (const m of ["sessions", "threads", "stream"]) assert.equal(reg.modules.get(m)?.state, "running", reg.modules.get(m)?.error);
-    // every member who is not the owner runs on a sign-in of their own (the fake claude is the provider): added once, kept across the restarts of this rig
-    for (const who of ["carol", "ada"]) {
+    // everyone runs on a sign-in of their own (the fake claude is the provider; bob's, the owner's, is the Space's own account): added once, kept across the restarts of this rig
+    for (const who of ["bob", "carol", "ada"]) {
       const have = await reg.call("sessions.accounts.list", { provider: "claude" }, "deck", { token: tokens[who] });
-      if ((have.data || []).some((/** @type {any} */ a) => a.person)) continue;
+      if ((have.data || []).some((/** @type {any} */ a) => !a.synthetic)) continue;
       const added = await reg.call("sessions.accounts.add", { provider: "claude", label: `${who}'s Claude`, kind: "login" }, "deck", { token: tokens[who] });
       assert.ok(!added.error, added.error && added.error.message);
       db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
