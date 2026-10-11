@@ -126,7 +126,7 @@ test("a queued row whose hop needs no move (sendOnce answers null) still deliver
 
 test("deliverRow writes the words under the asker's session, and tells the room when that session cannot open", async () => {
   /** @type {any[]} */ const log = [];
-  const mk = (/** @type {boolean} */ ok) => /** @type {any} */ ({ record: () => ({ project: null }), renewKernelSession: async () => ok, write: (/** @type {string} */ id, /** @type {string} */ text, /** @type {any} */ o) => log.push(["write", text, o.askedBy]), dropQueuedChatTurn: () => log.push(["told"]) });
+  const mk = (/** @type {boolean} */ ok) => /** @type {any} */ ({ record: () => ({ project: null }), renewKernelSession: async () => ok, renewCapped: async () => ok, write: (/** @type {string} */ id, /** @type {string} */ text, /** @type {any} */ o) => log.push(["write", text, o.askedBy]), dropQueuedChatTurn: () => log.push(["told"]) });
   await Switchboard.prototype.deliverRow.call(mk(true), "t", { text: "C-ONE", uuid: "u" }, { chat: "c", asker: "per_carol" });
   await Switchboard.prototype.deliverRow.call(mk(false), "t", { text: "C-TWO", uuid: "v" }, { chat: "c", asker: "per_carol" });
   assert.deepEqual(log, [["write", "C-ONE", "per_carol"], ["told"]]);
