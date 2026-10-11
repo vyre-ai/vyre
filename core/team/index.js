@@ -1379,7 +1379,7 @@ export default {
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || "automation") : String(meta.caller || "").startsWith("module:") ? "automation" : null;
         const filler0 = await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
-        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(inherited ? { asker: inherited } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", asker: inherited || "automation", ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
         const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || inherited || "automation" });
         if (i.wait) {
           const done = await new Promise(resolve => {
