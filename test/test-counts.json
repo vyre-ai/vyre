@@ -607,6 +607,7 @@
  "kernel/remote/offers-port.test.js": 3,
  "kernel/remote/person-of.test.js": 1,
  "kernel/remote/proof.test.js": 3,
+ "kernel/remote/surfaces-door.test.js": 1,
  "kernel/remote/wink.test.js": 2,
  "kernel/retrofit/gates.test.js": 8,
  "kernel/rules.test.js": 13,
