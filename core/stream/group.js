@@ -618,14 +618,14 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /**
    * Vyre's own words (a notice from the Switchboard: a switch back that failed, a message dropped because its person left) while NO turn is open: written straight into the room's log, as the stream writes
    * the failed status of a dropped reply. No reply handle and so no person's session is asked or opened, the chat's status is not touched, and the frame carries no `acts_for`: the author is the assistant member
-   * whose thread said it, the words are the system's. With a turn open a notice goes through the turn's reply, as before. @param {Member} m @param {any} s a text-delta or text-done with data.notice
+   * whose thread said it, the words are the system's. It is stamped with the stream's cursor (`at`) like a tool frame, so it follows the room's membership spans: someone who left, or joined later, does not get what they were not in the room for. With a turn open a notice goes through the turn's reply, as before. @param {Member} m @param {any} s a text-delta or text-done with data.notice
    */
   function noticeToRoom(m, s) {
     const ids = m.noticeIds || (m.noticeIds = new Map()), key = `${s.data.message}:${s.data.index ?? 0}`;
     let id = ids.get(key);
     if (!id) { id = `notice.${m.name}.${(m.noticeSeq = (m.noticeSeq || 0) + 1)}.${now().toString(36)}`; ids.set(key, id); }
     if (s.kind === "text-done") ids.delete(key);
-    try { logs.get(m.grp).append(s.kind, { ...s.data, message: id }, { turn: null, author: m.who, message: id }); }
+    try { logs.get(m.grp).append(s.kind, { ...s.data, message: id, at: cursor(m.grp) }, { turn: null, author: m.who, message: id }); }
     catch (err) { log(`notice for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
   }
 

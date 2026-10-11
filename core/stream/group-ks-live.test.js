@@ -625,3 +625,20 @@ test("N2: a notice inside a turn is shown through that turn's reply, as before",
   assert.ok(!String(frame.data.message).startsWith("notice."), "it went through the turn's reply, not the room's own notice path");
   assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"));
 });
+
+test("N3: a notice outside a turn follows the room's membership: a member who was removed before it does not receive it, one who is in the chat does", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watchBob = await b.watch("bob", chat.id), watchAda = await b.watch("ada", chat.id), watchCarol = await b.watch("carol", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "hello kit", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watchBob, "hello kit", 60_000);
+  const thread = kitThread(b, chat.id);
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 5 }, "cli")).data.thread.status === "idle", "the thread to be idle", 30_000);
+  await w.C.change(w.chains.bob, chat.id, { remove_people: [ADA] });
+  await sleep(300);
+  assert.ok(!(await b.reg.call("threads.notice", { thread, text: "NOTICE-AFTER-ADA-LEFT" }, "module:stream")).error);
+  await until(() => textOf(watchBob.frames).includes("NOTICE-AFTER-ADA-LEFT") && textOf(watchCarol.frames).includes("NOTICE-AFTER-ADA-LEFT"), "the people in the chat to get the notice");
+  await sleep(500);
+  assert.ok(!textOf(watchAda.frames).includes("NOTICE-AFTER-ADA-LEFT"), "ada left before it and does not receive it");
+});
