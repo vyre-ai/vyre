@@ -4,6 +4,7 @@
 // program. Nothing else can leave the sandbox. Usage: shim.js --listen PORT --to /run/egress.sock -- cmd args...
 
 import net from "node:net";
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 
 const argv = process.argv.slice(2);
@@ -42,7 +43,10 @@ const server = net.createServer(c => {
   c.on("error", end); up.on("error", end);
 });
 server.listen(port, "127.0.0.1", () => {
-  const child = spawn(cmd, args, { stdio: "inherit" });
+  // A credential the runner put on a pipe (--pass-fd N) reaches the session program as its fd 3 and nowhere else: this process closes its own copy at once, so only the program holds the pipe.
+  const pass = argv.indexOf("--pass-fd") >= 0 && argv.indexOf("--pass-fd") < cut ? Number(opt("--pass-fd")) : 0;
+  const child = spawn(cmd, args, { stdio: pass ? [0, 1, 2, pass] : "inherit" });
+  if (pass) { try { fs.closeSync(pass); } catch { /* already closed */ } }
   child.on("exit", (code, sig) => { server.close(); process.exit(code ?? (sig ? 128 : 0)); });
   for (const s of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(s, () => child.kill(s));
 });

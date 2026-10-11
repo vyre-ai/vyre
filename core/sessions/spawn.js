@@ -45,6 +45,19 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
  *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, lentSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
  */
+/**
+ * The credential a session was handed in its env, taken out of it for the fd 3 pipe: an API key or a setup token never stays in the environment of the process whose tools a person (or a member) drives.
+ * Claude Code reads the pipe once at start; its tools never inherit it, and /proc/<its pid>/environ has nothing in it (scripts/sessions-proof/sealed-credential.mjs measured both).
+ * @param {Record<string, string|undefined>} env changed in place @returns {string | undefined} the value for fd 3
+ */
+export function takeCredentialForFd(env) {
+  for (const [name, via] of /** @type {const} */ ([["ANTHROPIC_API_KEY", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"], ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"]])) {
+    const v = env[name];
+    if (v) { delete env[name]; env[via] = "3"; return String(v); }
+  }
+  return undefined;
+}
+
 export function spawnSession(command, args, o = {}) {
   // A chat placed on the person's own lent computer (contracts/lent-spawn.md): the process runs there, and when nothing could start it runs here, as it would have.
   if (o.lentSpawn) {
@@ -70,8 +83,7 @@ export function spawnSession(command, args, o = {}) {
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
   const env = { ...(o.env || {}) };
-  const key = env.ANTHROPIC_API_KEY;
-  if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
+  const key = takeCredentialForFd(env);
   const child = spawn(cmd, argv, { cwd: o.cwd, env: /** @type {any} */ (env), signal: o.signal, stdio: key ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
     detached: posix, ...(typeof o.uid === "number" ? { uid: o.uid } : {}), ...(typeof o.gid === "number" ? { gid: o.gid } : {}) });
   if (key && child.stdio[3]) { const fd = /** @type {any} */ (child.stdio[3]); fd.on("error", () => {}); fd.end(String(key)); }
@@ -161,8 +173,7 @@ function viaSpawner(command, args, o) {
   proc.kill = (/** @type {NodeJS.Signals} */ sig = "SIGTERM") => { proc.killed = true; if (handle) handle.kill(sig); else pending = sig; return true; };
   if (o.signal) o.signal.addEventListener("abort", () => proc.kill("SIGTERM"), { once: true });
   const env = { ...(o.env || {}) };
-  const key = env.ANTHROPIC_API_KEY;
-  if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
+  const key = takeCredentialForFd(env);
   spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed ? { seed: o.seed } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
