@@ -155,7 +155,8 @@ test("team seats: a project's owner adds a plain person; role, skills, instructi
 test("project fields: a team member changes only the plain ones; the owner everything but the file, memory and credential fields and the owner; owner/admin all", async () => {
   const { R, chains, p1 } = await rig();
   const cur = async () => (await R.get(chains.owner, "project", p1.id)).version;
-  assert.ok(await R.update(chains.eve, "project", p1.id, { repo: "git@x:y" }, await cur()), "team member: repo");
+  assert.ok(await R.update(chains.eve, "project", p1.id, { due: "2030-01-01" }, await cur()), "team member: due");
+  await refused(R.update(chains.eve, "project", p1.id, { repo: "git@evil:y" }, await cur()), /Ask the project's owner/);
   await refused(R.update(chains.eve, "project", p1.id, { drive_path: "/etc" }, await cur()), /files, memory or credentials/);
   await refused(R.update(chains.eve, "project", p1.id, { lead: "kit" }, await cur()), /Ask the project's owner/);
   assert.ok(await R.update(chains.bob, "project", p1.id, { lead: "kit", template: "t1" }, await cur()), "owner: lead and template fields");
@@ -174,6 +175,8 @@ const TASK_CALLS = {
   // moved only by the actor the task names (the doer works it, the checker decides it; isDoer / checkersOf in kernel/tasks/tasks.js): a stranger is refused by that rule
   actor: ["start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix"],
   // reads, or kernel-internal bookkeeping with no person to speak of
+  // the boot-time move of task words onto records: it takes no chain, runs as the tasks module's own chain and writes nothing a caller names
+  internal: ["migrate"],
   read: ["get", "list", "needsYou", "card", "facts", "approvalFor", "kitApproval", "approvedAct", "useApproval", "approved", "scrubTexts"],
 };
 
