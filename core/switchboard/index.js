@@ -965,7 +965,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: o.person }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -2335,7 +2335,7 @@ export class Switchboard {
    * Before resuming a thread that is not running here: is it open somewhere else (adopt.js)?
    * @param {string} id @returns {string|null} why it is, or null
    */
-  elsewhere(id) {
+  elsewhere(id) {   const lp = this.live.get(id); if (lp && lp.proc && lp.proc.where === "lent") return null;   // a process on a person's own computer is Vyre's own, not a terminal elsewhere
     const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
     const rec = this.record(id);
     return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(this.nativeOf(id)), ours: this.ours(), alive, naming: this.deps.naming,
@@ -2530,7 +2530,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).switchPerson || null };
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
     const { seed } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {

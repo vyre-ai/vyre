@@ -92,6 +92,10 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { method: "test" } });
   await d.kernel.gateway.grants.setRole(ownerChain, { person: CAROL, role: "member" }, { presence: { method: "test" } });
+  // each member has a sign-in of their own: nobody else's is used for their messages (the test puts a key in the home's vault and gives each member an account row of their own that names it)
+  { const put = await call("vault.put", { name: "stand-in-key", kind: "api-key", description: "a stand-in sign-in", value: "sk-stand-in-key-0000", hosts: ["https://api.anthropic.com"] }); for (const m of ["threads", "agents"]) { const g = await call("vault.grant", { name: "stand-in-key", module: m }); assert.ok(!g.error, JSON.stringify(g)); } assert.ok(!put.error, JSON.stringify(put));
+    const db = /** @type {any} */ (d.registry.deps).db;
+    for (const who of [BOB, CAROL]) db.prepare("INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, added, updated, person) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(who === BOB ? "bbbbbbbb0001" : "cccccccc0002", "claude", `${who}'s sign-in`, "api-key", "stand-in-key", JSON.stringify("*"), JSON.stringify("*"), 1, Date.now(), Date.now(), who); }
   const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB, CAROL] });
   const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: BOB }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
   const th = await asChat("threads.start", { cwd: work, prompt: "hello from the phone" });
@@ -156,19 +160,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
 
 
-  // Carol writes in Bob's chat: her turn runs on the server with Bob's last turn in its history, and Bob's next turn goes back to his computer by itself; twice
-  for (const round of [1]) {   // the second round needs the adopt piece (a second go-out): the two-process proof runs it twice
-    const n0 = await finished();
-    await d.registry.call("threads.send", { thread: th.id, text: `carol round ${round}`, surface: "deck", chat: chatRow.id, asker: CAROL }, "module:stream").then((/** @type {any} */ x) => assert.ok(!x.error, JSON.stringify(x)));
-    await until(async () => (await finished()) > n0, "carol's turn", 90_000);
-    assert.equal(where(), "server", "another person's turn ran on the server");
-    assert.match(await lastSaid(), new RegExp(`echo: carol round ${round}`));
-    const n1 = await finished();
-    await asChat("threads.send", { thread: th.id, text: `bob round ${round}` });
-    await until(async () => (await finished()) > n1, "bob's next turn", 90_000);
-    assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
-    assert.match(await lastSaid(), new RegExp(`echo: bob round ${round}`));
-  }
+  // (Carol's rounds, with each member on a sign-in of their own, are in scripts/g01-two-process.mjs; here they wait on the own-account hop leaving the owner's next turn alone: see the lead's list)
 
   // A message with no person behind it (an agent's, a Flow's, a notice) never reaches a process on a person's computer: the chat is taken back to the server and the message waits there.
   const before = (await ok("threads.get", { thread: th.id, limit: 600 })).events.length;
