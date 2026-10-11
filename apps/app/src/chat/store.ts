@@ -7,6 +7,7 @@
 // Frames that arrive in the same tick (a resume replay, a burst) are applied together and
 // notified once. Text replayed on connect shows as it is; only live text is paced.
 
+import { chipsOf } from "./chips.js";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
@@ -15,6 +16,7 @@ import { createFolder, headerState, type Frame as FoldFrame, type Item, type Lay
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
+
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
 export type PerfSink = (name: "paint.delta" | "paint.first", ms: number) => void;
@@ -178,7 +180,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}) });
+        const r = await a.sendGroupText(text, { ...chipsOf(o?.mentions), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}) });
         return r.ok ? null : r.reason;
       }
       if (a.sendText) return a.sendText(text, o);
@@ -240,7 +242,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       return withOptimistic(text, async () => {
       const a = withActions(source);
       if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
-        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
+        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...chipsOf(o.mentions), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
         return r.ok ? null : r.reason;
       }
       if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }

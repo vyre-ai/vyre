@@ -18,6 +18,7 @@ test("the one naming function: My Home, My Cloud, a team's Cloud, never an id, B
     assert.equal(spaceName({ id: "s", displayName: "Juniper Studio", tier: "cloud" }), "Juniper Studio's Cloud");
     assert.equal(spaceName({ id: "spc_1", name: "spc_1", tier: "cloud" }), "Space");
     assert.equal(spaceName({ id: "s", displayName: "Northwind", tier: "cloud" }), "Northwind's Cloud");
+    assert.equal(spaceName({ id: "s", label: "northwind", tier: "basic", setup: { who: "team" } }), "northwind", "a team Space on a computer keeps its own name, so two Spaces are never both called My Home");
     assert.equal(spaceName({ id: "s", displayName: "Northwind Cloud", tier: "cloud" }), "Northwind Cloud", "a name that already says Cloud is not doubled");
     assert.equal(spaceName({ id: "s", displayName: "Studio", setup: { who: "team" } }), "Studio", "a team space whose tier is not known claims no Cloud");
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "pro", setup: { who: "personal" } }), "alex", "pro is not a value any more: it is read as a name, not a tier");
