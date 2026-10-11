@@ -61,7 +61,8 @@ async function seen(person, chat) {
   const r = await person.joined.call("chat.catchup", [{ chat }]);
   return /** @type {any[]} */ (r.messages || []);
 }
-const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(String(m.author)));
+// (the stand-in agent answers "home: ..."; the lines Vyre says about a turn moving to a member's account are the assistant's too, and are not answers)
+const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(String(m.author)) && /^home: /.test(String(m.text)));
 
 /** What the server's own terminal says about the sessions, for a wait that timed out. */
 let serverView = async () => "";
