@@ -25,12 +25,15 @@ for (const mode of ["stub-presence", "real-presence"]) {
     const agent = (/** @type {string} */ name) => ({ kernelFacts: { kind: "agent_session", vouched: true, person: owner, agent: name, session: "s-" + name }, agent: name, agentKind: name === "assistant" ? "assistant" : "agent" });
     const missing = (await d.registry.call("vault.item", { name: "no-such-item" }, "mcp:agent:kit", agent("kit"))).error;
     assert.ok(missing, "a name that does not exist is an error");
-    for (const [who, caller] of [["the owner's assistant", "mcp:agent:assistant"], ["a named agent", "mcp:agent:kit"], ["a thread's session", "mcp:thread:t1"]]) {
+    for (const [who, caller] of [["the owner's assistant", "mcp:agent:assistant"], ["a named agent", "mcp:agent:kit"], ["a thread's session", "mcp:thread:t1"], ["a harness-labelled named agent", "harness:agent:kit"], ["a harness-labelled thread (the session's own vyre CLI)", "harness:thread:t1"], ["a plain mcp session", "mcp"], ["an agent label on a person surface", "cli:agent:kit"]]) {
       const name = caller.endsWith("assistant") ? "assistant" : "kit";
       const r = await d.registry.call("vault.item", { name: "owner-secret" }, caller, agent(name));
       assert.ok(r.error, `${who}: an ungranted name answers an error, not metadata: ${JSON.stringify(r.data)}`);
       assert.equal(r.error.message.replace("owner-secret", "X"), missing.message.replace("no-such-item", "X"), `${who}: the same words as for a name that does not exist`);
       assert.ok(!JSON.stringify(r).includes("hosts") && !JSON.stringify(r).includes("fields"), `${who}: nothing about the item`);
+      // vault.list agrees: the same caller sees none of the owner's ungranted items
+      const l = await d.registry.call("vault.list", {}, caller, agent(name));
+      assert.ok(!JSON.stringify(l.data || l.error).includes("owner-secret"), `${who}: vault.list names no ungranted item`);
     }
     // the person's own call is unchanged
     const p = await d.registry.call("vault.item", { name: "owner-secret" }, "cli", await ownerTok());
@@ -46,16 +49,21 @@ for (const mode of ["stub-presence", "real-presence"]) {
       assert.ok((await d.registry.call("vault.item", { name: "owner-secret" }, "mcp:agent:kit", agent("kit"))).error, "and the ungranted one still does not");
     }
     // grant requests: a model files a few, then no more
+    // counted per agent identity: kit's requests from an mcp label and an agent label on a person surface are one agent's, so five in all, not five per label or per thread
     let last;
-    for (let i = 0; i < 7; i++) last = await d.registry.call("vault.grant", { name: `owner-secret`, module: `mod${i}` }, "mcp:agent:kit", agent("kit"));
-    assert.ok(last.error, "the seventh request from one caller is refused");
+    const askers = ["mcp:agent:kit", "mcp:agent:kit", "cli:agent:kit", "mcp:agent:kit", "cli:agent:kit", "cli:agent:kit"];
+    for (let i = 0; i < askers.length; i++) last = await d.registry.call("vault.grant", { name: `owner-secret`, module: `mod${i}` }, askers[i], agent("kit"));
+    assert.ok(last.error, "the sixth request from one agent, across labels, is refused");
+    const other = await d.registry.call("vault.grant", { name: "owner-secret", module: "modother" }, "mcp:agent:juno", agent("juno"));
+    assert.ok(!other.error, "another agent's requests are counted on their own");
     assert.match(last.error.message, /owner has not answered.*5 are waiting.*vault\.pending/);
     const waiting = (await d.registry.call("vault.pending", {}, "cli", await ownerTok())).data.grants || [];
-    assert.equal(waiting.length, 5, "five wait for the owner");
+    assert.equal(waiting.filter(g => /kit$/.test(String(g.by))).length, 5, "five of kit's wait for the owner");
     // the card the owner sees says who asked, in words
     const { fromVault } = await import("../core/approvals/items.js");
     const card = fromVault({ grants: waiting })[0];
     assert.match(card.title, /^Let mod\d use "owner-secret"$/);
+    assert.ok(waiting.some(g => g.by === "cli:agent:kit") && waiting.some(g => g.by === "mcp:agent:kit"), "both labels of one agent are among the five");
     assert.match(card.detail, /asked by the agent kit, not by you/);
   });
 }

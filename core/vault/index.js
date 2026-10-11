@@ -210,7 +210,7 @@ export default {
       obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
         const r = cli.list(vault.list(input), input);
         // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
-        const model = /^mcp(:|$)/.test(String(caller));
+        const model = isAsker(caller);   // the one predicate for "this caller is a model" (asker.js): list, item and the request cap agree
         if (!model || !r || !Array.isArray(r.items)) return r;
         if (vault.access && vault.access.K) {
           const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));

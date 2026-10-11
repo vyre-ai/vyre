@@ -14,6 +14,7 @@
 // the file itself so the values never cross vyred's socket. The SSH agent keeps private keys in
 // vyred and asks a person before the first signature per key and host.
 
+import { isAsker } from "../asker.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -122,7 +123,7 @@ export async function register({ ctx, vault }) {
       // A model (an assistant, a named agent, any thread or agent session) is told about an item only if it holds a grant on it, by the same check vault.list makes; for any other name the answer is
       // the one for a name that does not exist, so it cannot probe the owner's vault for names (G03 gate follow-up).
       // (A home with no kernel has no members and no grants to ask: unchanged there.)
-      if (/^mcp(:|$)/.test(String(caller || "")) && vault.access && vault.access.K) {
+      if (isAsker(caller) && vault.access && vault.access.K) {
         const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
         if (!mine.some((/** @type {any} */ m) => m.name === name)) throw new Error(`no item named ${name}`);
       }
