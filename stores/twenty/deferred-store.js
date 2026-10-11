@@ -53,7 +53,7 @@ export function createDeferredStore(o) {
       try {
         // A define that arrives while this replay runs is pushed to the same queue, so take from the front until it is empty; `real` is set in the
         // same turn as the last empty check (no await between), so nothing can be queued after the loop and lost.
-        while (defs.length) { const d = defs.shift(); if (typeof d === "function") await d(store); else await store.define(/** @type {any} */ (d)); }
+        while (defs.length) { const d = defs.shift(); if (typeof d === "function") { try { await d(store); } catch (e) { log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`); } } else await store.define(/** @type {any} */ (d)); }
         if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");

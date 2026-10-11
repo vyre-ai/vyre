@@ -147,3 +147,15 @@ test("defer: kept while the store is away and booting or starting, played in ord
   starting.bootDone();
   assert.deepEqual(await starting.defer(async () => {}), { applied: false, changes: [] }, "a store that is starting is not waited for");
 });
+
+test("defer: a kept define the store refuses is logged and the ones after it still play, in order; the store still attaches", async () => {
+  const logged = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "starting", log: m => logged.push(m) });
+  const seen = /** @type {string[]} */ ([]);
+  await d.defer(async () => { throw Object.assign(new Error('Field "created_by" of goal collides with a name Twenty uses on every object'), { code: "invalid" }); });
+  await d.defer(async () => seen.push("second"));
+  await d.attach(createMemoryStore());
+  assert.deepEqual(seen, ["second"]);
+  assert.ok(d.attached(), "the store joined");
+  assert.ok(logged.some(m => /refused: Field "created_by"/.test(m)), "and the refusal is in the log");
+});
