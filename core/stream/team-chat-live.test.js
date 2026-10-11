@@ -108,3 +108,21 @@ test("a model's tool with no `space` in a team turn lands in the chat's Space, n
   await as(ANA, "send", { chat: made.chat, text: "vyre threads.list {}" });
   await waitFor(/not_in_team_space/, "the refusal in words");
 });
+
+test("a member's model cannot read a Space memory fact the member cannot: Ben's model does not see what only Ana's chat holds", { timeout: 150_000 }, async t => {
+  const { firm, as, lines } = await world(t);
+  const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  const secret = await as(ANA, "create", { title: "Ana only", people: [], agents: [] });
+  const filed = await firm.kernel.memory.file(owner, { text: "Ana's private note: the Okafor settlement figure", source: `chat:${secret.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+  assert.ok(!filed.error, `a fact filed from Ana's own chat: ${JSON.stringify(filed).slice(0, 200)}`);
+  const ask = async (/** @type {string} */ who, /** @type {string} */ title) => {
+    const c = await as(who, "create", { title, people: [], agents: ["assistant"] });
+    await as(who, "send", { chat: c.chat, text: "vyre memory.space.recall {}" });
+    let said = "";
+    await until(async () => { said = ((await as(who, "catchup", { chat: c.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || "); return said.includes("facts"); }, `${title}: the model's recall`)
+      .catch(e => { throw new Error(`${e.message} :: ${said.slice(0, 400)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-4).join(" | ")}`); });
+    return said;
+  };
+  assert.ok((await ask(ANA, "Ana asks")).includes("Okafor"), "Ana's model reads her own note");
+  assert.ok(!(await ask(BEN, "Ben asks")).includes("Okafor"), "Ben's model never sees what only Ana's chat holds");
+});
