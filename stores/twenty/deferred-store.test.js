@@ -159,3 +159,16 @@ test("defer: a kept define the store refuses is logged and the ones after it sti
   assert.ok(d.attached(), "the store joined");
   assert.ok(logged.some(m => /refused: Field "created_by"/.test(m)), "and the refusal is in the log");
 });
+
+test("a module handle made while the store is away after boot still works once the store has attached (the first refusal is not kept forever)", async () => {
+  const d = createDeferredStore({ reason: () => "the compose file could not be regenerated", waits: () => false });
+  const k = await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: d });
+  d.bootDone();   // the server is up; this store failed its first start and is trying again
+  const THING = { name: "thing", label: "Thing", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const svc = /** @type {any} */ (k).kernelFor({ name: "thinger", needs: { kernel: { actions: ["records.create", "records.read"], prefixes: ["thing/*"], types: [THING] } } });
+  const owner = /** @type {any} */ (k).chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await assert.rejects(() => svc.records.create(owner, "thing", { name: "early" }), e => /** @type {any} */ (e).code === "unavailable", "while the store is away the module is told so");
+  await d.attach(createMemoryStore());
+  const made = await svc.records.create(owner, "thing", { name: "late" });
+  assert.equal(made.data.name, "late", "after the store attached the same handle works, and its type was defined");
+});
