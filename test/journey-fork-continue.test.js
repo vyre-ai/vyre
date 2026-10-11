@@ -33,7 +33,7 @@ test("a copy that cannot go to this Mac is kept, and the sheet says why in the b
   const out = await forkAndMove(box(w), chat.id, "mac");
   assert.equal(out.ok, true, JSON.stringify(out));
   if (!out.ok) return;
-  assert.match(out.note, /^The copy is made, but it could not go to this Mac: Coming in this release: a chat that began on the server cannot be moved to a computer yet/);
+  assert.match(out.note, /^The copy is made, but it could not go to this Mac: no computer of yours is set up to run this Space's chats yet/);
   assert.notEqual(out.thread, chat.id);
 });
 

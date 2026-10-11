@@ -146,11 +146,11 @@ export function registerPlaceTools(ctx, d) {
       const p0 = placements();
       if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
       const space = i.space || p0.spaces()[0];
-      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!space) throw refuse("no computer of yours is set up to run this Space's chats yet: turn on Run on this computer on the Mac, then move the chat", "unavailable");
       const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
       const at = named && named.data;
-      if (!(await mineChat(chain, String((at && at.chat) || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       if (!at) throw refuse("this chat has not run on this server yet, so there is nothing to carry to a computer: send it a message, then move it", "unavailable");
+      if (!(await mineChat(chain, String(at.chat || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       // the chat's process on this server ends first (refused while it is working), so its next turn starts on the computer
       { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) throw refuse(String(left.error.message || "that chat is busy: let it finish, then move it"), "conflict"); }
       try { await p0.adopt(space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
@@ -163,6 +163,27 @@ export function registerPlaceTools(ctx, d) {
     const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
+
+  // After another person's turn took the chat to the server (reason another-person), the chat's own person gets it back on their own computer by default: their next turn asks here, and the chat goes out again with
+  // the server's whole turns. Only for the row's own person (the Switchboard names the verified asker of the turn), and only for that reason: a chat the person handed over themself stays where they put it.
+  ctx.tool("runner.offer-back", {
+    description: "Put a chat back on its own person's computer after another person's turn took it to the server. Internal: the Switchboard, on that person's next turn. Input: thread, person. Answers { moved }.",
+    internal: true, callers: ["module"],
+    input: obj({ thread: str, person: str }, ["thread", "person"]),
+    run: async i => {
+      const thread = threadOf(i), person = String(i.person);
+      const hit = find(thread, undefined, person);
+      if (!hit || hit.row.person !== person || hit.row.where !== "server" || hit.row.reason !== "another-person") return { moved: false };
+      const p0 = placements();
+      if (typeof p0.adopt !== "function") return { moved: false };
+      const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
+      const at = named && named.data;
+      if (!at) return { moved: false };
+      { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) return { moved: false, why: "busy" }; }
+      try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { return { moved: false, why: String(/** @type {any} */ (e).message || "not ready") }; }
+      return { moved: true };
+    },
+  });
 
   ctx.tool("runner.settings", {
     description: "This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.",

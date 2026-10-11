@@ -14,7 +14,7 @@ import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
-import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { rig, SPACE, BOB, CAROL } from "./testing/lent-rig.js";
 import { start } from "../daemon/index.js";
 import { lentRequest } from "../daemon/threadsock.js";
 import { asOwner, tempHome, present } from "../../test/helpers.js";
@@ -91,7 +91,8 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   // a chat turn as the phone makes it: the stream names the chat and the person who asked (only a turn with a person is placed on a computer)
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { method: "test" } });
-  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: CAROL, role: "member" }, { presence: { method: "test" } });
+  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB, CAROL] });
   const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: BOB }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
   const th = await asChat("threads.start", { cwd: work, prompt: "hello from the phone" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 100 })).events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the first turn", 60_000);
