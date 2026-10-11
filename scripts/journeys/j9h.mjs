@@ -150,6 +150,8 @@ export default {
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
+      // the server's own log, kept with the proof: the box is torn down after the run (store define lines, store attach, who waited for whom)
+      if (srv.kind === "installer") { try { const { spawnSync } = await import("node:child_process"); const fs = await import("node:fs"); const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "cat ~/.vyre/logs/*.log"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }); fs.writeFileSync(path.join(ctx.out, "j9", "vyred.log"), r.stdout || ""); } catch { /* a courtesy */ } }
       for (const p of people) { try { p.app.close(); } catch { /* closed */ } }
       await w.stop().catch(() => {});
     }
