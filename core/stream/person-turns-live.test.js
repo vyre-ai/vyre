@@ -225,6 +225,7 @@ test("G04: a session lives in its account's own folder: carol's turn on her acco
   assert.match(lastAnswer(), /AMBER-92/, "carol's session, new to her account, was handed bob's turn");
   const thread = kitThread(b, chat.id);
   assert.ok((await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's account");
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back"), "the thread to go back to bob's account", 30_000);
   await say("bob", "and once more please", { account: `codex:${bobsAcct}` });
   await until(() => /and once more please/.test(lastAnswer()), "bob's next answer on his own account", 120_000);
   assert.match(lastAnswer(), /AMBER-92[\s\S]*what was the code word|what was the code word[\s\S]*AMBER-92/, "and bob's session, back on his account, was handed what was said while it was away");
