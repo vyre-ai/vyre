@@ -56,7 +56,7 @@ export function AssistantAccessScreen() {
   return (
     <AccessView s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
       onSwitch={(id, on) => void run(switchCall(id, on))}
-      onTurnOffTool={() => { const c = toolCall(typed); if ("problem" in c) { setProblem(c.problem); return; } setTyped(""); void run({ tool: c.tool, input: c.input }, "Turned off for your assistant."); }}
+      onTurnOffTool={() => { const c = toolCall(typed) as { problem?: string; tool?: string; input?: Record<string, unknown> }; if (c.problem || !c.tool) { setProblem(c.problem ?? ""); return; } setTyped(""); void run({ tool: c.tool, input: c.input ?? {} }, "Turned off for your assistant."); }}
       onTurnOnTool={(name) => void run({ tool: "assistant.access.restore", input: { tools: [name] } })} />
   );
 }
