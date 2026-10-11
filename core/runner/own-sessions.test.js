@@ -60,3 +60,47 @@ test("another member reaches nothing of a session that runs on a person's own co
   const row = r.home.book.get(SESSION);
   assert.deepEqual([row?.person, row?.where, row?.device], [BOB, "mac", "dev_laptop"]);
 });
+
+test("a chat that came back from a computer goes out again with the server's whole turns after what the home holds, and the computer seeds from those alone", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const bob = r.as(BOB, "dev_laptop");
+  await bob.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await bob.beat({ sessions: [], well: true });
+  // the first stay on the computer left what its program printed in the home's store (not the provider's session file), and the chat came back to the server
+  const proc = r.home.spawn({ session: SESSION, person: BOB, command: process.execPath, args: ["-e", "setInterval(()=>{},1000)"] });
+  t.after(() => { try { proc.kill(); } catch { /* gone */ } });
+  await bob.beat({ sessions: [], well: true }); await bob.spec({ session: SESSION });
+  await bob.sync.appendTranscript(SESSION, [{ seq: 1, line: "{\"stream\":1}" }, { seq: 2, line: "{\"stream\":2}" }]);
+  r.home.book.toServer(SESSION, "you");
+  const server = ["{\"type\":\"user\",\"n\":1}", "{\"type\":\"assistant\",\"n\":2}", "{\"type\":\"user\",\"n\":3}"];
+  const had = 2;
+  await r.home.adopt({ session: SESSION, thread: SESSION, chat: "chat_o", person: BOB, native: SESSION, lines: server });
+  const all = await r.home.view(SESSION).transcript(1, 1_000_000);
+  assert.equal(all.length, had + server.length, "the server's turns go in after what the home held; nothing is refused for being shorter");
+  const spec = await bob.spec({ session: SESSION });
+  assert.deepEqual([spec.seed && spec.seed.count, spec.seed && spec.seed.from], [server.length, had + 1], "the computer seeds from the server's turns alone");
+});
+
+test("a second adopt after another take-back neither duplicates nor reorders what the computer seeds", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const bob = r.as(BOB, "dev_laptop");
+  await bob.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await bob.beat({ sessions: [], well: true });
+  const proc = r.home.spawn({ session: SESSION, person: BOB, command: process.execPath, args: ["-e", "setInterval(()=>{},1000)"] });
+  t.after(() => { try { proc.kill(); } catch { /* gone */ } });
+  await bob.beat({ sessions: [], well: true }); await bob.spec({ session: SESSION });
+  await bob.sync.appendTranscript(SESSION, [{ seq: 1, line: "{\"stream\":1}" }]);
+  const first = ["{\"turn\":1}", "{\"turn\":2}"], second = [...first, "{\"turn\":3}", "{\"turn\":4}"];
+  r.home.book.toServer(SESSION, "you");
+  await r.home.adopt({ session: SESSION, thread: SESSION, chat: "chat_o", person: BOB, native: SESSION, lines: first });
+  const seed1 = (await bob.spec({ session: SESSION })).seed;
+  assert.deepEqual([seed1.from, seed1.count], [2, 2]);
+  assert.deepEqual((await bob.sync.getTranscript(SESSION, seed1.from)).map((/** @type {any} */ e) => e.line), first, "the computer seeds exactly the server's two turns");
+  // the chat comes back to the server again, runs two more turns there, and goes out a second time
+  r.home.book.toServer(SESSION, "you");
+  await r.home.adopt({ session: SESSION, thread: SESSION, chat: "chat_o", person: BOB, native: SESSION, lines: second });
+  const seed2 = (await bob.spec({ session: SESSION })).seed;
+  assert.deepEqual([seed2.from, seed2.count], [4, 4], "the second seed starts after everything the home already holds");
+  assert.deepEqual((await bob.sync.getTranscript(SESSION, seed2.from)).map((/** @type {any} */ e) => e.line), second, "in order, each once");
+  assert.equal((await r.home.view(SESSION).transcript(1, 1_000_000)).length, 1 + first.length + second.length);
+});
