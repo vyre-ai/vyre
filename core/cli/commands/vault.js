@@ -47,7 +47,7 @@ let AGAIN = /** @type {string[]} */ (["vault"]);
 /** The last reply from vyred, and whether --json has already printed a line for this command. */
 let last = /** @type {any} */ (null);
 let printed = false;
-const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
+export const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
 const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : undefined); printed = true; } };
 
@@ -56,7 +56,7 @@ const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : un
  * and exit 2. Null when the verb may go on and read it.
  * @param {string} label what to type
  */
-function secretGate(label) {
+export function secretGate(label) {
   if (!viewing() || STDIN) return null;
   jsonLine({ prompt: "secret", label });
   return EXIT.USAGE;
@@ -67,7 +67,7 @@ function secretGate(label) {
  * tool that needs the person (put, grant, reveal, copy and the rest) asks for their proof at this
  * terminal, as `vyre learn` does; a tool that does not answers the first call as before.
  */
-async function tool(name, input = {}, opts) {
+export async function tool(name, input = {}, opts) {
   const r = await callAsPerson(name, input, { timeout: opts && opts.timeout, io: personIO() });
   last = r;
   return r;
@@ -83,19 +83,18 @@ export function exitFor(r) {
 }
 
 const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => {
+export const fail = r => {
   last = r;
   if (JSON_MODE) jsonLine({ error: r.error });
   else if (r.error.code === "no_such_tool") out(beacon(`  this vyred has no ${String(r.error.message || "").replace(/^no tool /, "") || "such tool"} yet `) + dim("· update Vyre and run vyre restart"));
   else out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return exitFor(r);
 };
-const oops = msg => {
-  if (JSON_MODE) jsonLine({ error: { code: "bad_input", message: msg } });
-  else out(beacon(`  ${msg}`));
+export const oops = msg => {
+  if (JSON_MODE) jsonLine({ error: { code: "bad_input", message: msg } }); else out(beacon(`  ${msg}`));
   return 1;
 };
-const plural = (n, w) => `${n} ${w}${n === 1 ? "" : w.endsWith("s") ? "es" : "s"}`;
+export const plural = (n, w) => `${n} ${w}${n === 1 ? "" : w.endsWith("s") ? "es" : "s"}`;
 // Kinds, and the field each hands over, come from the vault so the two never disagree.
 const KINDS = [...VAULT_KINDS];
 
@@ -104,7 +103,7 @@ function origin(url) {
   try { return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : "https://" + url).origin; } catch { return null; }
 }
 
-const day = ms => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
+export const day = ms => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
 
 const grantText = g => g.module + (g.watcher ? `/${g.watcher}` : "");
 
@@ -1761,61 +1760,9 @@ async function backupCmd(args) {
   return 0;
 }
 
-/** `vyre vault autobackup enrol|status|run`: the daily automatic backup (G20). */
-async function autobackupCmd(args) {
-  const verb = args[0];
-  if (verb === "status" || !verb) {
-    const r = await tool("vault.autobackup.status", {});
-    if (r.error) return fail(r);
-    const d = r.data;
-    if (!d.enrolled) { say(`  ${dim("automatic backups are off")}  ·  turn them on: vyre vault autobackup enrol`); return 0; }
-    say(`  ${signal("automatic backups on")} ${dim(`· the newest ${d.keep} are kept`)}`);
-    say(`  last backup   ${d.last ? `${day(d.last.at)} · ${plural(d.last.items, "item")}` : dim("none yet")}`);
-    say(`  restore drill ${d.drill ? `${day(d.drill.at)} · ${d.drill.ok ? signal("passed") : bold("FAILED")} ${dim(`· ${d.drill.note}`)}` : dim("not run yet: vyre vault restore --drill")}`);
-    return 0;
-  }
-  if (verb === "run") {
-    const r = await tool("vault.autobackup.run", {}, { timeout: 120_000 });
-    if (r.error) return fail(r);
-    say(`  ${signal("backed up")} ${plural(r.data.items, "item")} to ${bold(r.data.file)}`);
-    return 0;
-  }
-  if (verb === "enrol") {
-    const gate = secretGate("Your recovery code");
-    if (gate !== null) return gate;
-    let code;
-    try { code = (await hiddenPrompt("recovery code: ")).trim(); } catch { return oops("cancelled"); }
-    const r = await tool("vault.autobackup.enrol", { code }, { timeout: 120_000 });
-    code = "";
-    if (r.error) return fail(r);
-    say(`  ${signal("automatic backups are on")} ${dim("· every day, sealed to your recovery code, the newest 14 kept")}`);
-    say(dim("  run the drill now to be sure they open: vyre vault restore --drill"));
-    return 0;
-  }
-  return oops("vyre vault autobackup [status | enrol | run]");
-}
-
-/** `vyre vault restore --drill [<file>]`: restore the newest automatic backup into a scratch vault and compare it with this one. Nothing in this vault changes. */
-async function drillCmd(file) {
-  const gate = secretGate("Your recovery code");
-  if (gate !== null) return gate;
-  let code;
-  try { code = (await hiddenPrompt("recovery code: ")).trim(); } catch { return oops("cancelled"); }
-  const r = await tool("vault.autobackup.drill", { code, ...(file ? { file: path.resolve(file) } : {}) }, { timeout: 180_000 });
-  code = "";
-  if (r.error) return fail(r);
-  const d = r.data;
-  say(`  ${d.ok ? signal("the drill passed") : bold("the drill FAILED")} ${dim(`· ${d.file} · ${d.note}`)}`);
-  if (d.newer.length) say(dim(`  changed since the backup: ${d.newer.join(", ")}`));
-  for (const n of d.missing) say(`  missing: ${n}`);
-  for (const n of d.changed) say(`  different: ${n}`);
-  return d.ok ? 0 : 1;
-}
-
 async function restoreCmd(args) {
   const f = flags(args, { boolean: ["replace", "drill"] });
-  if (f.drill) return f._.length <= 1 ? drillCmd(f._[0]) : oops("vyre vault restore --drill [<file>]");
-  if (f._.length !== 1) return oops("vyre vault restore <file> [--replace] | --drill");
+  if (f.drill || f._.length !== 1) return f.drill && f._.length <= 1 ? import("./vault-autobackup.js").then(m => m.drillCmd(f._[0])) : oops("vyre vault restore <file> [--replace] | --drill [<file>]");
   const file = path.resolve(f._[0]);
   let info;
   try { info = inspect(fs.readFileSync(file, "utf8").trim()); } catch (e) { return oops(`${file} is not a Vyre backup: ${e.message}`); }
@@ -2112,7 +2059,7 @@ function viewOf(obj) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, autobackup: autobackupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, autobackup: args => import("./vault-autobackup.js").then(m => m.autobackupCmd(args)), restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 /** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
