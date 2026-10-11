@@ -60,8 +60,11 @@ test("a member starts a project from an installed template: its first stage's ta
   assert.ok(started.tasks_made >= 1, `its first task is made: ${JSON.stringify(started)}`);
   const mine = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === started.slug);
   assert.equal(mine.data.owner.actor.id, ANA);
-  await assert.rejects(w.as(ANA, "start-project", { template: id, name: "X", version: 1 }), /version is not something a member names/, "a pinned version is refused in words");
-  await assert.rejects(w.as(ANA, "start-project", { template: id, name: "X", repo: "git@x:y" }), /repo is not something a member names/);
+  // the door lets through only the keys the row names: a version, a repository or a client she names is dropped, and the project is made from the live version
+  const dropped = await w.as(ANA, "start-project", { template: id, name: "Pinned", version: 99, repo: "git@x:y", client: "vyre://x/contact/1" });
+  assert.equal(dropped.version, 1, "a pinned version she names is dropped: it starts at the live one");
+  const droppedRow = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === dropped.slug);
+  assert.ok(!droppedRow.data.repo && !droppedRow.data.client, "and so are a repository and a client she names");
   const draft = await w.owner("work.template.define", { body: { ...TEMPLATE, name: "Secret draft" } });
   await assert.rejects(w.as(ANA, "start-project", { template: draft.template, name: "Y" }), /no live version|not_found/i, "a draft starts nothing for her");
   assert.ok(!(await w.as(ANA, "templates", {})).templates.some((/** @type {any} */ x) => x.template === draft.template), "and is not in her list");
@@ -72,6 +75,41 @@ test("a person who is not a member, and a chain that is not one person's, get no
   await assert.rejects(w.as(ZED, "project-create", { name: "Nope" }), /not found|not_found/i);
   const two = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-two", person: ANA, path: "relay" });
   await assert.rejects(w.svc["project-create"]({ ...two, delegated: true }, { name: "Nope" }), /not found|not_found/i);
+});
+
+test("the folder marker is the work module's and gives nobody a folder right: another member opens none of the project's files", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  const made = await w.as(ANA, "project-create", { name: "Ana's folder" });
+  const dir = made.drive_path;
+  assert.match(String(dir), /^Projects\//);
+  const read = async (/** @type {any} */ chain, /** @type {string} */ p) => { try { await gw.drive.get(chain, p); return true; } catch { return false; } };
+  const write = async (/** @type {any} */ chain, /** @type {string} */ p) => { try { await gw.drive.put(chain, p, new TextEncoder().encode("hello")); return true; } catch { return false; } };
+  assert.equal(await read(w.chainOf(BEN), `${dir}/.project`), false, "another member reads nothing in it");
+  assert.equal(await write(w.chainOf(BEN), `${dir}/files/ben.txt`), false, "and writes nothing in it");
+  console.log(`# her own folder today: Ana reads the marker=${await read(w.chainOf(ANA), `${dir}/.project`)}, Ana writes ${dir}/files/note.txt=${await write(w.chainOf(ANA), `${dir}/files/note.txt`)}`);
+});
+
+// What she can do with her project's files today (measured): she puts a file in `Projects/<id>/files/` and reads it back; she does not read the marker `Projects/<id>/.project` (outside the files area), which is the work module's.
+test("her own project's files: she puts a file in the project's files area and reads it back", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  const made = await w.as(ANA, "project-create", { name: "Ana's files" });
+  const path = `${made.drive_path}/files/note.txt`;
+  await gw.drive.put(w.chainOf(ANA), path, new TextEncoder().encode("hello"));
+  const got = await gw.drive.get(w.chainOf(ANA), path);
+  assert.ok(got, "she reads it back");
+  await assert.rejects(gw.drive.get(w.chainOf(BEN), path), "another member does not");
+});
+
+// The ownership rule (rc1-a, kernel/gateway/ownership.js): a member updates a `project` only if she owns it or is on its team, and never its owner field. These two are the red-first cases; they are `todo` until the rule is in
+// this branch, and become plain assertions then.
+test("another member's project: she cannot rename it and cannot take its owner field", { timeout: 120_000, todo: "waits for the gateway ownership rule (rc1-a)" }, async t => {
+  const w = await world(t);
+  const bens = await w.as(BEN, "project-create", { name: "Ben's matter" });
+  const row = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === bens.slug);
+  await assert.rejects(w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { name: "Renamed by Ana" }, row.version), "renaming another member's project is refused");
+  await assert.rejects(w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { owner: { actor: { kind: "person", id: ANA, space: w.space } } }, row.version), "taking its owner field is refused");
 });
 
 test("what a member can do to ANOTHER member's project is the Space's rule today: written down, not assumed", { timeout: 120_000 }, async t => {
@@ -86,4 +124,32 @@ test("what a member can do to ANOTHER member's project is the Space's rule today
   try { const fresh = (await w.projects(ANA)).find((/** @type {any} */ r) => r.id === row.id); took = await w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { owner: { actor: { kind: "person", id: ANA, space: w.space } } }, fresh.version); } catch (e) { why2 = String(/** @type {Error} */ (e).message); }
   console.log(`# Ana taking Ben's project's owner field: ${took ? "ALLOWED" : "refused: " + why2}`);
   assert.ok(true, "recorded above; the decision is the lead's");
+});
+
+test("what a member can do to ANOTHER member's team-member row and task today: measured and printed, not assumed", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  const bens = await w.as(BEN, "project-create", { name: "Ben's team" });
+  const urn = bens.project;
+  // team-member: Ana adds HERSELF to Ben's project, the row that opens the project's files
+  let joined = false, why = "";
+  try { await gw.records.create(w.chainOf(ANA), "team-member", { name: "ana", actor: { actor: { kind: "person", id: ANA, space: w.space } }, kind: "person", project: { urn } }); joined = true; } catch (e) { why = String(/** @type {Error} */ (e).message); }
+  let reads = false;
+  if (joined) { try { await gw.drive.put(w.chainOf(BEN), `${bens.drive_path}/files/b.txt`, new TextEncoder().encode("b")); await gw.drive.get(w.chainOf(ANA), `${bens.drive_path}/files/b.txt`); reads = true; } catch { /* no */ } }
+  console.log(`# team-member: Ana adds herself to Ben's project: ${joined ? "ALLOWED" : "refused: " + why}; then reads his files: ${reads}`);
+  // task: Ben has a task; Ana tries to complete it
+  let done = "not made", took = "";
+  try {
+    const task = await gw.ask.request(w.chainOf(BEN), { title: "Ben's task", doer: { kind: "person", id: BEN, space: w.space }, checker: { kind: "person", id: w.OWNER, space: w.space }, output: { kind: "note" } });
+    try { await gw.ask.start(w.chainOf(ANA), task.id); await gw.ask.complete(w.chainOf(ANA), task.id, { answer: "done by Ana" }); done = "ALLOWED"; } catch (e) { done = "refused: " + String(/** @type {Error} */ (e).message); }
+    took = task.id;
+  } catch (e) { done = "could not set up: " + String(/** @type {Error} */ (e).message); }
+  console.log(`# task: Ana completes Ben's task: ${done}`);
+  assert.ok(true, took || "recorded above");
+});
+
+test("another member's project: she cannot add herself to its team (the row that opens its files)", { timeout: 120_000, todo: "waits for the gateway ownership rule (rc1-a)" }, async t => {
+  const w = await world(t);
+  const bens = await w.as(BEN, "project-create", { name: "Ben's team 2" });
+  await assert.rejects(w.d.kernel.gateway.records.create(w.chainOf(ANA), "team-member", { name: "ana", actor: { actor: { kind: "person", id: ANA, space: w.space } }, kind: "person", project: { urn: bens.project } }), "adding herself to his team is refused");
 });

@@ -151,7 +151,7 @@ export default {
       flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } });
     registerTemplateTools({ ctx, chainOf, templates: templatesOf });
     // A team member starts her own projects on the team's server: the member door's `work` rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); this server's own Space only.
-    const memberProjects = createMemberProjects({ templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); return { service: k.serviceChain("work"), read: k.chainForPerson(String(k.owner)) }; } });
+    const memberProjects = createMemberProjects({ templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); const service = k.serviceChain("work"); return { service, read: service }; } });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
       const k = kernelOf();
