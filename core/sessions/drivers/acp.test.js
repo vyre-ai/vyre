@@ -773,3 +773,22 @@ test("acp: a command's exit code arrives as data on the tool result, from Grok's
   assert.deepEqual(done.map(b => [b.tool_use_id, b.exit_code, b.is_error]), [["g1", 1, false], ["c1", 2, false]]);
   await s.proc.stop(500);
 });
+
+test("acp: one turn is one message: the streamed words and the turn's whole text name the same message, so the chat shows the answer once (the J9 walk saw every Codex answer twice)", async t => {
+  const { translate } = await import("../../switchboard/translate.js");
+  const w = world(t);
+  const s = open(w);
+  for (const text of ["first question", "second question"]) {
+    const from = s.got.length;
+    assert.equal(await s.say(text), `echo: ${text}`);
+    const seen = s.got.slice(from).map(m => translate(m));
+    const streamed = seen.filter(x => typeof x.delta === "string");
+    const whole = seen.flatMap(x => x.events).filter(e => e.type === "thread.text" && e.payload.done === true);
+    assert.ok(streamed.length >= 1 && whole.length === 1, `the turn streamed its words and ended with its whole text once (${streamed.length} deltas, ${whole.length} whole)`);
+    const ids = new Set([...streamed.map(x => x.message), whole[0].payload.message]);
+    assert.equal(ids.size, 1, `deltas and the whole text are one message: ${[...ids].join(", ")}`);
+    assert.match(String([...ids][0]), /^acp-turn-/);
+  }
+  assert.notEqual(new Set(s.got.map(m => translate(m).message).filter(Boolean)).size, 0);
+  await s.proc.stop(1000);
+});
