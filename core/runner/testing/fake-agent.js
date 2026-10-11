@@ -1,5 +1,6 @@
 // A stand-in for the agent a session runs (Claude Code in real use). Reads lines on stdin, answers with stream-json
 // lines on stdout, and ends each turn with { type: "result" }. Used by the runner tests inside the real sandbox.
+import { upgradeHead } from "../../../lib/ws.js";
 import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
@@ -128,7 +129,7 @@ async function handle(line) {
     // and a hot-reload socket: a WebSocket that answers every text message with "echo:<it>" (small frames only), and says hello first
     srv.on("upgrade", (req, sock) => {
       const key = req.headers["sec-websocket-key"];
-      sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${crypto.createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64")}\r\n\r\n`);
+      sock.write(upgradeHead(key));
       const frame = text => { const b = Buffer.from(text); return Buffer.concat([Buffer.from([0x81, b.length]), b]); };
       sock.write(frame("hello:" + req.url));
       let buf = Buffer.alloc(0);
