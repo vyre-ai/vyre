@@ -49,6 +49,8 @@ export function createGateway(cfg) {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
     sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records, logical: cfg.drive && cfg.drive.logical }),
+    noteReach: (/** @type {any} */ chain, /** @type {any} */ data, /** @type {string} */ resource) => { cfg.log.append(chain, { type: "project.reached", sv: 1, subject: resource, data }); },
+    projectOf: (/** @type {string} */ u) => { const p = (attrs(u) || {}).project; return typeof p === "string" ? p : null; },
     projectHas: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.member(p, project),
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
