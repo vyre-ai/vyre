@@ -162,6 +162,7 @@ async function beyondBound(f, id, version, v, chain, kernel) {
   if (kernel && kernel.gateway && typeof kernel.gateway.authorizePeek === "function" && Array.isArray(card.caps)) {
     for (const c of card.caps) {
       if (!c || !c.action || c.action === "*.*") return "it asks for more than your role allows";
+      if (c.action === "model.call" || c.action === "fn.run") continue;   // a run's alone: it needs only flows.run of the approver (kernel/core/authorize.js RUNNER_ONLY), which her role holds
       let d; try { d = await kernel.gateway.authorizePeek({ chain, action: c.action, resource: c.resource || `vyre://${f.space || ""}/*` }); } catch { d = null; }
       if (d && d.effect !== "allow") return `it needs ${c.action}, which your role does not allow`;
     }
