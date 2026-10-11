@@ -135,8 +135,9 @@ function withCodex(t, root) {
   fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
   // one line per launch of the stand-in: a wait that times out says whether Codex was ever started
   process.env.FAKE_ACP_LOG = path.join(root, "acp.log");
+  process.env.FAKE_ACP_RPC_LOG = path.join(root, "acp-rpc.log");
   Object.assign(process.env, { FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "agent" });
-  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG", "FAKE_ACP_RPC_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 }
 
 test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and her AI is handed the whole conversation, so it can answer from bob's turn", async t => {
@@ -157,7 +158,7 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   // carol asks on Codex
   const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], account: "codex", cwd: w.work });
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
-  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))} log ${JSON.stringify(LOGS.slice(-12))} launches ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_LOG), "utf8").slice(0, 600); } catch { return "none (the stand-in was never started)"; } })()}`); });
+  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))} log ${JSON.stringify(LOGS.slice(-12))} rpc ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_RPC_LOG), "utf8").split("\n").join(","); } catch { return "none"; } })()} launches ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_LOG), "utf8").slice(0, 600); } catch { return "none (the stand-in was never started)"; } })()}`); });
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);

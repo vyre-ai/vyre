@@ -14,6 +14,7 @@
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
+// FAKE_ACP_RPC_LOG: one line per request the client sent, by method name.
 // FAKE_ACP_LOG: one line per launch (argv, HOME, client capabilities) and per set_mode.
 import fs from "node:fs";
 import path from "node:path";
@@ -132,6 +133,7 @@ async function prompt(id, blocks) {
 
 readline.createInterface({ input: process.stdin }).on("line", async line => {
   let m; try { m = JSON.parse(line); } catch { return; }
+  if (process.env.FAKE_ACP_RPC_LOG && m.method) fs.appendFileSync(process.env.FAKE_ACP_RPC_LOG, `${m.method}\n`);   // every request the client made, in order (a test that times out says where the exchange stopped)
   if (m.method === undefined && waits.has(m.id)) { const w = waits.get(m.id); waits.delete(m.id); return m.error ? w.reject(Object.assign(new Error(m.error.message), { code: m.error.code })) : w.resolve(m.result || {}); }
   if (m.method === "initialize") {
     clientCaps = m.params.clientCapabilities || {};
