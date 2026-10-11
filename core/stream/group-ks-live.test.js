@@ -339,10 +339,11 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
 });
 
-// TODO (found by putting this test on everyone's own account, 11 Oct; 3 runs of 3): with three queued one-turns, the SECOND (ada's, after bob's) is refused: "This session is open somewhere else: claude process N
-// has it open" (onceTarget's `elsewhere` check names a claude process that is the previous hop's, not in the Switchboard's `ours` set). Nothing is sent and she is told, so it fails closed, but a person
-// whose message waits behind two others on another account has to send it again. Two queued askers pass (V2). The assertions below are the claim the test always made, now per message.
-test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { todo: "the second queued one-turn on another account is refused as open elsewhere: the previous hop's process is not in `ours`" }, async t => {
+// TODO (found by putting this test on everyone's own account, 11 Oct; every run): with three different queued askers (bob, ada, bob) the SECOND one's turn runs in the thread (the echo of A-ONE is there) but the
+// chat never gets a reply for it: the stream writes ada's text under bob's message (the kernel opened ada's reply under no model slot, bob's under three) and the chat ends with status "failed, couldn't resume".
+// Until 6b23d3b6a the same test failed earlier, with "This session is open somewhere else: claude process N has it open" (the previous hop's process not in `ours()`). Two queued askers pass (V2). The assertions
+// below are the claim this test always made, now per message: remove the todo when the stream follows three queued askers.
+test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { todo: "the second of three queued askers has its turn run but its reply is written under the previous asker's message and the chat ends 'couldn't resume'" }, async t => {
   const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
