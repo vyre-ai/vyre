@@ -364,6 +364,7 @@ async function startLocked(opts, root, p, release) {
             if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" });
             const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread, person: i.person }, "module:vyred", { door: true })).data);
             if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move: send the chat a message here first, then move it"), { code: "unavailable" });
+            await registry.call("runner.seal-now", { session: t.native }, "module:vyred", { door: true }).catch(() => null);   // the last finished turn is saved first: the computer gets every turn
             const port = ownHostOf()?.port(kernel.id.space);
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
             if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
