@@ -1309,6 +1309,7 @@ export default {
     // ONE SPACE PER SERVER: the server's own (home) Space can be the team's. `spaces.name-here` gives it what a hosted Space gets from `spaces.host-here`, without hosting anything: its root key (made once, here,
     // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
     // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
+    /** @type {Promise<any> | null} */ let homeKeyMaking = null;
     tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing.", obj({ name: str, done: { type: "boolean" } }, ["name"]), async (i, meta) => {
       if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
       let person = null;
@@ -1320,14 +1321,22 @@ export default {
       // Renaming a Space is not designed yet: once the name is kept (`done`), a different name is refused, so the published directory record and the listing can never disagree.
       const kept = await kv.get("home-named").catch(() => null);
       if (kept && typeof kept.name === "string" && kept.name !== label) throw refuse(`This server's space is already named ${kept.name}. Renaming a space is not available yet: keep using ${kept.name}.`, "already_named");
-      let have = files.keys.load(id);
-      if (!have) {
-        const kp = await files.keys.generate();
-        await files.keys.hold(id, kp.privateKey);
-        have = files.keys.load(id);
-      }
+      // one make-if-missing in flight: a second first call gets the first's key, so the key on disk is always the one that was published
+      const have = await (homeKeyMaking || (homeKeyMaking = (async () => {
+        try {
+          let k0 = files.keys.load(id);
+          if (!k0) { const kp = await files.keys.generate(); await files.keys.hold(id, kp.privateKey); k0 = files.keys.load(id); }
+          return k0;
+        } finally { homeKeyMaking = null; }
+      })()));
       if (!have) throw refuse("This server could not keep the space's key. Check the disk and try again.", "unavailable");
-      if (i.done === true) await kv.put("home-named", { name: label, at: now() });
+      if (i.done === true) {
+        // the name is kept only once the names directory answers the record for this very Space id and key: the listing never shows a team name nobody can find
+        const notPublished = () => refuse(`The names directory has no record of this space as ${label} yet. Publish it from the app (make this server's space your team's), then try again.`, "not_published");
+        let r; try { r = await dir.resolve(label, { resolve: ownerLookup }); } catch { throw notPublished(); }
+        if (!r || !r.ok || r.kind !== "space" || !r.payload || r.payload.id !== id || r.payload.rootPublic !== have.publicKey) throw notPublished();
+        await kv.put("home-named", { name: label, at: now() });
+      }
       return { space: id, existed: true, rootPublic: have.publicKey };
     });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.

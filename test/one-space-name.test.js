@@ -37,10 +37,21 @@ test("naming the server's own Space makes its key once, lists it under the team 
   assert.equal(fs.statSync(/** @type {string} */ (keyFile)).mode & 0o777, 0o600, "held exactly as host-here holds one");
   const text = fs.readFileSync(/** @type {string} */ (keyFile), "utf8");
 
-  const second = await deck("spaces.name-here", { name: "teamone", done: true });
+  // the name is not kept until the names directory has the record: with none, `done` is refused with the next step and the listing stays as it was
+  const early = await deck("spaces.name-here", { name: "teamone", done: true });
+  assert.equal(early.error?.code, "not_published");
+  assert.match(early.error?.message || "", /Publish it from the app/);
+  const second = await deck("spaces.name-here", { name: "teamone" });
   assert.equal(second.data.rootPublic, first.data.rootPublic, "a second naming does not make a second key");
   assert.equal(fs.readFileSync(/** @type {string} */ (keyFile), "utf8"), text, "the key file is untouched");
 
+  const labelOf = async () => { const l = (await deck("spaces.list", {})).data; return (Array.isArray(l) ? l : l.spaces).find((/** @type {any} */ r) => r.id === home); };
+  assert.equal((await labelOf()).label, "personal", "an unpublished name changes nothing in the listing");
+  // the app's second call (`done`) needs the names directory, which this test has none of: the kept name is put in the daemon's table as that call writes it, to test what follows it
+  const { DatabaseSync } = await import("node:sqlite");
+  const sql = new DatabaseSync(path.join(root, "vyre.db"));
+  sql.prepare("INSERT OR REPLACE INTO spaces_kv (key, value) VALUES (?, ?)").run("home-named", JSON.stringify({ name: "teamone", at: 1 }));
+  sql.close();
   const listed = (await deck("spaces.list", {})).data;
   const rows = Array.isArray(listed) ? listed : listed.spaces;
   const row = rows.find((/** @type {any} */ r) => r.id === home);
@@ -80,4 +91,20 @@ test("a home Space that was never named is listed as the person's own", async t 
   const listed = (await call("spaces.list", {}, { root, caller: "cli" })).data;
   const rows = Array.isArray(listed) ? listed : listed.spaces;
   assert.equal(rows.find((/** @type {any} */ r) => r.id === d.kernel.id.space).label, "personal");
+});
+
+test("two first calls at once make one key, and both answer with it", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "race-box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const [a, b, c] = await Promise.all([1, 2, 3].map(() => call("spaces.name-here", { name: "raceteam" }, { root, caller: "cli" })));
+  assert.ok(!a.error && !b.error && !c.error, JSON.stringify([a.error, b.error, c.error]));
+  assert.equal(b.data.rootPublic, a.data.rootPublic);
+  assert.equal(c.data.rootPublic, a.data.rootPublic);
+  const again = await call("spaces.name-here", { name: "raceteam" }, { root, caller: "cli" });
+  assert.equal(again.data.rootPublic, a.data.rootPublic, "and the key on disk is the one that was published");
 });
