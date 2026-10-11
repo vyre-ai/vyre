@@ -258,7 +258,21 @@ export class TwentyStore {
   }
 
   /** Make sure the object has the four mirror columns; a type with no rows when they are added has every row mirrored from then on. @param {import("./plan.js").TypePlan} p */
-  async #attrColumns(p) {
+  #attrColumns(p) {
+    if (this.attrCols.has(p.vyre)) return Promise.resolve(true);
+    // one at a time with the store's definitions (Twenty takes one metadata migration at a time, and two callers that both saw a column missing would both create it), and one run per type for callers that arrive together
+    const going = this.#attrRuns.get(p.vyre);
+    if (going) return going;
+    const run = () => this.#attrColumnsNow(p);
+    const next = this.#defineLine.then(run, run);
+    this.#defineLine = next.catch(() => {});
+    const done = next.finally(() => { this.#attrRuns.delete(p.vyre); });
+    this.#attrRuns.set(p.vyre, done);
+    return done;
+  }
+  /** @type {Map<string, Promise<boolean>>} */ #attrRuns = new Map();
+  /** @param {import("./plan.js").TypePlan} p */
+  async #attrColumnsNow(p) {
     if (this.attrCols.has(p.vyre)) return true;
     const cur = await this.#t(() => this.client.gql("metadata", `query Cols { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { name } } } } } } }`));
     const obj = cur.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
