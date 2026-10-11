@@ -161,9 +161,11 @@ function viaSpawner(command, args, o) {
   proc.kill = (/** @type {NodeJS.Signals} */ sig = "SIGTERM") => { proc.killed = true; if (handle) handle.kill(sig); else pending = sig; return true; };
   if (o.signal) o.signal.addEventListener("abort", () => proc.kill("SIGTERM"), { once: true });
   const env = { ...(o.env || {}) };
-  const key = env.ANTHROPIC_API_KEY;
+  // A shell a client terminal runs (o.terminal, acp.js terminal/create) holds no credential at all: no key in its environment and no descriptor 3.
+  const key = o.terminal ? undefined : env.ANTHROPIC_API_KEY;
+  if (o.terminal) delete env.ANTHROPIC_API_KEY;
   if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
-  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed ? { seed: o.seed } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
+  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed && !o.terminal ? { seed: o.seed } : {}), ...(o.terminal ? { role: "terminal" } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
     // The spawner starts it detached: it leads a new group and session, both its pid.
