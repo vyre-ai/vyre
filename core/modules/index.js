@@ -474,12 +474,13 @@ export const currentCall = () => { const b = callStore.getStore(); return b && b
 export const captureOrigin = () => { const m = currentCall(); if (!m) return undefined; return m.origin || (m.caller && !String(m.caller).startsWith("module:") ? m.caller : undefined); };
 /** Run `f` as the call `origin` came from (the origin a module stored with a job or an event), so what it calls is judged as that caller class. With no origin it is a plain call. @param {string | undefined} origin @param {() => any} f */
 export const withOrigin = (origin, f) => (origin ? runInTurn({ ...(currentCall() || {}), origin }, async () => f()) : f());
-const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f) => {
+const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f, inheritSpace = true) => {
   // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
   const outer = callStore.getStore();
   let inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
   // a module a cross-space call reaches (ctx.call) is still in that Space: the registry sets these only from callInSpace, so inheriting them from the running turn is as trusted as the turn
-  if (outer && outer.live && typeof outer.meta.in_space === "string" && typeof inherited.in_space !== "string") inherited = { ...inherited, in_space: outer.meta.in_space, in_space_chain: outer.meta.in_space_chain };
+  // ...but only into a tool that declares it may run in another Space (`crossSpace`): a home-wide runtime (the Switchboard) a team chat's call reaches stays the home's, with its one store
+  if (inheritSpace && outer && outer.live && typeof outer.meta.in_space === "string" && typeof inherited.in_space !== "string") inherited = { ...inherited, in_space: outer.meta.in_space, in_space_chain: outer.meta.in_space_chain };
   const box = { meta: inherited, live: true };
   try { return await callStore.run(box, f); } finally { box.live = false; }
 };
@@ -968,17 +969,18 @@ export class Registry {
     });
   }
 
-  /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain */
-  async callInSpace(m, space, base, tool, input, chain) {
+  /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain @param {string} [originOverride] */
+  async callInSpace(m, space, base, tool, input, chain, originOverride) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!def.crossSpace) return { error: { code: "not_declared", message: `${tool} does not declare that it may run in another Space` } };
     if (!chain || typeof chain !== "object" || !Array.isArray(chain.hops) || chain.space !== space) return { error: { code: "denied", message: "the chain is not for that Space" } };
     let verdict = null;
     try { verdict = await base.gateway.authorize({ chain, action: def.crossSpace, resource: `vyre://${space}/tool/${tool}` }); } catch { verdict = null; }
-    if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space" } };
+    if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space: ask its owner or an admin to give you the access, or use a Space you are a member of" } };
     // judged as the caller class the running call came from, as ctx.call does: a module acting for a person is the person's reach, never more
-    const origin = captureOrigin();
+    // the daemon's edge, for a model running a team chat's turn, says which caller class the call came from (`originOverride`); a module's own hop keeps the running call's
+    const origin = originOverride || captureOrigin();
     return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [IN_SPACE]: { space, chain } });
   }
 
@@ -1868,7 +1870,7 @@ export class Registry {
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await runInTurn(meta, () => def.run(input, meta)) }; }
+    try { return { data: await runInTurn(meta, () => def.run(input, meta), Boolean(def.crossSpace)) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

@@ -160,9 +160,10 @@ test("invitee door: a bad proof, a stale or replayed hello, an unknown identity,
 
 test("invitee door: rates are held per invite and per identity", async () => {
   const w = inviteeWorld({ limits: { perInvite: 3, perIdentity: 100 } });
-  let refused = 0;
-  for (let i = 0; i < 6; i++) { const c = await w.open(w.hello()); try { await w.kcall(c, "grants.invites.get", [INVITE]); } catch { refused++; } }
+  let refused = 0, last = /** @type {any} */ (null);
+  for (let i = 0; i < 6; i++) { const c = await w.open(w.hello()); try { await w.kcall(c, "grants.invites.get", [INVITE]); } catch (e) { refused++; last = e; } }
   assert.equal(refused, 3, "the fourth hello for one invite inside a minute is refused");
+  assert.match(String(last && last.message), /too often: wait a minute/, `a rate refusal says to wait, not that the invite is bad: ${last && last.message}`);
   const w2 = inviteeWorld({ limits: { perInvite: 100, perIdentity: 2 } });
   let refused2 = 0;
   for (let i = 0; i < 4; i++) { const c = await w2.open(w2.hello()); try { await w2.kcall(c, "grants.invites.get", [INVITE]); } catch { refused2++; } }

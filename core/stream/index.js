@@ -256,15 +256,34 @@ export default {
       await groups.mirror(session, { people: [...kc.chat.people], assistants: [...(kc.chat.assistants || [])] }, meta, `person:${kc.person}`, kc.chain);
     };
 
-    const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => ctx.tool(name, {
-      description, input, callers: PEOPLE,
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+    /** The tools a team member reaches through the Space's remote server (core/work/chat-service.js), by short name: the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
+    const memberRuns = new Map();
+    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read"];
+    // The Space's owner is in their own team's chats too, and has no member door to them (it is the home): a call that names the team's `space` runs as `stream.serve` in that Space under the chain the caller holds THERE
+    // (kernel.chainIn), the same entry a member's call takes, so the Space's own authorize decides.
+    const ownerRoute = async (/** @type {string} */ name, /** @type {any} */ i, /** @type {any} */ meta) => {
+      const K = ctx.kernel, space = i && typeof i.space === "string" ? i.space : "", short = name.slice("stream.".length);
+      if (!space || !K || space === K.space || (meta && meta.in_space) || !MEMBER_STREAM.includes(short)) return undefined;
+      let base = null; try { base = typeof K.for === "function" ? K.for(space) : null; } catch { base = null; }
+      if (typeof K.chainIn !== "function" || !base || base.hosted !== true) throw Object.assign(new Error("this home does not host that Space (spaces.list shows yours)"), { code: "not_found" });
+      let chain; try { chain = await K.chainIn(space, meta); } catch { throw Object.assign(new Error("you are not a member of that Space"), { code: "denied" }); }
+      const { space: _s, ...rest } = i;
+      const r = await K.for(space).call("stream.serve", { call: short, input: rest }, chain);
+      if (r && r.error) throw Object.assign(new Error(String(r.error.message || "that did not work")), { code: r.error.code || "failed" });
+      return { routed: true, data: r ? r.data : null };
+    };
+    const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => {
+      const run = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const there = await ownerRoute(name, i, meta);
+        if (there) return there.data;
         if (!groups) throw Object.assign(new Error("the stream has no store here: ask the owner to restart Vyre"), { code: "unavailable" });
         if (method === "send") refuseKey(i.text); // appended to the chat first, so refused before it is written
         await kernelGate(i, meta);
         return /** @type {any} */ (groups)[method](i, meta);
-      },
-    });
+      };
+      memberRuns.set(name.slice("stream.".length), run);
+      return ctx.tool(name, { description, input: MEMBER_STREAM.includes(name.slice("stream.".length)) ? { ...input, properties: { ...input.properties, space: str } } : input, callers: PEOPLE, run });
+    };
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
       obj({ chat: str, text: str, account: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, mode: { type: "string", enum: ["steer", "queue"] }, reply_to: str, tz: str, as: str, name: str, pasted: { type: "array", maxItems: 20, items: str }, attachments: { type: "array", maxItems: 5, items: { type: "object", required: ["id", "name", "mime", "bytes"], properties: { id: str, name: str, mime: str, bytes: { type: "integer" } } } } }, ["chat"]), "send");
@@ -276,6 +295,20 @@ export default {
     tool("stream.reply-mode", "Say when the AI answers in a group chat: mode \"every\" (it answers every message, each on its sender's own AI) or \"mention\" (only on an @mention or a reply to an AI message). The chat shows the change as a line to everyone in it.", obj({ chat: str, mode: str, as: str }, ["chat", "mode"]), "replyMode");
     tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ chat: str, group: str, keep: str, as: str }, ["chat", "group", "keep"]), "keep");
     tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
+
+    // The member door's one entry for the stream (core/work/chat-service.js): only the daemon's own door runs it, in a team Space, under a member's own chain (callInSpace; `in_space_chain` is the registry's alone).
+    ctx.tool("stream.serve", {
+      description: "A team member's own stream call on the team's server: send, catchup, typing, react, pin, reply-mode or mark-read, as that member, in that Space. Only the daemon's own door runs it.",
+      internal: true, callers: ["module"],
+      input: obj({ call: { type: "string", enum: MEMBER_STREAM }, input: { type: "object" } }, ["call"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!ctx.kernel || !ctx.kernel.chats) throw Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
+        if (!meta || !meta.in_space_chain || !meta.in_space) throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
+        const run = MEMBER_STREAM.includes(String(i.call)) ? memberRuns.get(String(i.call)) : null;
+        if (!run) throw Object.assign(new Error(`call is ${MEMBER_STREAM.join(", ")}`), { code: "bad_input" });
+        return run(i.input && typeof i.input === "object" ? i.input : {}, meta);
+      },
+    });
 
     // The chat's frames and who answers in it, to leave this device with the chat and be put back on the other (core/work/chat-upgrade.js). Modules only: the work module has checked the person is in the chat.
     const db = ctx.store && ctx.store.db;

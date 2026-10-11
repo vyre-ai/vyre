@@ -8,19 +8,26 @@
 //   "term <command>"   runs it through terminal/create and says its output
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
+//   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
 //   "ctxused <n>"      reports n tokens used of a 258,400 window (usage_update), as Codex does
 //   anything else      echoes "echo: <prompt>"
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
+// FAKE_ACP_RPC_LOG: one line per request the client sent, by method name.
 // FAKE_ACP_LOG: one line per launch (argv, HOME, client capabilities) and per set_mode.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
-const store = process.env.FAKE_ACP_STORE || "";
+// A walk on a real box cannot set this process's environment (the spawner gives a session its own), so settings can sit in a `fake-acp.env` file beside this script: KEY=value lines, never over a variable already set.
+try { for (const l of fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-acp.env"), "utf8").split("\n")) { const m = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(l); if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]; } } catch { /* none: the environment stands */ }
+// FAKE_ACP_PER_HOME: each HOME keeps its own sessions, as each real account's folder does (a session one account made cannot be loaded by another's).
+const store = process.env.FAKE_ACP_STORE ? (process.env.FAKE_ACP_PER_HOME ? path.join(process.env.FAKE_ACP_STORE, crypto.createHash("sha1").update(process.env.HOME || "").digest("hex").slice(0, 10)) : process.env.FAKE_ACP_STORE) : "";
+if (store) fs.mkdirSync(store, { recursive: true });
 const log = o => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + "\n"); };
 const out = o => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...o }) + "\n");
 let nextId = 1000, session = "", mode = process.env.FAKE_ACP_START_MODE || "default", cancelled = false, clientCaps = /** @type {any} */ ({});
@@ -121,7 +128,8 @@ async function prompt(id, blocks) {
     const k = process.env.FAKE_LEAK || "";
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", toolCallId: "leak-1", title: "Run cat", kind: "execute", status: "pending", rawInput: { command: `cat auth.json # ${k}` } } } });
     say(`the key is ${k}`);
-  } else say("echo: " + t);
+  } else if (/\bwhoami\b/.test(t)) say(`home: ${process.env.HOME || ""} words: ${(t.match(/\b[A-Z]{3,}-\d+\b/g) || []).join(",")}`);
+  else say("echo: " + t);
   // FAKE_ACP_USAGE=acp: the standard ACP usage on the response (Codex); =grok: the same names in _meta (Grok Build), no usage_update either way.
   const used = process.env.FAKE_ACP_USAGE === "acp" ? { usage: { totalTokens: 120, inputTokens: 100, cachedReadTokens: 30, outputTokens: 20, thoughtTokens: 5 } }
     : process.env.FAKE_ACP_USAGE === "grok" ? { _meta: { modelId: "grok-x", totalTokens: 120, inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, reasoningTokens: 5, usage: { inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, cacheCreationTokens: 0, reasoningTokens: 5, costUsdTicks: 113859200 } } } : {};
@@ -130,6 +138,7 @@ async function prompt(id, blocks) {
 
 readline.createInterface({ input: process.stdin }).on("line", async line => {
   let m; try { m = JSON.parse(line); } catch { return; }
+  if (process.env.FAKE_ACP_RPC_LOG && m.method) fs.appendFileSync(process.env.FAKE_ACP_RPC_LOG, `${m.method}\n`);   // every request the client made, in order (a test that times out says where the exchange stopped)
   if (m.method === undefined && waits.has(m.id)) { const w = waits.get(m.id); waits.delete(m.id); return m.error ? w.reject(Object.assign(new Error(m.error.message), { code: m.error.code })) : w.resolve(m.result || {}); }
   if (m.method === "initialize") {
     clientCaps = m.params.clientCapabilities || {};

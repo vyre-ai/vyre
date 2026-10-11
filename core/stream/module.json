@@ -16,7 +16,8 @@
     { "name": "stream.reply-mode", "reach": "person", "effect": "write" },
     { "name": "stream.keep", "reach": "person", "effect": "write" },
     { "name": "stream.second-opinion", "reach": "person", "effect": "write" },
-    { "name": "stream.mark-read", "reach": "person", "effect": "write" }
+    { "name": "stream.mark-read", "reach": "person", "effect": "write" },
+    { "name": "stream.serve", "reach": "modules", "effect": "write", "crossSpace": "records.read" }
   ] },
   "watches": { "emits": [] },
   "shows": { "streams": ["session"] },

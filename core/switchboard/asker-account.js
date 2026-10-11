@@ -81,3 +81,12 @@ function ownerOf(sb) {
   const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
   return o ? sb.canon(o) : "";
 }
+
+/**
+ * Does a move to this account leave the thread's own account for another of the same provider? A native session lives in the folder of the account that made it (a Codex session in that account's CODEX_HOME),
+ * so another account cannot load it: it starts a fresh session and is handed the conversation (the seed), where a provider that ran the thread under the same account resumes its own.
+ * @param {{ provider?: string|null, account?: string|null }} rec @param {string} to the provider moved to @param {{ id: string } | null} acct the account moved to
+ */
+export function movesAccount(rec, to, acct) {
+  return (rec.provider || "claude") === to && (rec.account || null) !== (acct ? acct.id : null);
+}

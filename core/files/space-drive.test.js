@@ -36,7 +36,8 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
   assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions"]);
-  for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
+  // the reads are open to a model in a team chat's turn (as the member, in that Space); writing, versions and restore stay the person's own
+  for (const [name, d] of r.tools) assert.deepEqual(d.callers, /^files\.drive\.space\.(list|read)$/.test(name) ? ["cli", "local", "deck", "capsule", "mobile", "device", "mcp"] : ["cli", "local", "deck", "capsule", "mobile", "device"], name);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
   assert.deepEqual(up, { path: "Clients/A/retainer.txt", version: 1, conflict: false, size: 5 });
   assert.equal(r.calls[0][1], person, "the call's own chain, never another");
