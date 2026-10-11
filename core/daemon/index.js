@@ -1555,12 +1555,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // (a session of the home's own Space names that Space in its token too: it is no team turn)
     const turnSpace = typeof sessionToken === "string" ? (sp => (sp && sp !== (kernelOf && kernelOf() && kernelOf().id.space) ? sp : null))(teamSpaceOfToken(sessionToken)) : null;
     /** @type {any} */ let teamResult = null;
-    if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) {
+    if (turnSpace && input && typeof input === "object" && !Array.isArray(input)) {
       const def = registry.tools.get(name);
-      if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) input = { ...input, space: turnSpace };
-      else if (def && /^mcp(:|$)/.test(String(caller))) {
-        // A tool with no `space` of its own, called by a model in a team chat's turn, never lands in the home: it runs in the chat's Space, as the member, only if it declares it may (`crossSpace`, which that
-        // Space's own authorize then checks); judged as the caller class the model came in as. Any other tool says so.
+      // Whatever tool it is and whatever label the call carries, a team turn's token acts in its own Space or nowhere: another Space named in the input is refused here, once, not left to each tool's own door.
+      if (input.space !== undefined && input.space !== turnSpace) teamResult = { error: { code: "denied", message: "this chat's tools act in its own Space: leave `space` out, or name this chat's Space" } };
+      else if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) { if (input.space === undefined) input = { ...input, space: turnSpace }; }
+      else if (def) {
+        // A tool with no `space` of its own, called with a team turn's token (a model, or anything else inside that session), never lands in the home: it runs in the chat's Space, as the member, only if it declares it
+        // may (`crossSpace`, which that Space's own authorize then checks); judged as the caller class it came in as. Any other tool says so.
         const h = /** @type {any} */ (kernelOf && kernelOf() && kernelOf().spaces && kernelOf().spaces.for(turnSpace));
         if (def.crossSpace && h && h.hosted === true && h.surfaces) { try { teamResult = await registry.callInSpace({ name: "vyred" }, turnSpace, { gateway: h.gateway }, name, input, await h.surfaces.chainFor(sessionToken), String(caller)); } catch (e) { teamResult = { error: { code: "denied", message: String(/** @type {any} */ (e).message || "refused") } }; } }
         else teamResult = { error: { code: "not_in_team_space", message: `${name} does not act in a team chat's Space, and a team chat's tools never act in the home: name the Space it is for, or use a tool made for teams` } };
