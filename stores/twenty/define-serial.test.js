@@ -31,3 +31,16 @@ test("defines made at the same time on one store run one after the other", async
   assert.deepEqual((await store.types()).map((/** @type {any} */ t) => t.name).sort(), ["alpha", "beta", "gamma"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("the mirror columns of a type are made once when several callers ask at the same time (the duplicate-field migration J1 hit)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const store = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0 });
+  await store.define({ add_types: [type("delta")] });
+  const gql = store.client.gql.bind(store.client);
+  const made = [];
+  store.client.gql = async (/** @type {string} */ api, /** @type {string} */ q, /** @type {any} */ v) => { if (/createOneField/.test(q) && v?.i?.field?.name === "vyreProject") made.push(v.i.field.name); await new Promise(r => setTimeout(r, 3)); return gql(api, q, v); };
+  await Promise.all([store.prepare(), store.prepare(), store.prepare()]);
+  assert.ok(made.length <= 1, `the column was asked for ${made.length} times`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -238,6 +238,7 @@ export function registerTemplateTools({ ctx, templates: t, chainOf: chainOfHome 
   const inSpace = (/** @type {string} */ name, /** @type {any} */ spec) => {
     const twin = `${name}-in-space`;
     ctx.tool(twin, { description: `${name}, run inside another Space by this module for the person (the registry's cross-Space door).`, internal: true, callers: ["module"], input: spec.input, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!ctx.kernel) throw Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
       if (!(extra && extra.caller === "module:work" && extra.in_space_chain)) throw fail("denied", `${twin} is for the cross-Space door only`);
       return spec.run(i, extra);
     } });
