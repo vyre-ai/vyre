@@ -18,7 +18,7 @@ import { CALLS } from "../../kernel/remote/wire.js";
 /**
  * door call ("<group>.<call>") -> the registry tool that serves it, the call name it is run with (null: the tool is run with the input itself), the input keys the door lets through (every other key is dropped,
  * so a member never names the person, the agent, the project or the Space), and the record types the row keeps (each must be in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES: a test fails otherwise).
- * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[] }>>}
+ * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[], target?: "project" }>>}
  */
 export const MEMBER_TOOLS = Object.freeze({
   // a member's own skills (core/skills/member-ops.js): her personal skill is drafted and approved by her alone; a draft at a higher level waits for its owner; kind "skill" only
@@ -41,6 +41,8 @@ export const MEMBER_TOOLS = Object.freeze({
   "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
   "tasks.move": { tool: "tasks.serve-work", call: "move", keys: ["id", "to", "reason", "suggested_fix"], types: [] },
   "tasks.submit": { tool: "tasks.serve-work", call: "submit", keys: ["id", "evidence"], types: [] },
+  // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
+  // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive
   // a member's own Flows (core/flows/member.js): Flows belong to the Space; any member drafts, a version runs on the authority of whoever approved it, and she approves her own with any trigger
   "flows.cheatsheet": { tool: "flows.serve", call: "cheatsheet", keys: [], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.compile-text": { tool: "flows.serve", call: "compile-text", keys: ["text", "id", "format"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },

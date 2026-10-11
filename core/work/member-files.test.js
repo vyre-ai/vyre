@@ -99,3 +99,16 @@ test("a project holds at most 200 files here: the 201st new name is refused in w
   await ops["files-upload"](chain, { project: "p1", name: "a.txt", data: b64("y") });
   assert.equal(MAX_FILES, 200);
 });
+
+test("every row that targets a project refuses a member who is not on it (the table test's exception for the key `project`)", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const p = await w.work(ANA, "project-create", { name: "Ana's targeted" });
+  const rows = Object.entries(MEMBER_TOOLS).filter(([, r]) => r.target === "project");
+  assert.deepEqual(rows.map(([k]) => k).sort(), ["files.list", "files.read", "files.upload"].sort(), "the rows that name a project");
+  const tools = createMemberTools({ space: w.space, kernel: w.d.kernel, registry: w.d.registry });
+  for (const [door] of rows) {
+    const [group, call] = [door.slice(0, door.indexOf(".")), door.slice(door.indexOf(".") + 1)];
+    await assert.rejects(tools[group][call](w.chainOf(BEN), { project: p.slug, name: "x.txt", data: b64("x") }), undefined, `${door} refuses a member who is not on the project`);
+  }
+  await w.files(ANA, "upload", { project: p.slug, name: "x.txt", data: b64("x") });   // and her own call goes through
+});

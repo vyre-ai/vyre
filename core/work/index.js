@@ -157,8 +157,8 @@ export default {
     const memberFiles = createMemberFiles({ kernel: kernelOf });
     const memberOps = /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */ ({ ...memberProjects, ...memberFiles });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      const k = kernelOf();   // with no kernel wired this answers unavailable, as every tool does
       if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
-      const k = kernelOf();
       if (String(extra.in_space) !== String(k.space || "")) throw fail("not_allowed", "Projects for members are kept in this server's own Space; this Space has none of its own. Ask the owner.");
       if (!calls.includes(i.call)) throw fail("bad_input", `call is one of ${calls.join(", ")}`);
       const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;

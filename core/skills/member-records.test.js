@@ -104,7 +104,11 @@ test("every row of the member door's table keeps only protected record types, na
   t.after(() => d.stop());
   for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
     for (const type of row.types) assert.ok(MEMBER_BLOCKED_TYPES.has(type), `${door}: ${type} is not in MEMBER_BLOCKED_TYPES`);
-    assert.ok(Array.isArray(row.keys) && !row.keys.some(k => ["person", "agent", "space", "as", "project"].includes(k)), `${door}: its input keys are declared (an empty list is a row that takes no input) and never name the person, the agent, the project or the Space`);
+    // identity is never an input key. The ONE exception is a row that declares `target: "project"`: it carries the single key `project` (which project the call is about), and its tool resolves that project record itself and refuses unless the chain's person owns it or is on its team (core/work/member-files.test.js calls every such row as a member who is not on the project)
+    assert.ok(row.target === undefined || row.target === "project", `${door}: target is "project" or absent`);
+    const never = row.target === "project" ? ["person", "agent", "space", "as"] : ["person", "agent", "space", "as", "project"];
+    if (row.target === "project") assert.equal(row.keys.filter(k => k === "project").length, 1, `${door}: a project-target row carries the single key project`);
+    assert.ok(Array.isArray(row.keys) && !row.keys.some(k => never.includes(k)), `${door}: its input keys are declared (an empty list is a row that takes no input) and never name the person, the agent, the project or the Space (a project-target row names its project, nothing else of those)`);
     const def = /** @type {any} */ (d.registry).tools.get(row.tool);
     assert.ok(def && def.internal === true && def.reach === "modules" && def.crossSpace, `${door}: ${row.tool} is an internal tool for modules that declares crossSpace`);
   }
