@@ -20,7 +20,7 @@ export async function askerOver(sb, id, kernelTurn) {
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
   // Nobody but the owner runs on the owner's login, nor on the machine's own credential or the ambient login of the user the server runs as (a Mac mini server's Claude Code login is the owner's): a person with no sign-in of their own is refused ALWAYS, whatever account the thread names or none, and whether or not any credential is visible to take.
   const owner = ownerOf(sb);
-  if (owner && sb.canon(asker) !== owner) throw needOwnSignIn();
+  if (owner !== null && !isOwner(sb, owner, asker)) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -65,7 +65,7 @@ const needOwnSignIn = () => Object.assign(new Error("You have no sign-in of your
  */
 export async function memberAccount(sb, rec, o, id) {
   const asker = o.kernelTurn && o.kernelTurn.asker, owner = ownerOf(sb);
-  if (!asker || !owner || sb.canon(asker) === owner || o.agent) return o;
+  if (!asker || owner === null || isOwner(sb, owner, asker) || o.agent) return o;
   const provider = rec.provider || o.provider || "claude";
   // An account the launch already names must serve this person: the owner's, or another member's, is "no account" to them whatever the input says.
   if (o.account) {
@@ -78,8 +78,29 @@ export async function memberAccount(sb, rec, o, id) {
   throw needOwnSignIn();
 }
 
-/** The kernel's owner, in the form askers are compared in (canonical); "" when there is none, which refuses nothing and is only a build without a kernel. @param {any} sb */
+/**
+ * The kernel's owner in the form askers are compared in (canonical). null: this Switchboard has no kernel (one person, nobody to compare with). "": there is a kernel and its owner cannot be read, so
+ * nobody can be told to be the owner: every asker is treated as a member (fails closed, never open).
+ * @param {any} sb @returns {string | null}
+ */
 function ownerOf(sb) {
-  const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
-  return o ? sb.canon(o) : "";
+  const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : null;
+  return o == null ? null : o ? sb.canon(o) : "";
+}
+const isOwner = (/** @type {any} */ sb, /** @type {string} */ owner, /** @type {string} */ asker) => Boolean(owner) && sb.canon(asker) === owner;
+
+/**
+ * A chip (`@claude`, `@codex:acct`) in a kernel turn: where the one turn runs, for the asker. askerOver has already judged the asker (in the chat, a sign-in of their own). A chip names an account only when it
+ * serves them (servesChip); a chip with no account is the asker's OWN account of that provider, never the thread's. Null: the thread's own account is theirs and the chip changes nothing.
+ * @param {any} sb @param {string} id the thread @param {string} provider @param {string | null} account @param {{ asker: string }} kt @param {{ provider: string, account: string, person: string | null } | null} own what askerOver gave
+ */
+export async function chipOver(sb, id, provider, account, kt, own) {
+  const rec = sb.record(id), cur = (rec && rec.provider) || "claude";
+  if (account) return { provider, account, person: kt.asker };
+  if (provider === cur) return own;
+  const mine = rec ? await sb.accountFor({ provider, person: kt.asker, project: rec.project, agent: rec.agent }).catch(() => null) : null;
+  if (mine && mine.id) return { provider, account: String(mine.id), person: kt.asker };
+  const owner = ownerOf(sb);
+  if (owner !== null && !isOwner(sb, owner, kt.asker)) throw needOwnSignIn();
+  return { provider, account: null, person: kt.asker };
 }

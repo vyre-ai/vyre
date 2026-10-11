@@ -53,8 +53,15 @@ test("a launch for a member names their own account, refuses one with none, and 
   // the open cases: a turn with no asker, a named agent, and a home with no kernel (no owner to compare with)
   assert.deepEqual(await memberAccount(sb(world), rec, {}, "t"), {});
   assert.equal((await memberAccount(sb(world), rec, { ...kt(ANA), agent: "kit" }, "t")).account, undefined);
-  const noKernel = sb(world); noKernel.deps.owner = () => "";
+  const noKernel = sb(world); noKernel.deps.owner = () => null;
   assert.equal((await memberAccount(noKernel, rec, kt(ANA), "t")).account, undefined);
+  // a kernel whose owner cannot be read is not "no kernel": nobody can be told to be the owner, so a member with no account is refused
+  const blank = sb({ ...world, accounts: [{ id: "own", provider: "claude", person: null }] }); blank.deps.owner = () => "";
+  await refused(memberAccount(blank, rec, kt(ANA), "t"));
+  await refused(askerOver(blank, "t", { asker: ANA }));
+  await refused(askerOver(blank, "t", { asker: OWNER }));   // nobody can be told to be the owner, so not even the owner's id is taken for it
+  const hers = sb(world); hers.deps.owner = () => "";
+  assert.equal((await memberAccount(hers, rec, kt(ANA), "t")).account, "anas", "a member with an account of their own still runs on it");
   for (const named of ["own", "bens"]) {
     const w = sb(world);
     await assert.rejects(memberAccount(w, rec, { ...kt(ANA), account: named }, "t"), (/** @type {any} */ e) => e.code === "account_unavailable", `naming ${named} gets a member nothing`);

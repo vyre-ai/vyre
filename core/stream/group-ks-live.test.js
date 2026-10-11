@@ -34,8 +34,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 5000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(10); } throw new Error(`timed out waiting for ${what}`); };
 
 /** Everything that survives a daemon restart (the kernel and its sessions' turn store, the stream's own database and home) and the stream side that does not. */
-/** @param {any} t @param {{ noOwner?: boolean }} [opts] noOwner: the queue tests (V1 to V4) are about the order of turns and their askers; the kernel hands the Switchboard no owner there, as a home with no kernel does (one person), so the rule that a member runs on their own sign-in is not in play (it is tested in core/switchboard/asker-account.test.js and person-turns-live.test.js) */
-async function world(t, opts = {}) {
+async function world(t) {
   const k = await createKernel({ space: SPACE, owner: BOB, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: BOB, path: "direct", session: "s" });   // bob owns this Space: his turns may run on the machine's own login; carol and ada have a sign-in of their own
   const g = k.gateway.grants;
@@ -47,7 +46,7 @@ async function world(t, opts = {}) {
   /** @type {Record<string, string>} */ const tokens = {};
   for (const [n, c] of Object.entries(chains)) tokens[n] = (await k.surfaces.open(c, {})).token;
   const direct = new Map(Object.entries(tokens).map(([n, tok]) => [tok, /** @type {any} */ (chains)[n]]));
-  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, ...(opts.noOwner ? { owner: "" } : {}), chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
+  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
   // the open turns, kept as the daemon keeps them: durable across the stream's restart
   /** @type {Map<string, any>} */ const kept = new Map();
   const turns = { durable: true, get: (/** @type {string} */ x) => kept.get(x), set: (/** @type {string} */ x, /** @type {any} */ r) => kept.set(x, r), delete: (/** @type {string} */ x) => kept.delete(x), all: () => /** @type {[string, any][]} */ ([...kept]) };
@@ -101,7 +100,7 @@ async function world(t, opts = {}) {
     await reg.start(discover([CORE]).filter(f => f.manifest && (["stream", "threads", "sessions"].includes(f.manifest.name))), { role: "box" });
     for (const m of ["sessions", "threads", "stream"]) assert.equal(reg.modules.get(m)?.state, "running", reg.modules.get(m)?.error);
     // everyone runs on a sign-in of their own (the fake claude is the provider; bob's, the owner's, is the Space's own account): added once, kept across the restarts of this rig
-    for (const who of opts.noOwner ? [] : ["bob", "carol", "ada"]) {
+    for (const who of ["bob", "carol", "ada"]) {
       const have = await reg.call("sessions.accounts.list", { provider: "claude" }, "deck", { token: tokens[who] });
       if ((have.data || []).some((/** @type {any} */ a) => !a.synthetic)) continue;
       const added = await reg.call("sessions.accounts.add", { provider: "claude", label: `${who}'s Claude`, kind: "login" }, "deck", { token: tokens[who] });
@@ -260,7 +259,7 @@ const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, stri
 const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && String(e.data.by.agent || "").startsWith("model:")).map((/** @type {any} */ e) => e.data.by.person);
 
 test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
-  const w = await world(t, { noOwner: true });
+  const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
@@ -293,7 +292,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
 });
 
 test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {
-  const w = await world(t, { noOwner: true });
+  const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
@@ -312,7 +311,7 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
 });
 
 test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", async t => {
-  const w = await world(t, { noOwner: true });
+  const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
@@ -326,7 +325,7 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
 });
 
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
-  const w = await world(t, { noOwner: true });
+  const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
@@ -370,7 +369,7 @@ test("V3b: a bare name or an actor string as the asker is refused by the Switchb
 
 const LONGER = "SECRET " + Array(3000).fill("word").join(" "); // a reply that is still arriving for several seconds: the daemon is crashed while it runs
 test("V4: a restart with a message queued at the Switchboard: the queue is the Switchboard's and survives; the stream's outbox row is done", async t => {
-  const w = await world(t, { noOwner: true });
+  const w = await world(t);
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watch1 = await b1.watch("bob", chat.id);
