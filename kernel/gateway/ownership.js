@@ -24,7 +24,7 @@ export const OWNED_TYPES = Object.freeze(["project", "team-member", "task"]);
 /** Project fields that point at files, memory, credentials, another Space or whose project is personal: written only by an owner, an admin or the work service, never by a member, even the project's own. */
 const PROJECT_TRUSTED_FIELDS = Object.freeze(["drive_path", "memory_scope", "credentials", "moved_to", "moved_from", "personal_of", "slug", "archived_at"]);
 /** What a plain team member (not its owner) may change on a project. */
-const PROJECT_TEAM_FIELDS = Object.freeze(["name", "status", "due", "repo", "client"]);
+const PROJECT_TEAM_FIELDS = Object.freeze(["name", "status", "due"]);
 /** Team seat fields that route work to a seat (pool and project-role asks resolve from them) or give an assistant its brief: trusted-only. A project's owner seats a plain person. */
 const SEAT_TRUSTED_FIELDS = Object.freeze(["role", "instructions", "skills"]);
 
@@ -100,8 +100,15 @@ export async function mayWrite(chain, type, row, patch, ctx) {
     if (!ownsOrBelongs(await ctx.project(target))) throw no("a task goes only into a project you are on. Ask the project's owner to add you first.");
   }
   if (ctx.op === "create") return true;
-  if (t && (mine(t.doer) || mine(t.assigned_by))) return true;
-  if (currentProject && ownsOrBelongs(await ctx.project(currentProject))) return true;
+  const allowed = Boolean(t && (mine(t.doer) || mine(t.assigned_by))) || Boolean(currentProject && ownsOrBelongs(await ctx.project(currentProject)));
+  if (allowed) {
+    // handing a stuck task to someone else (tasks unblock): the new doer is on the task's project, or, with no project, not herself unless she gave the task
+    if (p.reassign_to !== undefined && p.reassign_to !== null) {
+      const to = idOf(p.reassign_to), proj = currentProject ? await ctx.project(currentProject) : null;
+      if (proj ? !(proj.owner === to || proj.team.includes(String(to))) : (to === person && !(t && mine(t.assigned_by)))) throw no("a task is handed only to someone on its project, and not to yourself unless you gave it. Ask the project's owner.");
+    }
+    return true;
+  }
   throw no("a task is changed by whoever it is for, whoever gave it, or its project's owner or team. Ask one of them.");
 }
 
@@ -125,13 +132,14 @@ export const projectTeamOf = (store, urn) => async (/** @type {string} */ ref) =
 };
 
 /**
- * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner or file a record under a
+ * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner, set its sensitivity or file a record under a
  * project she is not on. @param {any} chain @param {any} attrs @param {{ trusted: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null> }} ctx
  */
 export async function mayAttrs(chain, attrs, ctx) {
   if (ctx.trusted || !attrs || typeof attrs !== "object") return true;
   const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
   const person = me ? String(me.id) : "";
+  if (attrs.sensitivity !== undefined) throw no("a record's sensitivity is set by an owner or admin. Leave it out.");
   if (attrs.owner !== undefined && idOf(attrs.owner) !== person) throw no("a record you make is yours: leave the owner out or name yourself.");
   if (attrs.project !== undefined && attrs.project !== null) {
     const pr = await ctx.project(String(refOf(attrs.project) || attrs.project));
