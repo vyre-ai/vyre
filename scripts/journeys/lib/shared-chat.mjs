@@ -256,8 +256,10 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const s3 = await R("member", `vyre vault reveal ${itemName} 2>&1`);
     assert.match(s3, /owner's vault|stay out of reach/, `vault reveal is refused in words: ${s3}`);
     assert.ok(!s3.includes("WALK-NOT-A-REAL-VALUE"), "and no value");
-    const s4 = await R("member", "vyre vault put walkx 2>&1 < /dev/null; vyre vault lock 2>&1");
-    assert.match(s4, /owner's vault|stay out of reach/, `vault put and lock are refused: ${s4}`);
+    const s4 = await R("member", "vyre vault put walkx 2>&1");
+    assert.match(s4, /owner's vault|stay out of reach/, `vault put is refused: ${s4}`);
+    const s4b = await R("member", "vyre vault lock 2>&1");
+    assert.match(s4b, /owner's vault|stay out of reach/, `vault lock is refused: ${s4b}`);
     // folders: another chat's parent cannot be listed by a member's session, and the walk's own chat folder is not named by its id
     const s5 = await R("member", "ls /work/chats 2>&1; ls /work/chats/* 2>&1");
     assert.match(s5, /Permission denied/i, `a session cannot list the chats' parents: ${s5}`);
