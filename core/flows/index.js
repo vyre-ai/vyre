@@ -151,10 +151,10 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
         const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
-        if (!h || h.actor.kind !== "person") throw refuse("not found", "not_found");
+        if (!h || h.actor.kind !== "person") throw refuse("not found: only a member of this team has Flows here; ask an owner or admin to add you", "not_found");
         const f = hostOf({ space: String(extra.in_space) });
         const me = String(h.actor.id), role = f.roleOf ? f.roleOf(me) : "";
-        if (!role) throw refuse("not found", "not_found");
+        if (!role) throw refuse("not found: only a member of this team has Flows here; ask an owner or admin to add you", "not_found");
         const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? { ...i.input } : {};
         delete input.space; delete input.as;
         return serveMember(f, String(i.call), input, chain, me, role, { gateway: { authorizePeek: f.authorizePeek } });
