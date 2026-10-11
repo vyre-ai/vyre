@@ -69,7 +69,7 @@ export function createDoingLine(kernel, { project, clock = Date.now, minInterval
       return kernel.events.subscribe(chain, `doing:${project}`, { subject_prefix: project }, (/** @type {any} */ e) => {
         const a = String(e.actor || "");
         if (a.startsWith("agent:")) observe(a.slice(6).split("@")[0], e);
-      });
+      }, { batch: true });   // a line shown to the person: a repeat shows the same line
     },
   };
 }

@@ -62,3 +62,39 @@ test("a module's own types are held to the same list on Basic: not made, and its
   await new Promise(r => setTimeout(r, 50));
   assert.ok((await dev.store.types()).some(t => t.name === "goal"), "a server or a development build makes every declared type");
 });
+
+test("the type list is shared and frozen until a type changes: a record read does not copy every type", async () => {
+  const k = await boot();
+  const a = await k.store.types(), b = await k.store.types();
+  assert.equal(a, b, "the same list twice, not a fresh copy each time");
+  assert.ok(Object.isFrozen(a) && Object.isFrozen(a[0]) && Object.isFrozen(a[0].fields), "frozen, so no caller can change what the next one reads");
+  await k.gateway.records.define(owner(k), { add_types: [{ name: "thing", label: "Thing", fields: [{ name: "body", kind: "text", label: "Body" }] }] });
+  const c = await k.store.types();
+  assert.notEqual(c, a, "a type change makes the next read a new list");
+  assert.ok(c.some(t => t.name === "thing"));
+});
+
+test("a kernel's stop() stores the batched consumers' cursors: reopened on the same database, nothing is delivered again", async () => {
+  const file = path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-stop-")), "kernel.db");
+  const open = () => bootKernel({ db: new DatabaseSync(file), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer });
+  const k = await open();
+  const seen = [];
+  k.log.subscribe("tester", { type: "note.*" }, e => { seen.push(e.seq); }, { batch: true });
+  const chain = k.chains.fromFacts({ kind: "module", module: "x", first_party: true });
+  for (let i = 0; i < 3; i++) k.log.append(chain, { type: "note.added", sv: 1, subject: `vyre://${SPACE}/note/${i}`, data: { i } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(seen.length, 3);
+  assert.equal(typeof k.stop, "function", "a kernel can be stopped, so whoever owns it can flush its log");
+  await k.stop();
+  const again = await open();
+  const second = [];
+  again.log.subscribe("tester", { type: "note.*" }, e => { second.push(e.seq); }, { batch: true });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(second, [], "the cursor was stored at stop: the three events are not delivered again");
+});
+
+test("a booted kernel is the one object the Drive keys were registered for: stop() is added to it, not to a copy", async () => {
+  const k = await boot();
+  assert.equal(typeof k.stop, "function");
+  assert.ok(Object.isFrozen(k));
+});

@@ -130,7 +130,7 @@ export function createEventLog(cfg) {
     salts.set(seq, salt);
     // The window is bounded (a durable log only): the oldest events leave memory, and stay on disk.
     if (durable) while (log.length > 1 && (log.length > limits.events || weight > limits.bytes)) { const old = log.shift(); weight -= sizes.shift() || 0; salts.delete(old.seq); }
-    queueMicrotask(pump);
+    queueMicrotask(() => pump(true));
     return e;
   }
 
@@ -225,20 +225,23 @@ export function createEventLog(cfg) {
   }
 
   /** At-least-once with a durable named cursor: a handler that throws is retried, never skipped. @returns {() => void} */
-  function subscribe(/** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
+  function subscribe(/** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent, /** @type {{ batch?: boolean }} */ opts = {}) {
     const had = consumers.get(consumer);
     // A consumer that was running before a restart goes on from its durable cursor (never past the log's end); from 0 every restart would hand it the whole log again, read back from disk.
-    const c = { filter, cursor: had ? had.cursor : Math.min(cursors.get(consumer) ?? 0, count), onEvent, busy: false };
+    const c = { filter, cursor: had ? had.cursor : Math.min(cursors.get(consumer) ?? 0, count), onEvent, busy: false, batch: opts.batch === true };
     consumers.set(consumer, c);
-    queueMicrotask(pump);
-    return () => { if (consumers.get(consumer) === c) consumers.delete(consumer); };
+    queueMicrotask(() => pump(true));
+    return () => { if (consumers.get(consumer) === c) { consumers.delete(consumer); flush(); } };
   }
 
   const cursors = new Map(cfg.initial ? cfg.initial.cursors || [] : []);
+  // A consumer that subscribes with { batch: true } has its cursor written once per 200 ms, on flush() and when a caller awaits pump(), not once per event (live 10 Oct: 30 s of a 60 s burst). A crash in the window redelivers up to 200 ms of its events, so only a consumer whose handler is harmless when repeated asks for it; every other consumer keeps one write per event.
+  /** @type {Set<string>} */ const dirty = new Set(); /** @type {any} */ let flushTimer = null;
+  const flush = () => { if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; } if (cfg.persist) for (const n of dirty) { try { cfg.persist.cursor(n, /** @type {number} */ (cursors.get(n))); } catch { /* the database is closed: those events are redelivered */ } } dirty.clear(); };
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
   const MAX_ATTEMPTS = 8;
   const nextFor = (/** @type {any} */ c) => { for (const e of iterate({ since: c.cursor, ...(c.filter && c.filter.type ? { type: c.filter.type } : {}), limit: 1 })) return e; return undefined; };
-  async function pump() {
+  async function pump(/** @type {boolean} */ batched = false) {
     for (const [name, c] of consumers) {
       if (c.busy) continue;
       c.busy = true;
@@ -250,7 +253,7 @@ export function createEventLog(cfg) {
           await c.onEvent(next);
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
-          if (cfg.persist) cfg.persist.cursor(name, c.cursor);
+          if (cfg.persist) { if (c.batch) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); } else cfg.persist.cursor(name, c.cursor); }
         }
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
@@ -258,16 +261,17 @@ export function createEventLog(cfg) {
         const next = nextFor(c);
         if (next) {
           c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
-          if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(pump); }
-          else setTimeout(pump, Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
+          if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(() => pump(true)); }
+          else setTimeout(() => pump(true), Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
         }
       }
       finally { c.busy = false; }
     }
+    if (!batched) flush(); // a caller who awaits pump() is told the consumers are caught up and stored
   }
 
   return Object.freeze({
-    append, read, iterate, get, latestFor, verify, proves, erase, subscribe, pump,
+    append, read, iterate, get, latestFor, verify, proves, erase, subscribe, pump, flush,
     cursor: (/** @type {string} */ n) => (consumers.get(n) ? /** @type {any} */ (consumers.get(n)).cursor : cursors.get(n) ?? 0),
     latestSeq: () => count,
     deadLetters: () => [...dead],

@@ -15,7 +15,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // the Vault's own grant tables, Publish's secret grants and Wink's local grants leave core as steps B to G land. Any growth after this needs its own ruling.
 // 9440 (lead ruling, 9 Oct 2026, once): one grant model C plus module release; replaces five grant models. The grants evaluator's pure core (matchGrant) is shared with vyre-core's own store.
 // 9459 (lead ruling, 11 Oct 2026, G22 +26 of the +30 allowed with the coalesced reach log, and the members list +2): an agent reaches a project and its records only while it is the project's teammate on a task there (kernel/core/folders.js).
-const CAP = 9459;
+// 9463 (stall fix, kernel +4: batched event cursors for the consumers that ask, the record types shared until a type changes, a stop on the kernel that stores the cursors).
+const CAP = 9463;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
