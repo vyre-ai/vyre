@@ -21,6 +21,8 @@ export type ChatToolsProps = {
   /** The other place this chat could run (its placement chip: moveTo): the sheet offers a copy that starts there. */
   otherPlace?: "mac" | "server" | null;
   onForked?: (thread: string) => void;
+  /** A chat with more than one person in it: when the AI answers ("every" or "mention"; null is the chat's own default). */
+  replyMode?: string | null; shared?: boolean;
   /** A person picked someone or something: the text to put in the draft. */
   onMention?: (text: string) => void;
 };
@@ -88,6 +90,8 @@ export function ChatToolsSheet(p: ChatToolsProps) {
               </>
             ) : null}
             <SectionLabel>Around it</SectionLabel>
+            {p.shared && p.chat ? <><Row dense title="AI replies" sub={p.replyMode === "mention" ? "Only when someone mentions it or replies to it" : p.replyMode === "every" ? "To every message, each on its sender's own AI" : "As the chat decides"} state={p.replyMode === "mention" ? "When mentioned" : p.replyMode === "every" ? "Every message" : undefined} chevron
+              onPress={() => run(() => chatTools.replyMode(p.chat as string, p.replyMode === "mention" ? "every" : "mention"), undefined, "Changed. Everyone in the chat sees it.")} /><Divider /></> : null}
             <Row dense title="Mention someone" sub="A teammate, a project, a file or a record" chevron onPress={() => go("mention")} />
             <Divider />
             <Row dense title="Running here" sub="What it is doing in the background" chevron onPress={() => go("tasks")} />

@@ -190,3 +190,32 @@ test("names learned from elsewhere are shown, a frame that only has an id never 
   assert.equal(g.names()["model:claude/default#1"], "Claude");
   assert.equal(g.assistantName(), "Claude");
 });
+
+test("reply mode: the group knows the mode the log last set, and the folder shows each change as a line", async () => {
+  const { createFolder } = await import("./frames.js");
+  const g = createGroup(V);
+  assert.equal(g.replyMode(), null);
+  const f = createFolder();
+  const frame = (cur, mode, who) => ({ v: 1, id: `f${cur}`, cur, session: "s", turn: null, type: "session.reply-mode", time: cur, corr: null, author: who, data: { mode } });
+  const join = (cur, who, name) => ({ v: 1, id: `j${cur}`, cur, session: "s", turn: null, type: "session.participant-joined", time: cur, corr: null, data: { who, name } });
+  for (const fr of [join(1, "person:bob", "Bob"), frame(2, "mention", "person:bob"), frame(3, "every", "person:zed")]) { g.apply(fr); f.apply(fr); }
+  assert.equal(g.replyMode(), "every");
+  const lines = f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key).text).filter((t) => /set replies/.test(t));
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /^Bob set replies to: the AI answers when mentioned/);
+  assert.match(lines[1], /^Someone set replies to: the AI answers every message/, "an author the chat has no name for is Someone, never a raw id");
+});
+
+test("no internal words: a participant whose only name is an id shows as Someone, and no line carries an id", async () => {
+  const { createFolder } = await import("./frames.js");
+  const f = createFolder();
+  const raw = "per_tfbsa6hidwpwva5rdllixa6yio";
+  const frames = [
+    { v: 1, id: "j1", cur: 1, session: "s", turn: null, type: "session.participant-joined", time: 1, corr: null, data: { who: `person:${raw}`, name: "Per tfbsa6hidwpwva5rdllixa6yio" } },
+    { v: 1, id: "m2", cur: 2, session: "s", turn: null, type: "session.reply-mode", time: 2, corr: null, author: `person:${raw}`, data: { mode: "mention" } },
+  ];
+  for (const fr of frames) f.apply(fr);
+  const lines = f.rows.map((r) => JSON.stringify(f.item(r.key)));
+  assert.ok(lines.some((t) => /Someone set replies/.test(t)));
+  for (const t of lines) assert.doesNotMatch(t, /per[_ ][a-z2-7]{12,}|tfbsa6hid/i, "an id never reaches a person");
+});

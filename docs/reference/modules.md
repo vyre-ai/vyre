@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 117 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`stream`](#stream) | `core/stream` | `box`, `local` | 12 | 0 | none |
+| [`stream`](#stream) | `core/stream` | `box`, `local` | 13 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 5 | 2 | cli |
@@ -986,7 +986,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [12](tools.md#stream), 2 of them only for other modules
+- Tools: [13](tools.md#stream), 2 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
@@ -1068,7 +1068,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [70](tools.md#threads), 24 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
+- Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
