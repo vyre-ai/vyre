@@ -84,12 +84,12 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
     async sanitize({ chain, session, text, purpose = "other" }) { return scan(chain, session, text, { purpose, session }); },
     /** The tool or effect result a model is about to see (D-2): scanned for sealed shapes and ledgered values. */
     async result({ chain, session, text, purpose = "other" }) { return scan(chain, session, text, { purpose, session }); },
-    /** The model names a provider's own list gives for one account, from the driver that holds the key and the address: names only, never the key or the body. A service must be a declared sink, as for a call. */
+    /** The models a provider's own list gives for one account, from the driver that holds the key and the address: { id, label? } only, never the key or the body. A service must be a declared sink, as for a call. */
     async listModels({ chain, provider, account }) {
       if (!isChain(chain)) throw new TypeError("not a kernel chain");
       const d = drivers[provider], last = chain.hops[chain.hops.length - 1];
       if ((last.actor.kind === "service" && !sinkSet.has(last.actor.id)) || !d || typeof d.models !== "function") refuse({ code: "not_a_sink", detail: "not a declared model sink, or this provider has no model list to ask for" }, { purpose: "models" });
-      return (await d.models({ account })).slice(0, 500).map(n => String(n).slice(0, 120));
+      return (await d.models({ account })).slice(0, 500).map(m => ({ id: String(m.id).slice(0, 120), ...(m.label ? { label: String(m.label).slice(0, 120) } : {}) }));
     },
     async endSession(chain, session) { ledgers.delete(`${chain.space}\0${session}`); await sealer.endSession(chain, session); },
 

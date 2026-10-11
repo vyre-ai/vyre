@@ -27,7 +27,7 @@ export const KINDS = Object.freeze([
   "text-delta", "text-done", "tool-started", "tool-progress", "tool-finished", "term-chunk", "term-command",
   "file-changed", "ask", "ask-answered", "user-message", "status",
   // group chat (0.3): who is in it, what people do with a message, and a set of answers to one question
-  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
+  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut", "reply-mode",
   // One Chat: a run step (the tool calls between two of the assistant's messages), summarised once it closes
   "step-summary",
   // A request handed to a teammate (SPEC-0.3.0 11.2, team/0.3/IFACE-activity.md): one row per request, updated by later frames with the same request
@@ -88,6 +88,7 @@ const CHECK = {
   "presence": d => (isAuthor(d.who) && ["typing", "doing", "idle"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing, doing or idle, and doing (up to 120 characters) when doing"),
   "reaction": d => (idStr(d.message) && isStr(d.emoji) && d.emoji.length > 0 && d.emoji.length <= 32 && typeof d.on === "boolean" ? null : "reaction needs message, emoji and on (true or false)"),
   "pin": d => (idStr(d.message) && typeof d.on === "boolean" ? null : "pin needs message and on (true or false)"),
+  "reply-mode": d => (d.mode === "every" || d.mode === "mention" ? null : "reply-mode needs mode, every or mention"),
   "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),
   "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
   "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
@@ -232,7 +233,7 @@ export function toEnvelope(f, ctx = {}) {
 
 /** Frames that belong in the kernel log, not only the stream. */
 export const LOGGED = Object.freeze(["tool-finished", "ask", "ask-answered", "file-changed", "term-command", "user-message",
-  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep"]);
+  "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "reply-mode"]);
 
 // ---- blocks ------------------------------------------------------------------------------------
 
