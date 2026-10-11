@@ -34,6 +34,8 @@ export const CALLS = Object.freeze({
   // A member's own AI sign-in on the team's server (0.3.3 G03; core/sessions/accounts-service.js): a login of theirs, run as its own user, serving only their turns. A key needs a Vault of their own (0.3.4).
   accounts: ["list", "signin", "remove", "default"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
+  // A member's own Flows (core/flows/member.js): a SERVICE the home registers. She sets up, tests and starts Flows of hers and approves a version she made inside a bound; a write on a Flow is its author's.
+  flows: ["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "test-save", "test-remove", "test-list", "test-run", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "approve", "propose"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */

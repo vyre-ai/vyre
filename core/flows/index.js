@@ -6,6 +6,7 @@
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
+import { createFlowsService } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
@@ -142,6 +143,8 @@ export default {
       on: (/** @type {string} */ type, /** @type {any} */ fn) => ctx.events.on(type, (/** @type {any} */ ev) => fn(ev && ev.payload !== undefined ? ev.payload : ev)),
       call: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await ctx.call(tool, input); return r && r.data !== undefined ? r.data : r; },
       log: (/** @type {string} */ m) => ctx.log(m) }) : null;
-    return { async stop() { if (typeof stopBridge === "function") stopBridge(); } };
+    return { async stop() { if (typeof stopBridge === "function") stopBridge(); },
+      /** The peer door asks for the member's Flows service by name from this handle (the daemon imports nothing of flows). */
+      peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createFlowsService({ space: o.space, kernel: o.kernel, host: ctx.flowsHost }) };
   },
 };
