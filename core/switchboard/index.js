@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -968,7 +968,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || o.person }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -1749,16 +1749,16 @@ export class Switchboard {
     return p;
   }
 
-  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null, person = null }) {
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null, person = null, by = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
-    const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : reason === "limit" || reason === "back" ? lentHolder(this, id, st) : person);   // a switch stops the process: on a person's own computer only that person may
+    const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : reason === "limit" || reason === "back" ? lentHolder(this, id, st) : reason === "asked" ? by : person);   // a switch stops the process: on a person's own computer only that person may
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
-    const { seed, had } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
+    const { seed, had } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));   model = model || await modelForAsker(this, rec, provider, kernelTurn ? kernelTurn.asker : person);   // the person's chosen model for the provider, not its default
     if (st) {
       st.switching = true;
       const proc = st.proc;
@@ -1769,7 +1769,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account;
+    if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -4517,7 +4517,7 @@ export default {
 
     tool("threads.switch", "Continue a thread on another provider (and account) between turns, keeping its folder and files; the new provider gets a brief of what was said.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: { type: "string", description: "claude, codex or grok." }, account: { type: "string", description: "One granted to this project or agent; never a guess between two." }, model: str, text: { type: "string", description: "The next message to send there." } } },
-      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
+      async (i, meta) => { guard(meta.caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null, by: personOfChain(kchainNow()) || personOfMeta(meta) }); });
 
     tool("threads.roll", "Roll a session's window over now, between turns: its agent starts a fresh session in the same folder and the next message goes to it with a seed Vyre builds (your decisions, the plan, an index of what came before, the last turns word for word). The thread and its history do not change, and every earlier turn stays one memory_turn away. Vyre does this by itself when the window passes sessions.rollover_at; this is the same thing asked for. A person's surface only.",
       { type: "object", required: ["thread"], properties: { thread: str } },
@@ -4742,7 +4742,7 @@ export default {
         guard(meta.caller, "switch a chat's model");
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface switches a chat's model"), { code: "denied" });
         const run = await slotRun(i.chat, i.slot, meta);
-        if (i.provider && i.provider !== run.provider) return sb.switchProvider(run.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: null });
+        if (i.provider && i.provider !== run.provider) return sb.switchProvider(run.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: null, by: personOfChain(kchainNow()) || personOfMeta(meta) });
         if (!i.model) throw Object.assign(new Error("say which model"), { code: "bad_input" });
         return sb.switchModel(run.thread, i.model);
       });
