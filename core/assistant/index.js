@@ -203,7 +203,8 @@ export default {
       callers: ["module"],
       run: async ({ tool }, meta = {}) => {
         const hops = { n: 0 };
-        const person = await personOf(meta, false, hops);
+        // a call with no person's chain (a bare session label, a module) acts as nobody: there is no person whose limit applies, and the tool's own gates decide it
+        let person; try { person = await personOf(meta, false, hops); } catch { return { stopped: false }; }
         if (hops.n < 2) return { stopped: false }; // a chain that is only the person: the person's own call is never limited
         const hit = stoppedBy(rowsOf(person), String(tool));
         return hit ? { stopped: true, words: refusalWords(hit, String(tool)) } : { stopped: false };
