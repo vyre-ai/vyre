@@ -75,3 +75,35 @@ test("runQueuedOver past the revert wait puts the row back instead of judging it
   assert.deepEqual(drained, [], "and nothing is drained or run on the wrong base");
   assert.equal(sb.draining.has("t"), false, "the lock is released");
 });
+
+test("while a hop back swaps the process nothing drains; the row behind a hop whose turn ended first is written after the revert, not during", async () => {
+  /** @type {any[]} */ const drained = [];
+  let finish; const revert = new Promise(r => { finish = r; });
+  const sb = /** @type {any} */ ({ reverting: new Map([["t", revert]]), draining: new Set(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), db: { prepare: () => ({ all: () => { drained.push("read-queue"); return []; } }) } });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  sb.drainQueued = Switchboard.prototype.drainQueued;
+  sb.drainDone("t", true);
+  sb.drainQueued("t", sb.live.get("t"), null);
+  assert.deepEqual(drained, [], "during the revert neither drainDone nor drainQueued reads or runs the queue");
+  sb.reverting.delete("t"); finish(undefined);
+  sb.drainDone("t", true);
+  assert.deepEqual(drained, ["read-queue"], "once the revert is over the queue is read");
+});
+
+test("a revert whose switch throws still drains the put-back row", async () => {
+  /** @type {any[]} */ const drained = []; /** @type {any[]} */ const sql = [];
+  const revert = new Promise(r => setTimeout(r, 60));   // (turnEnded's promise has its .catch: it settles even when the switch threw)
+  const sb = /** @type {any} */ ({
+    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 50)); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
+    onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
+    drainQueued: (/** @type {string} */ id) => drained.push(id),
+  });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  void revert.finally(() => sb.reverting.delete("t"));   // turnEnded's own cleanup runs first
+  runQueuedOver(sb, "t", [{ id: 9, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 1 }), 1);
+  await new Promise(r => setTimeout(r, 40));
+  assert.deepEqual(drained, [], "past the wait and the revert still going: nothing runs");
+  await new Promise(r => setTimeout(r, 80));
+  assert.deepEqual(drained, ["t"], "when the revert is over, thrown or not, the put-back row is drained");
+});

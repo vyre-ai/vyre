@@ -52,8 +52,14 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
     try {
       if (!(await revertSettled(sb, id, false))) {
         // the hop back is still going past the wait: nothing is judged on the hop's state; the row goes back to the queue and the next turn's end (or resume) drains it
+        // brought out again once the hop back is over (or now, when it already is and the thread is idle); a second time past the wait it is dropped in words, never left waiting for nothing
+        const again = (sb.putBack ||= new Set()).has(r.id);
+        if (again) { sb.putBack.delete(r.id); sb.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?").run(r.id); sb.emit("thread.text", { message: "vyre", text: "A message waiting for this turn could not be started: the chat was busy for too long. Nothing was written to the session. Send it again from the chat.", done: true, notice: true }, id, rec ? rec.project : null); sb.drainDone(id, false); return; }
+        sb.putBack.add(r.id);
         sb.db.prepare("UPDATE threads_inbox SET delivered_at = NULL, via = NULL WHERE id = ?").run(r.id);
         sb.drainDone(id, false);
+        const back = sb.reverting.get(id);
+        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true);
         return;
       }
       await sb.onceTarget(id, kt.over);
