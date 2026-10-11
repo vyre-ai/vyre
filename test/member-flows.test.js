@@ -141,6 +141,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const bobApproves = await svc.approve(bob, { id: bd.id, version: cv2.version, hash: cv2.hash });
   assert.equal(bobApproves.approver.id, BOB, "bob approves carol's version: it now runs on bob's authority");
   assert.equal((await host().flows.store.active(bd.id)).version, cv2.version);
+  // new Flows nobody has approved are capped per member (50), with a next step
+  let waiting = 0;
+  for (const r of await host().flows.store.list()) if (r.active === null) { const row = await host().flows.store.flowRow(r.id); if (row.versions[0].by.id === CAROL) waiting++; }
+  for (let n = waiting; n < 50; n++) { const x = await svc.define(carolMember, { flow: find("cap_flow_" + n) }); assert.ok(x.ok, JSON.stringify(x)); }
+  assert.match(await words(svc.define(carolMember, { flow: find("one_new_flow_too_many") })), /50 new Flows waiting.*Approve or remove/s, "the 51st unapproved new Flow is refused, with a next step");
   // the Flow record types are protected: a member's records.* sees none of them and can write none (she could otherwise create an approval naming the owner, or set a version active by hand)
   const seen = await d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
   assert.equal(seen, 0, "a second member reads no Flow state through Records");
