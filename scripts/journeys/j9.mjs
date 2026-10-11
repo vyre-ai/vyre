@@ -85,6 +85,8 @@ export default {
         assert.ok(first, "the library offers a template");
         const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
+        // an installed template is a draft; the app's Templates screen has Go live as its own action and every app walk calls it (work.template.golive puts the draft version live)
+        await whenStoreIsUp(w, "work.template.golive", { template: tpl, version: inst.version });
         const started = await whenStoreIsUp(w, "work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
         assert.ok(started.project, "a project was made");
         assert.ok((started.tasks_made || 0) > 0, `tasks were made (${JSON.stringify(started.tasks_skipped || [])})`);
@@ -105,10 +107,14 @@ export default {
       }, { needs: [P], owner: "projects-flows" });
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
+      /** @type {number[]} how long each member's first chat took, in ms */ const firstChatMs = [];
       await J.step("each member has their own session on the server and sees their own Chats", async () => {
         const made = [];
         for (const p of people) {
-          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
+          // up to 120 s so the walk goes on, and the time is kept: a person's app waits 30 s (the next step says so)
+          const t0 = Date.now();
+          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }], { timeoutMs: 120_000 });
+          firstChatMs.push(Date.now() - t0);
           assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
           made.push(c.chat);
         }
@@ -117,7 +123,14 @@ export default {
           assert.ok(list.some((/** @type {any} */ x) => x.chat === made[n] && x.open === true), `${p.name} sees their own chat`);
           assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
         }
-        return `${people.length} members, each in their own chat`;
+        return `${people.length} members, each in their own chat (first chat took ${firstChatMs.map(ms => (ms / 1000).toFixed(1)).join(" s and ")} s)`;
+      }, { needs: [SIGN], owner: "chat" });
+      const MS = "each member's FIRST chat in the team Space answers within the 30 s a person's app waits";
+      await J.step(MS, async () => {
+        assert.ok(firstChatMs.length > 0, "the chats above were not made");
+        const slow = firstChatMs.filter(ms => ms > 30_000);
+        assert.equal(slow.length, 0, `the first chat took ${(Math.max(...firstChatMs) / 1000).toFixed(1)} s (all: ${firstChatMs.map(ms => (ms / 1000).toFixed(1)).join(", ")} s): in the app a first chat in a new team Space times out and works on the second try (owner: chat)`);
+        return `first chats took ${firstChatMs.map(ms => (ms / 1000).toFixed(1)).join(", ")} s`;
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
