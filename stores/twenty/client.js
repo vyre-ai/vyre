@@ -35,7 +35,7 @@ export class TwentyClient {
   async gql(path, query, variables) {
     const t0 = Date.now();
     try { return await this.#gql(path, query, variables); }
-    finally { const ms = Date.now() - t0; if (this.onSlow && ms >= this.slowMs) { const op = /(?:query|mutation)\s+(\w+)/.exec(String(query)); this.onSlow(`slow Records call: ${path} ${op ? op[1] : "?"} took ${(ms / 1000).toFixed(1)} s`); } }
+    finally { const ms = Date.now() - t0; if (this.onSlow && ms >= this.slowMs) { const op = /(?:query|mutation)\s+(\w+)/.exec(String(query)); const what = variables && variables.i ? (variables.i.field ? ` ${variables.i.field.name}` : variables.i.object ? ` ${variables.i.object.nameSingular}` : "") : ""; this.onSlow(`slow Records call: ${path} ${op ? op[1] : "?"}${what} took ${(ms / 1000).toFixed(1)} s`); } }
   }
 
   /** @param {"graphql" | "metadata"} path @param {string} query @param {Record<string, any>} [variables] */
