@@ -2407,9 +2407,10 @@ export default {
         const [a, b] = await Promise.all([K.membership(caller, K.space).catch(() => null), K.membership(target, K.space).catch(() => null)]);
         if (a && a.member === true && b && b.member === true) shares = true;
       }
-      if (!shares) return { devices: [] };
+      if (!shares) { ctx.log(`DBG-devicesOf caller=${caller} target=${target} shares=false`); return { devices: [] }; }
       const st = await stateOfPerson(target);
       const entries = st && Array.isArray(st.entries) ? st.entries : [];
+      ctx.log(`DBG-devicesOf caller=${caller} target=${target} shares=true state=${st ? "yes" : "no"} entries=${entries.length} withAgree=${entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").length}`);
       return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
     };
     tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => devicesOf(i, meta), { effect: "read" });
