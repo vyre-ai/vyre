@@ -205,6 +205,7 @@ test("fromSignIn: a Connection whose key was refused is 'The key for <host> stop
   assert.equal(rows[0].title, "The key for api.acme-crm.invalid stopped working");
   assert.equal(rows[0].kind, "signin");
   assert.deepEqual(rows[0].answer, { tool: "connectors.connection.check", input: { id: "acme-crm" }, fill: [] });
+});
 
 test("fromJobs: a live job whose last run failed is one card that names it and runs it again", async () => {
   const { fromJobs, OWNERS } = await import("./items.js");
