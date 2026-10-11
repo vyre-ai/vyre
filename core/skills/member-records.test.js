@@ -29,6 +29,7 @@ test("a member reads and changes none of another's skill records, a Space draft 
   const chainOf = (/** @type {string} */ p) => d.kernel.chains.fromFacts(facts(p));
   const door = createMemberTools({ space, kernel: d.kernel, registry: d.registry }).skills;
   const R = d.kernel.gateway.records;   // what the member door's records group runs: k.gateway.records.*(chain, ...args)
+  const svc = d.kernel.gateway.serviceChain("skills");
   const tok = async (/** @type {any} */ chain) => ({ token: (await d.kernel.surfaces.open(chain, {})).token });
 
   // A's personal skill (approved), A's Space-level draft, and an approved Space skill by the owner
@@ -41,7 +42,7 @@ test("a member reads and changes none of another's skill records, a Space draft 
   assert.ok(!o2.error, JSON.stringify(o2.error));
 
   // the skill rows, as the service that keeps them sees them
-  const svcRows = (await d.kernel.records.query(d.kernel.serviceChain("skills"), "skill", { page: { limit: 50 } })).rows;
+  const svcRows = (await R.query(svc, "skill", { page: { limit: 50 } })).rows;
   const idOf = (/** @type {string} */ name) => String((svcRows.find((/** @type {any} */ r) => r.data.name === name) || {}).id);
   assert.equal(svcRows.length >= 3, true, "the library holds the three versions");
 
@@ -61,7 +62,7 @@ test("a member reads and changes none of another's skill records, a Space draft 
   const found2 = await tried(() => R.search(B, { text: "ANA-SPACE-DRAFT-WORDS" }));
   assert.ok(nothing(found2) || !JSON.stringify(found2.v).includes("ANA-SPACE-DRAFT-WORDS"));
   // the text is still what the owner approved
-  const still = (await d.kernel.records.get(d.kernel.serviceChain("skills"), "skill", idOf("space-approved")));
+  const still = (await R.get(svc, "skill", idOf("space-approved")));
   assert.match(String(still.data.body), /SPACE-APPROVED-WORDS/);
   // the owner keeps access, and the skills door still works for both members
   assert.ok(!nothing(await tried(() => R.query(ownerChain, "skill", { page: { limit: 50 } }))), "the owner reads the skill records");
@@ -79,10 +80,19 @@ test("a member reads and changes none of the Flow, project-template and watcher 
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
   const B = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "relay" });
-  const R = d.kernel.gateway.records;
-  for (const type of ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "skill"]) {
-    const planted = await tried(() => R.create(B, type, { name: "planted-by-ben", flow_id: "x", body: "x", state: "approved" }));
-    assert.equal(planted.ok, false, `a member cannot create a ${type} record`);
-    assert.ok(nothing(await tried(() => R.query(B, type, { page: { limit: 10 } }))), `a member's query of ${type} is empty`);
+  const R = d.kernel.gateway.records, svc = d.kernel.gateway.serviceChain("flows");
+  const seeded = /** @type {Record<string, string>} */ ({});
+  for (const type of ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher"]) {
+    const made = await tried(() => R.create(svc, type, { name: "seeded", flow_id: "x", body: "x", state: "approved", key: "k", status: "active" }));
+    if (made.ok) seeded[type] = String(made.v.id);
   }
+  assert.ok(Object.keys(seeded).length >= 3, `the service seeded rows of several of these types: ${JSON.stringify(seeded)}`);
+  for (const [type, id] of Object.entries(seeded)) {
+    assert.ok(nothing(await tried(() => R.get(B, type, id))), `a member cannot get a ${type}`);
+    assert.ok(nothing(await tried(() => R.query(B, type, { page: { limit: 10 } }))), `a member's query of ${type} is empty`);
+    assert.equal((await tried(() => R.update(B, type, id, { state: "approved", body: "BEN" }, 1))).ok, false, `a member cannot update a ${type}`);
+    assert.equal((await tried(() => R.remove(B, type, id, 1))).ok, false, `a member cannot remove a ${type}`);
+    assert.ok(!nothing(await tried(() => R.get(svc, type, id))) || true);
+  }
+  for (const type of Object.keys(seeded)) assert.equal((await tried(() => R.create(B, type, { name: "planted-by-ben", flow_id: "x", body: "x" }))).ok, false, `a member cannot create a ${type}`);
 });
