@@ -18,7 +18,9 @@ export default {
     const door = createDoor(ctx);
     /** @typedef {{ space: string, gateway: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn */
-    const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta); const gate = await cloudGate(ctx, d.space); if (gate) throw gate; return withDue(await fn(i || {}, d), d.space, meta); } });
+    /** The task calls a team MEMBER's app makes on the team's server, by tool name (the member door's rows, core/work/member-tools.js). @type {Map<string, (i: any, d: Opened) => Promise<any>>} */
+    const ops = new Map();
+    const tool = (name, description, input, fn) => ops.set(name, fn) && ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta); const gate = await cloudGate(ctx, d.space); if (gate) throw gate; return withDue(await fn(i || {}, d), d.space, meta); } });
     /** A task due in a space with its own zone shows both clocks: `due_shown`, "9:00 am PT · 9:00 pm your time" (the reader's zone is the device's). A space with no zone, or the reader in it, adds nothing. @param {any} out @param {string} space @param {any} meta */
     const withDue = async (out, space, meta) => {
       if (!out || typeof out !== "object" || !(out.task || Array.isArray(out.tasks))) return out;
@@ -63,6 +65,26 @@ export default {
       return out;
     };
     tool("tasks.submit", "The doer hands in what it made. The kernel checks the output and moves the task on (to needs_check or done).", obj({ space: str, id: str, evidence: { type: "object" } }, ["id", "evidence"]), async (i, d) => ({ task: await asks(d).complete(d.chain, String(i.id), evidence(i.evidence)) }));
+    // ---- the member door: a team member's daily work on tasks, run as her, in the team's Space ----
+    // `decide` is not here: approving is the person's own act with their presence, which the door does not carry.
+    const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
+      list: ["record", "doer", "checker", "state", "limit"], get: ["id"], request: ["task"], move: ["id", "to", "reason", "suggested_fix"], submit: ["id", "evidence"],
+    });
+    const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
+      if (!i || !calls.includes(i.call)) throw refuse(`call is one of ${calls.join(", ")}`, "bad_input");
+      const fn = ops.get(`tasks.${i.call}`);
+      if (!fn) throw refuse("no such call; use one of the calls this tool names in its input", "not_found");
+      const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
+      const d = await door.open({}, extra);
+      const gate = await cloudGate(ctx, d.space); if (gate) throw gate;
+      return withDue(await fn(clean, d), d.space, extra);
+    };
+    const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    ctx.tool("tasks.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's tasks (list, get), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["list", "get"]), run: serve(["list", "get"]) });
+    ctx.tool("tasks.serve-work", { effect: "write", internal: true, callers: ["module"], description: "A team member works a task of hers (start it, flag it stuck, hand it in), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["move", "submit"]), run: serve(["move", "submit"]) });
+    ctx.tool("tasks.serve-request", { effect: "write", internal: true, callers: ["module"], description: "A team member asks for a task, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["request"]), run: serve(["request"]) });
     return { async stop() {} };
   },
 };

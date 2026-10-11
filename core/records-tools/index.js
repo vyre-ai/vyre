@@ -34,12 +34,14 @@ export default {
       const name = row && row.name;
       return { id, label: typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null };
     };
-    const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+    /** The Store calls a team MEMBER's app makes on the team's server, by tool name: the same bodies as the tools below, run under the member's own chain in the team's Space (the member door's rows, core/work/member-tools.js). @type {Map<string, { fn: (i: any, d: any) => Promise<any>, where: (i: any) => any }>} */
+    const ops = new Map();
+    const tool = (name, description, input, fn, where = i => i) => { ops.set(name, { fn, where }); ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(where(i || {}), meta);
       const out = await fn(i || {}, d);
       // every answer names the space it acted in
       return out && typeof out === "object" && !Array.isArray(out) ? { ...out, acted_in: await actedIn(d.space) } : out;
-    } });
+    } }); };
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
     // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. Twenty is
@@ -194,6 +196,27 @@ export default {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 500) : 100;
       return { events: await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), ...(Number.isInteger(i.since) ? { since: i.since } : {}), limit }) };
     });
+    // ---- the member door: a team member's daily work on records, run as her, in the team's Space (core/work/member-tools.js) ----
+    // The input keys each call takes: anything else is dropped before the tool sees it, so a member's call cannot name a Space, a proof or a chain. The kernel judges every record under her chain.
+    const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
+      me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"],
+      create: ["type", "data"], update: ["urn", "patch", "base_version"],
+    });
+    const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
+      if (!i || !calls.includes(i.call)) throw refuse(`call is one of ${calls.join(", ")}`, "bad_input");
+      const op = ops.get(`records.${i.call}`);
+      if (!op) throw refuse("no such call; use one of the calls this tool names in its input", "not_found");
+      const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
+      const d = await door.open({}, extra);
+      const out = await op.fn(clean, d);
+      return out;
+    };
+    const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events"]), run: serve(["me", "actors", "types", "list", "get", "events"]) });
+    ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
+    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update"]), run: serve(["update"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },
