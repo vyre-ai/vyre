@@ -314,6 +314,22 @@ export default {
       return { person: false, source: `agent:${claim}`, name: (await isAssistant(claim)) ? null : claim, thread };
     };
 
+    /**
+     * A task starts an AI session later, unattended, on this machine's login (or an agent's) with the words it carries. Only the Space's owner and its admins schedule one: a member's call (a person hop on the
+     * call's own kernel chain that is neither) is refused, whoever she asks through (her own session, an agent, a surface). A call with no person on it (the planner's own, an agent's own claim, a Space with no
+     * kernel) is judged by taskScope as before.
+     * @param {{ chain?: any }} w
+     */
+    const mayScheduleJobs = async w => {
+      const hop = w && w.chain && Array.isArray(w.chain.hops) ? w.chain.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
+      if (!hop || !K) return true;
+      const person = String(hop.actor.id), canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+      if (K.owner && canon(person) === canon(String(K.owner))) return true;
+      const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
+    };
+    const memberRefusal = () => fail("Scheduling a task that starts an AI session is for this Space's owner and its admins. Add a reminder or a to-do instead, or ask the owner to schedule it.", "denied");
+
     const agentKind = (kind, w) => {
       if (w.person) return;
       if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may add alarms, timers, reminders, todos, notes and tasks, not ${kind}s`, "denied");
@@ -409,6 +425,7 @@ export default {
       const kind = input.kind || "note";
       if (!KINDS.includes(kind)) throw fail(`kind is one of ${KINDS.join(", ")}`);
       agentKind(kind, w);
+      if (kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       if (kind === "task") await taskScope({ thread: input.thread || null, project: input.project || null }, w);
       capped(w);
       const s = settings();
@@ -501,6 +518,7 @@ export default {
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
+      if (item.kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
       // checked at add time - letting an agent redirect it afterward with planner.update would be

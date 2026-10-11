@@ -291,7 +291,7 @@ export default {
     };
 
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
-    const launch = async (a, { prompt, resume, job, project } = {}) => {
+    const launch = async (a, { prompt, resume, job, project, forPerson } = {}) => {
       const creds = await credentials(a);
       // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
       let caps = "";
@@ -302,7 +302,9 @@ export default {
       const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
-        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}) };
+        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
+        // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
+        ...(forPerson ? { for_person: forPerson } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
       if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
@@ -598,6 +600,8 @@ export default {
         };
         const a = must(i.agent);
         const surface = i.surface || String(caller || "vyre");
+        // whoever the call acts for (her own session's person included), so the gate judges her when the agent starts for her words
+        const forPerson = (await personOf(meta0)) || undefined;
         // Listen before sending, so a fast reply is not missed.
         let thread = null;
         const heard = { text: "", cost: 0 };
@@ -614,13 +618,13 @@ export default {
           if (!cur) {
             // A new thread learns its id only from the launch, so the listeners key on it after;
             // the reply cannot beat a model's first token back.
-            const t = await launch(a);
+            const t = await launch(a, { forPerson });
             thread = t.id;
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
-            if (cur.status === "stopped") await launch(a, { resume: cur.id });
+            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson });
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
