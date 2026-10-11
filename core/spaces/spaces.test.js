@@ -1575,7 +1575,13 @@ test("a member who joined through the kernel invite is found by the key-agreemen
   const bad = await d.reg.call("spaces.identity.evidence", { person: casey.id, name: "dana" }, "module:vyred");
   assert.ok(!bad.data, "a name that belongs to someone else gives no evidence");
   assert.equal(await sees(dana, casey), 0, "and remembers nothing for casey");
-  void K.membership;
+  // a stale name is harmless: if the name kept for dana now resolves to someone else (released and taken), stateOfPerson re-resolves it, finds another id, and answers nothing
+  const { DatabaseSync } = await import("node:sqlite");
+  const row = d.db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`person-name/${dana.id}`);
+  assert.equal(JSON.parse(String(/** @type {any} */ (row).value)), "dana", "the evidence kept her confirmed name");
+  d.db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify("casey"), `person-name/${dana.id}`);
+  assert.equal(await sees(casey, dana), 0, "the kept name now belongs to another id: nothing is answered");
+  void DatabaseSync; void K.membership;
 });
 
 /** A drop wrap made the way lib/keywrap.js does: ECDH-ES to a device's agree point, HKDF-SHA256 (salt = the ephemeral point, info vyre-identity-wrap-v1), AES-256-GCM bound to `aad`. */
