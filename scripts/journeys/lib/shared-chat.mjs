@@ -71,7 +71,13 @@ async function untilAnswers(person, chat, n) {
 export async function sharedChatSteps({ J, w, team, people, needs }) {
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
+  /** @type {string} */ let chat = "";
   setServerView(async () => {
+    let more = "";
+    try {
+      const view = async (/** @type {any} */ p) => ({ who: p.name, messages: (await seen(p, chat)).map(m => [String(m.author).slice(0, 24), String(m.text).slice(0, 80)]) });
+      more = ` | chat as seen ${JSON.stringify([await view(grace), await view(edith)])} | chat.get ${JSON.stringify(await grace.joined.call("chat.get", [{ chat }])).slice(0, 700)} | accounts ${JSON.stringify(await grace.joined.call("accounts.list", [{}]))}`;
+    } catch (e) { more = ` | chat view unreadable: ${String(e && /** @type {any} */ (e).message)}`; }
     try {
       const l = await w.operator("threads.list", { all: true });
       const rows = (Array.isArray(l) ? l : l.threads || l.rows || []).slice(-6);
@@ -80,8 +86,8 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
         const g = await w.operator("threads.get", { thread: r.id || r.thread, limit: 12 }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
         out.push({ id: r.id || r.thread, provider: r.provider, account: r.account, status: r.status, events: ((g && g.events) || []).slice(-8).map((/** @type {any} */ x) => [x.type, String((x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to)) || "").slice(0, 100)]), error: g && g.error });
       }
-      return ` | server threads ${JSON.stringify(out)}`;
-    } catch (e) { return ` | server threads unreadable: ${String(e && /** @type {any} */ (e).message)}`; }
+      return `${more} | server threads ${JSON.stringify(out)}`;
+    } catch (e) { return `${more} | server threads unreadable: ${String(e && /** @type {any} */ (e).message)}`; }
   });
   const accounts = /** @type {Record<string, any>} */ ({});
   const A = "the box has a stand-in Codex login and agent for the walk";
@@ -107,7 +113,6 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return `${people.length} members, accounts run as users ${people.map(p => accounts[p.name].uid).join(" and ")}`;
   }, { needs: [...needs, A], owner: "projects-flows" });
 
-  /** @type {string} */ let chat = "";
   const C = "Grace starts one chat with Edith and the AI in it, and sets it so the AI answers every message";
   await J.step(C, async () => {
     const made = await grace.joined.call("chat.create", [{ title: "Team day", people: [edith.app.identity.id, owner.id], agents: ["assistant"] }]);
@@ -121,7 +126,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
 
   const D = "each member's message is answered on that member's own account, and the second member's AI is handed what the first said";
   await J.step(D, async () => {
-    const send = (/** @type {any} */ p, /** @type {string} */ text) => p.joined.call("chat.send", [{ chat, text, account: accounts[p.name].id }]);
+    const send = (/** @type {any} */ p, /** @type {string} */ text) => p.joined.call("chat.send", [{ chat, text, to: ["assistant:assistant"], account: `codex:${accounts[p.name].id}` }]);
     await send(grace, "The code word is AMBER-92. Then say whoami.");
     const first = await untilAnswers(edith, chat, 1);
     const g = String(first[0].text);
@@ -150,10 +155,10 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const set = await edith.joined.call("chat.reply-mode", [{ chat, mode: "mention" }]);
     assert.equal(set.mode, "mention");
     const before = answers(await seen(grace, chat)).length;
-    await edith.joined.call("chat.send", [{ chat, text: "Grace, are you free after lunch?", account: accounts[edith.name].id }]);
+    await edith.joined.call("chat.send", [{ chat, text: "Grace, are you free after lunch?", account: `codex:${accounts[edith.name].id}` }]);
     await sleep(8000);
     assert.equal(answers(await seen(grace, chat)).length, before, "a plain message between people got no AI turn");
-    await edith.joined.call("chat.send", [{ chat, text: "@assistant whoami", account: accounts[edith.name].id }]);
+    await edith.joined.call("chat.send", [{ chat, text: "@assistant whoami", account: `codex:${accounts[edith.name].id}` }]);
     const after = await untilAnswers(grace, chat, before + 1);
     assert.ok(String(after[before].text).includes(`/${accounts[edith.name].uid}`), `the mention ran on Edith's account: ${after[before].text}`);
     return `answers ${before} to ${after.length}`;
