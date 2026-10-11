@@ -21,6 +21,10 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.versions": ["skills.serve", "versions"],
   "skills.draft": ["skills.serve-write", "draft"],
   "skills.approve": ["skills.serve-write", "approve"],
+  // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template is read as the work module, what it makes is made under her chain
+  "work.templates": ["work.serve", "templates"],
+  "work.project-create": ["work.serve-write", "create-project"],
+  "work.start-project": ["work.serve-write", "start-project"],
 });
 
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_allowed: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found" });
