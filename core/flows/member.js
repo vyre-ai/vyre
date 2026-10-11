@@ -4,7 +4,7 @@
 // own Surfaces door minted from what the transport proved: the person is the chain's one person hop and the role is what the Space's kernel says it is, never anything the request names.
 //
 // The Flows tools themselves check no role and no owner (they take the person from the chain and trust the door), so THESE rows carry the rules:
-//   - a Flow is its author's: a write on an existing Flow (a new version, a patch, a test case, an approval, a proposal, cancelling its run) is refused unless the latest version was made by her, or she is an owner or admin;
+//   - a Flow belongs to the SPACE: every member sees every Flow and its runs; any member writes a new version of any Flow as a DRAFT; which version runs, and on whose authority, is decided only at approval: a write on an existing Flow (a new version, a patch, a test case, an approval, a proposal, cancelling its run) is refused unless the latest version was made by her, or she is an owner or admin;
 //   - she reads her own Flows and the approved ones; she lists those; she starts any Flow she may run (the kernel's `flows.run`, which the member role holds); a run she starts is tagged with her (trigger key);
 //   - she sees runs she started and runs of Flows she made; an owner or admin sees all;
 //   - refused for a member: pausing or resuming the Space's Flows, rolling back, the AI budget, Kits;
@@ -52,79 +52,53 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   const rowOf = async (/** @type {string} */ id) => (store.flowRow ? await store.flowRow(id) : null);
   /** The actor that made the latest version of a Flow, or null (no such Flow). */
   const authorOf = async (/** @type {string} */ id) => { const r = await rowOf(id); const v = r && r.versions && r.versions[r.versions.length - 1]; return v ? v.by : null; };
-  const mine = async (/** @type {string} */ id) => { const by = await authorOf(id); return Boolean(by && by.kind === "person" && by.id === me); };
-  const active = async (/** @type {string} */ id) => { const r = await rowOf(id); return Boolean(r && r.active); };
-  const writeOk = async (/** @type {string} */ id, /** @type {string} */ what) => {
-    if (admin) return;
-    const by = await authorOf(id);
-    if (!by) throw new KernelError("not_found", "there is no such Flow (flows.list shows yours)");
-    if (!(await mine(id))) throw no(`${what}: that Flow is someone else's. Ask its author, or an owner or admin, to change it, or make a Flow of your own.`);
+  /** Whose authority the Flow runs on: the approver of its active version; before any approval, the person who made its first version. Null: no such Flow. */
+  const setterUp = async (/** @type {string} */ id) => {
+    const act = await store.active(id).catch(() => null);
+    if (act && act.approver && act.approver.kind === "person") return String(act.approver.id);
+    const r = await rowOf(id); const v1 = r && r.versions && r.versions[0];
+    return v1 && v1.by && v1.by.kind === "person" ? String(v1.by.id) : null;
   };
-  const readOk = async (/** @type {string} */ id) => {
-    if (admin || (await mine(id)) || (await active(id))) return;
-    throw new KernelError("not_found", "there is no such Flow you can see (flows.list shows yours and the approved ones)");
-  };
+  const exists = async (/** @type {string} */ id) => Boolean(await rowOf(id));
+  /** Reading a Flow, its runs and its health is every member's: Flows belong to the Space. */
+  const there = async (/** @type {string} */ id) => { if (!(await exists(id))) throw new KernelError("not_found", "there is no such Flow (flows.list shows the Space's)"); };
 
   switch (spec.kind) {
     case "open": return call();
-    case "list": {
-      const rows = await tools["flows.list"](chain, i);
-      if (admin) return rows;
-      const out = [];
-      for (const r of rows) if ((await mine(r.id)) || (r.active !== null && r.active !== undefined)) out.push(r);
-      return out;
-    }
-    case "health": {
-      if (i.id) { await readOk(need("id", "the Flow's id")); return call(); }
-      const rows = await tools["flows.health"](chain, i);
-      if (admin || !Array.isArray(rows)) return rows;
-      const out = [];
-      for (const r of rows) if ((await mine(r.id)) || (await active(r.id))) out.push(r);
-      return out;
-    }
-    case "read": await readOk(need("id", "the Flow's id")); return call();
-    case "describe": { if (i.run) { await runOk(String(i.run)); return call(); } await readOk(need("id", "the Flow's id")); return call(); }
-    case "define": {
-      // A new Flow is hers; a new version of an existing one is its author's (or an admin's)
-      if (i.id) await writeOk(String(i.id), "you cannot change it");
-      return call();
-    }
-    case "write": await writeOk(need("id", "the Flow's id"), "you cannot change it"); return call();
-    case "simulate": { if (i.id) await readOk(String(i.id)); return call(); }
+    case "list": case "runs": case "attention": return mark(await tools[spec.tool](chain, i));
+    case "health": if (i.id) await there(need("id", "the Flow's id")); return call();
+    case "read": await there(need("id", "the Flow's id")); return call();
+    case "describe": if (i.run) { await runOf(String(i.run)); return call(); } await there(need("id", "the Flow's id")); return call();
+    // Setting up and improving: any member writes a new version, a patch or a test of any Flow of the Space as a DRAFT. Which version runs, and on whose authority, is decided only at approval (below).
+    case "define": case "write": case "simulate": return call();
     case "start": {
       const id = need("id", "the Flow's id");
-      await readOk(id);
+      await there(id);
       // the starter is written into the run (its trigger key), so "the runs I started" is a fact of the run, not of a list somewhere
       return tools["flows.start"](chain, { ...i, key: `mem:${me}:${typeof i.key === "string" && i.key ? i.key.slice(0, 60) : Math.random().toString(36).slice(2, 12)}` });
     }
-    case "runs": {
-      const rows = await tools["flows.runs"](chain, i);
-      if (admin || !Array.isArray(rows)) return rows;
-      const out = [];
-      // (the listing leaves the trigger out; the run itself says who started it, in its trigger key)
-      for (const r of rows) if ((await mine(r.flow)) || startedBy(await store.getRun(r.id), me)) out.push({ ...r, started_by_me: startedBy(await store.getRun(r.id), me) });
-      return out;
-    }
-    case "run": await runOk(need("run", "the run's id")); return call();
-    case "attention": {
-      const r = await tools["flows.attention"](chain, i);
-      return r;
-    }
-    case "cancelrun": { const run = await runOf(need("run", "the run's id")); if (!admin && !startedBy(run, me) && !(await mine(run.flow))) throw no("you cannot cancel that run: it is not yours"); return call(); }
+    case "run": await runOf(need("run", "the run's id")); return call();
+    case "cancelrun": { const run = await runOf(need("run", "the run's id")); if (!admin && !startedBy(run, me) && (await setterUp(run.flow)) !== me) throw no("you cannot stop that run: it is not yours. Ask whoever set the Flow up, or an owner or admin."); return call(); }
     case "propose": {
-      // asking an owner or admin to approve her own version: the author's request, nothing applies until they say yes
-      if (i.what === "flow" || i.id) await writeOk(need("id", "the Flow's id"), "you cannot propose it");
+      // asking whoever the Flow runs for, or an owner or admin, to approve a version of the Space's Flow: any member may; nothing applies until they say yes
+      if (i.what === "flow" || i.id) await there(need("id", "the Flow's id"));
       return call();
     }
     case "approve": return approve();
     default: throw new KernelError("bad_input", "that is not a Flows call a member can make");
   }
 
+  /** Rows of runs she started carry a flag the app can show. @param {any} rows */
+  async function mark(rows) {
+    if (!Array.isArray(rows) || spec.kind !== "runs") return rows;
+    // (the listing leaves the trigger out; the run itself says who started it, in its trigger key)
+    return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, started_by_me: startedBy(await store.getRun(r.id), me) })));
+  }
   /** @param {any} r */ function startedBy(r, /** @type {string} */ person) { return Boolean(r && r.trigger && typeof r.trigger.key === "string" && r.trigger.key.startsWith(`mem:${person}:`)); }
   async function runOf(/** @type {string} */ run) { const r = store.getRun ? await store.getRun(run) : null; if (!r) throw new KernelError("not_found", "there is no such run (flows.runs lists yours)"); return r; }
-  async function runOk(/** @type {string} */ run) { if (admin) return; const r = await runOf(run); if (!startedBy(r, me) && !(await mine(r.flow))) throw new KernelError("not_found", "there is no such run you can see (flows.runs lists yours)"); }
 
-  /** Approving: her own version only, and inside the bound (MEMBER_APPROVAL) unless she is an owner or admin. */
+  /** Approving: a Flow runs on the authority of whoever approved it, so a member approves only a version of a Flow SHE set up (or one nobody has), within the bound; another member's version of it is a proposal for the
+   * person it runs for, or an owner or admin. Nobody can swap the code under someone else's authority with her own yes. */
   async function approve() {
     const id = need("id", "the Flow's id");
     if (admin) return call();
@@ -133,7 +107,8 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     const made = row && row.versions ? row.versions.find((/** @type {any} */ x) => x.version === version) : null;
     const v = made ? await store.getVersion(id, version) : null;
     if (!v) throw new KernelError("not_found", "there is no such Flow version");
-    if (!(made.by && made.by.kind === "person" && made.by.id === me)) throw no("you can approve only a version you made yourself; ask an owner or admin to approve this one");
+    const owner = await setterUp(id);
+    if (owner !== me) throw no("this Flow runs on someone else's authority, so only they (or an owner or admin) can approve a new version of it. Propose it (propose) and they are asked.");
     const why = await beyondBound(f, id, version, v, chain, kernel);
     if (why) throw no(`this version is beyond what you can approve yourself (${why}). It stays a draft: ask an owner or admin to approve it (propose).`);
     const out = await call();
@@ -176,7 +151,7 @@ export function approvalNotice(card, flow) {
   const lines = ["It runs as you, with your role only: never with the owner's authority."];
   const trigger = flow && flow.trigger && typeof flow.trigger === "object" ? String(flow.trigger.on || flow.trigger.kind || "manual") : "manual";
   if (trigger !== "manual") lines.push("It starts by itself. If you leave the team it pauses and the owner is told.");
-  if ((Array.isArray(e.model_steps) && e.model_steps.length) || (Array.isArray(e.code) && e.code.length)) lines.push("Its AI steps run on this Space's AI allowance (200,000 tokens a day for all Flows together, shared with the owner's; an owner or admin can change it), not on your own sign-in.");
+  if ((Array.isArray(e.model_steps) && e.model_steps.length) || (Array.isArray(e.code) && e.code.length)) lines.push("Its AI steps use the Space's AI credentials and count against the Space's daily allowance (200,000 tokens a day for all Flows together; an owner or admin can change it).");
   if (Array.isArray(e.outward) && e.outward.length) lines.push("Anything it sends or changes outside asks you first, every time.");
   return lines.join(" ");
 }

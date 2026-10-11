@@ -46,10 +46,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.ok(mineRuns.some((/** @type {any} */ r) => r.started_by_me === true), "she sees the run she started, marked as hers");
   assert.equal((await host().flows.store.getRun(mineRuns[0].id)).trigger.key.startsWith("mem:" + BOB + ":"), true, "and the run itself says who started it");
 
-  // she cannot change or approve the owner's Flow
-  assert.match(await words(svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "mine now" }) })), /someone else's/, "a new version of the owner's Flow is refused in words");
-  assert.match(await words(svc.patch(bob, { id: od.id, base: 1, ops: [] })), /someone else's/);
-  assert.match(await words(svc.approve(bob, { id: od.id, version: od.version, hash: od.hash })), /only a version you made yourself/);
+  // Flows belong to the Space: she may write a new version of the owner's Flow (a draft), but her yes never replaces the version that runs on the owner's authority
+  const v2 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob" }) });
+  assert.ok(v2.ok && v2.version === od.version + 1, JSON.stringify(v2));
+  assert.match(await words(svc.approve(bob, { id: od.id, version: v2.version, hash: v2.hash })), /runs on someone else's authority.*Propose it/s, "her own yes does not approve a new version of the owner's Flow");
+  assert.equal((await host().flows.store.active(od.id)).version, od.version, "the owner's version still runs");
 
   // her own Flow: made, approved (inside the bound), started, run as HER
   const bd = await svc.define(bob, { flow: find("bobs_flow") });
@@ -92,8 +93,16 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   // a second member cannot read or change her Flow through the Records door, and cannot approve it by hand
   await d.kernel.gateway.grants.setRole(chainOf(owner), { person: CAROL, role: "member" }, { presence: { method: "stand-in" } });
   const carolMember = chainOf(CAROL);
-  assert.match(await words(svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carols" }) })), /someone else's/, "the second member cannot add a version to her Flow");
-  assert.match(await words(svc.approve(carolMember, { id: bd.id, version: bd.version, hash: bd.hash })), /only a version you made yourself/, "nor approve it");
+  // a second member improves bob's Flow: it is a draft; only bob (whose authority it runs on) or an owner/admin approves it
+  assert.ok((await svc.list(carolMember, {})).some((/** @type {any} */ r) => r.id === bd.id), "every member sees every Flow of the Space");
+  assert.ok((await svc.runs(carolMember, { id: bd.id })).length >= 1, "and the runs of every Flow of the Space");
+  const cv2 = await svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carol's improvement" }) });
+  assert.ok(cv2.ok, JSON.stringify(cv2));
+  assert.match(await words(svc.approve(carolMember, { id: bd.id, version: cv2.version, hash: cv2.hash })), /runs on someone else's authority/, "she cannot approve her version of bob's Flow herself");
+  assert.equal((await host().flows.store.active(bd.id)).version, bd.version, "bob's version still runs");
+  const bobApproves = await svc.approve(bob, { id: bd.id, version: cv2.version, hash: cv2.hash });
+  assert.equal(bobApproves.approver.id, BOB, "bob approves carol's version: it now runs on bob's authority");
+  assert.equal((await host().flows.store.active(bd.id)).version, cv2.version);
   // the Flow record types are protected: a member's records.* sees none of them and can write none (she could otherwise create an approval naming the owner, or set a version active by hand)
   const seen = await d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
   assert.equal(seen, 0, "a second member reads no Flow state through Records");
