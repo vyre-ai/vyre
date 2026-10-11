@@ -1940,3 +1940,26 @@ test("spaces.servers: the servers this device is paired to, with the id spaces.c
   assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, and not a phone");
   void w;
 });
+
+test("the identity list the door admits devices from is the same whether it is read by a stored name (spaces.identity.state) or by the claimed name (spaces.identity.lookup): a held-web key keeps held (and a proven one has none), so a member whose name is stored is still refused where a claimed name would be", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t), d3 = await device(t), obs = await device(t);
+  const made = await d.ok("spaces.identity.create", { name: "kpalex" });
+  w.clock.t += 2 * 3_600_000;
+  // a key nobody proved (held web) and a passkey (alg, rp): the two fields that decide whether a hello is taken at all
+  const web = fileIdentityStore(d2.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: web.publicKey, agree: web.agree }, "module:wink");
+  const pk = fileIdentityStore(d3.space).newDeviceKey();
+  hooks.entryProof = async () => true;
+  t.after(() => { hooks.entryProof = null; });
+  await d.ok("spaces.identity.enrol", { publicKey: pk.publicKey, agree: pk.agree }, "module:wink");
+  // another computer that has this person's name stored (what a join now leaves behind) and one that has to look it up
+  await obs.ok("spaces.person.learn", { id: made.id, name: "kpalex" }, "module:vyred");
+  const byState = (await obs.ok("spaces.identity.state", { person: made.id }, "module:vyred")).entries;
+  const byLookup = (await obs.ok("spaces.identity.lookup", { name: "kpalex", id: made.id }, "module:vyred")).entries;
+  assert.ok(byState.length >= 3, "the stored name answers");
+  assert.deepEqual(byState, byLookup, "state and lookup are the same mapping of the same list");
+  const webEntry = byState.find((/** @type {any} */ e) => e.eid === web.eid);
+  assert.equal(webEntry.held, "web", "the held-web key is still held web when the name is stored: the door refuses it");
+  assert.equal(byState.find((/** @type {any} */ e) => e.eid === pk.eid).held, undefined, "a proven key is not held web");
+});
