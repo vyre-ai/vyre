@@ -35,6 +35,7 @@ import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
 import { presenceFor } from "./presence.js";
 import { createSendContext } from "./context.js";
+import { chatFolderFor } from "./chat-folder.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 
 const MIGRATIONS = [`
@@ -691,7 +692,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   }
 
   /** A chat's own working folder, where a run with no folder of its own works: `<home>/chats/<chat id>/work`. @param {string} grp */
-  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); const d = path.join(String(root), "chats", grp, "work"); fs.mkdirSync(d, { recursive: true }); return d; };
+  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); return chatFolderFor({ root: String(root), role: ctx.config && ctx.config.role, space: spaceOfChat.get(grp) || null, grp }); };
 
   // ---- runs started outside the stream (One Chat) -----------------------------------------------------
 
