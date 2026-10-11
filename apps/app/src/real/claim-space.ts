@@ -36,3 +36,20 @@ export async function makeSpaceOnPairedServer(o: { name: string; displayName?: s
     retire: retireOnPairedServer,
   });
 }
+
+/**
+ * ONE SPACE PER SERVER: make the paired server's OWN Space the team's. The server makes the Space's root key if it has none (spaces.name-here), the same names-directory record a hosted Space gets is published
+ * for the EXISTING id, and the server then keeps the name for its listing ("<Name>'s Cloud"). Nothing is hosted and nothing is ever retired: a refusal at the directory leaves the Space as it was.
+ */
+export async function nameServerOwnSpace(o: { name: string; displayName?: string }) {
+  const [mine, route] = await Promise.all([loadIdentity().catch(() => null), pairedRoute()]);
+  if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const claimed = await claimServerSpace({
+    identity: { id: mine.id, name: mine.name, eid: mine.eid, ops: mine.ops as any[], key: mine.key },
+    name: o.name, displayName: o.displayName, base: DIRECTORY,
+    route,
+    host: ({ name }) => tool<{ space: string; rootPublic?: string }>("spaces.name-here", { name }),
+  });
+  await tool("spaces.name-here", { name: claimed.label, done: true });
+  return claimed;
+}

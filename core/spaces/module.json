@@ -266,6 +266,11 @@
     "effect": "write"
    },
    {
+    "name": "spaces.name-here",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules",
     "effect": "read"

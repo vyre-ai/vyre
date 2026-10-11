@@ -5,6 +5,8 @@
 // the line turns green by itself when the piece lands. Proof (the transcript) is written to <out>/j9/ and copied to team/0.3.3/proof/team-day/ by whoever signs it off.
 //   VYRE_JOURNEY_BOX=1 node scripts/journeys/run.mjs J9      (a throwaway test box or a CI runner; see scripts/proof-dev-droplet.mjs --journeys J9)
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { createRing, holdersOf } from "../../lib/chat-keys.js";
 import path from "node:path";
 import { createApp } from "../lib/proof/app.mjs";
 import { bringUp } from "./lib/world.mjs";
@@ -35,24 +37,19 @@ export default {
         assert.ok(home && /^spc_/.test(String(home.id || home.space)), `the server's own Space is listed: ${JSON.stringify(rows).slice(0, 400)}`);
         team = { space: String(home.id || home.space), label: String(home.name || home.label || ""), name: String(home.name || home.label || home.id), home };
         const r0 = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
-        const f1 = `names-directory record for "${team.label}" before the workaround: HTTP ${r0.status}`;
-        // HARNESS WORKAROUND so the walk can go on past finding 1: give the home Space a root key (host-here does this for a hosted Space only) and publish its record as a hosted Space's is.
-        const crypto = await import("node:crypto"), cp = await import("node:child_process"), fs = await import("node:fs");
-        const { newKeyPair } = await import("../../core/spaces/identity.js");
-        const kp = await newKeyPair();
-        if (srv.kind === "installer") {   // the box's home lives in the container: write the key as the server's own user
-          const r = cp.spawnSync("docker", ["exec", "-i", "-u", "vyre", "vyre-vyre-1", "sh", "-c", `umask 077 && mkdir -p ~/.vyre/spaces/${team.space} && cat > ~/.vyre/spaces/${team.space}/root.key`], { input: kp.privateKey + "\n", encoding: "utf8" });
-          assert.equal(r.status, 0, `could not place the Space's root key in the box: ${r.stderr}`);
-        } else {
-          const { spaceFiles } = await import("../../core/spaces/host.js");
-          await spaceFiles(path.join(w.dir, "server", ".vyre", "spaces")).keys.hold(team.space, kp.privateKey);
-        }
-        void crypto; void fs;
-        const claimed = await mac.claimExistingSpace(`day${w.person.slice(-5)}`, team.space, kp.publicKey);
+        const f1 = `names-directory record for "${team.label}" before naming: HTTP ${r0.status}`;
+        // the owner makes the server's own Space the team's (no host-here): the key, the directory record for the existing id, the listing name
+        const claimed = await mac.nameOwnSpace(`day${w.person.slice(-5)}`);
+        assert.equal(claimed.space, team.space, "the record names the server's own Space, not a new one");
         team.label = claimed.label; team.name = claimed.name;
         const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
-        assert.equal(r.status, 200, "the directory resolves the Space's name after the harness claimed it");
-        return `${team.space} (was "${home.name}") now ${team.name}; harness workaround for findings 1 and 2; ${f1}`;
+        assert.equal(r.status, 200, "the directory resolves the Space's name");
+        const after = await w.call("spaces.list", {});
+        const rows2 = Array.isArray(after) ? after : after.spaces || [];
+        assert.equal(rows2.length, rows.length, "no second Space appeared");
+        const row = rows2.find((/** @type {any} */ x) => (x.id || x.space) === team.space);
+        assert.ok(row && row.label === team.label && row.tier === "cloud", `the Space is listed under its team name: ${JSON.stringify(row)}`);
+        return `${team.space} (was "${home.name}") now ${team.name}; ${f1}`;
       }, { owner: "projects-flows" });
 
       // two more people, each with their own app, name and keys
@@ -100,11 +97,15 @@ export default {
       const P = "a project starts from a template and its stages and tasks are made";
       /** @type {any} */ let project = null;
       await J.step(P, async () => {
+        // a person adds the assistant the template names (Settings, Assistants) before starting from it: the library template's first tasks are done by "research", which a new Space does not have (every app walk does this first)
+        await whenStoreIsUp(w, "agents.create", { name: "research", kind: "agent", projects: [], instructions: "Finds and reads the documents." });
+        await whenStoreIsUp(w, "spaces.members.add-agent", { space: team.space, agent: "research" });   // the task's doer is the agent as an actor of the Space ("research is not in this space yet")
         const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
         const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
+        await whenStoreIsUp(w, "work.template.golive", { template: tpl, version: inst.version || 1 });   // an installed template is a draft; the owner puts it live
         const started = await whenStoreIsUp(w, "work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
         assert.ok(started.project, "a project was made");
         assert.ok((started.tasks_made || 0) > 0, `tasks were made (${JSON.stringify(started.tasks_skipped || [])})`);
@@ -112,7 +113,7 @@ export default {
         return `${first.name}: ${started.tasks_made} tasks`;
       }, { needs: [T], owner: "projects-flows" });
       await J.step("the project's timeline begins with where it started from", async () => {
-        const tl = await w.call("work.timeline", { project: project.project });
+        const tl = await w.call("work.timeline", { project: project.slug });
         assert.match(JSON.stringify(tl), /Started from/i);
       }, { needs: [P], owner: "projects-flows" });
       await J.step("a Flow from the template is installed, healthy, and has run", async () => {
@@ -126,9 +127,18 @@ export default {
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
       await J.step("each member has their own session on the server and sees their own Chats", async () => {
-        const made = [];
+        const made = [], firstChatMs = /** @type {string[]} */ ([]);
         for (const p of people) {
-          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
+          // the member's device makes the chat's key ring, as the app does (journeys/lib/chat.mjs startChat does the same for the owner): the server has no agreement point for a joined member until their device is opened
+          const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
+          const cid = `chat_${crypto.randomUUID()}`;
+          const ring = createRing(cid, holdersOf([{ device: `dev_${p.name.toLowerCase()}`, agree: dev.getPublicKey().toString("base64url") }]));
+          const t00 = Date.now();
+          await p.joined.call("grants.members.list", []);   // a trivial call first: what a member's call costs before any chat work
+          firstChatMs.push(`${p.name} trivial call ${((Date.now() - t00) / 1000).toFixed(1)} s`);
+          const t0 = Date.now();
+          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes`, id: cid, ring: ring.doc }]);
+          firstChatMs.push(`${p.name} ${((Date.now() - t0) / 1000).toFixed(1)} s`);
           assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
           made.push(c.chat);
         }
@@ -137,12 +147,14 @@ export default {
           assert.ok(list.some((/** @type {any} */ x) => x.chat === made[n] && x.open === true), `${p.name} sees their own chat`);
           assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
         }
-        return `${people.length} members, each in their own chat`;
+        return `${people.length} members, each in their own chat; first chat.create: ${firstChatMs.join(", ")}`;
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
+      // the server's own log, kept with the proof: the box is torn down after the run (store define lines, store attach, who waited for whom)
+      if (srv.kind === "installer") { try { const { spawnSync } = await import("node:child_process"); const fs = await import("node:fs"); const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "cat ~/.vyre/logs/*.log"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }); fs.writeFileSync(path.join(ctx.out, "j9", "vyred.log"), r.stdout || ""); } catch { /* a courtesy */ } }
       for (const p of people) { try { p.app.close(); } catch { /* closed */ } }
       await w.stop().catch(() => {});
     }

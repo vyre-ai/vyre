@@ -317,21 +317,20 @@ export function createApp(o) {
     });
   }
 
-  /**
-   * HARNESS ONLY (J9H, fact-finding): publish a Space the server ALREADY holds (its home Space) in the names directory, the way createTeamSpace does for a hosted one, with the Space's root public key the harness
-   * made for it. There is no product path for this today: the only claim is claimServerSpace, which asks the server to host a NEW Space. @param {string} name @param {string} space @param {string} rootPublic
-   */
-  async function claimExistingSpace(name, space, rootPublic) {
+  /** The server's OWN Space made the team's (the app's nameServerOwnSpace, apps/app/src/real/claim-space.ts): spaces.name-here, the directory record for the existing id, spaces.name-here { done }. @param {string} name */
+  async function nameOwnSpace(name) {
     if (!me || !pairing) throw new Error("this app has no identity or no server yet");
-    return claimServerSpace({
+    const claimed = await claimServerSpace({
       identity: { id: me.id, name: me.name, eid: me.key.eid, ops: me.ops, key: me.key }, name, displayName: name, base: o.directory,
       route: { relay: pairing.relay, route: pairing.route, box: pairing.box },
-      host: async () => ({ space, rootPublic }),
+      host: a => callTool("spaces.name-here", { ...a }),
     });
+    await callTool("spaces.name-here", { name: claimed.label, done: true });
+    return claimed;
   }
 
   return {
-    claimExistingSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
