@@ -79,6 +79,7 @@ export function lentPlacements(registry, extra = {}) {
     spaces: () => { const f = registry.deps.lentSpaces; return typeof f === "function" ? f() : []; },
     find: (/** @type {string} */ space, /** @type {string} */ id, /** @type {string} */ person) => { const h = homeOf(space); return h ? h.book.find(id, person) : null; },
     askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason, /** @type {string} */ person) => book(space).askRelease(session, reason, person),
+    cancelRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).cancelAsk(session, person),
     bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).bringBack(session, person),
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
     /** A chat that began on this server goes to one of the person's computers: { thread, person } -> { where: "mac", device, epoch }. The daemon says how (it holds the server's own store). */
