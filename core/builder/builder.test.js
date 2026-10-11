@@ -92,7 +92,7 @@ test("a private repo: the granted GitHub token is read for the clone only, rides
   const TOKEN = "github_pat_" + "A1b2C3d4E5".repeat(4);
   const dir = tmp(t);
   const secretFile = path.join(dir, "GITHUB_TOKEN");
-  fs.writeFileSync(secretFile, TOKEN + "\n", { mode: 0o400 });
+  fs.writeFileSync(secretFile, TOKEN + "\n", { mode: 0o600 });
   /** @type {any[]} */ const cloned = [];
   seam.clone = async (url, branch, to, token) => { cloned.push({ url, token }); fs.mkdirSync(to, { recursive: true }); fs.writeFileSync(path.join(to, "index.html"), "<h1>private</h1>"); };
   t.after(() => { seam.clone = null; });
