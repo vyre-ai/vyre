@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, checkLaunch, askerOver, memberAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -84,7 +84,7 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await agentLaunchGuard(sb(), i, null, OWNER);
   await agentLaunchGuard(sb(), i, ANA, undefined);
   await agentLaunchGuard(sb(), { ...i, account: "anas" }, ANA, OWNER);
-  await agentLaunchGuard(sb(), {}, ANA, OWNER);
+  await agentLaunchGuard(sb(), { lean: true }, ANA, OWNER);   // a tool-less agentless launch
   // an agent with a credential picked for it runs on that for a member (its vault token or key is in the launch); one with nothing picked is refused
   // a picked credential is the owner's: someone else's turn runs on it only when the launch delivers it unreadable to the turn's tools (delivered "fd"); an env var, a file, or a delivery nobody reports is refused
   const withDelivery = (/** @type {any} */ how) => { const x = sb(); x.deps.credentialDelivery = () => how; return x; };
@@ -114,16 +114,30 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await agentLaunchGuard(sb({ canon }), i, "per_owner_alias", OWNER);
 });
 
-test("checkLaunch: who asks is the first person on the chain, else the asker the module recorded; automation and nobody-recorded are told apart", async () => {
+test("checkLaunch: who asks is the first person on the chain, else the person the module says the work is for; automation, nobody-recorded and agentless jobs are told apart", async () => {
   const chain = (/** @type {string[]} */ ...ids) => ({ hops: ids.map(id => ({ actor: id === "assistant" ? { kind: "agent", id } : { kind: "person", id } })) });
   const env = { ANTHROPIC_API_KEY: "x" }, tm = { agent: "tm", agent_kind: "teammate", env };
   const none = sb();
   await assert.rejects(checkLaunch(none, tm, chain(ANA), OWNER), /cannot be used for a teammate's request yet/, "a member's chain");
   await assert.rejects(checkLaunch(none, tm, chain(ANA, "assistant"), OWNER), /cannot be used for a teammate's request yet/, "a member's session chain (she and the assistant)");
   assert.equal(await checkLaunch(none, tm, chain(OWNER), OWNER), OWNER);
-  await assert.rejects(checkLaunch(none, { ...tm, asker: ANA }, null, OWNER), /cannot be used for a teammate's request yet/, "no chain, the recorded asker is a member");
-  assert.equal(await checkLaunch(none, { ...tm, asker: OWNER }, null, OWNER), OWNER, "no chain, the recorded asker is the owner");
-  assert.equal(await checkLaunch(none, { ...tm, asker: "automation" }, null, OWNER), null, "automation");
+  await assert.rejects(checkLaunch(none, { ...tm, for_person: ANA }, null, OWNER), /cannot be used for a teammate's request yet/, "no chain, the module says the work is for a member");
+  assert.equal(await checkLaunch(none, { ...tm, for_person: OWNER }, null, OWNER), OWNER, "no chain, the module says it is for the owner");
+  assert.equal(await checkLaunch(none, { ...tm, for_person: "automation" }, null, OWNER), null, "automation, named by the module");
   await assert.rejects(checkLaunch(none, tm, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, a picked credential");
   assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked: as before");
+  // an agentless launch: tool-less passes for anyone; WITH tools it is the machine's own sign-in, the owner's
+  assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), null, "tool-less");
+  assert.equal(await checkLaunch(none, { lean: true }, chain(ANA), OWNER), null, "lean");
+  await assert.rejects(checkLaunch(none, {}, chain(ANA), OWNER), /runs on the machine's own sign-in, which is the owner's/, "agentless with tools, a member");
+  await assert.rejects(checkLaunch(none, { for_person: ANA }, null, OWNER), /runs on the machine's own sign-in/, "agentless with tools, for a member");
+  assert.equal(await checkLaunch(none, {}, chain(OWNER), OWNER), OWNER, "agentless with tools, the owner");
+  assert.equal(await checkLaunch(none, {}, null, OWNER), null, "agentless with tools, nobody: today's behaviour (the planner refuses a member's job itself)");
+});
+
+test("trustedLaunch keeps for_person only from a first-party module's call", () => {
+  const i = { agent: "a", for_person: "per_x" };
+  assert.equal(trustedLaunch(i, { firstParty: true, caller: "module:team" }).for_person, "per_x");
+  for (const meta of [{ caller: "module:team" }, { firstParty: true, caller: "cli" }, { firstParty: true, caller: "mcp" }, { firstParty: false, caller: "module:added" }, undefined]) assert.equal(/** @type {any} */ (trustedLaunch(i, meta)).for_person, undefined, JSON.stringify(meta));
+  assert.deepEqual(trustedLaunch({ agent: "a" }, undefined), { agent: "a" });
 });
