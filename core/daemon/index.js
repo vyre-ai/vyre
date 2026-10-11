@@ -151,7 +151,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, sessionFor?: (device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>, kernelPresence?: any,
- *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
+ *   kernel?: boolean, recordsStore?: Record<string, any>, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();

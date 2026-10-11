@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(test): "a real daemon whose record store cannot start" (test/module-store-waiting.test.js) no longer depends on the machine. On a box that can run Twenty it provisioned a real one (minutes, and past its 200 s limit); the daemon now takes `recordsStore` options (a test's own preflight) and the test says Docker is absent. 5 of 5 runs pass in 7 s.
 - fix(records): a write to a Twenty store answers with the empty text it was given. Twenty keeps an empty text as no value, so the created chat record (`agents` written as "" for a chat with no assistant) came back without the field and the gateway refused it as store_disagreed: `work.chat.create` failed on a real install (J1, J6). A later read still says what Twenty holds. `stores/twenty/define-serial.test.js`.
 - fix(records): the Twenty store makes a type's four mirror columns (`vyreProject`, `vyreOwner`, ...) one caller at a time, in the same line as its definitions. Two callers that both saw a column missing both created it and Twenty refused the second with a duplicate-field migration error, which left the chat record without its fields and failed `work.chat.create` with store_disagreed (J1, J6). `stores/twenty/define-serial.test.js`.
 - fix(work): the pinned-chat table (`work_persistent`) is made in the database a call lands in. A member's call on the team server runs in that Space's own file, which the table was never made in (no such table). `core/work/work.test.js`.
