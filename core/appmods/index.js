@@ -544,6 +544,12 @@ export default {
         else db.prepare("INSERT INTO appmods_apps (name, space, version, state, origin, hook_port, login_email, installed, note) VALUES (?,?,?,?,?,?,?,?,?)").run(m.name, at, m.version, "installing", null, 0, "", Date.now(), null);
         try {
           const up = await driver.up({ space: at, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets, publishSpace: sp });
+          // a job is set up, not served: it has no origin, so the apps' front never routes to it and there is no health to wait for
+          if (m["x-publish"].job) {
+            db.prepare("UPDATE appmods_apps SET state = 'running' WHERE name = ?").run(m.name);
+            ctx.events.emit("appmods.installed", { name: m.name, version: m.version, source: "publish", deployment: d.id });
+            return { name: m.name, state: "running", url: null };
+          }
           db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, m.name);
           await healthy(m, up.origin);
           db.prepare("UPDATE appmods_apps SET state = 'running' WHERE name = ?").run(m.name);
@@ -553,6 +559,20 @@ export default {
         }
         ctx.events.emit("appmods.installed", { name: m.name, version: m.version, source: "publish", deployment: d.id });
         return { name: m.name, state: "running", url: originFor(m.name, baseHost()) };
+      },
+    });
+    ctx.tool("appmods.publish.run", {
+      internal: true, callers: ["module"],
+      description: "Run a published job once: { deployment } -> { ok, message, output }. Publish only, for a job its owner approved. The helper runs only the approved image, with the job's own limits; the output is what it printed, cut to 4 KB.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        publishOnly(meta);
+        const row_ = byDeployment(i.deployment);
+        if (!row_) throw refuse("that job is not set up here: publish.status shows what is live", "not_found");
+        const m = catalog.get(row_.name);
+        if (!m || !m["x-publish"] || !m["x-publish"].job) throw refuse("that deployment is not a job", "bad_input");
+        if (typeof driver.run !== "function") throw refuse("jobs run on a server installed with its host helper; this server has none: ask the owner of this server to install Vyre with the Linux installer", "unsupported");
+        return driver.run({ manifest: m });
       },
     });
     ctx.tool("appmods.publish.stop", {
@@ -615,7 +635,7 @@ export default {
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
-      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().filter((/** @type {any} */ r) => !(catalog.get(r.name) || { app: {} }).app.service).map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
+      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().filter((/** @type {any} */ r) => { const m = /** @type {any} */ (catalog.get(r.name) || { app: {} }); return !m.app.service && !(m["x-publish"] && m["x-publish"].job); }).map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
         ...domains.list().filter(d => (row(d.app) || {}).state === "running").map(d => d.host)] }) });
     registerDomainTools({ ctx, domains, running: app => (row(app) || {}).state === "running", ownerOrAdmin,
       signingApp: () => { for (const m of catalog.values()) if (m.app && m.app.signing && (row(m.name) || {}).state === "running") return m.name; return null; } });

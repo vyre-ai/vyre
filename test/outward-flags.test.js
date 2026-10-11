@@ -14,6 +14,7 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
   "appmods.publish.install": "runs the owner's own built image as a site's server; module-only (Publish), called inside the held decision that makes the site public (deploy.publish is the outward act and carries the person's yes; a nested outward call would need a second card for the same act)",
+  "appmods.publish.run": "runs an already approved job once; module-only (Publish), called by publish.job.run, which only the people who may put the job live can use",
   "appmods.publish.stop": "stops a site's server; module-only (Publish), taking a site down needs no yes",
   "appmods.publish.remove": "removes a site's server and keeps its data; module-only (Publish), taking a site down needs no yes",
   "vault.mcp.agent.call": "the Vault's own tool call as an outside agent: a read runs, anything that changes something outside is held for the person by the same relay as vault.request; only the outside-agents module asks",
@@ -39,6 +40,9 @@ const NOT_OUTWARD = {
   "memory.merge": "merges memory between your own devices",
   "publish.create": "starts a draft; nothing is public until publish.publish",
   "publish.flow": "a read of the publish flow",
+  "publish.job.attention": "a read",
+  "publish.job.run": "runs a job the owner already approved, as an act the person starts themselves; it is not on the assistant's list",
+  "publish.job.runs": "a read",
   "publish.list": "a read",
   "publish.plan": "a read",
   "publish.status": "a read",

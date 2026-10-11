@@ -19,6 +19,7 @@
       { "name": "appmods.signed.revoke", "effect": "write", "reach": "modules" },
       { "name": "appmods.signing.request", "effect": "write", "reach": "modules" },
       { "name": "appmods.publish.install", "effect": "write", "reach": "modules" },
+      { "name": "appmods.publish.run", "effect": "write", "reach": "modules" },
       { "name": "appmods.publish.stop", "effect": "write", "reach": "modules" },
       { "name": "appmods.publish.remove", "effect": "write", "reach": "modules" },
       { "name": "appmods.signing.waiting", "effect": "read", "reach": "modules" },

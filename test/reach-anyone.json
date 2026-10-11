@@ -2544,6 +2544,14 @@
   "names.domain.check": {
    "module": "names",
    "reason": "read-only: a live DNS check of the two records for an own domain, answered to the caller that asks; the directory call is the box's own signed read and nothing is changed"
+  },
+  "publish.job.attention": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+  },
+  "publish.job.runs": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
   }
  }
 }

@@ -446,7 +446,7 @@ export default {
       input: obj({ project: { type: "string", description: "The Project's short name, record id or address" } }, ["project"]), callers: ["module"], internal: true,
       run: async (input, extra) => {
         kernelOf();
-        if (String((extra && extra.caller) || "") !== "module:previews") throw Object.assign(new Error("only the previews module asks who a project's people are"), { code: "denied" });
+        if (!["module:previews", "module:publish"].includes(String((extra && extra.caller) || ""))) throw Object.assign(new Error("only the previews and publish modules ask who a project's people are"), { code: "denied" });
         return (await hubOf().peopleOf(String(input.project || ""))) || { people: [], personal_of: null, missing: true };
       },
     });

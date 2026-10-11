@@ -34,13 +34,17 @@ export function publishedManifest(d, o) {
   const asked = d.limits && typeof d.limits === "object" ? d.limits : {};
   const limits = { memoryMb: asked.memoryMb ?? DEFAULTS.memoryMb, cpus: asked.cpus ?? DEFAULTS.cpus, pids: asked.pids ?? DEFAULTS.pids };
   for (const k of /** @type {const} */ (["memoryMb", "cpus", "pids"])) if (typeof limits[k] !== "number" || !(limits[k] > 0) || limits[k] > CEILING[k]) throw refuse(`${k} is at most ${CEILING[k]} for a published server`);
+  // A job: an image that runs to completion on a schedule. It has no address; its limit is the longest one run may take.
+  const jb = d.job && typeof d.job === "object" ? d.job : null;
+  if (jb && !(Number.isInteger(jb.timeout_s) && jb.timeout_s >= 60 && jb.timeout_s <= 3600 && Number.isInteger(jb.every_minutes) && jb.every_minutes >= 5 && jb.every_minutes <= 10080)) throw refuse("a job runs every 5 minutes to a week and for 60 to 3600 seconds at most");
+  const job = jb ? { everyMinutes: jb.every_minutes, timeoutS: jb.timeout_s } : null;
   const h = rt.health && typeof rt.health === "object" ? rt.health : {};
   const health = { path: typeof h.path === "string" ? h.path : "/", ok: Array.isArray(h.ok) && h.ok.length ? h.ok : [200, 301, 302, 401, 403, 404], startS: 60 };
   return {
     name, version: `0.0.${Number.isInteger(d.version) && d.version > 0 ? d.version : 1}`, vyre: "1",
     description: `${name}, published from this server's Publish.`,
-    "x-publish": { deployment: d.id, secrets, ...(o.public ? { public: true } : {}) },
-    app: { image: rt.image, port: Number(rt.port), volumes: [{ name: "data", path: "/data" }], health, limits, readOnly: true, ...(o.public ? { open: true } : {}) },
+    "x-publish": { deployment: d.id, secrets, ...(o.public ? { public: true } : {}), ...(job ? { job } : {}) },
+    app: { image: rt.image, port: Number(rt.port), volumes: [{ name: "data", path: "/data" }], health, limits, readOnly: true, ...(o.public && !job ? { open: true } : {}) },
   };
 }
 

@@ -158,6 +158,14 @@ export const fromSignIn = rows => rows.filter(r => r && typeof r.id === "string"
 });
 
 /**
+ * publish.job.attention (G15): a live job whose last run failed. One `run` card each, quiet until it fails again; its answer runs it again (the helper holds the five-minute floor between runs).
+ * @param {any[]} rows
+ */
+export const fromJobs = rows => rows.filter(r => r && typeof r.deployment === "string" && /^dep_[0-9a-f]{16}$/.test(r.deployment)).map(r => ({
+  id: `publish:${r.deployment}`, kind: "run", title: `The job ${clean(r.name, 60) || "a job"} failed`, ...opt("detail", cap(clean(r.message), DETAIL_MAX)), at: at(r.at), source: "publish",
+  answer: { tool: "publish.job.run", input: { deployment: r.deployment }, fill: /** @type {string[]} */ ([]) } }));
+
+/**
  * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
  * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
  */
@@ -174,6 +182,8 @@ export const OWNERS = [
     ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },
   { name: "connectors", tool: "connectors.site.attention", map: d => fromSignIn(d && Array.isArray(d.sites) ? d.sites : []), quiet: true, watch: [
     ["connectors.*", (t, p) => (p && p.id && t === "connectors.connection-checked" ? [`connectors:${p.id}`, p.light === "green" ? "signed in" : "checked"] : null)]] },
+  { name: "publish-jobs", tool: "publish.job.attention", map: d => fromJobs(d && Array.isArray(d.jobs) ? d.jobs : []), quiet: true, watch: [
+    ["deployment.*", (t, p) => (t === "deployment.job-ran" && p && p.deployment ? [`publish:${p.deployment}`, p.ok ? "ran again" : "failed"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },

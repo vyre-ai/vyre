@@ -82,7 +82,7 @@ async function containerBuild(ctx, d, dir, secretArgs, synth) {
   const allow = (ctx.config && ctx.config.builder && Array.isArray(ctx.config.builder.from) ? ctx.config.builder.from : []).filter((/** @type {any} */ x) => typeof x === "string");
   const digest = synth ? digestOf(site.files) : site.digest;
   const checked = checkDockerfile(df.content.toString("utf8"), { allow });
-  const port = synth ? 8080 : d.build && Number.isInteger(d.build.port) ? d.build.port : checked.port;
+  const port = synth || d.job ? 8080 : d.build && Number.isInteger(d.build.port) ? d.build.port : checked.port;
   if (!port) throw refuse("name the port the app listens on: set the build's port, or put an EXPOSE line in the Dockerfile", "refused");
   const tag = `vyre-pub-${String(d.name || "app").replace(/[^a-z0-9-]/g, "")}:${digest.replace(/^sha256:/, "").slice(0, 16)}`;
   // a server that runs its apps through the host helper cannot run Docker here: the helper builds, from a folder this module writes and takes by rename (team/contracts/builder.md)
@@ -90,7 +90,7 @@ async function containerBuild(ctx, d, dir, secretArgs, synth) {
   const built = seam.buildImage ? await seam.buildImage({ files: site.files, tag, secretArgs })
     : helper.present() ? await buildByHelper(ctx, helper, d, site.files, port, secretArgs) : await buildImage({ files: site.files, tag, secretArgs });
   const left = site.skipped.length ? `; left out: ${site.skipped.slice(0, 5).join(", ")}${site.skipped.length > 5 ? ` and ${site.skipped.length - 5} more` : ""}` : "";
-  return { digest, files: [], logs: `Built an image from ${site.files.length} file${site.files.length === 1 ? "" : "s"} of ${site.name}${left}.\n${built.logs}`, runtime: { kind: "image", image: built.image, port, health: { path: HEALTH.path, ok: [...HEALTH.ok] } } };
+  return { digest, files: [], logs: `Built an image from ${site.files.length} file${site.files.length === 1 ? "" : "s"} of ${site.name}${left}.\n${built.logs}`, runtime: { kind: "image", image: built.image, port, health: { path: HEALTH.path, ok: [...HEALTH.ok] }, ...(d.job ? { job: true } : {}) } };
 }
 
 /**
@@ -103,7 +103,7 @@ export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
   if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here: restart Vyre and try again", "not_available");
   const where = { home, space: String(d.space || ""), deployment: String(d.id || "") };
   try {
-    writeServerFolder({ ...where, files, request: requestText({ name: String(d.name), version: Number(d.version) || 1, port, memoryMb: 512, cpus: 0.5, pids: 256, health: { path: HEALTH.path, ok: [...HEALTH.ok], startS: 60 }, secrets: [] }) });
+    writeServerFolder({ ...where, files, request: requestText({ name: String(d.name), version: Number(d.version) || 1, port, memoryMb: 512, cpus: 0.5, pids: 256, health: { path: HEALTH.path, ok: [...HEALTH.ok], startS: 60 }, secrets: [], ...(d.job ? { jobS: d.job.timeout_s } : {}) }) });
     const r = await helper.ask("pub-build", where.deployment, { what: "this site's image", timeoutMs: 20 * 60_000 });
     const id = /^built (sha256:[0-9a-f]{64})$/.exec(String(r.message || "").trim());
     if (!id) throw refuse("the server's host helper built the image but did not say which", "build_failed");
