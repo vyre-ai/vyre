@@ -20,3 +20,11 @@ test("a teammate filled by an agent with a picked sign-in launches on that sign-
   assert.ok(mine.request, "the request ran to an end (the fake provider does not always call team.done for a filled role)");
   assert.equal(launches().at(-1).oauth, true, "the filler's picked sign-in rode on the teammate's launch");
 });
+
+test("team.ask records who asked on the request (an owner's or automation's setting is \"automation\"), for the pump to judge later", { timeout: 120_000 }, async t => {
+  const { tool, project, d } = await boot(t);
+  await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
+  const r = await tool("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"x","notes":"unchanged","reason":"test"}' });
+  const row = d.registry.deps.db.prepare("SELECT asker FROM team_requests WHERE id = ?").get(r.request);
+  assert.equal(row && row.asker, "automation", "no person on a bare caller: an owner's setting");
+});

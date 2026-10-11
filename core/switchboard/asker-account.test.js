@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, askerOver, memberAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, askerOver, memberAccount } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -112,4 +112,18 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await refusedAgent(agentLaunchGuard(sb(), i, OWNER, ""));
   const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);
   await agentLaunchGuard(sb({ canon }), i, "per_owner_alias", OWNER);
+});
+
+test("checkLaunch: who asks is the first person on the chain, else the asker the module recorded; automation and nobody-recorded are told apart", async () => {
+  const chain = (/** @type {string[]} */ ...ids) => ({ hops: ids.map(id => ({ actor: id === "assistant" ? { kind: "agent", id } : { kind: "person", id } })) });
+  const env = { ANTHROPIC_API_KEY: "x" }, tm = { agent: "tm", agent_kind: "teammate", env };
+  const none = sb();
+  await assert.rejects(checkLaunch(none, tm, chain(ANA), OWNER), /cannot be used for a teammate's request yet/, "a member's chain");
+  await assert.rejects(checkLaunch(none, tm, chain(ANA, "assistant"), OWNER), /cannot be used for a teammate's request yet/, "a member's session chain (she and the assistant)");
+  assert.equal(await checkLaunch(none, tm, chain(OWNER), OWNER), OWNER);
+  await assert.rejects(checkLaunch(none, { ...tm, asker: ANA }, null, OWNER), /cannot be used for a teammate's request yet/, "no chain, the recorded asker is a member");
+  assert.equal(await checkLaunch(none, { ...tm, asker: OWNER }, null, OWNER), OWNER, "no chain, the recorded asker is the owner");
+  assert.equal(await checkLaunch(none, { ...tm, asker: "automation" }, null, OWNER), null, "automation");
+  await assert.rejects(checkLaunch(none, tm, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, a picked credential");
+  assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked: as before");
 });

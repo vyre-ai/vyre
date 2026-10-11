@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, checkLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -4804,8 +4804,9 @@ export default {
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
-      run: async (i, m) => { await agentLaunchGuard(sb, i, personOfChain(ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null), kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
+      run: async (i, m) => { await checkLaunch(sb, i, ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
+    ctx.tool("threads.launch-check", { description: "Would this agent or teammate launch be allowed for whoever is asking? A module asks before it queues work (team.ask); answers { asker }.", internal: true, callers: ["module"], input: { type: "object", properties: { agent: str, agent_kind: str, env: { type: "object" }, fallback: { type: "object" }, asker: str } }, run: async (i, m) => ({ asker: await checkLaunch(sb, i, ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner()) }) });
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
     ctx.tool("threads.usage", {
       description: "Turns, time, tokens and cost per agent, and the last rate-limit report.", internal: true,
