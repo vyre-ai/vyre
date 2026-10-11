@@ -57,8 +57,9 @@ test("a launch for a member names their own account, refuses one with none, and 
   assert.equal((await memberAccount(noKernel, rec, kt(ANA), "t")).account, undefined);
   // a kernel whose owner cannot be read is not "no kernel": nobody can be told to be the owner, so a member with no account is refused
   const blank = sb({ ...world, accounts: [{ id: "own", provider: "claude", person: null }] }); blank.deps.owner = () => "";
-  await refused(memberAccount(blank, rec, kt(ANA), "t"));
-  await refused(askerOver(blank, "t", { asker: ANA }));
+  const unknown = (/** @type {Promise<any>} */ p) => assert.rejects(p, (/** @type {any} */ e) => e.code === "unavailable" && /cannot tell just now who owns this Space/.test(e.message) && /Try again in a minute/.test(e.message));
+  await unknown(memberAccount(blank, rec, kt(ANA), "t"));   // (the words say the owner is unknown, to the real owner too: nobody can be told to be the owner)
+  await unknown(askerOver(blank, "t", { asker: ANA }));
   const hers = sb(world); hers.deps.owner = () => "";
   assert.equal((await memberAccount(hers, rec, kt(ANA), "t")).account, "anas", "a member with an account of their own still runs on it");
   for (const named of ["own", "bens"]) {

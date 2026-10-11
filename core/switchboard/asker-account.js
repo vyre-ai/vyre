@@ -21,6 +21,7 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
   // Nobody but the owner runs on the owner's login, nor on the machine's own credential or the ambient login of the user the server runs as (a Mac mini server's Claude Code login is the owner's): a person with no sign-in of their own is refused ALWAYS, whatever account the thread names or none, and whether or not any credential is visible to take.
   const owner = ownerOf(sb);
+  if (owner === "") throw ownerUnknown();
   if (owner !== null && !isOwner(sb, owner, asker)) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
@@ -58,6 +59,8 @@ export async function servesChip(sb, over) {
 }
 
 const needOwnSignIn = () => Object.assign(new Error("You have no sign-in of your own here, and nobody else's is used for your messages. Add your own sign-in (Settings, your AI accounts) to use this chat. Nothing was sent."), { code: "account_required" });
+/** The kernel is there but cannot say who owns the Space, so nobody can be told to be the owner: said as that (the owner too), not as "you have no sign-in of your own". */
+const ownerUnknown = () => Object.assign(new Error("This server cannot tell just now who owns this Space, so it cannot tell whose sign-in your message may use. Nothing was sent. Try again in a minute; if it keeps happening, run vyre status on the server."), { code: "unavailable" });
 
 /**
  * A session started or resumed for a chat turn whose asker is not the owner runs on that person's own account of the provider, never on the machine's own credential or the owner's login: their account
@@ -76,7 +79,7 @@ export async function memberAccount(sb, rec, o, id) {
   const mine = await sb.accountFor({ provider, person: asker, project: rec.project, agent: rec.agent }).catch(() => null);
   if (mine && mine.id) return { ...o, account: String(mine.id) };
   if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
-  throw needOwnSignIn();
+  throw owner === "" ? ownerUnknown() : needOwnSignIn();
 }
 
 /**
@@ -102,6 +105,7 @@ export async function chipOver(sb, id, provider, account, kt, own) {
   const mine = rec ? await sb.accountFor({ provider, person: kt.asker, project: rec.project, agent: rec.agent }).catch(() => null) : null;
   if (mine && mine.id) return { provider, account: String(mine.id), person: kt.asker };
   const owner = ownerOf(sb);
+  if (owner === "") throw ownerUnknown();
   if (owner !== null && !isOwner(sb, owner, kt.asker)) throw needOwnSignIn();
   return { provider, account: null, person: kt.asker };
 }

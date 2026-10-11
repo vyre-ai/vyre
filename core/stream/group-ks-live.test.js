@@ -61,6 +61,7 @@ async function world(t) {
   /** @type {any[]} */ const gaveUp = [];
   /** What the Switchboard asked the daemon to open: the thread, the chat and the asker. @type {any[]} */ const asked = [];
   /** What the stream asked of the seam, in order, per thread: beginTurn must come before the first appendOpen. @type {string[]} */ const seamCalls = [];
+  /** Askers the kernel cannot open a session for just now (a test sets it): the probe still passes for them, the session does not open. @type {Set<string>} */ const failOpen = new Set();
 
   /** Start the stream the way the daemon does: the Registry is handed the seam as deps.kernelThreads, over a createKernelSessions that has the kernel's chats and the durable turns. */
   // The bus is the kernel's log, which outlives a restart: every boot in this test shares one.
@@ -91,6 +92,7 @@ async function world(t) {
       // (core/daemon/index.js opens a real session for a probe and never ends it: reported to platform and sessions.)
       if (/** @type {any} */ (q).probe) { await g.chats.read(person, /** @type {string} */ (chat)); return { token: () => "", end: async () => {} }; }
       asked.push({ thread: q.thread, chat: chat || null, asker: q.asker || null });
+      if (q.asker && failOpen.has(q.asker)) throw new Error("the kernel could not open a session for this turn");
       if (process.env.E2E_DEBUG) console.error("KSOPEN", JSON.stringify({ chat, asker: q.asker, agent: q.agent }));
       // as the daemon does (core/daemon/index.js kernelSession): a run with no agent in a chat is a model slot, and its token's agent hop is the slot id
       const agent = q.agent || (chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:") ? q.rec.slot : undefined);
@@ -123,7 +125,7 @@ async function world(t) {
   }
   /** A daemon that dies mid-turn: what kill -9 leaves is the durable turn store as it was (a graceful stop ends each session, which forgets its turn, so put them back). */
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
-  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
+  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, failOpen, work, seamCalls, paths: p, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
@@ -319,6 +321,50 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   assert.deepEqual(askersOf(w), [CAROL, BOB], "bob's turn opened under bob, after carol's");
   assert.equal(userMsgs(watcher.frames).filter(x => x === "ok, continue").length, 1, "the admin's words are in the chat once");
   assert.ok(!said(/** @type {any} */ (replyOf(watcher.frames, "ok, continue")).text).includes("SECRET"), "never merged into carol's turn");
+});
+
+/** Queue a message of bob's behind carol's running turn and give the row no account hop (as an earlier build wrote it, or an asker whose account is the thread's own): the drain then delivers it directly. */
+async function queueBobsRow(/** @type {any} */ w, /** @type {any} */ b, /** @type {any} */ chat, /** @type {any} */ watcher, /** @type {string} */ words) {
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  const kit = kitThread(b, chat.id);
+  const sent = await b.as("bob")("stream.send", { chat: chat.id, text: words, to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!sent.error, sent.error && sent.error.message);
+  const dbq = (/** @type {(db: any) => any} */ f) => { const db = open(w.paths.db); try { return f(db); } finally { db.close(); } };
+  await until(() => dbq(db => db.prepare("SELECT 1 FROM threads_inbox WHERE thread = ? AND text = ?").get(kit, words)), "the row to wait in the Switchboard's queue");
+  dbq(db => { const r = /** @type {any} */ (db.prepare("SELECT id, kturn FROM threads_inbox WHERE thread = ? AND text = ?").get(kit, words)); const { over, ...rest } = JSON.parse(String(r.kturn)); assert.ok(over, "the row had a hop"); db.prepare("UPDATE threads_inbox SET kturn = ? WHERE id = ?").run(JSON.stringify(rest), r.id); });
+  const events = async () => { const r = await b.as("carol")("threads.get", { thread: kit, limit: 400 }); if (!r.data) throw new Error(JSON.stringify(r).slice(0, 300)); return r.data.events; };
+  const row = () => dbq(db => db.prepare("SELECT via FROM threads_inbox WHERE thread = ? AND text = ?").get(kit, words));
+  return { events, row };
+}
+const heard = (/** @type {any[]} */ events, /** @type {string} */ words) => events.filter(e => e.type === "thread.text").map(e => String(e.payload && e.payload.text)).some(x => x.includes(words));
+
+test("D1: a message queued behind a running turn whose asker left the chat while it waited is dropped: the row is marked dropped, nothing is written to the thread, and the person is told", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("carol", chat.id);
+  const { events, row } = await queueBobsRow(w, b, chat, watcher, "B-LEFT");
+  await w.C.change(w.chains.bob, chat.id, { remove_people: [BOB] });   // bob leaves the chat while his row waits
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.text" && /no longer in this chat/.test(String(e.payload && e.payload.text))), "the person to be told", 40_000);
+  await sleep(1500);
+  assert.equal(row().via, "dropped", "the row is marked dropped, not delivered");
+  assert.ok(!heard(await events(), "B-LEFT"), "the thread never heard his words");
+  for (const sid of b.ks.list()) assert.notEqual(await personOfSession(w, b, sid), BOB, "no kernel session is open for him");
+});
+
+test("D2: a queued message whose asker is still in the chat but whose kernel session cannot be opened when its turn comes is dropped too: never written to the thread without a token", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("carol", chat.id);
+  const { events, row } = await queueBobsRow(w, b, chat, watcher, "B-NOTOKEN");
+  // the asker is asked after again (a probe: still in the chat) and passes; opening the session for the turn then fails (he left in the gap, or the kernel could not)
+  w.failOpen.add(BOB);
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.text" && /could not be opened for you/.test(String(e.payload && e.payload.text))), "the person to be told", 40_000);
+  await sleep(1500);
+  assert.equal(row().via, "dropped", "the row is marked dropped");
+  assert.ok(!heard(await events(), "B-NOTOKEN"), "the thread never heard his words");
 });
 
 test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {

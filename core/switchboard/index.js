@@ -1152,13 +1152,25 @@ export class Switchboard {
    * @param {string} id @param {any} rec @param {{ chat?: string, asker?: string } | null} turn
    */
   async renewKernelSession(id, rec, turn) {
-    if (!this.deps.kernelSession) return;
+    if (!this.deps.kernelSession) return true;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space); } else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     // the turn before may still be streaming its reply under its session: the session itself is released, not cut (lib/kernel-session ends it when that reply closes)
     if (old) await old.end().catch(() => {});
+    return Boolean(ks);   // false: no session could be opened for this turn (the asker left the chat, or the kernel could not)
+  }
+
+  /**
+   * Queued words whose asker could not be given a kernel session when their turn came: they are marked dropped and never written to the thread without a token, and the person is told what to do.
+   * @param {string} id @param {any[]} rows the rows of the turn @param {string|null} project
+   */
+  dropQueuedChatTurn(id, rows, project) {
+    const drop = this.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?");
+    for (const r of rows) drop.run(r.id);
+    this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
+    this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project);   // the turn announced as begun for these words ends here
   }
 
   /** @param {string} id */
@@ -2271,7 +2283,7 @@ export class Switchboard {
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).catch(() => {}).finally(deliver); return; } }
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) deliver(); else this.dropQueuedChatTurn(id, taken, project); }); return; } }
     deliver();
   }
 
