@@ -70,8 +70,8 @@ test("runner v1: placement, move, why-not, settings, here and pause keep the sha
   const back = await call("runner.move", { thread: CHAT, to: "mac" });
   assert.equal(back.data.offer, "mac");
   assert.deepEqual(book.directives("dev_office_mac").map(x => x.do), ["start"]);
-  // a chat that never ran here has no history to carry to a computer (one that has is moved out: core/runner/lent-chat-e2e.test.js)
-  assert.equal((await call("runner.move", { thread: mine, to: "mac" })).error.code, "not_found");
+  // a session that began on the server cannot go to a computer yet
+  assert.equal((await call("runner.move", { thread: mine, to: "mac" })).error.code, "unavailable");
 
   // ---- every reason and state the fixtures list is one the book knows
   const { REASONS: bookReasons, STATES: bookStates } = await import("../../core/runner/placement-book.js");
