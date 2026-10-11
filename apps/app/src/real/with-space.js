@@ -22,16 +22,11 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
   // A member's own AI sign-in (kernel/remote CALLS.accounts): the Settings screen's calls reach the team's server the same way.
   "sessions.accounts.list": "accounts.list", "sessions.accounts.signin": "accounts.signin", "sessions.accounts.remove": "accounts.remove", "sessions.accounts.bind": "accounts.default" });
 
-/** A member's Flows (core/flows member tools, group `flows` on the door): the registry tool of the same name, the same input. Not on the door, so refused in words: pause, resume, rollback, budget, control, settle, advance, kit.*, connections. */
-const FLOW_CALLS = Object.freeze(["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"]);
-const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(FLOW_CALLS.map((c) => [`flows.${c}`, `flows.${c}`])),
-  // a member's own projects (core/work/member-projects.js, door group `work`): the installed templates, a blank project, a project from a template; install, write and put-live stay the owner's and are refused in words
-  "work.template.list": "work.templates", "work.project.create": "work.project-create", "work.start-project": "work.start-project",
-  // a member's daily Records and tasks (rc2-own-compute's rows, core/work/member-tools.js): the same tool name and the Store's own input keys; the door keeps what a member may not (the team's kept types, writes to team-member and agent). records.define, sees-as, seal-put, reveal and tasks.decide need her presence or an admin and stay on her own home; the planner has no rows
-  ...Object.fromEntries(["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"].map((t) => [t, t])),
-  // a member's project files (core/work/member-files.js, door group `files`): the project's Files view lists through the door
-  "files.list": "files.list", "files.read": "files.read", "files.upload": "files.upload",
-  "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" });
+/** The rows of the member door's one table (core/work/member-tools.js MEMBER_TOOLS), generated from it (scripts/gen-surface-lists.mjs): a row is reached under the SAME name as the registry tool the app calls, with the Store's own input keys, except the few names below. Not a row, so refused in words (flows) or left on her own home (records.define, tasks.decide and the planner need her presence or an admin): everything else. */
+import { MEMBER_ROWS } from "./member-routes.generated.js";
+/** The app tools whose door call is spelled differently (a call name has no dot after its group). */
+const ALIASES = { "work.template.list": "work.templates", "work.project.create": "work.project-create", "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" };
+const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(MEMBER_ROWS.map((t) => [t, t])), ...ALIASES });
 
 /** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
 export function memberChatWire(tool) { return Object.hasOwn(MEMBER_DOOR, tool) ? /** @type {any} */ (MEMBER_DOOR)[tool] : null; }
