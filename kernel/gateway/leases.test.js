@@ -213,7 +213,7 @@ test("LF-1: leases.forward counts a grant's rate, budget and once through the sa
   const L2 = r2.k.gateway.leases;
   L2.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET"], paths: ["/v1/*"], drive: { read: ["clients/*"] } }] });
   await gmake(r2, ["service.read"], { once: true }, "service");
-  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "../a.pdf" } } }), { code: "bad_input" }, "a file path the Drive refuses");
+  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "../a.pdf" } } }), { code: "not_found" }, "a file path the Drive refuses");
   assert.equal((await L2.forward(r2.bob, req)).status, 200, "the once grant was not spent by the refused request");
   await assert.rejects(() => L2.forward(r2.bob, req), { code: "used_up" });
 });
