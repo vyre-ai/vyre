@@ -31,6 +31,9 @@ export const CALLS = Object.freeze({
   sidebar: ["get", "edit", "team"],
   // A member's own chats on the team's server (0.3.3 J9): a SERVICE the home registers (core/work/chat-service.js). The call runs the work module's chat tool in THIS Space, as the member's own chain: their pinned
   // assistant, the chats they are in, starting one. A member never reaches a registry tool; the list of calls is fixed here.
+  // A member's own AI sign-in on the team's server (0.3.3 G03): a SERVICE the home registers (core/sessions/accounts-service.js). They list their own accounts, sign one in (a login the provider runs as that account),
+  // remove it and pick their default; the account serves only their own turns. A key needs a Vault of their own (0.3.4), so it is not on this list.
+  accounts: ["list", "signin", "remove", "default"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
 });
 
