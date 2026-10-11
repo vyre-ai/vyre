@@ -31,6 +31,7 @@
 //   "forge <caller> <tool>"  calls a vyred tool as <caller>, carrying this thread's agent key
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
+//   "recall"        says which process answers (side, pid) and every earlier prompt of this session, read back from its own transcript file: a chat that moved computers still has them
 //   anything else   echoes the prompt back in a few deltas
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every turn is answered from the recorded model instead (core/sessions/testing/golden.js).
 // FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind.
@@ -597,6 +598,13 @@ async function turn(prompt, uuid = null) {
     await say("still here"); return result(true, "still here", 0);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }
+  if (/^recall$/i.test(p)) {
+    const file = TX ? path.join(TX, process.cwd().replace(/[^A-Za-z0-9]/g, "-"), `${session}.jsonl`) : "";
+    const before = [];
+    try { for (const l of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) { const m = JSON.parse(l); if (m.type === "user" && typeof m.message?.content === "string" && m.message.content !== "recall") before.push(m.message.content); } } catch { /* no transcript here */ }
+    const text = `side=${process.env.G01_SIDE || "mac"} pid=${process.pid} earlier=${JSON.stringify(before)}`;
+    await say(text); return result(true, text);
+  }
   await say(`echo: ${p}`);
   return result(true, `echo: ${p}`);
 }
