@@ -17,12 +17,24 @@ export function accountsSource(call: Call) {
     follow: async (flow: string, provider: string): Promise<Flow> => flowOf(await ask("sessions.accounts.signin", { flow }), provider, flow),
     /** The code the provider's page showed. */
     paste: (flow: string, code: string) => ask("sessions.accounts.signin", { flow, code: code.trim() }),
-    /** Add a key or token of the person's own: an API key through the key shortcut, a setup token through their private key in the server's vault. The value is sent once and never read back. */
+    /**
+     * Add a key or token of the person's own. An API key goes through the key shortcut. A setup token is first put in the person's own private key in the server's vault (a member's way); if the server
+     * answers that this person is the owner, whose accounts name ordinary vault items, the private key is taken out again and the token is put as an ordinary vault item of the owner. Either way a key
+     * whose account is refused is not left behind. The value is sent once and never read back.
+     */
     addKey: async (kind: string, key: string, label = "") => {
-      if (kind !== "setup-token") return ask("sessions.accounts.key", { kind, key: key.trim(), ...(label ? { label } : {}) });
-      const put = await ask<{ id: string; item: string }>("vault.member.put", { kind: "setup-token", value: key.trim(), ...(label ? { label } : {}) });
+      const value = key.trim();
+      if (kind !== "setup-token") return ask("sessions.accounts.key", { kind, key: value, ...(label ? { label } : {}) });
+      const put = await ask<{ id: string; item: string }>("vault.member.put", { kind: "setup-token", value, ...(label ? { label } : {}) });
       try { return await ask("sessions.accounts.add", { provider: "claude", kind: "setup-token", label: label || "My Claude token", vault_item: put.item }); }
-      catch (e) { await call("vault.member.remove", { id: put.id }).catch(() => null); throw e; }
+      catch (e) {
+        await call("vault.member.remove", { id: put.id }).catch(() => null);
+        if ((e as { code?: string }).code !== "denied") throw e;
+        const name = `ai-token-claude-${Math.random().toString(16).slice(2, 10)}`;
+        await ask("vault.put", { name, kind: "api-key", description: "Claude setup token", value, grants: ["threads", "agents"] });
+        try { return await ask("sessions.accounts.add", { provider: "claude", kind: "setup-token", label: label || "My Claude token", vault_item: name }); }
+        catch (e2) { await call("vault.delete", { name }).catch(() => null); throw e2; }
+      }
     },
     makeDefault: (id: string) => ask("sessions.accounts.bind", { id, is_default: true }),
     remove: (id: string) => ask("sessions.accounts.remove", { id }),

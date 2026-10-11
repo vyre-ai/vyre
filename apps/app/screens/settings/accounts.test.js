@@ -71,7 +71,7 @@ test("accounts: default, remove and privacy are one call each; a refusal comes b
 test("adding a key: the choices, the help under each, and a refusal that says what to do", { skip: !strip }, async () => {
   const m = await import("./accounts-model.ts");
   assert.deepEqual(m.KEY_CHOICES.map(([k]) => k), ["anthropic-compatible", "openrouter", "setup-token"]);
-  assert.match(m.keyHelp("setup-token"), /private to you on this server/);
+  assert.match(m.keyHelp("setup-token"), /never shown again/);
   assert.match(m.keyHelp("openrouter"), /openrouter\.ai/);
   assert.match(m.keyRefusal("denied", ""), /Sign in, then try again/);
   assert.match(m.keyRefusal("too_many", ""), /Remove one/);
@@ -89,7 +89,28 @@ test("adding a key sends an API key through the key shortcut, and a setup token 
   assert.deepEqual(b.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add"]);
   assert.equal(b.seen[1].input.vault_item, "member:mk_1");
   assert.equal(b.seen[1].input.kind, "setup-token");
-  const c = box({ "vault.member.put": { data: { id: "mk_2", item: "member:mk_2" } }, "sessions.accounts.add": () => ({ error: { code: "denied", message: "no" } }) });
+  const c = box({ "vault.member.put": { data: { id: "mk_2", item: "member:mk_2" } }, "sessions.accounts.add": () => ({ error: { code: "bad_input", message: "no" } }) });
   await assert.rejects(() => accountsSource(c.call).addKey("setup-token", "tok-fixture-0123456789"));
   assert.deepEqual(c.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add", "vault.member.remove"], "a key whose account was refused is not left behind");
+});
+
+test("the owner's setup token: the private key is taken out when the server says the owner uses an ordinary vault item, the token goes in as one, and it is removed again if the account is refused", { skip: !strip }, async () => {
+  const { accountsSource } = await import("./accounts-source.ts");
+  let adds = 0;
+  const a = box({ "vault.member.put": { data: { id: "mk_3", item: "member:mk_3" } }, "vault.put": { data: { created: true } }, "sessions.accounts.add": () => (++adds === 1 ? { error: { code: "denied", message: "on this server you add your own sign-in" } } : { data: { id: "a10" } }) });
+  const r = await accountsSource(a.call).addKey("setup-token", "tok-fixture-0123456789", "mine");
+  assert.deepEqual(a.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add", "vault.member.remove", "vault.put", "sessions.accounts.add"]);
+  assert.equal(a.seen[3].input.value, "tok-fixture-0123456789");
+  assert.deepEqual(a.seen[3].input.grants, ["threads", "agents"]);
+  assert.match(a.seen[4].input.vault_item, /^ai-token-claude-/);
+  assert.equal(a.seen[4].input.vault_item, a.seen[3].input.name);
+  assert.ok(r);
+  let n = 0;
+  const b = box({ "vault.member.put": { data: { id: "mk_4", item: "member:mk_4" } }, "vault.put": { data: { created: true } }, "sessions.accounts.add": () => (++n === 1 ? { error: { code: "denied", message: "x" } } : { error: { code: "bad_input", message: "no" } }) });
+  await assert.rejects(() => accountsSource(b.call).addKey("setup-token", "tok-fixture-0123456789"));
+  assert.deepEqual(b.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add", "vault.member.remove", "vault.put", "sessions.accounts.add", "vault.delete"], "the ordinary item is removed when its account is refused");
+  // any other refusal on the first try stops there: the private key is removed and nothing else is put
+  const c = box({ "vault.member.put": { data: { id: "mk_5", item: "member:mk_5" } }, "sessions.accounts.add": { error: { code: "too_many", message: "full" } } });
+  await assert.rejects(() => accountsSource(c.call).addKey("setup-token", "tok-fixture-0123456789"));
+  assert.deepEqual(c.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add", "vault.member.remove"]);
 });

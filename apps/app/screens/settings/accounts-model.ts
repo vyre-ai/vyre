@@ -72,7 +72,7 @@ export const keepFollowing = (f: Flow): boolean => f.step !== "done" && f.step !
 export const KEY_CHOICES: [string, string][] = [["anthropic-compatible", "Anthropic API key"], ["openrouter", "OpenRouter key"], ["setup-token", "Claude setup token"]];
 export const keyHelp = (kind: string): string =>
   kind === "openrouter" ? "A key from openrouter.ai. It is checked once with a call that costs nothing, kept private to you on this server, and used only for your own chats."
-  : kind === "setup-token" ? "The token that claude setup-token prints. It is kept private to you on this server, never shown again, and used only for your own chats."
+  : kind === "setup-token" ? "The token that claude setup-token prints. It is kept in this server's vault, never shown again, and used only for your own chats. On a team server it is private to you."
   : "A key from console.anthropic.com. It is checked once with a call that costs nothing, kept private to you on this server, and used only for your own chats.";
 /** A refusal while adding a key, with what to do next. */
 export function keyRefusal(code: string | undefined, message: string): string {
