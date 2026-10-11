@@ -42,7 +42,7 @@ export function createRecordsHost(o) {
   const kernel = createGateway({
     owner: o.owner, space, store: o.store, log, chains, clock,
     grants: { forSubject: (/** @type {any} */ a) => grants.filter((g) => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: (/** @type {string} */ id) => byId.get(id) },
-    members: { has: (/** @type {any} */ a) => (a.kind === "person" && a.id === o.owner) || (a.kind === "service" && (a.id === "flows" || a.id.startsWith("connector"))) },
+    members: { has: (/** @type {any} */ a) => (a.kind === "person" && a.id === o.owner) || (a.kind === "service" && (a.id === "flows" || a.id.startsWith("connector"))), membership: (/** @type {any} */ a) => (a.kind === "person" && a.id === o.owner ? { role: "owner" } : null) },
     hasPresenceSession: () => true,
     ...(o.sealer ? { sealer: o.sealer } : {}),
     // the type rules (defineRule) are written in the records language's Expression language

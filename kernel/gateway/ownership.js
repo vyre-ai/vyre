@@ -16,7 +16,8 @@
 import { KernelError } from "../core/errors.js";
 
 /** The services whose one-hop chain writes these types for the whole Space (the work module's tools, the tasks service, Flows stages, the kernel itself): the caller treats them as trusted, after their own checks. */
-export const TRUSTED_SERVICES = Object.freeze(["work", "tasks", "flows", "kernel"]);
+export const TRUSTED_SERVICES = Object.freeze(["work", "tasks", "flows", "kernel", "planner"]);
+// planner: the planner module files and edits a person's to-dos with its own service chain (K.serviceChain()), doing its own check of whose item it is; its tools are not on the member door.
 
 /** The three types this file judges. */
 export const OWNED_TYPES = Object.freeze(["project", "team-member", "task"]);
@@ -122,13 +123,16 @@ export function isTrustedChain(chain, roleOf) {
   return (role === "owner" || role === "admin") && (hops.length === 1 || hops[hops.length - 1].actor.kind === "service");
 }
 
-/** The owner and the people on a project's team, read straight from the record store (no gate: the rule's own question). @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn */
-export const projectTeamOf = (store, urn) => async (/** @type {string} */ ref) => {
+/** The owner and the people on a project's team, read straight from the record store (no gate: the rule's own question). @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn @param {(urn: string) => any} [attrsOf] */
+export const projectTeamOf = (store, urn, attrsOf = undefined) => async (/** @type {string} */ ref) => {
   const pid = String(ref).split("/").pop() || "";
   const pr = await store.get("project", pid).catch(() => null);
   if (!pr) return null;
   const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn("project", pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
-  return { owner: idOf(pr.data.owner), team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean) };
+  // the owner is the project's owner field; a project with none belongs to the kernel's record of who owns it, then who made it
+  const at = typeof attrsOf === "function" ? attrsOf(urn("project", pid)) || {} : {};
+  const made = String(at.created_for || at.created_by || ""), madeBy = made.startsWith("person:") ? made.slice(7) : null;
+  return { owner: idOf(pr.data.owner) || (at.owner ? String(idOf(at.owner) || at.owner) : null) || madeBy, team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean) };
 };
 
 /**
