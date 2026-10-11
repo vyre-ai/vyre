@@ -2401,6 +2401,12 @@ export default {
           if (a && b) { shares = true; break; }
         }
       }
+      // The server's OWN Space is not a row of this module's table (it belongs to the home's kernel), so on a one-Space server two members of it shared nothing here and a chat could not be sealed to a member's device
+      // ("no key-agreement point"). The kernel is asked: both are members of the home Space now.
+      if (!shares && K && typeof K.space === "string" && typeof K.membership === "function") {
+        const [a, b] = await Promise.all([K.membership(caller, K.space).catch(() => null), K.membership(target, K.space).catch(() => null)]);
+        if (a && a.member === true && b && b.member === true) shares = true;
+      }
       if (!shares) return { devices: [] };
       const st = await stateOfPerson(target);
       const entries = st && Array.isArray(st.entries) ? st.entries : [];
