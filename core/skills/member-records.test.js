@@ -8,13 +8,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { createMemberTools } from "../work/member-tools.js";
-import { PROTECTED_SYSTEM_TYPES } from "../../kernel/gateway/records.js";
+import { createMemberTools, MEMBER_TOOLS } from "../work/member-tools.js";
+import { guardRecordsCall, MEMBER_BLOCKED_TYPES, MEMBER_READ_ONLY_TYPES } from "../../kernel/remote/member-guard.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
-const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: ${says}\n---\n${says}\n`;
+const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: Use this when the person asks about ${name}, which is ${says}\n---\n${says}\n`;
 /** Run an operation: what it answered, or the refusal. @param {() => Promise<any>} f */
 const tried = async (f) => { try { return { ok: true, v: await f() }; } catch (e) { return { ok: false, e }; } };
 const nothing = (/** @type {any} */ r) => !r.ok || r.v == null || (Array.isArray(r.v) && r.v.length === 0) || (Array.isArray(r.v && r.v.rows) && r.v.rows.length === 0);
@@ -29,8 +29,10 @@ test("a member reads and changes none of another's skill records, a Space draft 
   for (const person of [ANA, BEN]) await d.kernel.gateway.grants.setRole(ownerChain, { person, role: "member" }, { presence: proof() });
   const chainOf = (/** @type {string} */ p) => d.kernel.chains.fromFacts(facts(p));
   const door = createMemberTools({ space, kernel: d.kernel, registry: d.registry }).skills;
-  const R = d.kernel.gateway.records;   // what the member door's records group runs: k.gateway.records.*(chain, ...args)
-  const svc = d.kernel.gateway.serviceChain("skills");
+  const G = d.kernel.gateway.records, svc = d.kernel.gateway.serviceChain("skills");
+  // what the member door's records group runs: k.gateway.records.*(chain, ...args), behind the door's own guard (kernel/remote/server.js wraps each call the same way)
+  const trusted = (/** @type {any} */ chain) => { const r = d.kernel.gateway.members.roleOf({ kind: "person", id: chain.hops[0].actor.id, space }); return r === "owner" || r === "admin"; };
+  const R = Object.fromEntries(["get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"].map(n => [n, guardRecordsCall(n, (/** @type {any} */ c, /** @type {any[]} */ ...a) => /** @type {any} */ (G)[n](c, ...a), trusted)]));
   const tok = async (/** @type {any} */ chain) => ({ token: (await d.kernel.surfaces.open(chain, {})).token });
 
   // A's personal skill (approved), A's Space-level draft, and an approved Space skill by the owner
@@ -43,7 +45,7 @@ test("a member reads and changes none of another's skill records, a Space draft 
   assert.ok(!o2.error, JSON.stringify(o2.error));
 
   // the skill rows, as the service that keeps them sees them
-  const svcRows = (await R.query(svc, "skill", { page: { limit: 50 } })).rows;
+  const svcRows = (await G.query(svc, "skill", { page: { limit: 50 } })).rows;
   const idOf = (/** @type {string} */ name) => String((svcRows.find((/** @type {any} */ r) => r.data.name === name) || {}).id);
   assert.equal(svcRows.length >= 3, true, "the library holds the three versions");
 
@@ -63,7 +65,7 @@ test("a member reads and changes none of another's skill records, a Space draft 
   const found2 = await tried(() => R.search(B, { text: "ANA-SPACE-DRAFT-WORDS" }));
   assert.ok(nothing(found2) || !JSON.stringify(found2.v).includes("ANA-SPACE-DRAFT-WORDS"));
   // the text is still what the owner approved
-  const still = (await R.get(svc, "skill", idOf("space-approved")));
+  const still = (await G.get(svc, "skill", idOf("space-approved")));
   assert.match(String(still.data.body), /SPACE-APPROVED-WORDS/);
   // the owner keeps access, and the skills door still works for both members
   assert.ok(!nothing(await tried(() => R.query(ownerChain, "skill", { page: { limit: 50 } }))), "the owner reads the skill records");
@@ -73,6 +75,38 @@ test("a member reads and changes none of another's skill records, a Space draft 
   void a2;
 });
 
-test("the types a service keeps its bookkeeping in are protected: Flow versions, approvals, state, runs, project templates and watchers", () => {
-  for (const type of ["skill", "def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install"]) assert.ok(PROTECTED_SYSTEM_TYPES.has(type), `${type} is protected`);
+test("the door's guard closes every typed records call and the searches and lists for every protected type, for a member; the owner and an admin pass", async () => {
+  const log = /** @type {string[]} */ ([]);
+  const fake = (/** @type {string} */ n) => async (/** @type {any} */ _c, /** @type {any[]} */ ...a) => { log.push(`${n}:${a[0]}`); return n === "search" ? { rows: [{ type: "skill", id: "1" }, { type: "def-flow", id: "2" }, { type: "contact", id: "3" }] } : n === "definitions" ? [{ name: "skill" }, { name: "contact" }] : { ok: true }; };
+  const member = { hops: [{ actor: { kind: "person", id: "m" } }] }, owner = { hops: [{ actor: { kind: "person", id: "o" } }] };
+  const trusted = (/** @type {any} */ c) => c === owner;
+  for (const type of MEMBER_BLOCKED_TYPES) for (const n of ["get", "reference", "query", "aggregate", "create", "update", "remove", "restore"]) {
+    await assert.rejects(guardRecordsCall(n, fake(n), trusted)(member, type, "x"), /not found/, `${n} ${type} is closed to a member`);
+    assert.ok(await guardRecordsCall(n, fake(n), trusted)(owner, type, "x"), `${n} ${type} is open to the owner`);
+  }
+  assert.ok(await guardRecordsCall("query", fake("query"), trusted)(member, "contact", {}), "an ordinary type is open to a member");
+  for (const type of MEMBER_READ_ONLY_TYPES) {
+    assert.ok(await guardRecordsCall("query", fake("query"), trusted)(member, type, {}), `a member reads ${type}`);
+    for (const n of ["create", "update", "remove", "restore"]) {
+      await assert.rejects(guardRecordsCall(n, fake(n), trusted)(member, type, "x"), /kept by the team's own tools/, `a member cannot ${n} ${type}`);
+      assert.ok(await guardRecordsCall(n, fake(n), trusted)(owner, type, "x"), `the owner can ${n} ${type}`);
+    }
+  }
+  const found = await guardRecordsCall("search", fake("search"), trusted)(member, {});
+  assert.deepEqual(found.rows.map((/** @type {any} */ h) => h.type), ["contact"], "a search leaves the protected types out");
+  assert.equal((await guardRecordsCall("search", fake("search"), trusted)(owner, {})).rows.length, 3);
+  assert.deepEqual(await guardRecordsCall("definitions", fake("definitions"), trusted)(member), [{ name: "contact" }], "the list of types leaves them out");
+});
+
+test("every row of the member door's table keeps only protected record types, names its input keys, and serves through an internal tool for modules", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
+    for (const type of row.types) assert.ok(MEMBER_BLOCKED_TYPES.has(type), `${door}: ${type} is not in MEMBER_BLOCKED_TYPES`);
+    assert.ok(row.keys.length > 0 && !row.keys.some(k => ["person", "agent", "space", "as", "project"].includes(k)), `${door}: its input keys never name the person, the agent, the project or the Space`);
+    const def = /** @type {any} */ (d.registry).tools.get(row.tool);
+    assert.ok(def && def.internal === true && def.reach === "modules" && def.crossSpace, `${door}: ${row.tool} is an internal tool for modules that declares crossSpace`);
+  }
+  createMemberTools({ space: d.kernel.id.space, kernel: d.kernel, registry: d.registry });   // and the daemon would stop at start for a row that is not
 });

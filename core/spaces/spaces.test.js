@@ -1478,6 +1478,62 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   void alex;
 });
 
+test("spaces.identity.devices.read on a one-Space server: members of the server's OWN Space (not a row of the module's table) share a Space for the key-agreement read, and nobody else does", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const HOME = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null;
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const real = (/** @type {any} */ m) => (handle ||= K.kernelFor(m));
+  // the module's kernel handle as the daemon gives it: the home Space's own (its `space` and its `membership`); the routing is the only fake, the kernel is real
+  const kernelFor = (/** @type {any} */ m) => ({ space: HOME, for: () => real(m).for(HOME), chain: (/** @type {any} */ meta) => real(m).chain(meta), proofFrom: (/** @type {any} */ meta) => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (/** @type {any} */ c, /** @type {any} */ p) => real(m).acceptProofRequest(c, p), membership: (/** @type {string} */ p, /** @type {string} */ sp) => real(m).membership(p, sp || HOME) });
+  const d = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  K = await createKernel({ space: HOME, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const sign = (/** @type {string} */ call, /** @type {any[]} */ ...a) => ({ payload_hash: proofRequest(HOME, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  const ownerChain = K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const ownerTok = (await K.surfaces.open(ownerChain)).token;
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const claim = async (/** @type {string} */ name) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree: pt() });
+  const [casey, dana, erin, gil, hank, tess] = [await claim("casey"), await claim("dana"), await claim("erin"), await claim("gil"), await claim("hank"), await claim("tess")];
+  for (const [p, n] of [[casey, "casey"], [dana, "dana"], [erin, "erin"], [gil, "gil"], [hank, "hank"], [tess, "tess"]]) await d.reg.call("spaces.person.learn", { id: p.id, name: n }, "module:vyred");
+  const tokenOf = async (/** @type {string} */ person) => (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" }))).token;
+  // who asks about whom: the number of the target's device points the caller is shown
+  const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;
+  // the home Space is the kernel's own: members are made and removed on its grants, as the owner (the module's members tools take only hosted Spaces)
+  const add = async (/** @type {{ id: string }} */ p, role = "member") => { const r = { person: p.id, role }; await K.gateway.grants.setRole(ownerChain, r, { presence: sign("setRole", r) }); };
+
+  await add(casey); await add(dana);
+  // two members of the home Space read each other's device points, both ways
+  assert.equal(await sees(casey, dana), 1, "casey reads dana's device point");
+  assert.equal(await sees(dana, casey), 1, "and dana reads casey's");
+  // the owner and a member, both ways
+  assert.equal(await sees({ id: alex.id }, casey), 1, "the owner reads a member's");
+  assert.equal(await sees(casey, { id: alex.id }), 1, "and a member reads the owner's");
+  // a stranger (a real person in the directory who is not in the Space) gets nothing, and learns nothing about them
+  assert.equal(await sees(erin, casey), 0, "a stranger reads nothing of a member");
+  assert.equal(await sees(casey, erin), 0, "a member reads nothing of a stranger");
+  // a person invited but not joined is not a member
+  assert.equal(await sees(tess, casey), 0, "a person with no membership (invited, not joined) reads nothing");
+  // an admin is a member
+  await add(hank, "admin");
+  assert.equal(await sees(hank, casey), 1, "an admin reads a member's");
+  assert.equal(await sees(casey, hank), 1, "and a member an admin's");
+  // a REMOVED member and a current one learn nothing of each other
+  await add(gil);
+  assert.equal(await sees(gil, casey), 1, "before removal");
+  await K.gateway.grants.removeMember(ownerChain, { person: gil.id }, { presence: sign("removeMember", { person: gil.id }) });
+  assert.equal(await sees(gil, casey), 0, "a removed member reads nothing of a current one");
+  assert.equal(await sees(casey, gil), 0, "and a current one reads nothing of a removed one");
+  // a target that is not a person (an agent actor's id) is refused by shape
+  assert.deepEqual(await d.ok("spaces.identity.devices.read", { person: "agt_" + "a".repeat(30) }, "module:work", { token: ownerTok }), { devices: [] });
+  void K.membership;
+});
+
 /** A drop wrap made the way lib/keywrap.js does: ECDH-ES to a device's agree point, HKDF-SHA256 (salt = the ephemeral point, info vyre-identity-wrap-v1), AES-256-GCM bound to `aad`. */
 function wrapTo(/** @type {string} */ point, /** @type {Buffer} */ key, /** @type {string} */ aad) {
   const eph = crypto.createECDH("prime256v1"); eph.generateKeys();

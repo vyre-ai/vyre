@@ -27,6 +27,7 @@ import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
+import { createMemberTools } from "./member-tools.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -945,6 +946,8 @@ export default {
       async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); },
       /** The peer door asks for the member's chat service by name from this handle (the daemon imports nothing of work). */
       peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createChatService(o),
+      /** The member door's other groups (core/work/member-tools.js MEMBER_TOOLS: skills, and the Flows and projects rows others add), one service per group, for the peer door. */
+      peerServices: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createMemberTools(o),
     };
   },
 };
