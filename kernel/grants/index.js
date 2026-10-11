@@ -470,6 +470,8 @@ export function createGrantsStore(cfg) {
       const dir = !all && memberOk(me) && roleOf(me) !== "temp";
       return [...memberships.values()].filter(m => (all || dir || m.person === me.id) && !(m.role === "temp" && !(m.expires > clock()))).sort((a, b) => (a.person < b.person ? -1 : 1)).map(m => (all || m.person === me.id ? structuredClone(m) : { space: m.space, person: m.person, role: m.role, partial: true }));
     },
+    /** Is anyone but `owner` a member of this Space? Every non-owner person with any role counts (temp, or admitted and not yet active, included), so an error or doubt must be answered "yes" by the caller. For a module that must keep other members out and has nobody to keep out when there are none. */
+    async hasOtherMembers(/** @type {string} */ owner) { for (const m of memberships.values()) if (m.person !== owner) return true; return false; },
     /** One member's Membership: your own, or anyone's if `authorize` lets you list members. A person you may not see is indistinguishable from one who does not exist. */
     async membersGet(chain, /** @type {string} */ id) {
       const me = reader(chain);

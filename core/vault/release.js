@@ -16,6 +16,9 @@ export const RELEASE_BODY_MIGRATION = `ALTER TABLE vault_grants ADD COLUMN body 
      id TEXT PRIMARY KEY, item TEXT NOT NULL, module TEXT NOT NULL, watcher TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', by TEXT, at INTEGER NOT NULL, UNIQUE (item, module, watcher, project)
    );`;
 
+/** Who asked, by KIND (the verified `agentKind` of the call, not a name): the approvals card says "your assistant" only for an assistant. Appended to the vault's MIGRATIONS. */
+export const GRANT_REQUEST_KIND_MIGRATION = `ALTER TABLE vault_grant_requests ADD COLUMN by_kind TEXT;`;
+
 /** The Space a home with no kernel keeps its grants in, and the vault under it. */
 const LOCAL_SPACE = "spc_vyrecore", LOCAL_HOME = `vyre://${LOCAL_SPACE}/vault/core`;
 const ACTION = "vault.release";

@@ -5,6 +5,7 @@
 // Each is now an ITEM CARD in this queue: it appears the moment its owner holds it, carries the owner's tool that settles it (`answer`), and is closed with the outcome when the owner
 // settles it. The owner still holds the content and still decides (its detail screen, its edit, its own answer tool); this module holds the one list, so a surface reads one place.
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
+import { agentClaim } from "../modules/index.js";
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
 export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"]);
@@ -59,6 +60,16 @@ export const fromHeld = rows => rows.map(h => {
 });
 
 const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 4).map(x => clean(x && typeof x === "object" ? x.name : x, 60)).filter(Boolean).join(", ");
+/** Who asked, in plain words, so an owner cannot approve a request thinking they made it themself: the assistant, a named agent, a Claude session, a module, or the raw label when it is none of those. "Your assistant" is decided by the agent's KIND (`kind`, the verified kind stored with the request), never by its name: a named agent called assistant is "the agent assistant". @param {unknown} by @param {unknown} [kind] */
+export const askedBy = (by, kind) => {
+  const b = String(by || "");
+  if (!b) return "";
+  const agent = agentClaim(b);
+  // A thread's id is never read out of its label here (test/thread-label-hygiene.test.js), and an owner does not need it: "a Claude session" is who, the item and module are what.
+  const who = agent && kind === "assistant" ? "your assistant" : agent ? `the agent ${clean(agent, 30)}` : /^(?:mcp|harness)(?::thread:.*)?$/.test(b) ? "a Claude session" : (m => (m ? `the ${clean(m[1], 30)} module` : ""))(/^module:(.+)$/.exec(b)) || clean(b, 40);
+  return `asked by ${who}, not by you`;
+};
+
 /** vault.pending: what an agent asked the vault for and a person has not settled (grants, passes, agent logins, people to trust, passes to accept). Names only, never a value. */
 export const fromVault = (/** @type {any} */ p) => {
   const row = (/** @type {string} */ id, /** @type {string} */ title, /** @type {string} */ detail, /** @type {any} */ when) =>
@@ -66,9 +77,9 @@ export const fromVault = (/** @type {any} */ p) => {
       answer: { tool: "vault.approve", input: { id }, fill: [] } });
   const list = (/** @type {any} */ x) => (Array.isArray(x) ? x.filter(y => y && typeof y === "object" && y.id) : []);
   return [
-    ...list(p && p.grants).map(g => row(g.id, `Let ${clean(g.module, 40)}${g.watcher ? `/${clean(g.watcher, 40)}` : ""} use "${clean(g.name, 60)}"`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
-    ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
-    ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, clean(s.by, 40) && `asked by ${clean(s.by, 40)}`].filter(Boolean).join(", "), s.created)),
+    ...list(p && p.grants).map(g => row(g.id, `Let ${clean(g.module, 40)}${g.watcher ? `/${clean(g.watcher, 40)}` : ""} use "${clean(g.name, 60)}"`, askedBy(g.by, g.byKind), g.at)),
+    ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, askedBy(g.by), g.at)),
+    ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, askedBy(s.by)].filter(Boolean).join(", "), s.created)),
     ...list(p && p.people).map(x => row(x.id, `Trust the card for ${clean(x.name, 60)}`, x.fingerprint ? `fingerprint ${clean(x.fingerprint, 40)}` : "", x.at)),
     // the Vault MCP's reveal ask: the pass's agent asked to see one item once. Two answers: Allow once (a yes: vault.mcp.reveal.allow is a vault moment) and Decline.
     ...list(p && p.mcpReveals).map(x => ({ id: `vault:${x.id}`, kind: "access", title: clean(`Let ${clean(x.pass, 40)}'s agent see "${clean(x.item, 60)}" once?`) || "An agent asks to see a vault item", ...opt("detail", clean(x.why, DETAIL_MAX)), at: at(x.at), source: "vault",

@@ -11,7 +11,7 @@ import { Readable } from "node:stream";
 import { start } from "../core/daemon/index.js";
 import { COOKIE } from "../core/presence/person.js";
 import { lineOfOp } from "../lib/one-yes.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, pairDevice } from "./helpers.js";
 
 const DEVICE = "abcdefghijklmnop";
 const ASKS_YES = [
@@ -29,6 +29,7 @@ async function box(t, yes) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "alex", vault: { keystore: "file" } }));
   const d = await start({ root, ...(yes ? { presence: present } : {}), log: () => {} });
   t.after(() => d.stop());
+  pairDevice(d, DEVICE, d.kernel.id.owner);   // the owner's phone, paired as a real one is: the daemon then computes its facts
   const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
   const sess = d.registry.deps.cliSessions.startStandIn("dev1");
   /** @param {string} tool @param {any} input */

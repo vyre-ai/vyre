@@ -246,3 +246,15 @@ export async function putOnTask(d, root, agent, project, { grant = true } = {}) 
   const t = await kcall("tasks.request", { task: { title: `Work for ${project}`, output: { kind: "note" }, doer: uid, checker: owner, project: ref.data.urn } });
   if (t.error) throw new Error(`putOnTask: ${t.error.message}`);
 }
+
+/**
+ * Pair a device the way a real install does, so the daemon computes the person's facts for its calls (core/daemon/index.js callerFacts): the relay's row (an app device, not removed) and Wink's record of who
+ * confirmed it. `identity` is the person the device belongs to: the owner's id for the owner's phone, a member's for theirs. A rig that calls the route as `device:<id>` without this has no device row, which no
+ * real owner device lacks.
+ * @param {any} d the started daemon @param {string} id the device id (the part after "device:") @param {string} identity
+ */
+export function pairDevice(d, id, identity) {
+  const db = d.registry.deps.db;
+  db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(id);
+  db.prepare("INSERT OR REPLACE INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created, confirmed_by) VALUES (?, ?, 'phone', 'phone', 'identity', ?, 1, ?)").run(id, identity, identity, identity);
+}

@@ -58,3 +58,17 @@ test("a write answers with the empty text it was given, though Twenty keeps an e
   assert.equal((await store.get("eps", id)).data.b, undefined, "a read says what Twenty holds");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a define leaves one log line naming its types, their fields and the seconds it took (a slow first call names its cause)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const lines = /** @type {string[]} */ ([]);
+  const store = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 1, log: l => lines.push(l) });
+  await store.define({ add_types: [type("alpha"), type("beta")] });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^store define: alpha, beta \(4 fields\) took \d+\.\d s$/);
+  const { defineLine } = await import("./store.js");
+  assert.equal(defineLine({ change_types: [type("gamma")] }, 31_240), "store define: gamma (2 fields) took 31.2 s");
+  assert.equal(defineLine({ remove_types: ["x"] }, 400), "store define: no types (0 fields) took 0.4 s");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
