@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { CALLS } from "../../kernel/remote/wire.js";
+import { createMemberTools, MEMBER_TOOLS } from "../work/member-tools.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -24,9 +25,7 @@ async function world(t) {
   const facts = (/** @type {string} */ person) => ({ kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "relay" });
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   for (const person of [ANA, BEN]) await d.kernel.gateway.grants.setRole(ownerChain, { person, role: "member" }, { presence: proof() });
-  const handle = /** @type {any} */ (d.registry.modules.get("skills")).handle;
-  assert.equal(typeof handle.peerService, "function", "the skills module offers its member service to the peer door");
-  const svc = handle.peerService({ space, kernel: d.kernel });
+  const svc = createMemberTools({ space, kernel: d.kernel, registry: d.registry }).skills;
   const chainOf = (/** @type {string} */ person) => d.kernel.chains.fromFacts(facts(person));
   // what a person's own surface sees through the registry (the path a session's list takes)
   const tokenOf = async (/** @type {any} */ chain) => ({ token: (await d.kernel.surfaces.open(chain, {})).token });
@@ -34,8 +33,9 @@ async function world(t) {
   return { d, OWNER, space, svc, chainOf, listFor, tokenOf, ownerChain, ownerFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }, as: (/** @type {string} */ person, /** @type {string} */ call, input = {}) => svc[call](chainOf(person), input) };
 }
 
-test("skills is a group of the Space kernel's remote calls", () => {
-  assert.deepEqual(CALLS.skills, ["list", "get", "draft", "approve", "versions"]);
+test("skills is a group of the Space kernel's remote calls, and every call of it is a row of the member door's one table", () => {
+  assert.deepEqual([...CALLS.skills].sort(), ["approve", "draft", "get", "list", "versions"]);
+  assert.deepEqual(Object.keys(MEMBER_TOOLS).filter(k => k.startsWith("skills.")).map(k => k.slice(7)).sort(), [...CALLS.skills].sort());
 });
 
 test("a member drafts and approves a personal skill of her own; her list shows it, the owner's and another member's do not", { timeout: 90_000 }, async t => {
