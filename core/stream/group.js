@@ -433,7 +433,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** The specs of a thread event written straight into the group's log. @param {Member} m @param {any[]} specs */
   function project0(m, specs) {
-    const room = group(m.grp).people.size > 1;
+    const room = inRoom(m.grp);
     for (const s of specs) {
       if (SKIP.has(s.kind)) continue;
       // In a room of more than one person an assistant's reply never carries a field value (it is the same words for everyone): a field is cited as a field-ref block, drawn per viewer.
@@ -528,7 +528,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (s.kind === "tool-finished" && s.data && s.data.ok === false) st.failed++;
       s = { ...s, data: { ...s.data, step: st.id } };
     }
-    if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
+    if (carriesFieldValue(s.data) && inRoom(m.grp)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     const m0 = m.buf || (m.buf = new Map()); m.refused ||= new Set();
     /** @type {any} */ let b = null; let message = ACT;
     for (const [id, x] of m0) if (x.h && id !== ACT) { b = x; message = id; }
@@ -540,6 +540,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     await put(m, b, s, withNote(m.grp, s.data), message === ACT ? undefined : message);
   }
 
+  /** Is this chat a room for the purpose of field values? Yes unless the group counts exactly one person: nobody counted (an empty mirror) or any doubt means a room, so a value is dropped, never kept. @param {string} grp */
+  const inRoom = grp => { try { return group(grp).people.size !== 1; } catch { return true; } };
+
   /** What every frame of an open reply carries (`rid`, not `kid`: that is a person's message): the kernel's id for it and the membership version it was opened at. @param {any} b */
   const stampOf = b => ({ rid: b.h.id, ver: b.h.ver });
 
@@ -549,7 +552,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @param {Member} m @param {any} b @param {any} s @param {any} data @param {string} [message]
    */
   async function put(m, b, s, data, message) {
-    if (group(m.grp).people.size > 1 && carriesFieldValue(data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return true; }
+    if (inRoom(m.grp) && carriesFieldValue(data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return true; }
     const delta = s.kind === "text-delta" && typeof data.text === "string" ? data.text : JSON.stringify(data);
     try { await b.h.write(delta); } catch (err) { withdraw(m, b, message ?? ACT, s, err); return false; }
     write(m, s, { ...data, ...stampOf(b) }, message);
@@ -647,13 +650,14 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     }
     let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
     if (!b.h && !b.reply && blocks.length === 0) { b.items.push({ ...s, data: { ...s.data, message } }); return; } // reasoning so far: held until the turn ends
-    // A room of more than one person (the kernel's own list, mirrored here): the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
-    if (group(m.grp).people.size > 1 && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
+    // The reply is opened first: opening it reads the kernel's list for this room (begin), so the decision below is made on the room as it is now, not on a mirror that may be stale.
+    if (!b.h && !(await begin(m, b, message))) return;
+    // A room of more than one person (the kernel's own list, mirrored here), or one this group cannot count: the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
+    if (inRoom(m.grp) && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
       log(`text-done for ${m.who} in ${m.grp}: a field value was dropped (cite it as a field-ref)`);
       blocks = blocks.filter((/** @type {any} */ x) => !(x && x.block === "field" && x.placeholder !== true));
     }
     blocks = blocks.map((/** @type {any} */ x) => noted(m.grp, x));
-    if (!b.h && !(await begin(m, b, message))) return;
     const done = { ...s.data, message, ...(blocks.length ? { blocks } : {}), ...stampOf(b) };
     if (!blocks.length) delete done.blocks;
     try { await b.h.close({ text: b.reply, ...(blocks.length ? { blocks } : {}) }); } catch (err) { withdraw(m, b, message, s, err); return; }
