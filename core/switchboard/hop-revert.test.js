@@ -251,3 +251,22 @@ test("threads.notice is closed to added modules and capped in the Switchboard's 
   assert.match(src, /closeToAddedModules\(ctx, \{ only: \["threads\.notice"\] \}\)/, "the Switchboard's start closes it");
   assert.match(src, /\.slice\(0, 300\)/, "and the text is one line of at most 300 characters");
 });
+
+test("a queued hop past the revert wait is put back once and dropped in words the second time", async () => {
+  /** @type {string[]} */ const sql = []; /** @type {string[]} */ const texts = [];
+  const sb = /** @type {any} */ ({ reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 20, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]), record: () => ({ project: null }),
+    db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 70)); return { changes: 1 }; } }) },
+    emit: (/** @type {string} */ type, /** @type {any} */ p) => { if (type === "thread.text") texts.push(p.text); }, drainQueued() {} });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  const row = { id: 11, text: "B-TWO", surface: "s", uuid: "u", at: 1 }, kt = { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } };
+  runQueuedOver(sb, "t", [row], kt, () => ({ changes: 1 }), 1, LOCK);
+  await new Promise(r => setTimeout(r, 80));
+  assert.ok(sql.some(q => /delivered_at = NULL/.test(q)), "the first time the row is put back in the queue");
+  assert.deepEqual(texts, [], "and nothing is said yet");
+  sb.draining.set("t", LOCK);
+  runQueuedOver(sb, "t", [row], kt, () => ({ changes: 1 }), 1, LOCK);
+  await new Promise(r => setTimeout(r, 80));
+  assert.ok(sql.some(q => /via = 'dropped'/.test(q)), "the second time the row is dropped");
+  assert.equal(texts.length, 1, "and the room is told");
+  assert.match(texts[0], /could not be started.*Send it again/);
+});
