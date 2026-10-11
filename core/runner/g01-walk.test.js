@@ -35,6 +35,7 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   const TOKEN = fs.readFileSync(String(process.env.G01_TOKEN_FILE), "utf8").trim();   // never printed
   const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, HOME: process.env.HOME, VYRE_ALLOW_REAL_TRANSCRIPTS: process.env.VYRE_ALLOW_REAL_TRANSCRIPTS, VYRE_LENT_AGENT_DEV: process.env.VYRE_LENT_AGENT_DEV, VYRE_LENT_AGENT: process.env.VYRE_LENT_AGENT, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN };
+  delete process.env.NODE_TEST_CONTEXT;   // the walk's own home is private; the test runner's guard that hides a developer's personal transcripts would hide the walk's too
   delete process.env.CLAUDE_CODE_OAUTH_TOKEN;   // the token comes from the vault, as it does for a person; no environment hands it to anything
   const root = tempHome(t);
   const walkHome = path.join(root, "walk-home");
