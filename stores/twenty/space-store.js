@@ -203,7 +203,7 @@ export function createStoreFor(cfg) {
   const attempt = async (/** @type {string} */ space) => {
     const w = waiting.get(space);
     if (!w || w.running) return;
-    w.running = true;
+    w.running = true; w.starting = true;   // a retry is a start: calls say it is starting, with where it is, not the first attempt's error
     if (w.timer) { clearTimeout(w.timer); w.timer = null; }
     try {
       const real = await open(space, w.meta);
@@ -255,7 +255,7 @@ export function createStoreFor(cfg) {
       if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
       w.attempts++; w.reason = String(err && err.message || e);
-      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      if (!w.store) w.store = createDeferredStore({ waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       const wait = backoff(w.attempts);
       writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });

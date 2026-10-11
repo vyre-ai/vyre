@@ -66,14 +66,21 @@ export async function confineSelfTest(o) {
 }
 
 /**
- * The listeners THIS process owns (vyred's own, which the box expects): the socket inodes of its own file descriptors matched against the kernel's tables. Anything else listening in the box is
- * unknown to it, and a start is refused for it (the port is named). Linux only; elsewhere none.
+ * The listeners THIS process owns (vyred's own, which the box expects), and those of the processes it started itself and names in `children` (the Wink node program: a WireGuard socket on a port of its own choosing).
+ * A named pid counts only while it is still a direct child of this process, so a pid that is gone and reused by a stranger is not trusted. Anything else listening in the box is unknown to it, and a start is
+ * refused for it (the port is named). Linux only; elsewhere none.
+ * @param {string} [proc] @param {{ children?: number[] }} [o]
  * @returns {{ tcp: number[], udp: number[], abstract: string[] }}
  */
-export function ownListeners(proc = "/proc") {
+export function ownListeners(proc = "/proc", o = {}) {
   const out = { tcp: /** @type {number[]} */ ([]), udp: /** @type {number[]} */ ([]), abstract: /** @type {string[]} */ ([]) };
   const mine = new Set();
-  try { for (const fd of fs.readdirSync(`${proc}/self/fd`)) { try { const l = fs.readlinkSync(`${proc}/self/fd/${fd}`); const m = /^socket:\[(\d+)\]$/.exec(l); if (m) mine.add(m[1]); } catch { /* closed */ } } } catch { return out; }
+  const sockets = (/** @type {string} */ fdDir) => { try { for (const fd of fs.readdirSync(fdDir)) { try { const l = fs.readlinkSync(`${fdDir}/${fd}`); const m = /^socket:\[(\d+)\]$/.exec(l); if (m) mine.add(m[1]); } catch { /* closed */ } } return true; } catch { return false; } };
+  if (!sockets(`${proc}/self/fd`)) return out;
+  // a named child counts only while its parent is this process (field 4 of /proc/PID/stat, after the command's closing bracket)
+  for (const pid of o.children || []) {
+    try { const st = fs.readFileSync(`${proc}/${pid}/stat`, "utf8"); const ppid = Number(st.slice(st.lastIndexOf(")") + 2).split(" ")[1]); if (ppid === process.pid) sockets(`${proc}/${pid}/fd`); } catch { /* gone */ }
+  }
   const table = (/** @type {string} */ f, /** @type {string} */ want, /** @type {number[]} */ into) => {
     try { for (const line of fs.readFileSync(`${proc}/net/${f}`, "utf8").split("\n").slice(1)) { const c = line.trim().split(/\s+/); if (c.length > 9 && c[3] === want && mine.has(c[9])) into.push(parseInt(c[1].split(":").pop() || "0", 16)); } } catch { /* no table */ }
   };
