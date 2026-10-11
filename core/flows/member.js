@@ -54,9 +54,13 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   const authorOf = async (/** @type {string} */ id) => { const r = await rowOf(id); const v = r && r.versions && r.versions[r.versions.length - 1]; return v ? v.by : null; };
   /** Whose authority the Flow runs on: the approver of its active version; before any approval, the person who made its first version. Null: no such Flow. */
   const setterUp = async (/** @type {string} */ id) => {
-    const act = await store.active(id).catch(() => null);
-    if (act && act.approver && act.approver.kind === "person") return String(act.approver.id);
-    const r = await rowOf(id); const v1 = r && r.versions && r.versions[0];
+    const r = await rowOf(id);
+    if (!r) return null;
+    // the approver of the active version (a paused Flow still runs for them when it resumes)
+    const v = r.active !== null && r.active !== undefined ? r.versions.find((/** @type {any} */ x) => x.version === r.active) : null;
+    const ap = v ? [...r.approvals].reverse().find((/** @type {any} */ a) => a.version === v.version && a.hash === v.hash) : null;
+    if (ap && ap.approver && ap.approver.kind === "person") return String(ap.approver.id);
+    const v1 = r.versions && r.versions[0];
     return v1 && v1.by && v1.by.kind === "person" ? String(v1.by.id) : null;
   };
   const exists = async (/** @type {string} */ id) => Boolean(await rowOf(id));
@@ -67,7 +71,14 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     case "open": return call();
     case "list": case "runs": case "attention": return mark(await tools[spec.tool](chain, i));
     case "health": if (i.id) await there(need("id", "the Flow's id")); return call();
-    case "read": await there(need("id", "the Flow's id")); return call();
+    case "read": {
+      await there(need("id", "the Flow's id"));
+      const out = await call();
+      // The app chooses Approve or Send for approval from these, so it never infers them: who the Flow RUNS AS (runs_as) and who made the version shown (by).
+      if (spec.tool !== "flows.get" && spec.tool !== "flows.card") return out;
+      const r = await rowOf(String(i.id)); const v = r && r.versions.find((/** @type {any} */ x) => x.version === out.version);
+      return { ...out, runs_as: await setterUp(String(i.id)), by: v && v.by && v.by.kind === "person" ? String(v.by.id) : null };
+    }
     case "describe": if (i.run) { await runOf(String(i.run)); return call(); } await there(need("id", "the Flow's id")); return call();
     // Setting up and improving: any member writes a new version, a patch or a test of any Flow of the Space as a DRAFT. Which version runs, and on whose authority, is decided only at approval (below).
     case "define": case "write": case "simulate": return call();

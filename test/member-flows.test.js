@@ -49,6 +49,17 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   // Flows belong to the Space: she may write a new version of the owner's Flow (a draft), but her yes never replaces the version that runs on the owner's authority
   const v2 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob" }) });
   assert.ok(v2.ok && v2.version === od.version + 1, JSON.stringify(v2));
+  // the app is told, not left to infer: the Flow runs as the owner, and the draft was made by her
+  const g1 = await svc.get(bob, { id: od.id }), g2 = await svc.get(bob, { id: od.id, version: v2.version });
+  assert.equal(g1.runs_as, owner, "the Flow runs as the person who approved the active version");
+  assert.equal(g2.runs_as, owner, "a draft of it still runs as them");
+  assert.equal(g2.by, BOB, "and the draft says she made it");
+  // a second draft after a big one: its card compares with what RUNS, so the first draft's change is still shown to the approver
+  const v3 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob, tweaked" }) });
+  assert.ok(v3.ok && v3.version === v2.version + 1, JSON.stringify(v3));
+  const c2 = (await svc.card(bob, { id: od.id, version: v2.version })).changes, c3 = (await svc.card(bob, { id: od.id, version: v3.version })).changes;
+  assert.ok(c2.length > 0, "the first draft changes something");
+  for (const c of c2) assert.ok(c3.some((/** @type {any} */ x) => JSON.stringify(x) === JSON.stringify(c)), `the second draft's card still shows the first draft's change: ${JSON.stringify(c)}`);
   assert.match(await words(svc.approve(bob, { id: od.id, version: v2.version, hash: v2.hash })), /runs on someone else's authority.*Propose it/s, "her own yes does not approve a new version of the owner's Flow");
   assert.equal((await host().flows.store.active(od.id)).version, od.version, "the owner's version still runs");
   // she proposes it: a card goes to the person the Flow runs for (the owner), who approves it with their own yes; it then runs on the owner's authority

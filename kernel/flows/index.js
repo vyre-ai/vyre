@@ -123,7 +123,11 @@ export function createFlows(o) {
       const v = await view(i.id, [i.version]);
       const c = await cat();
       const compiled = compileFlow(v.flow, c);
-      const prev = i.version && i.version > 1 ? await store.getVersion(i.id, i.version - 1) : null;
+      // What the approver compares against is what runs now: the ACTIVE version, else the newest approved one before this. Not "version minus one": with several drafts a big change followed by a small tweak would show only the tweak.
+      const row = await store.flowRow(i.id);
+      const approved = row ? row.approvals.map((/** @type {any} */ a) => a.version).filter((/** @type {number} */ n) => n !== v.version && row.versions.some((/** @type {any} */ x) => x.version === n)) : [];
+      const baseVersion = row && row.active !== null && row.active !== v.version ? row.active : approved.length ? Math.max(...approved) : null;
+      const prev = baseVersion ? await store.getVersion(i.id, baseVersion) : null;
       return { id: v.id, version: v.version, hash: v.hash, authorship: v.flow.authorship, effects: compiled.effects, caps: compiled.caps, warnings: compiled.warnings, changes: prev ? flowChanges(prev.flow, v.flow, c) : [], text: seeAsCode(v.flow).text };
     },
     "flows.get": async (chain, i) => { const v = await view(need(i, "id", "the Flow's id (flows.list)"), [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
