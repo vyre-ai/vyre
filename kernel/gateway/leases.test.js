@@ -208,12 +208,12 @@ test("LF-1: leases.forward counts a grant's rate, budget and once through the sa
   assert.equal((await L.forward(bob, req)).status, 200);
   await assert.rejects(() => L.forward(bob, req), { code: "rate_limited" }, "the third call in the window is refused");
   assert.equal(forwarded.length, 2, "and the vault was not asked");
-  // a request refused for a Drive file counts nothing on the service grant
+  // a request refused for its Drive file (a member holds Drive rights by role, so the refusal here is the path) counts nothing on the service grant
   const r2 = await rig();
   const L2 = r2.k.gateway.leases;
   L2.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET"], paths: ["/v1/*"], drive: { read: ["clients/*"] } }] });
   await gmake(r2, ["service.read"], { once: true }, "service");
-  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "other/a.pdf" } } }), { code: "not_found" }, "a file outside the route's Drive list");
+  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "../a.pdf" } } }), { code: "bad_input" }, "a file path the Drive refuses");
   assert.equal((await L2.forward(r2.bob, req)).status, 200, "the once grant was not spent by the refused request");
   await assert.rejects(() => L2.forward(r2.bob, req), { code: "used_up" });
 });
