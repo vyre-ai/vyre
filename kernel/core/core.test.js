@@ -419,11 +419,11 @@ test("events: a consumer gets every event at least once, in order, and a failing
   off();
 });
 
-test("events: a consumer's cursor is written once per burst, not once per event, and flush() writes the last one", async () => {
+test("events: a batch consumer's cursor is written once per burst, flush() writes the last one; any other consumer is written once per event", async () => {
   const writes = [];
   const l = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: (n, c) => writes.push([n, c]) } });
   const seen = [];
-  l.subscribe("search", { type: "contact.*" }, e => { seen.push(e.seq); });
+  l.subscribe("search", { type: "contact.*" }, e => { seen.push(e.seq); }, { batch: true });
   for (let i = 0; i < 20; i++) l.append(person(), ev());
   await new Promise(r => setTimeout(r, 20));
   assert.equal(seen.length, 20);
@@ -433,6 +433,12 @@ test("events: a consumer's cursor is written once per burst, not once per event,
   const n = writes.length;
   l.flush();
   assert.equal(writes.length, n, "a second flush has nothing left to write");
+  const each = [];
+  const l2 = createEventLog({ space: SPACE, clock, persist: { append: () => 0, erase: () => {}, cursor: (name, c) => each.push([name, c]) } });
+  l2.subscribe("flows", { type: "contact.*" }, () => {});
+  for (let i = 0; i < 5; i++) l2.append(person(), ev());
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(each.length, 5, "a consumer that did not ask for batching has its cursor written after every event, so a crash never repeats one");
 });
 
 // ---- K1 gate fixes (reviewer-2 probes) ----

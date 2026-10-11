@@ -225,17 +225,17 @@ export function createEventLog(cfg) {
   }
 
   /** At-least-once with a durable named cursor: a handler that throws is retried, never skipped. @returns {() => void} */
-  function subscribe(/** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
+  function subscribe(/** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent, /** @type {{ batch?: boolean }} */ opts = {}) {
     const had = consumers.get(consumer);
     // A consumer that was running before a restart goes on from its durable cursor (never past the log's end); from 0 every restart would hand it the whole log again, read back from disk.
-    const c = { filter, cursor: had ? had.cursor : Math.min(cursors.get(consumer) ?? 0, count), onEvent, busy: false };
+    const c = { filter, cursor: had ? had.cursor : Math.min(cursors.get(consumer) ?? 0, count), onEvent, busy: false, batch: opts.batch === true };
     consumers.set(consumer, c);
     queueMicrotask(() => pump(true));
-    return () => { if (consumers.get(consumer) === c) consumers.delete(consumer); };
+    return () => { if (consumers.get(consumer) === c) { consumers.delete(consumer); flush(); } };
   }
 
   const cursors = new Map(cfg.initial ? cfg.initial.cursors || [] : []);
-  // A consumer's cursor is written once per 200 ms, on flush() and when a caller awaits pump(), not once per event (live 10 Oct: 30 s of a 60 s burst). A crash in the window redelivers: delivery is at-least-once.
+  // A consumer that subscribes with { batch: true } has its cursor written once per 200 ms, on flush() and when a caller awaits pump(), not once per event (live 10 Oct: 30 s of a 60 s burst). A crash in the window redelivers up to 200 ms of its events, so only a consumer whose handler is harmless when repeated asks for it; every other consumer keeps one write per event.
   /** @type {Set<string>} */ const dirty = new Set(); /** @type {any} */ let flushTimer = null;
   const flush = () => { if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; } if (cfg.persist) for (const n of dirty) { try { cfg.persist.cursor(n, /** @type {number} */ (cursors.get(n))); } catch { /* the database is closed: those events are redelivered */ } } dirty.clear(); };
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
@@ -253,7 +253,7 @@ export function createEventLog(cfg) {
           await c.onEvent(next);
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
-          if (cfg.persist) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); }
+          if (cfg.persist) { if (c.batch) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); } else cfg.persist.cursor(name, c.cursor); }
         }
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one

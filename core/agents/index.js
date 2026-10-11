@@ -822,7 +822,7 @@ export default {
     void mirror.schedule();
     const k0 = ctx.kernel;
     if (k0 && k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-      try { k0.events.subscribe(k0.serviceChain("agents"), "agents-mirror", {}, async (/** @type {any} */ e) => { if (e && /^agent\.(created|updated|removed)$/.test(e.type)) await mirror.schedule(); }); } catch { /* no event feed in this kernel: the roster's own changes still schedule it */ }
+      try { k0.events.subscribe(k0.serviceChain("agents"), "agents-mirror", {}, async (/** @type {any} */ e) => { if (e && /^agent\.(created|updated|removed)$/.test(e.type)) await mirror.schedule(); }, { batch: true }); } catch { /* no event feed in this kernel: the roster's own changes still schedule it */ }
     }
 
     return { async stop() {} };

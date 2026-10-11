@@ -116,10 +116,10 @@ export function createGateway(cfg) {
   }
 
   /** A consumer name belongs to the actor that first used it; every delivered event is checked the way `read` checks it. */
-  function subscribe(/** @type {any} */ chain, /** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
+  function subscribe(/** @type {any} */ chain, /** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent, /** @type {{ batch?: boolean }} */ opts = {}) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const name = `${actorString(chain.hops[chain.hops.length - 1].actor)}:${consumer}`;
-    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if ((await canSee(chain, e)) && (await roomSees(chain, e))) await onEvent(await records.viewEvent(chain, e)); });
+    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if ((await canSee(chain, e)) && (await roomSees(chain, e))) await onEvent(await records.viewEvent(chain, e)); }, opts);
   }
 
   /** The tasks as the room sees them: `get` and `card` are gated reads (the roomed authorizer), and a listing of the asker's own tasks keeps only those every person in the room may read. */

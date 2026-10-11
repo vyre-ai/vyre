@@ -73,3 +73,22 @@ test("the type list is shared and frozen until a type changes: a record read doe
   assert.notEqual(c, a, "a type change makes the next read a new list");
   assert.ok(c.some(t => t.name === "thing"));
 });
+
+test("a kernel's stop() stores the batched consumers' cursors: reopened on the same database, nothing is delivered again", async () => {
+  const file = path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-stop-")), "kernel.db");
+  const open = () => bootKernel({ db: new DatabaseSync(file), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer });
+  const k = await open();
+  const seen = [];
+  k.log.subscribe("tester", { type: "note.*" }, e => { seen.push(e.seq); }, { batch: true });
+  const chain = k.chains.fromFacts({ kind: "module", module: "x", first_party: true });
+  for (let i = 0; i < 3; i++) k.log.append(chain, { type: "note.added", sv: 1, subject: `vyre://${SPACE}/note/${i}`, data: { i } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(seen.length, 3);
+  assert.equal(typeof k.stop, "function", "a kernel can be stopped, so whoever owns it can flush its log");
+  await k.stop();
+  const again = await open();
+  const second = [];
+  again.log.subscribe("tester", { type: "note.*" }, e => { second.push(e.seq); }, { batch: true });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(second, [], "the cursor was stored at stop: the three events are not delivered again");
+});
