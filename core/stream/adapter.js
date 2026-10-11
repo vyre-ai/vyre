@@ -65,11 +65,12 @@ export function createAdapter() {
     const key = `${message}:${index}:${p.kind === "reasoning" ? "r" : "m"}`;
     const extra = p.kind === "reasoning" ? { reasoning: true } : {};
     /** @type {Spec[]} */ const out = [];
-    if (typeof p.delta === "string" && p.delta) { streamed.add(key); out.push(spec("text-delta", { message, index, text: p.delta, ...extra })); }
+    const note = p.notice === true ? { notice: true } : {};   // Vyre's own words (a switch of account, a dropped message): the stream shows them even when no turn is open
+    if (typeof p.delta === "string" && p.delta) { streamed.add(key); out.push(spec("text-delta", { message, index, text: p.delta, ...extra, ...note })); }
     if (p.done || p.notice) {
-      if (!streamed.has(key) && typeof p.text === "string" && p.text) out.push(spec("text-delta", { message, index, text: p.text, ...extra }));
+      if (!streamed.has(key) && typeof p.text === "string" && p.text) out.push(spec("text-delta", { message, index, text: p.text, ...extra, ...note }));
       streamed.delete(key);
-      out.push(spec("text-done", { message, index }));
+      out.push(spec("text-done", { message, index, ...note }));
     }
     return out;
   };

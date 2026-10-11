@@ -484,6 +484,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         // A queued message's turn begins (the Switchboard's thread.sent via "turn"): from here the replies belong to ITS asker and answer id, and the waiting message shows as taken up.
         if (s.kind === "turn-start") { startQueued(m, s.queued); continue; }
         if (SKIP.has(s.kind)) continue;
+        if ((s.kind === "text-delta" || s.kind === "text-done") && s.data && s.data.notice === true && !m.running) { noticeToRoom(m, s); continue; }
         if (s.kind === "text-delta" || s.kind === "text-done") await reply(m, s); else await activity(m, s);
       }
     }).catch(err => { log(`projecting ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); });
@@ -612,6 +613,20 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     }
     b.lastSync = now();
     return flushHeld(m, b, message);
+  }
+
+  /**
+   * Vyre's own words (a notice from the Switchboard: a switch back that failed, a message dropped because its person left) while NO turn is open: written straight into the room's log, as the stream writes
+   * the failed status of a dropped reply. No reply handle and so no person's session is asked or opened, the chat's status is not touched, and the frame carries no `acts_for`: the author is the assistant member
+   * whose thread said it, the words are the system's. With a turn open a notice goes through the turn's reply, as before. @param {Member} m @param {any} s a text-delta or text-done with data.notice
+   */
+  function noticeToRoom(m, s) {
+    const ids = m.noticeIds || (m.noticeIds = new Map()), key = `${s.data.message}:${s.data.index ?? 0}`;
+    let id = ids.get(key);
+    if (!id) { id = `notice.${m.name}.${(m.noticeSeq = (m.noticeSeq || 0) + 1)}.${now().toString(36)}`; ids.set(key, id); }
+    if (s.kind === "text-done") ids.delete(key);
+    try { logs.get(m.grp).append(s.kind, { ...s.data, message: id }, { turn: null, author: m.who, message: id }); }
+    catch (err) { log(`notice for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
   }
 
   /** The room is told, in words with no content, that a pending reply could not be resumed. @param {Member} m */

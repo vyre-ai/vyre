@@ -587,3 +587,41 @@ test("SEQ: bob, carol, bob, carol, ada take turns in one chat, each on their own
     await sleep(1500);   // the turn ends and the thread is back before the next person speaks, as in the sequence above
   }
 });
+
+test("N1: Vyre's own notice while no turn is open is shown in the room as the system's words: no session is asked or opened, the chat does not go to failed, and the frame acts for nobody", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "hello kit", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watcher, "hello kit", 60_000);
+  const thread = kitThread(b, chat.id);
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 5 }, "cli")).data.thread.status === "idle", "the thread to be idle", 30_000);
+  await sleep(500);
+  const asked = w.asked.length, openedBefore = opened(w).length;
+  const r = await b.reg.call("threads.notice", { thread, text: "NOTICE-OUTSIDE-A-TURN: a message was not sent" }, "module:stream");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  await until(() => textOf(watcher.frames).includes("NOTICE-OUTSIDE-A-TURN"), "the notice to show in the room");
+  const frame = watcher.frames.find(f => f.type === "chat.text-delta" && String(f.data.text).includes("NOTICE-OUTSIDE-A-TURN"));
+  assert.equal(frame.author, "assistant:assistant", "it is the assistant member's thread that said it");
+  assert.equal(frame.acts_for, undefined, "and it acts for nobody");
+  assert.ok(watcher.frames.some(f => f.type === "chat.text-done" && f.data.message === frame.data.message), "the notice is closed");
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "the chat did not go to failed");
+  assert.equal(w.asked.length, asked, "no session was asked for");
+  assert.equal(opened(w).length, openedBefore, "and nothing was opened under any person");
+});
+
+test("N2: a notice inside a turn is shown through that turn's reply, as before", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  const thread = kitThread(b, chat.id);
+  assert.ok(!(await b.reg.call("threads.notice", { thread, text: "NOTICE-INSIDE-A-TURN" }, "module:stream")).error);
+  await until(() => textOf(watcher.frames).includes("NOTICE-INSIDE-A-TURN"), "the notice inside the turn");
+  const frame = watcher.frames.find(f => f.type === "chat.text-delta" && String(f.data.text).includes("NOTICE-INSIDE-A-TURN"));
+  assert.ok(!String(frame.data.message).startsWith("notice."), "it went through the turn's reply, not the room's own notice path");
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"));
+});
