@@ -155,6 +155,7 @@ export class MemoryFlowStore {
  * The same interface over the kernel's record calls. Definitions and runs are records, so the gateway authorizes, versions and audits them.
  * Types (declared by `FLOW_TYPES`) are defined once with `records.define`. The chain is the Flow system's own service chain.
  */
+/** The Flow record types are PROTECTED: only an owner or admin, or a service acting for them (the Flows service), writes or reads them through Records. A member reaches her Flows through the Flows calls, which carry the rules; without this a member could create a Flow approval naming the owner. */
 export const FLOW_TYPES = Object.freeze([
   { name: "def-flow", label: "Flow", icon: "flow", fields: [
     { name: "flow_id", kind: "text", label: "Id" }, { name: "name", kind: "text", label: "Name" }, { name: "space", kind: "text", label: "Space" },
@@ -176,7 +177,7 @@ export const FLOW_TYPES = Object.freeze([
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
     { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" },
     { name: "title", kind: "text", label: "Flow" }, { name: "record", kind: "link", label: "About" } ] },
-]);
+].map(t => ({ ...t, protected: true })));
 
 export class RecordsFlowStore {
   /** @param {{ kernel: any, chain: any, space: string }} o */

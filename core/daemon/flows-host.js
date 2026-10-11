@@ -162,7 +162,7 @@ export function createFlowsHost(o) {
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
       // A Flow type that gained a field since this Space made it (flow-run.record, the run's link to its record) gets the field: the definition is additive.
-      const grown = FLOW_TYPES.filter(want => { const had = haveTypes.find((/** @type {any} */ t) => t.name === want.name); return had && want.fields.some(f => !had.fields.some((/** @type {any} */ x) => x.name === f.name)); });
+      const grown = FLOW_TYPES.filter(want => { const had = haveTypes.find((/** @type {any} */ t) => t.name === want.name); return had && (want.protected === true && had.protected !== true || want.fields.some(f => !had.fields.some((/** @type {any} */ x) => x.name === f.name))); });
       if (grown.length) await gw.records.define(owner(), { change_types: grown.map(t => ({ ...t })) }).catch((/** @type {any} */ e) => { log(`flows: could not add the new fields to the Flow record types for ${space}: ${e && e.message}`); });
       // A new Space (one with no contact type yet) also starts with the base Kit's types: the owner's setup act, no card, once. A Space on its own Records store has had them since its store was made.
       if (!have.has("contact")) {

@@ -94,11 +94,15 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const carolMember = chainOf(CAROL);
   assert.match(await words(svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carols" }) })), /someone else's/, "the second member cannot add a version to her Flow");
   assert.match(await words(svc.approve(carolMember, { id: bd.id, version: bd.version, hash: bd.hash })), /only a version you made yourself/, "nor approve it");
-  const viaRecords = await words(d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => { if (r.rows.length) throw new Error("rows: " + r.rows.length); }));
-  console.log("NOTE|records.query of flow-state by a second member: " + (viaRecords || "refused or empty"));
+  // the Flow record types are protected: a member's records.* sees none of them and can write none (she could otherwise create an approval naming the owner, or set a version active by hand)
+  const seen = await d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
+  assert.equal(seen, 0, "a second member reads no Flow state through Records");
+  const seenDefs = await d.kernel.gateway.records.query(carolMember, "def-flow", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
+  assert.equal(seenDefs, 0, "nor Flow definitions");
+  assert.ok(await words(d.kernel.gateway.records.create(carolMember, "flow-approval", { flow_id: bd.id, version: 1, hash: bd.hash, approver: "person:" + owner, at: 1 })), "and cannot write an approval naming the owner");
 
   // a Flow of hers that runs by itself stops when she is removed from the Space, and the owner sees it
-  const sched = await svc.define(bob, { flow: find("bobs_morning", { on: "time", cron: "* * * * *" }, { steps: [{ id: "f", kind: "find", type: "contact", limit: 1 }, { id: "u", kind: "create", type: "contact", data: { name: "from bob" } }] }) });
+  const sched = await svc.define(bob, { flow: find("bobs_morning", { on: "time", cron: "* * * * *" }, {}) });
   assert.ok(sched.ok, JSON.stringify(sched));
   await svc.approve(bob, { id: sched.id, version: sched.version, hash: sched.hash });
   await d.kernel.gateway.grants.removeMember(chainOf(owner), { person: BOB }, { presence: { method: "stand-in" } });
