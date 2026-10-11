@@ -324,14 +324,23 @@ test("review B: a provider-only chip from a member WITH a sign-in runs on her ow
   await r.b.stop();
 });
 
-test("review C: a kernel whose owner cannot be read refuses a member with no sign-in of her own (fails closed)", async t => {
-  const r = await bobsThread(t, { blankOwner: true });
-  const before = (await r.events()).length;
-  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "who owns this?", chat: r.chat.id, asker: CAROL }, "module:stream", {});
+test("review C: a kernel whose owner cannot be read refuses a member with no sign-in of her own on a thread that names no account (fails closed)", async t => {
+  const w = await world(t, { blankOwner: true });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watch = await b.watch("carol", chat.id);
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => textOf(watch.frames).includes("echo: the code word is AMBER-92"), "claude's answer to bob", 60_000);
+  const thread = kitThread(b, chat.id);
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.finished"), "bob's turn to end", 60_000);
+  const before = (await events()).length;
+  const sent = await b.reg.call("threads.send", { thread, text: "who owns this?", surface: "deck", chat: chat.id, asker: CAROL }, "module:stream", {});
   assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
   await sleep(500);
-  assert.ok(!sentIn((await r.events()).slice(before), /who owns this/), "nothing reached bob's account");
-  await r.b.stop();
+  assert.ok(!sentIn((await events()).slice(before), /who owns this/), "nothing reached the thread, so nothing ran on the machine's own login");
+  await b.stop();
 });
 
 test("review D: an asker who left the chat while their message waited gets no turn: the row is dropped with the words, and nothing is sent without their token", async t => {
