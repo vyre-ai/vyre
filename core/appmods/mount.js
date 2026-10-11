@@ -19,11 +19,14 @@ export function mountLocation(loc) {
 }
 
 /** Root-relative URLs in an HTML page: attributes, and the app's JSON inside data attributes and scripts. @param {string} html */
-export function rewriteHtml(html) {
-  return html
+export function rewriteHtml(html, host = "") {
+  const own = host ? new RegExp(`https?:\\/\\/${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/(?!sign\\/)`, "gi") : null;
+  const out = html
     .replace(/\b(href|src|action|poster|data-src|formaction)=(["'])\/(?!\/|sign\/_\/)/gi, (_m, a, q) => `${a}=${q}${MOUNT}/`)
     .replace(new RegExp(`(&quot;|")\\/(?!sign\\/_\\/)(${TOP})\\/`, "g"), (_m, q, top) => `${q}${MOUNT}/${top}/`)
     .replace(/url\((["']?)\/(?!\/|sign\/_\/)/g, (_m, q) => `url(${q}${MOUNT}/`);
+  // the app builds some addresses from the host it was asked on: its files, with that host in front
+  return own ? out.replace(own, m => `${m}sign/_/`) : out;
 }
 
 /** Root-relative url() in a stylesheet. @param {string} css */
@@ -32,8 +35,9 @@ export function rewriteCss(css) {
 }
 
 /** The app's JSON answers carry file paths as strings. @param {string} json */
-export function rewriteJson(json) {
-  return json.replace(new RegExp(`"\\/(?!sign\\/_\\/)(${TOP})\\/`, "g"), (_m, top) => `"${MOUNT}/${top}/`);
+export function rewriteJson(json, host = "") {
+  const out = json.replace(new RegExp(`"\\/(?!sign\\/_\\/)(${TOP})\\/`, "g"), (_m, top) => `"${MOUNT}/${top}/`);
+  return host ? out.replace(new RegExp(`https?:\\/\\/${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/(?!sign\\/)`, "gi"), m => `${m}sign/_/`) : out;
 }
 
 /**

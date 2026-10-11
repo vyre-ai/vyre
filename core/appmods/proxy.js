@@ -299,7 +299,7 @@ export function createHostProxy(o) {
           const kind = /^text\/css/i.test(ct) ? "css" : /javascript/i.test(ct) ? "js" : /json/i.test(ct) ? "json" : null;
           if (kind && (r.statusCode || 0) < 400) {
             const text = (await readAll(r, 8 * 1024 * 1024)).toString("utf8");
-            const done = kind === "css" ? rewriteCss(text) : kind === "json" ? rewriteJson(text) : rewriteJs(text);
+            const done = kind === "css" ? rewriteCss(text) : kind === "json" ? rewriteJson(text, host) : rewriteJs(text);
             if (done === null) { log(`appmods: ${mh.name}: its script has a shape the mount does not know; the page is not served`); return plain(502, "The signing page cannot be shown here yet. Try again later."); }
             const body = Buffer.from(done, "utf8");
             out["content-length"] = String(body.length);
@@ -310,7 +310,7 @@ export function createHostProxy(o) {
         }
         if (isHtml && (r.statusCode || 0) === 200 && method === "GET") {
           const page = (await readAll(r, 4 * 1024 * 1024)).toString("utf8");
-          const body = Buffer.from(mounted ? dress(rewriteHtml(page), MOUNT + BRAND_CSS) : dress(page, BRAND_CSS), "utf8");
+          const body = Buffer.from(mounted ? dress(rewriteHtml(page, host), MOUNT + BRAND_CSS) : dress(page, BRAND_CSS), "utf8");
           out["content-length"] = String(body.length);
           res.writeHead(200, out);
           res.end(body);
