@@ -367,6 +367,21 @@ test("D2: a queued message whose asker is still in the chat but whose kernel ses
   assert.ok(!heard(await events(), "B-NOTOKEN"), "the thread never heard his words");
 });
 
+test("D3: when one queued message is dropped because its session cannot be opened, the messages behind it still run, and the stream is not left on the dropped turn", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const { events, row } = await queueBobsRow(w, b, chat, watcher, "B-DROPPED");
+  assert.ok(!(await b.as("ada")("stream.send", { chat: chat.id, text: "A-AFTER", to: ["assistant:assistant"], cwd: w.work })).error);
+  w.failOpen.add(BOB);
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.text" && /could not be opened for you/.test(String(e.payload && e.payload.text))), "bob's message to be dropped", 60_000);
+  const ada = await answered(w, watcher, "A-AFTER", 90_000);
+  assert.equal(ada.who, ADA, "the message behind the dropped one ran, under its own asker");
+  assert.equal(row().via, "dropped");
+  await until(() => !b.stream().groups.member(chat.id, "assistant:assistant").running, "the stream not to be left running", 20_000);
+});
+
 test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {
   const w = await world(t);
   const b = await world0(w, t);

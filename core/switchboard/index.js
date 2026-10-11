@@ -2283,7 +2283,7 @@ export class Switchboard {
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) deliver(); else this.dropQueuedChatTurn(id, taken, project); }); return; } }
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) deliver(); else { this.dropQueuedChatTurn(id, taken, project); const live = this.live.get(id); if (live && !live.stopping && !live.turn) this.drainQueued(id, live, project); } }); return; } }
     deliver();
   }
 
