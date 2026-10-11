@@ -26,6 +26,7 @@ import { fit } from "../../lib/harness-caps.js";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
+import { createMemberOps } from "./member-ops.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -284,6 +285,20 @@ export default {
         if (r && r.error) throw err(r.error.code || "unavailable", r.error.message || "the hook could not run");
         return { ...r.data, declared: hook.network || [] };
       } });
+    // A team member's own skills on the team's server: the member door's rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); the home Space's library only.
+    const memberOps = createMemberOps({ library: lib, entriesOf, shown, vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre") });
+    const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw err("denied", "only the team server's member door runs this");
+      if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel");
+      if (String(extra.in_space) !== String(ctx.kernel.space || "")) throw err("not_allowed", "Skills for members are kept in this server's own Space; this Space has no skill library of its own. Ask the owner.");
+      if (!calls.includes(i.call)) throw err("bad_input", `call is one of ${calls.join(", ")}`);
+      const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
+      if (!h || h.actor.kind !== "person") throw err("not_found", "not found");
+      return /** @type {any} */ (memberOps)[i.call](String(h.actor.id), chain, i.input && typeof i.input === "object" ? i.input : {});
+    };
+    const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["list", "get", "versions"]), run: serve(["list", "get", "versions"]) });
+    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft or approve, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve"]), run: serve(["draft", "approve"]) });
     return { async stop() {} };
   },
 };

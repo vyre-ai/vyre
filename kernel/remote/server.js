@@ -4,6 +4,7 @@
 // the arguments) decide exactly as they do for a local caller. A person who is not a member yet can reach only the join card and the accept.
 // `peer.session` is set ONLY by a transport that has itself verified a presence session on that connection (a passkey sign-in on that device); nothing the device sends
 // can supply it, and this server reads nothing but `peer` for who is calling.
+import { guardRecordsCall } from "./member-guard.js";
 import { KernelError } from "../core/errors.js";
 import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
@@ -90,6 +91,8 @@ export function createRemoteServer(cfg) {
   /** @type {Map<string, number[]>} device -> the times of its recent requests */ const rate = new Map();
   // A group is the gateway's, the Surfaces door's, or a SERVICE the home registered (`cfg.services`, e.g. the lent computer's): a service group that is not registered answers no_such_call.
   const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
+  // an owner or an admin: the only members who reach the record types a service keeps its own bookkeeping in (kernel/remote/member-guard.js)
+  const trustedChain = (/** @type {any} */ chain) => { try { const h = chain && Array.isArray(chain.hops) ? chain.hops[0] : null; const r = h && h.actor && h.actor.kind === "person" ? k.gateway.members.roleOf({ kind: "person", id: h.actor.id, space: cfg.space }) : null; return r === "owner" || r === "admin"; } catch { return false; } };
   /** Calls whose local signature is not `(chain, ...args)` or that need the home's own check before they run. */
   const ADAPT = {
     // the person's proof arrives as the trailing `{ presence }` option (checked against the home's challenge first); the gateway takes it inside the request
@@ -198,7 +201,7 @@ export function createRemoteServer(cfg) {
               joined = { person: peer.person, invite: String(callArgs[0]), key_id: bind.key_id };
             }
             let result;
-            try { result = await target.fn(who.chain, ...callArgs); }
+            try { result = await (request.call.startsWith("records.") ? guardRecordsCall(request.call.slice(8), target.fn, trustedChain) : target.fn)(who.chain, ...callArgs); }
             catch (e) {
               // all or nothing: an accept that does not finish leaves no key behind (the person asks again with a fresh accept)
               if (joined && typeof k.unjoinKey === "function") { try { await k.unjoinKey({ chain: who.chain, ...joined }); } catch { /* the key stays only if the sealing process cannot be reached; it is a newcomer key for a valid invite */ } }
