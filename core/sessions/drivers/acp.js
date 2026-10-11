@@ -356,7 +356,7 @@ function runAcp(entry, known, o) {
     if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
     if (kind === "agent_message_chunk") {
       const t = text(u.content);
-      if (t) { turnText += t; say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
+      if (t) { turnText += t; say({ type: "stream_event", message_id: turnId, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
     } else if (kind === "agent_thought_chunk") {
       const t = text(u.content);
       if (t) say({ type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: t } } });
@@ -678,8 +678,7 @@ function runAcp(entry, known, o) {
     if (!ready || busy || exited || !queue.length) return;
     const blocks = withoutImages(queue.shift());
     busy = true; cancelling = false; turnText = "";
-    turnId = `acp-turn-${Date.now()}`;
-    say({ type: "stream_event", event: { type: "message_start", message: { id: turnId } } });   // the turn's streamed words and its whole text at the end are one message, as with Claude (else the chat shows every answer twice)
+    turnId = `acp-turn-${Date.now()}`;   // the turn's streamed words and its whole text at the end are one message, as with Claude (else the chat shows every answer twice)
     // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
     const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
     const first = firstPrompt && !loaded;
