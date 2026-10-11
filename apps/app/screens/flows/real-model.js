@@ -18,8 +18,21 @@ export const listWaits = (row) => !row.active;
 /** The version flows.get shows (the one that runs, else the newest) waits for the person when nobody has approved it. @param {{ approver?: unknown }} meta */
 export const versionWaits = (meta) => !meta.approver;
 
+/**
+ * Approve or send for approval (12 Oct ruling: a member approves her OWN Flow; a version someone else set up is a proposal that its owner, an owner or an admin approves). An owner or admin approves; so does the person who set the version up;
+ * a version with no known author keeps the Approve button (the door still decides). `by` is the version's author, a person id or { id }.
+ * @param {{ role?: string, by?: unknown, me?: string | null }} o @returns {"approve" | "propose"}
+ */
+export const approvalPath = ({ role, by, me }) => {
+  if (role === "owner" || role === "admin" || !role) return "approve";
+  const who = by && typeof by === "object" ? /** @type {any} */ (by).id : by;
+  if (typeof who !== "string" || !who || !me) return "approve";
+  return who === me ? "approve" : "propose";
+};
+
 /** What the approval button says. Approving a Flow version is a person's own yes in their own session; it is not one of the moments (pairing, the vault, sending) that ask a device for its proof, so the button names no check. */
 export const APPROVE_LABEL = "Approve";
+export const PROPOSE_LABEL = "Send for approval";
 
 /** What a run that shrank to one line says, or null for a run that kept its details. @param {any} run @returns {string | null} */
 export const shrunkNote = (run) => (run && run.pruned ? String(run.summary || "This run kept only its outcome.") : null);

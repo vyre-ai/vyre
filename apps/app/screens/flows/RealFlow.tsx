@@ -1,6 +1,9 @@
 // One Flow from the real vyred: its canvas, the version waiting for approval (with the kernel's card and a real Face ID or fingerprint), and its runs painted over the canvas.
 import { dayTimeOf } from "../../src/time/show.js";
 import { useEffect, useState } from "react";
+import { useMembers } from "../spaces/state";
+import { useSpaces } from "../shell/state";
+import { tool } from "../../src/real/box";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
@@ -11,8 +14,8 @@ import { effectLines } from "./engineer-model";
 import { retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, recordLines, startRefusal } from "./run-model";
-import { approveReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
-import { APPROVE_LABEL, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -24,7 +27,11 @@ export function RealFlow({ id }: { id: string }) {
   // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
-  const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; title: string } | null>(null);
+  const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
+  const showing = useSpaces((s) => s.space);
+  const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
+  const [me, setMe] = useState<string | null>(null);
+  useEffect(() => { tool<{ person?: string; me?: string; id?: string }>("records.me", {}).then((m) => setMe(m?.person ?? m?.me ?? m?.id ?? null)).catch(() => {}); }, []);
   const [card, setCard] = useState<FlowCard | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [runId, setRunId] = useState<string | undefined>(wanted ? String(wanted) : undefined);
@@ -44,7 +51,7 @@ export function RealFlow({ id }: { id: string }) {
         const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
         if (!live) return;
         setHealth(hl);
-        setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
     })();
@@ -63,6 +70,13 @@ export function RealFlow({ id }: { id: string }) {
   const node = nodes.find((x) => x.id === picked);
   const waiting = versionWaits(meta);
 
+  const propose = async () => {
+    setBusy(true);
+    try { await proposeReal(id, meta.version); haptic.approve(); showToast("Sent. The person whose authority it runs on, or an owner or admin, will see it. Nothing runs until they approve."); setN((x) => x + 1); }
+    catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }
+    finally { setBusy(false); }
+  };
+  const path = approvalPath({ role, by: meta.by, me });
   const approve = async () => {
     setBusy(true);
     try { const r = (await approveReal(id, meta.version, meta.hash)) as { notice?: string } | null; haptic.approve(); showToast(r && typeof r.notice === "string" && r.notice ? r.notice : "Approved. This version can run."); setN((x) => x + 1); }
@@ -93,8 +107,8 @@ export function RealFlow({ id }: { id: string }) {
       {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}
       {waiting && card ? (
         <Sec title="Waiting for your approval">
-          <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
-            actions={[{ label: busy ? "Approving" : APPROVE_LABEL, kind: "primary", icon: "check", onPress: busy ? () => {} : approve }]} />
+          <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : path === "propose" ? "This Flow was set up by someone else. Send this version for approval: nothing runs until the person it runs as, or an owner or admin, agrees." : "Nothing runs until you approve this exact version."}
+            actions={path === "propose" ? [{ label: busy ? "Sending" : PROPOSE_LABEL, kind: "primary", icon: "check", onPress: busy ? () => {} : propose }] : [{ label: busy ? "Approving" : APPROVE_LABEL, kind: "primary", icon: "check", onPress: busy ? () => {} : approve }]} />
           {effectLines(card.effects).length ? <Block label="What it does">{effectLines(card.effects).join("\n")}</Block> : null}
           <Block label="See as code">{card.text}</Block>
         </Sec>
