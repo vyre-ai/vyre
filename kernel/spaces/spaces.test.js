@@ -149,28 +149,30 @@ test("KS-1: one call id sent twice at once runs once and both get the same answe
   assert.deepEqual(a, b);
 });
 
-test("KS-2: remote surfaces.revoke ends the token; only its opener or an admin may; a stranger finds no such session", async () => {
+test("KS-2: remote surfaces.open and surfaces.revoke are the owner's and an admin's: a member is refused with a next step; the owner opens, ends the token, and finds no session of a stranger", async () => {
   const hh = await home();
   const h = await hh.spaces.host({ owner: ME });
   const server = createRemoteServer({ space: h.space, kernel: h.kernel, clock });
   const m = { person: BOB, role: "member" }, m2 = { person: ALICE, role: "member" };
   await h.kernel.gateway.grants.setRole(await ownerChain(h.kernel, ME), m, sign(h.space, "setRole", m));
   await h.kernel.gateway.grants.setRole(await ownerChain(h.kernel, ME), m2, sign(h.space, "setRole", m2));
-  const opened = await server.serve(call(h.space, "rq_o", "surfaces.open"), peerOf("d_b", BOB));
+  // a member is refused a session token over the door, and cannot revoke one, with words that name who can
+  const refused = await server.serve(call(h.space, "rq_o", "surfaces.open"), peerOf("d_b", BOB));
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.code, "not_allowed");
+  assert.match(refused.error.message, /owner or an admin/);
+  // the owner opens one, a member cannot end it, the owner can
+  const opened = await server.serve(call(h.space, "rq_o1", "surfaces.open"), peerOf("d_o", ME));
   assert.equal(opened.ok, true);
   await h.kernel.surfaces.chainFor(opened.result.token);
   const other = await server.serve(call(h.space, "rq_r1", "surfaces.revoke", [opened.result.session]), peerOf("d_a", ALICE));
-  assert.equal(other.error.code, "not_found");
+  assert.equal(other.error.code, "not_allowed");
   await h.kernel.surfaces.chainFor(opened.result.token);
-  const mine = await server.serve(call(h.space, "rq_r2", "surfaces.revoke", [opened.result.session]), peerOf("d_b", BOB));
+  const mine = await server.serve(call(h.space, "rq_r2", "surfaces.revoke", [opened.result.session]), peerOf("d_o", ME));
   assert.equal(mine.ok, true);
   await assert.rejects(() => h.kernel.surfaces.chainFor(opened.result.token), { code: "not_a_member" });
-  // an owner (admin) ends someone else's
-  const again = await server.serve(call(h.space, "rq_o2", "surfaces.open"), peerOf("d_b", BOB));
-  assert.equal((await server.serve(call(h.space, "rq_r3", "surfaces.revoke", [again.result.session]), peerOf("d_o", ME))).ok, true);
-  await assert.rejects(() => h.kernel.surfaces.chainFor(again.result.token), { code: "not_a_member" });
   // an assistant the Space does not have cannot be named
-  assert.equal((await server.serve(call(h.space, "rq_o3", "surfaces.open", [{ agent: "ghost" }]), peerOf("d_b", BOB))).error.code, "not_found");
+  assert.equal((await server.serve(call(h.space, "rq_o3", "surfaces.open", [{ agent: "ghost" }]), peerOf("d_o", ME))).error.code, "not_found");
 });
 
 test("KS-3: a peer is rate-limited, a non-member far tighter", async () => {
