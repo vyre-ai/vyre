@@ -10,6 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { gateTools } from "./member-gate.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
@@ -78,10 +79,12 @@ const credentialsPort = vault => Object.freeze({
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
-  async start(ctx) {
+  async start(ctx0) {
     // A first-party tool declared anyone is open to an added module that lists it in needs.tools (ADR 0047). These four
     // take or use secrets for Vyre's own modules only: an added module reaches a secret through ctx.vault.fetch.
-    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify", "vault.pending"] });
+    closeToAddedModules(ctx0, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify", "vault.pending"] });
+    // The vault is the owner's: every tool it registers is refused for a call made for any other person (core/vault/member-gate.js).
+    const ctx = gateTools(ctx0);
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
     if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
