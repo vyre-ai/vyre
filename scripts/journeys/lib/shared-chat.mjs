@@ -101,6 +101,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
   /** @type {string} */ let chat = "";
+  let ownerAcctId = "";
   setServerView(async () => {
     let more = "";
     try {
@@ -143,6 +144,12 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return `${people.length} members, accounts run as users ${people.map(p => accounts[p.name].uid).join(" and ")}`;
   }, { needs: [...needs, A], owner: "projects-flows" });
 
+  const T = "each member's FIRST chat.create into the team Space (the first call into a module there can take about 30 s): the time of each";
+  await J.step(T, async () => {
+    const ms = [];
+    for (const p of people) { const t0 = Date.now(); const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]); assert.match(String(c.chat), /^chat_/); ms.push(`${p.name} ${Date.now() - t0} ms`); }
+    return ms.join(", ");
+  }, { needs: [B], owner: "chat" });
   const C = "Grace starts one chat with Edith and the AI in it, and sets it so the AI answers every message";
   await J.step(C, async () => {
     const made = await grace.joined.call("chat.create", [{ title: "Team day", people: [edith.app.identity.id, owner.id], agents: ["assistant"] }]);
@@ -214,6 +221,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const mine = (await w.operator("sessions.accounts.list", { provider: "codex" })).find((/** @type {any} */ a) => a.label === "Owner's Codex");
     assert.ok(mine && mine.uid != null, "the owner's account exists and runs as a user of its own");
     for (const p of people) assert.notEqual(mine.uid, accounts[p.name].uid, "and it is not a member's");
+    ownerAcctId = mine.id;
     const before = answers(await seen(grace, chat)).length;
     await w.call("stream.send", { chat, space: team.space, text: "@assistant whoami, owner here", to: ["assistant:assistant"], account: `codex:${mine.id}` });
     const after = await untilAnswers(grace, chat, before + 1);
@@ -221,4 +229,41 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.ok(got.includes(`/${mine.uid}`) && !got.includes(`/${accounts[grace.name].uid}`) && !got.includes(`/${accounts[edith.name].uid}`), `the owner's turn ran on the owner's account (user ${mine.uid}): ${got}`);
     return got;
   }, { needs: [G], owner: "chat" });
+
+  // ---- the vault and the folders, from a MEMBER's own session on the server (rc1-a's steps; the owner's session is the control)
+  const I = "from a member's session: the daemon's main socket is closed to them, the owner's vault answers a refusal in words and shows no item name, and another chat's folder cannot be listed";
+  await J.step(I, async () => {
+    const itemName = "walk-owner-item";
+    await w.operator("vault.put", { name: itemName, kind: "secret", value: "WALK-NOT-A-REAL-VALUE" });
+    const transcript = /** @type {string[]} */ ([]);
+    const note = (/** @type {string} */ who, /** @type {string} */ cmd, /** @type {string} */ out) => transcript.push(`${who}$ ${cmd}\n${out}\n`);
+    // answers() only counts the "home:" lines of the stand-in; the terminal answers are "walk-term ..." lines, counted here
+    const R = async (/** @type {any} */ who, /** @type {string} */ cmd) => { const before = (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text))).length; await (who === "owner" ? w.call("stream.send", { chat, space: team.space, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` }) : edith.joined.call("chat.send", [{ chat, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${accounts[edith.name].id}` }]));
+      for (let i = 0; i < 40; i++) { const t = (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text))); if (t.length > before) { const out = String(t[before].text); note(who, cmd, out); return out; } await sleep(4000); }
+      throw new Error(`no answer to ${cmd} from ${who}`);
+    };
+    const sock = "$(ls /home/vyre/.vyre/vyred.sock 2>/dev/null || echo /home/vyre/.vyre/vyred.sock)";
+    const net = (/** @type {string} */ p) => `node -e 'require("net").connect(${JSON.stringify(p)}).on("connect",()=>{console.log("CONNECTED");process.exit(0)}).on("error",e=>{console.log("ERR "+e.code);process.exit(2)})'`;
+    const s1 = await R("member", net("/home/vyre/.vyre/vyred.sock"));
+    assert.match(s1, /ERR (EACCES|EPERM|ENOENT)/, `the member cannot open the daemon's main socket: ${s1}`);
+    assert.doesNotMatch(s1, /CONNECTED/);
+    const s2 = await R("member", "vyre vault list 2>&1");
+    assert.match(s2, /owner's vault/, `vault list is refused in words: ${s2}`);
+    assert.ok(!s2.includes(itemName), "and shows no item name");
+    const s3 = await R("member", `vyre vault reveal ${itemName} 2>&1`);
+    assert.match(s3, /owner's vault/, `vault reveal is refused in words: ${s3}`);
+    assert.ok(!s3.includes("WALK-NOT-A-REAL-VALUE"), "and no value");
+    const s4 = await R("member", "vyre vault put walkx 2>&1 < /dev/null; vyre vault lock 2>&1");
+    assert.match(s4, /owner's vault/, `vault put and lock are refused: ${s4}`);
+    // folders: another chat's parent cannot be listed by a member's session, and the walk's own chat folder is not named by its id
+    const s5 = await R("member", "ls /work/chats 2>&1; ls /work/chats/* 2>&1");
+    assert.match(s5, /Permission denied/i, `a session cannot list the chats' parents: ${s5}`);
+    // control: the owner's own session lists the vault
+    const c1 = await R("owner", "vyre vault list 2>&1");
+    assert.ok(c1.includes(itemName), `the owner's session lists the owner's vault: ${c1}`);
+    const still = await w.operator("vault.list", {});
+    assert.ok(JSON.stringify(still).includes(itemName), "the item is unchanged and the vault is not locked");
+    await w.operator("vault.delete", { name: itemName }).catch(() => {});
+    return transcript.join("\n");
+  }, { needs: [H], owner: "chat" });
 }
