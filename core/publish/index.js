@@ -713,6 +713,10 @@ export default {
         const b = await begin(i, meta);
         const d = await storeFor(b.space.id).get("deployments", String(i.deployment || ""));
         if (!d) throw refuse("no such deployment: publish.list shows them", "not_found");
+        // a run spends the job's secrets: only who may put it live (an owner, an admin, the named approver, or the project's manager) may run it now
+        const m = members.get(`${b.space.id}:${b.person}`);
+        const ok = Boolean(m) && (m.role === "owner" || m.role === "admin" || (d.approver && d.approver === b.person) || (m.role === "manager" && d.project && Array.isArray(m.projects) && m.projects.includes(d.project)));
+        if (!ok) throw refuse("only an owner, an admin, the named approver or the project's manager can run a job now: ask one of them", "forbidden");
         return runJob(b.space.id, d);
       },
     });

@@ -700,6 +700,12 @@ test("publish: a job goes live with one yes and no address, runs now and on its 
   const runs = (await b.ok("publish.job.runs", { deployment: id })).runs;
   assert.equal(runs.length, 1);
   assert.ok(!JSON.stringify(runs).includes("sk-ant-api03"));
+  // a plain member cannot spend the job's secrets by running it, whoever started it; the owner can
+  b.pf.actAs["*"] = "per_sam";
+  assert.equal((await b.call("publish.job.run", { deployment: id })).error?.code, "forbidden", "a member may not run someone else's job");
+  b.pf.actAs["*"] = "per_kit";
+  assert.equal((await b.call("publish.job.run", { deployment: id })).error?.code, "too_soon", "an admin may (here it is only too soon after the last run)");
+  b.pf.actAs["*"] = "per_alex";
   // the floor: not again within five minutes
   assert.equal((await b.call("publish.job.run", { deployment: id })).error?.code, "too_soon");
   // a failed run is kept with its words and is a card's row
