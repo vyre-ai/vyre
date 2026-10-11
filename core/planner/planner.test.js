@@ -706,3 +706,44 @@ test("planner: reopening a chained task's dependency and finishing it again does
   await new Promise(r => setImmediate(r));
   assert.equal(w.taskRuns.length, before, "a change with no new done_at never re-fires it");
 });
+
+test("planner: a task starts an AI session later on the machine's login, so only the owner and an admin schedule one; a member's add and edit are refused in words, on her own chain, whoever she asks through", async t => {
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const used = new Set();
+  const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, hasPresenceSession: () => true });
+  await k.gateway.records.define(ownerChain(k), { add_types: CORE_TYPES.filter(x => x.name === "event") });
+  const sign = (/** @type {string} */ call, /** @type {any} */ input) => ({ payload_hash: proofRequest(SPACE, call, input).payload_hash, nonce: Math.random().toString(36) });
+  const MEMBER = "per_" + "m".repeat(26), ADMIN = "per_" + "a".repeat(26), NOBODY = "per_" + "n".repeat(26);
+  for (const [person, role] of [[MEMBER, "member"], [ADMIN, "admin"]]) { const r = { person, role }; await k.gateway.grants.setRole(ownerChain(k), r, { presence: sign("setRole", r) }); }
+  const w = await world(t, { kernel: k });
+  const as = (/** @type {string} */ person) => ({ kernelFacts: { kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "direct", session: "s2" } });
+  const job = { kind: "task", title: "Run the digest", project: "harlow-legal", at: T0 + HOUR };
+
+  const refused = await w.call("planner.add", job, "cli", as(MEMBER));
+  assert.equal(refused.error?.code, "denied", JSON.stringify(refused));
+  assert.match(refused.error?.message || "", /owner and its admins.*reminder or a to-do instead/, "the refusal says who may and what to do instead");
+  // through her own model session (an mcp caller carrying her person on its chain) it is the same refusal
+  const viaSession = await w.call("planner.add", { ...job, thread: "s1" }, "mcp:agent:kit", { ...as(MEMBER), thread: "s1", agent: "kit" });
+  assert.equal(viaSession.error?.code, "denied", "her session's add is judged by her person, not by the agent it names");
+  // and a thread she names is not posted into: no task exists
+  assert.equal((await w.ok("planner.list", { kind: "task" })).length, 0);
+  // what a member may add: a reminder and a to-do
+  assert.ok((await w.call("planner.add", { kind: "reminder", title: "Call Jane", at: T0 + HOUR }, "cli", as(MEMBER))).data, "a reminder is hers");
+  assert.ok((await w.call("planner.add", { kind: "todo", title: "File the notes" }, "cli", as(MEMBER))).data, "so is a to-do");
+
+  // the owner and an admin schedule it; the owner's item fires and launches as before
+  const own = await w.ok("planner.add", job);
+  const admin = await w.call("planner.add", { ...job, title: "Admin's digest" }, "cli", as(ADMIN));
+  assert.ok(admin.data, JSON.stringify(admin));
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.ok(w.taskRuns.some(x => x.item === own.id && x.ok), "the owner's task still fires");
+
+  // a member cannot edit or redirect a task that exists (the owner's), nor can a stranger with no membership
+  const edit = await w.call("planner.update", { item: own.id, thread: "s1" }, "cli", as(MEMBER));
+  assert.equal(edit.error?.code, "denied", JSON.stringify(edit));
+  const stranger = await w.call("planner.add", job, "cli", as(NOBODY));
+  assert.equal(stranger.error?.code, "denied", "a person who is not a member of the Space is not the owner or an admin either");
+});

@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, askerOver, memberAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, askerOver, memberAccount } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -86,12 +86,44 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await agentLaunchGuard(sb(), { ...i, account: "anas" }, ANA, OWNER);
   await agentLaunchGuard(sb(), {}, ANA, OWNER);
   // an agent with a credential picked for it runs on that for a member (its vault token or key is in the launch); one with nothing picked is refused
-  await agentLaunchGuard(sb(), { ...i, env: { CLAUDE_CODE_OAUTH_TOKEN: "x" } }, ANA, OWNER);
-  await agentLaunchGuard(sb(), { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
-  await agentLaunchGuard(sb(), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER);
-  await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));
+  // a picked credential is the owner's: someone else's turn runs on it only when the launch delivers it unreadable to the turn's tools (delivered "fd"); an env var, a file, or a delivery nobody reports is refused
+  const withDelivery = (/** @type {any} */ how) => { const x = sb(); x.deps.credentialDelivery = () => how; return x; };
+  const refusedYet = (/** @type {Promise<any>} */ p, /** @type {RegExp} */ words) => assert.rejects(p, (/** @type {any} */ e) => e.code === "no_account" && words.test(e.message) && /Nothing was started/.test(e.message));
+  for (const env of [{ CLAUDE_CODE_OAUTH_TOKEN: "x" }, { ANTHROPIC_API_KEY: "x" }]) {
+    await agentLaunchGuard(withDelivery("fd"), { ...i, env }, ANA, OWNER);
+    await refusedYet(agentLaunchGuard(withDelivery("env"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(withDelivery("file"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(withDelivery("???"), { ...i, env }, ANA, OWNER), /API key or a setup token/);
+    await refusedYet(agentLaunchGuard(sb(), { ...i, env }, ANA, OWNER), /The owner can run it for you/);   // before any delivery is reported
+    await agentLaunchGuard(withDelivery("env"), { ...i, env }, OWNER, OWNER);   // the owner's own turn is unchanged
+    await agentLaunchGuard(withDelivery("env"), { ...i, env }, null, OWNER);    // so is a call with no person
+  }
+  await agentLaunchGuard(withDelivery("fd"), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(withDelivery("env"), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER), /API key or a setup token/);
+  // a teammate's launch (team-credential) is judged the same
+  await agentLaunchGuard(withDelivery("fd"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(withDelivery("env"), { agent: "tm", agent_kind: "teammate", env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER), /API key or a setup token/);
+  // an admin's turn is the owner's kind of turn
+  const adminSb = sb(); adminSb.deps.membershipOf = async (/** @type {string} */ p) => (p === ANA ? { role: "admin" } : { role: "member" });
+  await agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await refusedYet(agentLaunchGuard(adminSb, { ...i, env: { ANTHROPIC_API_KEY: "x" } }, BEN, OWNER), /The owner can run it for you/);
+  await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));   // nothing picked
   await refusedAgent(agentLaunchGuard(sb(), i, ANA, ""));
   await refusedAgent(agentLaunchGuard(sb(), i, OWNER, ""));
   const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);
   await agentLaunchGuard(sb({ canon }), i, "per_owner_alias", OWNER);
+});
+
+test("checkLaunch: who asks is the first person on the chain, else the asker the module recorded; automation and nobody-recorded are told apart", async () => {
+  const chain = (/** @type {string[]} */ ...ids) => ({ hops: ids.map(id => ({ actor: id === "assistant" ? { kind: "agent", id } : { kind: "person", id } })) });
+  const env = { ANTHROPIC_API_KEY: "x" }, tm = { agent: "tm", agent_kind: "teammate", env };
+  const none = sb();
+  await assert.rejects(checkLaunch(none, tm, chain(ANA), OWNER), /cannot be used for a teammate's request yet/, "a member's chain");
+  await assert.rejects(checkLaunch(none, tm, chain(ANA, "assistant"), OWNER), /cannot be used for a teammate's request yet/, "a member's session chain (she and the assistant)");
+  assert.equal(await checkLaunch(none, tm, chain(OWNER), OWNER), OWNER);
+  await assert.rejects(checkLaunch(none, { ...tm, asker: ANA }, null, OWNER), /cannot be used for a teammate's request yet/, "no chain, the recorded asker is a member");
+  assert.equal(await checkLaunch(none, { ...tm, asker: OWNER }, null, OWNER), OWNER, "no chain, the recorded asker is the owner");
+  assert.equal(await checkLaunch(none, { ...tm, asker: "automation" }, null, OWNER), null, "automation");
+  await assert.rejects(checkLaunch(none, tm, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, a picked credential");
+  assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked: as before");
 });

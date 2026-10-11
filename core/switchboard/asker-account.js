@@ -201,10 +201,36 @@ export function hopRefusal(code) {
  * @param {any} sb @param {{ agent?: string, account?: string, env?: any, fallback?: any }} i @param {string | null} who @param {string | undefined} owner
  */
 export async function agentLaunchGuard(sb, i, who, owner) {
-  if (!i.agent || i.account || !who || owner === undefined) return;
-  // An agent with a credential PICKED for it (a vault item: its env carries the token or key, or a fallback key) runs on that, whoever asks: only an agent with nothing picked would fall back to the owner's login.
-  const env = /** @type {any} */ (i).env, picked = (/** @type {any} */ e) => Boolean(e && (e.CLAUDE_CODE_OAUTH_TOKEN || e.ANTHROPIC_API_KEY));
-  if (picked(env) || picked(/** @type {any} */ (i).fallback && /** @type {any} */ (i).fallback.env)) return;
+  if (!i.agent || i.account || owner === undefined) return;
+  // a teammate launch that nobody is recorded as having asked, and that is not an owner's or automation's setting, is refused when it carries a picked credential: the pump launches from events with no person on the call
+  if (!who) { const e = /** @type {any} */ (i).env, f = /** @type {any} */ (i).fallback; if (/** @type {any} */ (i).agent_kind === "teammate" && /** @type {any} */ (i).asker !== "automation" && (e && (e.CLAUDE_CODE_OAUTH_TOKEN || e.ANTHROPIC_API_KEY) || f && f.env)) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used here: nobody is recorded as having asked. Ask the owner to send the request again. Nothing was started.`), { code: "no_account" }); return; }
   if (owner && sb.canon(who) === sb.canon(owner)) return;
+  // an admin's turn is the owner's kind of turn
+  const role = typeof sb.deps.membershipOf === "function" ? await Promise.resolve(sb.deps.membershipOf(who)).catch(() => null) : null;
+  if (role && (role.role === "owner" || role.role === "admin")) return;
+  // A credential PICKED for the agent (its vault token or key in the launch's env, or a fallback key) is the owner's: a turn that somebody else drives runs on it ONLY when the launch delivers it where the turn's tools cannot read it
+  // (the sandboxed launch hands it over by a file descriptor: delivered "fd"). An environment variable or a file the turn can print is refused, whatever the delivery is not known to be.
+  const env = /** @type {any} */ (i).env, picked = (/** @type {any} */ e) => Boolean(e && (e.CLAUDE_CODE_OAUTH_TOKEN || e.ANTHROPIC_API_KEY));
+  if (picked(env) || picked(/** @type {any} */ (i).fallback && /** @type {any} */ (i).fallback.env)) {
+    const how = typeof sb.deps.credentialDelivery === "function" ? sb.deps.credentialDelivery(i) : undefined;
+    if (how === "fd") return;
+    if (how === undefined) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. The owner can run it for you. Nothing was started.`), { code: "no_account" });
+    throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. Ask the owner to give it an API key or a setup token. Nothing was started.`), { code: "no_account" });
+  }
   throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
+}
+
+/** The first person on a kernel chain (a member's session chain carries her and the assistant: she is who asks). @param {any} chain @returns {string | null} */
+const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
+
+/**
+ * The whole check of an agent or teammate launch, for the tool that launches (threads.launch) and for the check a module asks for BEFORE it queues work (threads.launch-check, team.ask): who asks is the
+ * first person on the call's chain, else the asker the module recorded (an owner's or automation's setting says "automation"); then agentLaunchGuard judges. Answers who was found.
+ * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @returns {Promise<string | null>}
+ */
+export async function checkLaunch(sb, i, chain, owner) {
+  const recorded = typeof i.asker === "string" && i.asker && i.asker !== "automation" ? i.asker : null;
+  const who = firstPerson(chain) || recorded;
+  await agentLaunchGuard(sb, i, who, owner);
+  return who;
 }
