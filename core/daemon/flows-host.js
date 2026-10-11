@@ -162,7 +162,7 @@ export function createFlowsHost(o) {
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
       // A Flow type that gained a field since this Space made it (flow-run.record, the run's link to its record) gets the field: the definition is additive.
-      const grown = FLOW_TYPES.filter(want => { const had = haveTypes.find((/** @type {any} */ t) => t.name === want.name); return had && want.fields.some(f => !had.fields.some((/** @type {any} */ x) => x.name === f.name)); });
+      const grown = FLOW_TYPES.filter(want => { const had = haveTypes.find((/** @type {any} */ t) => t.name === want.name); return had && (want.protected === true && had.protected !== true || want.fields.some(f => !had.fields.some((/** @type {any} */ x) => x.name === f.name))); });
       if (grown.length) await gw.records.define(owner(), { change_types: grown.map(t => ({ ...t })) }).catch((/** @type {any} */ e) => { log(`flows: could not add the new fields to the Flow record types for ${space}: ${e && e.message}`); });
       // A new Space (one with no contact type yet) also starts with the base Kit's types: the owner's setup act, no card, once. A Space on its own Records store has had them since its store was made.
       if (!have.has("contact")) {
@@ -335,6 +335,14 @@ export function createFlowsHost(o) {
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
       personChain: () => personChain(ownerOf()),
+      /** Put a card in front of a person (a member's proposal for a Flow that runs on someone's authority): the Flows service asks, the person decides in their own Needs-you. */
+      notify: (/** @type {string} */ to, /** @type {string} */ title, /** @type {any} */ form, /** @type {string} */ idem) => gw.ask.request(flowsChain(), { title: title.slice(0, 200), doer: actor(to), output: { kind: "decision" }, source: "flow_step", form }, { idem }),
+      /** The people holding a role in the Space (for a card that has no better person). */
+      holders: (/** @type {string} */ role) => roleHolders(role),
+      /** Would the Space's kernel allow this (a member's approval checks the actions her Flow declares against HER chain), without doing it? */
+      authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
+      /** The role the Space's kernel gives a person, or "" (the member door's rows judge a write by it). */
+      roleOf: (/** @type {string} */ person) => { try { const r = gw.members.roleOf({ kind: "person", id: person, space }); return typeof r === "string" ? r : ""; } catch { return ""; } },
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
       stop: () => { wake.stop(); if (typeof offDevice === "function") offDevice(); } });
