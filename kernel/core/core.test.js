@@ -425,7 +425,7 @@ test("events: a consumer's cursor is written once per burst, not once per event,
   const seen = [];
   l.subscribe("search", { type: "contact.*" }, e => { seen.push(e.seq); });
   for (let i = 0; i < 20; i++) l.append(person(), ev());
-  await l.pump();
+  await new Promise(r => setTimeout(r, 20));
   assert.equal(seen.length, 20);
   assert.ok(writes.length < 20, `20 events wrote the cursor ${writes.length} times: one synchronous write per event stalled vyred`);
   l.flush();
