@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { createMemberTools, MEMBER_TOOLS } from "../work/member-tools.js";
-import { guardRecordsCall, MEMBER_BLOCKED_TYPES } from "../../kernel/remote/member-guard.js";
+import { guardRecordsCall, MEMBER_BLOCKED_TYPES, MEMBER_READ_ONLY_TYPES } from "../../kernel/remote/member-guard.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -85,6 +85,13 @@ test("the door's guard closes every typed records call and the searches and list
     assert.ok(await guardRecordsCall(n, fake(n), trusted)(owner, type, "x"), `${n} ${type} is open to the owner`);
   }
   assert.ok(await guardRecordsCall("query", fake("query"), trusted)(member, "contact", {}), "an ordinary type is open to a member");
+  for (const type of MEMBER_READ_ONLY_TYPES) {
+    assert.ok(await guardRecordsCall("query", fake("query"), trusted)(member, type, {}), `a member reads ${type}`);
+    for (const n of ["create", "update", "remove", "restore"]) {
+      await assert.rejects(guardRecordsCall(n, fake(n), trusted)(member, type, "x"), /kept by the team's own tools/, `a member cannot ${n} ${type}`);
+      assert.ok(await guardRecordsCall(n, fake(n), trusted)(owner, type, "x"), `the owner can ${n} ${type}`);
+    }
+  }
   const found = await guardRecordsCall("search", fake("search"), trusted)(member, {});
   assert.deepEqual(found.rows.map((/** @type {any} */ h) => h.type), ["contact"], "a search leaves the protected types out");
   assert.equal((await guardRecordsCall("search", fake("search"), trusted)(owner, {})).rows.length, 3);

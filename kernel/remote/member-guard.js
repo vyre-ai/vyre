@@ -7,16 +7,23 @@
 import { KernelError } from "../core/errors.js";
 
 /** @type {ReadonlySet<string>} */
-export const MEMBER_BLOCKED_TYPES = Object.freeze(new Set(["skill", "def-flow", "def_flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install"]));
+export const MEMBER_BLOCKED_TYPES = Object.freeze(new Set(["skill", "def-flow", "def_flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install", "planner_state", "planner_firing", "preview_doc"]));
+
+/** Types a member may READ (the app shows a project's team and the roster) but never write through the door: the project team decides who may open what a project shares, and the agent records are a view the module puts back. @type {ReadonlySet<string>} */
+export const MEMBER_READ_ONLY_TYPES = Object.freeze(new Set(["team-member", "agent"]));
 
 const TYPED = new Set(["get", "reference", "query", "aggregate", "create", "update", "remove", "restore"]);
+const WRITES = new Set(["create", "update", "remove", "restore"]);
 
 /**
  * Wrap one call of the records group for the member door. @param {string} name the call after "records." @param {(chain: any, ...args: any[]) => Promise<any>} fn @param {(chain: any) => boolean} trusted owner or admin
  */
 export function guardRecordsCall(name, fn, trusted) {
   if (TYPED.has(name)) return async (/** @type {any} */ chain, /** @type {any[]} */ ...args) => {
-    if (!trusted(chain) && typeof args[0] === "string" && MEMBER_BLOCKED_TYPES.has(args[0])) throw new KernelError("not_found", "not found");
+    if (!trusted(chain) && typeof args[0] === "string") {
+      if (MEMBER_BLOCKED_TYPES.has(args[0])) throw new KernelError("not_found", "not found");
+      if (WRITES.has(name) && MEMBER_READ_ONLY_TYPES.has(args[0])) throw new KernelError("not_allowed", "That is kept by the team's own tools; ask the owner or an admin.");
+    }
     return fn(chain, ...args);
   };
   if (name === "search") return async (/** @type {any} */ chain, /** @type {any[]} */ ...args) => {
