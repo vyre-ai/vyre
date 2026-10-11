@@ -206,6 +206,36 @@ export default {
         return putPrompt({ name, kind: kind || (old && old.kind) || "secret", replacing: Boolean(old) });
       }));
 
+    // A member's own AI key (member-keys.js). The person is read from the kernel's chain, never from the input; only these tools and the two internal ones below ever touch the table.
+    const memberOf = async (/** @type {any} */ meta) => {
+      let person = "";
+      try { const k = ctx.kernel; const c = k ? await k.chain(meta || {}) : null; const h = c && c.hops && c.hops[0]; if (h && h.actor.kind === "person") person = String(h.actor.id); } catch { /* no person behind this call */ }
+      if (!person) throw Object.assign(new Error("a key belongs to a person: sign in as yourself, then try again"), { code: "denied" });
+      return person;
+    };
+    const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+    tool("vault.member.put", PERSON_SURFACES, "Put your own API key or setup token in this server's vault, private to you: { id, item, label, kind }. The value is never returned or shown again.",
+      obj({ label: str, kind: { type: "string", enum: ["api-key", "setup-token"] }, value: str }, ["kind", "value"]), async (i, meta) => vault.memberKeys.put(await memberOf(meta), { label: i.label, kind: String(i.kind), value: String(i.value) }));
+    // The sessions module puts a member's key for the member it has already identified from the kernel's chain (sessions.accounts.key); a person's own call cannot name another person here.
+    tool("vault.member.put-for", ["module"], "Put a member's key for the member the sessions module identified. For the sessions module.", obj({ person: str, label: str, kind: { type: "string", enum: ["api-key", "setup-token"] }, value: str }, ["person", "kind", "value"]), async (i, meta = {}) => {
+      if (String(meta.caller || "") !== "module:sessions") throw Object.assign(new Error("only the sessions module puts a key for a member; add your own key from your account settings instead"), { code: "denied" });
+      return vault.memberKeys.put(String(i.person), { label: i.label, kind: String(i.kind), value: String(i.value) });
+    });
+    tool("vault.member.list", PERSON_SURFACES, "Your own keys on this server: id, item, label, kind. Nobody else's, and never a value.", obj(), async (_i, meta) => ({ keys: vault.memberKeys.list(await memberOf(meta)) }));
+    tool("vault.member.remove", PERSON_SURFACES, "Remove one of your own keys; any account that used it then needs attention.", obj({ id: str }, ["id"]), async (i, meta) => vault.memberKeys.remove(await memberOf(meta), String(i.id)));
+    // For the sessions module only: does this person own that key (the account naming it is theirs), and the value for the child of that person's turn, only while they are still a member.
+    tool("vault.member.owns", ["module"], "Whether a person owns a member key: { owns }. For the sessions module.", obj({ id: str, person: str }, ["id", "person"]), async (i, meta = {}) => {
+      if (!["module:sessions", "module:threads"].includes(String(meta.caller || ""))) throw Object.assign(new Error("only the sessions and threads modules ask whose a member key is; ask the person who owns it"), { code: "denied" });
+      return { owns: vault.memberKeys.owns(String(i.person), String(i.id)) };
+    });
+    tool("vault.member.release", ["module"], "A member key's value for the child process of its owner's turn. For the threads module.", obj({ id: str, person: str }, ["id", "person"]), async (i, meta = {}) => {
+      if (String(meta.caller || "") !== "module:threads") throw Object.assign(new Error("only the threads module releases a member key, into the child of the owner's turn; start the turn from the chat"), { code: "denied" });
+      const k = ctx.kernel;
+      const m = k && typeof k.membership === "function" ? await k.membership(String(i.person)).catch(() => null) : null;
+      if (!m || !m.member) throw Object.assign(new Error("that person is no longer a member of this Space, so their key is not used: they rejoin or the account is removed"), { code: "not_found" });
+      return { value: await vault.memberKeys.release(String(i.person), String(i.id)) };
+    });
+
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
       obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
         const r = cli.list(vault.list(input), input);

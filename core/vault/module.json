@@ -11,6 +11,12 @@
     "tools": [
       { "name": "vault.put", "effect": "write", "reach": "anyone" },
       { "name": "vault.list", "reach": "anyone" },
+      { "name": "vault.member.put", "effect": "write", "reach": "person" },
+      { "name": "vault.member.put-for", "effect": "write", "reach": "modules" },
+      { "name": "vault.member.list", "effect": "read", "reach": "person" },
+      { "name": "vault.member.remove", "effect": "write", "reach": "person" },
+      { "name": "vault.member.owns", "effect": "read", "reach": "modules" },
+      { "name": "vault.member.release", "effect": "read", "reach": "modules" },
       { "name": "vault.delete", "effect": "write", "reach": "anyone" },
       { "name": "vault.grant", "effect": "write", "reach": "anyone" },
       { "name": "vault.revoke", "effect": "write", "reach": "anyone" },
@@ -270,7 +276,7 @@
       }
     }
   },
-  "needs": { "kernel": { "reach": true } },
+  "needs": { "kernel": { "reach": true, "membership": true } },
   "teaches": {
     "tips": [
       {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},

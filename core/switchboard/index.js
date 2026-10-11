@@ -3773,6 +3773,13 @@ export default {
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
       let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
+      // A member's own key (vault.member.put) is released only for its owner's turn, only while they are a member, and only into this child's environment.
+      const mk = /^member:(mk_[0-9a-f]{16})$/.exec(String(a.vault_item || ""));
+      if (mk) {
+        const r = a.person ? await ctx.call("vault.member.release", { id: mk[1], person: String(a.person) }).catch(() => null) : null;
+        if (!r || r.error || !r.data) throw Object.assign(new Error(`${a.label}'s key needs attention: ${r && r.error ? r.error.message : "it is not available to this account"}`), { code: "no_credential" });
+        v = r.data.value;
+      }
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was

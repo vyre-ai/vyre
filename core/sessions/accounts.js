@@ -67,7 +67,8 @@ export const KINDS = ["api-key", "setup-token", "login"];
 
 const PROVIDER = /^[a-z][a-z0-9-]{0,31}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const VAULT_ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+// a vault item's name, or a member's own key (vault.member.put): member:mk_<16 hex>
+const VAULT_ITEM = /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,127}|member:mk_[0-9a-f]{16})$/;
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
 
 /** { projects: "*"|[ids], agents: "*"|[names] } - the MCP hub's own scope shape (core/mcp/hub.js), reused as is. */

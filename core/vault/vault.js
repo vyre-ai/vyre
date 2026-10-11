@@ -44,6 +44,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
+import { MemberKeys, MEMBER_KEYS_MIGRATION } from "./member-keys.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Links } from "./links.js";
@@ -152,6 +153,8 @@ export const MIGRATIONS = [
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
   CONVERSIONS_MIGRATION,
+  // A member's own AI key on the team's server (member-keys.js): its own table, never read by the vault's other tools or its backup.
+  MEMBER_KEYS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -376,6 +379,7 @@ export class Vault {
     this.clock = clock;
     /** Agent logins: what a grant is checked against, the words, the log of uses (ADR 0028, decision 2). Who may use a login is `access`. */
     this.agents = new AgentGrants(this);
+    /** A member's own AI keys (member-keys.js), apart from the items. */ this.memberKeys = new MemberKeys(this);
     /** Who may use a login: kernel grants (access.js), set by index.js where there is a kernel. @type {import("./access.js").Access | null} */ this.access = null;
     /** The Vault MCP for outside agents (passmcp.js), set by index.js. @type {import("./passmcp.js").PassMcp | null} */ this.mcp = null;
     /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */

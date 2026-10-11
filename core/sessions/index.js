@@ -97,6 +97,9 @@ const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
+/** A member key in the server's vault: its item name. */
+const MEMBER_KEY = /^member:(mk_[0-9a-f]{16})$/;
+
 export default {
   async start(ctx) {
     ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION, HARNESS_MIGRATION]);
@@ -449,11 +452,18 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
-        // A member's account is a sign-in of their own (a login, run as the account's own user). A key or token names an item in the home's vault, which is the owner's: a member could name the owner's
-        // item and have the owner's credential used for their turns. Until a member's keys live in a vault of their own, a member adds a login only.
+        // A member's account is a sign-in of their own (a login, run as the account's own user), or a key or token the member put in the server's vault with vault.member.put: that item is theirs, and only
+        // an item the same member put may be named. The owner's vault items are the owner's: a member cannot name one, and the owner cannot name a member's.
         const who = await ownerOfAccount(meta);
-        if (who && (i.kind || (i.vault_item ? "api-key" : "login")) !== "login") throw Object.assign(new Error("on this server you add your own sign-in (kind login); a key needs a Vault of your own, which is not here yet"), { code: "denied" });
-        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
+        const wantKind = i.kind || (i.vault_item ? "api-key" : "login");
+        const memberKey = MEMBER_KEY.exec(String(i.vault_item || ""));
+        if (wantKind !== "login") {
+          if (who || memberKey) {
+            if (!memberKey) throw Object.assign(new Error("on this server you add your own sign-in (kind login), or name a key of your own that you put in this vault: supply its item as member:<id>"), { code: "denied" });
+            const mine = who ? await ctx.call("vault.member.owns", { id: memberKey[1], person: who }) : null;
+            if (!mine || mine.error || !mine.data || mine.data.owns !== true) throw Object.assign(new Error("that is not one of your keys: supply the item of a key you put in this vault yourself, as member:<id>"), { code: "denied" });
+          } else if (i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" });
+        }
         const added = accounts.add({ ...i, person: who });
         // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
         if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
@@ -500,19 +510,26 @@ export default {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
         if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
-        // The convenience stores the key in the home's own vault. A member keeps theirs in their own: they put it in their Vault, then add the account naming that item (sessions.accounts.add).
-        if (await ownerOfAccount(meta)) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
+        // The convenience stores the owner's key in the home's own vault. A member's key goes into the member keys (vault.member.put-for): private to that member, never the owner's vault.
+        const member = await ownerOfAccount(meta);
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
-        const id = crypto.randomBytes(6).toString("hex");
-        const item = `ai-key-${k.provider}-${id}`;
-        const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
-        if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
-        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        let item;
+        if (member) {
+          const put = await ctx.call("vault.member.put-for", { person: member, label, kind: "api-key", value: key });
+          if (put.error || !put.data) throw Object.assign(new Error(put.error && put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key: try again, or ask the owner"), { code: "bad_input" });
+          item = String(put.data.item);
+        } else {
+          const id = crypto.randomBytes(6).toString("hex");
+          item = `ai-key-${k.provider}-${id}`;
+          const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
+          if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
+        }
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: member, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
         accountChanged(row, true, "key");
         return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });

@@ -69,7 +69,10 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // A credential linked to a record: a pair of names that grants nothing, and the plain lines of how the linked items were used (R031-71).
     "vault.link", "vault.unlink", "vault.links", "vault.used-by", "vault.uses.for",
     // The outside-agents module serves the pass's own tools to a registered agent (module-only; the pass was made with the person's yes).
-    "vault.mcp.agent.tools", "vault.mcp.agent.call"]);
+    "vault.mcp.agent.tools", "vault.mcp.agent.call",
+    // A member's own AI key (core/vault/member-keys.js): a person puts their own key in and lists or removes their own, with the kernel's person read from the call and nothing returned but names. The
+    // two module-only tools say whose a key is and release it into the child of its owner's turn (only module:threads, only while the owner is a member); neither is a person's.
+    "vault.member.put", "vault.member.put-for", "vault.member.list", "vault.member.remove", "vault.member.owns", "vault.member.release"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 
