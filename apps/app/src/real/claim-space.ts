@@ -1,4 +1,5 @@
-// The app's one call to make a space on the server this device is paired to (claimServerSpace, identity/claim-space.js, with its three inputs filled in from what the app keeps):
+// ONE SPACE PER SERVER (rc.2): the install screen makes a team by naming the server's OWN Space (nameServerOwnSpace below, spaces.name-here); makeSpaceOnPairedServer (spaces.host-here, a second Space) is no longer
+// what a person's screen calls and stays for installs that already have one. The app's call to make a space on the server this device is paired to (claimServerSpace, identity/claim-space.js, with its three inputs filled in from what the app keeps):
 //   - the stored route: loadPairing() { relay, route, box }, where the paired server is reached;
 //   - the paired session: `tool` (box.ts) goes over the peer wire as this device with its own paired session as the person, renewed once on a lapse (peer.ts peerCall);
 //   - the presence proof: spaces.host-here is a person-only act, so `tool` answers its presence_required with the passkey or the phone's proof, exactly as for any other act.
