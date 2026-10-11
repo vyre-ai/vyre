@@ -38,11 +38,11 @@ export function installStandins() {
 export async function signInThroughDoor(person, label) {
   const first = await person.joined.call("accounts.signin", [{ provider: "codex", label }]);
   assert.equal(first.step, "code", `${label}: the provider's page and code are shown: ${JSON.stringify(first)}`);
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 40; i++) {
     const s = await person.joined.call("accounts.signin", [{ flow: first.flow }]);
     if (s.step === "done") return first;
     if (s.step === "failed") throw new Error(`${label}: the sign-in failed: ${JSON.stringify(s)}`);
-    await sleep(500);
+    await sleep(3000);   // each call through the team's door is one stream: a member has 30 a minute
   }
   throw new Error(`${label}: the sign-in did not finish`);
 }
@@ -57,8 +57,8 @@ const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(S
 /** Wait until a person sees `n` answers from the AI; the list is what they saw. @param {any} person @param {string} chat @param {number} n */
 async function untilAnswers(person, chat, n) {
   let got = /** @type {any[]} */ ([]);
-  for (let i = 0; i < 120; i++) { got = answers(await seen(person, chat)); if (got.length >= n) return got; await sleep(1000); }
-  throw new Error(`waited two minutes for answer ${n} in the chat; ${person.name} saw ${JSON.stringify(got.map(m => m.text))}`);
+  for (let i = 0; i < 40; i++) { got = answers(await seen(person, chat)); if (got.length >= n) return got; await sleep(4000); }
+  throw new Error(`waited almost three minutes for answer ${n} in the chat; ${person.name} saw ${JSON.stringify(got.map(m => m.text))}`);
 }
 
 /**
