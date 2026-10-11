@@ -38,7 +38,8 @@ test("a model's documents tools in a team turn run in the team Space as the memb
   const { w, as, firm } = await world(t);
   const lines = /** @type {string[]} */ (/** @type {any} */ (w).lines);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
-  await firm.gateway.drive.put(owner, "Templates/Team letter.docx", new Uint8Array(docx(["Dear {client}, welcome to the team."])), { base: null });
+  const ana = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${ANA.slice(4, 8)}`, person: ANA, path: "relay" });
+  await firm.gateway.drive.put(ana, "Templates/Team letter.docx", new Uint8Array(docx(["Dear {client}, welcome to the team."])), { base: null });
   const made = await as(ANA, "create", { title: "Team documents", people: [BEN], agents: ["assistant"] });
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   const assistantSaid = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
@@ -52,6 +53,6 @@ test("a model's documents tools in a team turn run in the team Space as the memb
   const gen = await waitFor(/Documents\/general\/welcome-dana-[0-9a-f]{8}\.docx|not_in_team_space|denied/, "the generated document");
   assert.match(gen, /Documents\/general\/welcome-dana-[0-9a-f]{8}\.docx/, gen.slice(0, 300));
   const path = /Documents\/general\/welcome-dana-[0-9a-f]{8}\.docx/.exec(gen)?.[0] || "";
-  await firm.gateway.drive.get(owner, path);
+  await firm.gateway.drive.get(ana, path);
   await assert.rejects(() => w.d.kernel.gateway.drive.get(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-home", person: w.d.kernel.id.owner, path: "direct", session: "s" }), path), "the home's own Drive has no such document");
 });
