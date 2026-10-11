@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentControl, personOfMeta, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentControl, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -4370,7 +4370,7 @@ export default {
         // device: which of the person's devices answered, when the call says (a paired device over
         // the relay, the owner's tailnet node), not only the surface it claims.
         const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
-        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device, personOfMeta(meta));
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device, (personOfChain(kchainNow()) || personOfMeta(meta)));
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
@@ -4395,7 +4395,7 @@ export default {
 
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "interrupt sessions"); return sb.interrupt(i.thread, personOfMeta(meta)); });
+      async (i, meta) => { guard(meta.caller, "interrupt sessions"); return sb.interrupt(i.thread, (personOfChain(kchainNow()) || personOfMeta(meta))); });
 
     tool("threads.switch", "Continue a thread on another provider (and account) between turns, keeping its folder and files; the new provider gets a brief of what was said.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: { type: "string", description: "claude, codex or grok." }, account: { type: "string", description: "One granted to this project or agent; never a guess between two." }, model: str, text: { type: "string", description: "The next message to send there." } } },
@@ -4578,7 +4578,7 @@ export default {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
         // Whatever the reach list lets an assistant do for its person, "Doesn't ask" is the person's own choice and nothing else's (ADR 0030, Security): only a person's surface sets it.
         if (i.mode === BYPASS && !["cli", "local", "deck", "capsule"].includes(String(caller))) throw Object.assign(new Error("Doesn't ask is the person's own choice; an assistant never sets it"), { code: "denied" });
-        return sb.mode(i.thread, i.mode, personOfMeta(meta));
+        return sb.mode(i.thread, i.mode, (personOfChain(kchainNow()) || personOfMeta(meta)));
       },
       ["cli", "local", "deck", "capsule"]);
 
@@ -4635,7 +4635,7 @@ export default {
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
         const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
         const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
-        for (const r of busy) await sb.interrupt(r.thread, personOfMeta(meta));
+        for (const r of busy) await sb.interrupt(r.thread, (personOfChain(kchainNow()) || personOfMeta(meta)));
         return { stopped: busy.map(r => r.thread) };
       });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
