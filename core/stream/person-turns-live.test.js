@@ -198,6 +198,36 @@ test("G04: two people each with their own Codex sign-in: the thread starts on bo
   await b.stop();
 });
 
+test("G04: a session lives in its account's own folder: carol's turn on her account starts a fresh session handed the conversation, and bob's next turn on his gets the conversation back", async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  process.env.FAKE_ACP_PER_HOME = "1";   // each account's folder keeps its own sessions, as a real Codex's CODEX_HOME does: bob's session cannot be loaded by carol's account
+  t.after(() => { delete process.env.FAKE_ACP_PER_HOME; });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const carol = await b.watch("carol", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex"), carolsAcct = await own("carol", "Carol's Codex");
+  const say = async (/** @type {string} */ who, /** @type {string} */ text, /** @type {any} */ extra = {}) => { const r = await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work, ...extra }); assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); };
+  const lastAnswer = () => (textOf(carol.frames).split("echo:").pop() || "");
+  await say("bob", "the code word is AMBER-92", { account: `codex:${bobsAcct}` });
+  await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 120_000);
+  await say("carol", "what was the code word?");
+  await until(() => /what was the code word\?/.test(lastAnswer()), "carol's answer on her own account", 120_000);
+  assert.match(lastAnswer(), /AMBER-92/, "carol's session, new to her account, was handed bob's turn");
+  const thread = kitThread(b, chat.id);
+  assert.ok((await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's account");
+  await say("bob", "and once more please", { account: `codex:${bobsAcct}` });
+  await until(() => /and once more please/.test(lastAnswer()), "bob's next answer on his own account", 120_000);
+  assert.match(lastAnswer(), /AMBER-92[\s\S]*what was the code word|what was the code word[\s\S]*AMBER-92/, "and bob's session, back on his account, was handed what was said while it was away");
+  await b.stop();
+});
+
 /** Two Codex sign-ins, bob's and carol's, each held by its own person; bob's thread started on his. */
 async function bobsThread(t) {
   const w = await world(t);

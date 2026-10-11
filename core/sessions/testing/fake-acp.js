@@ -25,7 +25,9 @@ import { spawn } from "node:child_process";
 
 // A walk on a real box cannot set this process's environment (the spawner gives a session its own), so settings can sit in a `fake-acp.env` file beside this script: KEY=value lines, never over a variable already set.
 try { for (const l of fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-acp.env"), "utf8").split("\n")) { const m = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(l); if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]; } } catch { /* none: the environment stands */ }
-const store = process.env.FAKE_ACP_STORE || "";
+// FAKE_ACP_PER_HOME: each HOME keeps its own sessions, as each real account's folder does (a session one account made cannot be loaded by another's).
+const store = process.env.FAKE_ACP_STORE ? (process.env.FAKE_ACP_PER_HOME ? path.join(process.env.FAKE_ACP_STORE, crypto.createHash("sha1").update(process.env.HOME || "").digest("hex").slice(0, 10)) : process.env.FAKE_ACP_STORE) : "";
+if (store) fs.mkdirSync(store, { recursive: true });
 const log = o => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + "\n"); };
 const out = o => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...o }) + "\n");
 let nextId = 1000, session = "", mode = process.env.FAKE_ACP_START_MODE || "default", cancelled = false, clientCaps = /** @type {any} */ ({});
