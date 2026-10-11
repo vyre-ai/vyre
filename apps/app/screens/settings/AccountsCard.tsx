@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
-import { ADDABLE, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
+import { addableFor, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
+import { showingJoined } from "../../src/real/team-join";
 
 const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? e.message : f);
 
@@ -15,13 +16,17 @@ export function AccountsCard() {
   const [busy, setBusy] = useState("");
   const [confirming, setConfirming] = useState("");
   const [adding, setAdding] = useState(false);
-  const [provider, setProvider] = useState(ADDABLE[0]);
+  const [member, setMember] = useState(false);
+  const addable = addableFor(member);
+  const [provider, setProvider] = useState(addable[0]);
   const [label, setLabel] = useState("");
   const [flow, setFlow] = useState<Flow | null>(null);
   const [code, setCode] = useState("");
   const run = useRef(0);
   const load = useCallback(() => { setErr(""); accounts.list().then(setRows).catch((e) => { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); }); }, []);
   useEffect(() => { load(); return () => { run.current++; }; }, [load]);
+  useEffect(() => { void showingJoined().then(setMember).catch(() => setMember(false)); }, []);
+  useEffect(() => { if (!addable.includes(provider)) setProvider(addable[0]); }, [addable, provider]);
 
   const act = async (id: string, fn: () => Promise<unknown>) => {
     setBusy(id); setProblem("");
@@ -115,7 +120,7 @@ export function AccountsCard() {
         )
       ) : adding ? (
         <View className="gap-s2">
-          <Segmented label="Which AI" value={provider} onChange={setProvider} options={ADDABLE.map((p) => [p, providerName(p)] as [string, string])} />
+          <Segmented label="Which AI" value={provider} onChange={setProvider} options={addable.map((p) => [p, providerName(p)] as [string, string])} />
           <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
           <View className="flex-row flex-wrap gap-s2">
             <Button size="sm" label="Sign in" onPress={() => void start(provider, label.trim())} />

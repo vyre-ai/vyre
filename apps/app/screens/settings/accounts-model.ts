@@ -14,8 +14,10 @@ export const providerName = (p: unknown): string => {
 };
 
 const KIND_WORDS: Record<string, string> = { login: "Signed in with the provider", "api-key": "API key", "setup-token": "Setup token" };
-/** Providers a person can add by signing in from here. Claude signs in on the machine it runs on (the Claude card above), so it is not offered. */
+/** Providers a person can add by signing in from here. The owner's Claude signs in on the machine it runs on (the Claude card above), so it is not offered to the owner. */
 export const ADDABLE: readonly string[] = Object.freeze(["codex", "grok"]);
+/** What a team member can add on the team's server: Claude too, since her own Claude login is a sign-in the server runs as her own account (accounts.signin, a pasted code back), and the owner's card is not hers. */
+export const addableFor = (member: boolean): readonly string[] => (member ? Object.freeze(["claude", ...ADDABLE]) : ADDABLE);
 
 /** sessions.accounts.list's rows, reduced to what is drawn. */
 export function accountsOf(d: any): Account[] {
