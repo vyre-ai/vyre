@@ -138,12 +138,15 @@ export function registerTranscriptTools(ctx, sb, str) {
   // Only a Claude thread this Switchboard has. On the packaged box the file belongs to the thread's account (its own uid and HOME): the answer then names the account, and only the spawner may place the file.
   ctx.tool("threads.transcript-target", {
     description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of or a provider that keeps no such file. On the packaged box it also names the account (uid) whose HOME holds the file.", internal: true, callers: ["module"],
-    input: { type: "object", required: ["thread"], properties: { thread: str } },
+    input: { type: "object", required: ["thread", "person"], properties: { thread: str, person: str } },
     run: async i => {
       const id = String(i.thread);
       const rec = sb.record(sb.threadOfNative(id) || id);
       if (!rec || (rec.provider || "claude") !== "claude") return null;
       const thread = String(rec.id || id), native = sb.nativeOf(thread);
+      // a transcript is placed only in the chat of the person it is for: the thread's own person (who started it) must be the one asked for, which the home takes from its book, never from what a computer sent
+      { let owner = null; try { const o = /** @type {any} */ (sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(thread)); owner = o && o.opts ? JSON.parse(String(o.opts)).person : null; } catch { owner = null; }
+        if (!owner || !i.person || sb.canon(owner) !== sb.canon(String(i.person))) throw Object.assign(new Error("that chat is not this person's, so nothing is placed in it: ask the chat's owner to move it"), { code: "not_allowed" }); }
       let folders = sb.deps.transcripts || [], account;
       if (process.env.VYRE_SUPERVISOR === "docker") {
         const acct = await sb.accountFor({ provider: "claude", account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);

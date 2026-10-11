@@ -362,7 +362,7 @@ async function startLocked(opts, root, p, release) {
           adopt: async (/** @type {string} */ space, /** @type {{ thread: string, person: string, chat?: string | null }} */ i) => {
             const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
             if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" });
-            const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread }, "module:vyred", { door: true })).data);
+            const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread, person: i.person }, "module:vyred", { door: true })).data);
             if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move: send the chat a message here first, then move it"), { code: "unavailable" });
             const port = ownHostOf()?.port(space);
             const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
@@ -683,7 +683,7 @@ async function startLocked(opts, root, p, release) {
       const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
       // The loader that carries a chat on from a computer of the person's: a host's own (opts.resumeLent, or the registry's), else the runner module's (`runner.resume-lent`), which needs the Switchboard to say where
       // the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
-      const ownLoader = (/** @type {any} */ i) => registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread || i.chat || i.session, chat: i.chat || null, person: i.person, device: i.device, epoch: i.epoch, reason: i.reason }, "module:vyred", { door: true }).then((/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; });
+      const ownLoader = (/** @type {any} */ i) => registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread || i.chat || null, chat: i.chat || null, person: i.person, device: i.device, epoch: i.epoch, reason: i.reason }, "module:vyred", { door: true }).then((/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; });
       const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && (process.env.VYRE_SUPERVISOR !== "docker" || spawnerThere()) ? ownLoader : undefined);
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
