@@ -409,5 +409,8 @@ export function createHost(deps) {
   }
   const info = (/** @type {string} */ id) => { const sp = spaces.get(id); return sp ? { id, up: sp.up, spec: sp.spec } : null; };
 
-  return { addSpace, start, serveHome, acceptRelay, pathOf, connect, stop, stopAll, info, status, whois, dialSock, peerSock };
+  /** The pids of the forwarder processes this host started and still has running: the daemon's confinement check knows their sockets as the node's own, not a stranger's. */
+  const pids = () => [...spaces.values()].map(sp => sp.proc && sp.proc.pid).filter((/** @type {any} */ n) => Number.isInteger(n));
+
+  return { addSpace, start, serveHome, acceptRelay, pathOf, connect, stop, stopAll, info, status, whois, dialSock, peerSock, pids };
 }

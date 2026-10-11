@@ -940,6 +940,14 @@ export function createWink(inject = {}) {
       ownHandover: () => pairing.ownHandover(),
       join: () => liveJoin,
       netd: () => netdRef,
+      /**
+       * The pids of the programs this module started: Headscale and the Wink node (wink-forwarder) of the built-in network, and the node of a paired server's own join. The daemon's confinement check of a
+       * session (core/spawner/confine.js) counts the sockets of exactly these processes as Vyre's own, so a start is not refused for them. An allow BY PROCESS, never by port or protocol: any other listener still refuses.
+       * What each allows a session to reach, and why that is harmless: the node's UDP socket (WireGuard, a random port: it drops every packet that does not authenticate); Headscale's control port on loopback (every
+       * call needs a node, pre-auth or API key), its grpc port (loopback, `grpc_allow_insecure: false`, an API key on every call) and its metrics port (loopback, counters only, no key and nothing of a person's).
+       * The real fix, a wall by uid so a session cannot send to them at all, is team/BACKLOG.md under 0.3.4.
+       */
+      nodePids: () => [netdRef && typeof netdRef.pids === "function" ? netdRef.pids() : [], liveJoin && liveJoin.host && liveJoin.host() && typeof liveJoin.host().pids === "function" ? liveJoin.host().pids() : []].flat(),
       async stop() {
         homeCalls.stop();
         live = null;

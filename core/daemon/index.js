@@ -611,7 +611,8 @@ async function startLocked(opts, root, p, release) {
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }
           else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
-          const own = ownListeners();   // vyred's own listeners are the box's expected ones; any other listener, UDP port or abstract socket refuses the start, with its port named
+          // vyred's own listeners, and those of the Wink node programs it started itself (a WireGuard socket on a port of its own choosing), are the box's expected ones; any other listener, UDP port or abstract socket refuses the start, with its port named
+          const own = ownListeners("/proc", { children: (() => { try { const w = registry.modules.get("wink"); return w && w.handle && typeof w.handle.nodePids === "function" ? w.handle.nodePids() : []; } catch { return []; } })() });
           return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, refuseListen: true, allowListen: [...own.tcp, ...own.udp], allowAbstract: own.abstract, out: [
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
             { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
