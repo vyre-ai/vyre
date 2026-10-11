@@ -1446,7 +1446,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length)));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
-    const input = await body(req);
+    let input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
     if (pluginAgent) {
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
