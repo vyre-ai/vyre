@@ -423,14 +423,19 @@ export default {
         const k = kernelOf(), svc = k.serviceChain("work");
         const rec = await hubOf().projectOf(String(input.project || ""));
         if (!rec || String(rec.data.lead || "").toLowerCase() !== String(input.agent || "").toLowerCase() || !rec.data.lead) throw Object.assign(new Error("only a project's flagged lead posts its message; the project record names the lead (projects.list shows the project)"), { code: "denied" });
-        const chats = (await k.records.query(svc, "chat-record", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 50 } }).catch(() => ({ rows: [] }))).rows || [];
+        const all = (await k.records.query(svc, "chat-record", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 100 } }).catch(() => ({ rows: [] }))).rows || [];
+        // Only a chat every person on the project is in: the lead's message is for the whole team, and it never lands in one member's own chat. People here are the project owner and the person team members.
+        const team = (await k.records.query(svc, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 200 } }).catch(() => ({ rows: [] }))).rows || [];
+        const everyone = new Set([...(rec.data.owner && rec.data.owner.actor ? [String(rec.data.owner.actor.id)] : []), ...team.filter((/** @type {any} */ x) => x.data && x.data.actor && x.data.actor.actor && x.data.actor.actor.kind === "person").map((/** @type {any} */ x) => String(x.data.actor.actor.id))]);
+        if (!everyone.size && k.owner) everyone.add(String(k.owner));   // a project with no recorded people is the Space owner's
+        const chats = all.filter((/** @type {any} */ c) => { const people = new Set(String(c.data.people || "").split(",").filter(Boolean)); return people.size > 0 && everyone.size > 0 && [...everyone].every(x => people.has(x)); });
         chats.sort((a, b) => String(b.data.last_active || "") < String(a.data.last_active || "") ? -1 : 1);
         for (const c of chats) {
           if (!c.data || typeof c.data.chat !== "string") continue;
           const r = await ctx.call("threads.of-chat", { chat: c.data.chat }).catch(() => null);
-          const list = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.threads || []) : [];
-          const t = list.find((/** @type {any} */ x) => x && (x.id || typeof x === "string"));
-          const id = t ? String(t.id || t) : "";
+          const list = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.runs || r.data.threads || []) : [];
+          const t = list.find((/** @type {any} */ x) => x && (x.thread || x.id || typeof x === "string"));
+          const id = t ? String(t.thread || t.id || t) : "";
           if (!id) continue;
           const said = await ctx.call("threads.say-as", { thread: id, agent: String(input.agent), text: String(input.text) });
           if (!said.error) return { posted: true, thread: id };

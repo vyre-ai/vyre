@@ -433,3 +433,41 @@ test("tasks no one could be given are named to the lead, so it can flag them to 
   assert.match(prompt, /Draft the trust/);
   assert.match(prompt, /Sign/);
 });
+
+test("the lead's plan lands as one line under its name in the project's shared chat, survives a restart, and starts no turn; a chat of one member's own gets nothing", { timeout: 180_000 }, async t => {
+  const { d, root, project, launches } = await boot(t);
+  const kcall = kernelCaller(d, root);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: [project.slug] })).error);
+  const owner = d.kernel.id.owner;
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const ref = (await kcall("work.project.ref", { project: project.slug })).data;
+  const rec = await d.kernel.gateway.records.get(admin, "project", ref.id);
+  await d.kernel.gateway.records.update(admin, "project", ref.id, { lead: "kit" }, rec.version);
+  // a session in the project: its chat is the owner's, and the owner is the project's only person
+  const th = await d.registry.call("threads.launch", { agent: "kit", project: project.slug, prompt: "hello", name: "kit" }, "module:vyred");
+  assert.ok(!th.error, JSON.stringify(th));
+  const thread = String(th.data.id);
+  await until(async () => { const row = /** @type {any} */ (d.registry.deps.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread)); return row && row.chat ? row.chat : null; }, "the thread's chat", 30_000);
+  await until(async () => (await d.kernel.gateway.records.query(admin, "chat-record", { page: { limit: 50 } })).rows.find((/** @type {any} */ x) => x.data.project && x.data.project.urn === ref.urn), "the chat record", 30_000);
+  const before = launches().length;
+  const said = await d.registry.call("work.project.say", { project: project.slug, agent: "kit", text: "First Dana drafts the form." }, "module:vyred");
+  assert.ok(!said.error, JSON.stringify(said));
+  assert.equal(said.data.posted, true, JSON.stringify({ said: said.data, chats: (await d.kernel.gateway.records.query(admin, "chat-record", { page: { limit: 20 } })).rows.map((/** @type {any} */ x) => x.data), owner: (await d.kernel.gateway.records.get(admin, "project", ref.id)).data.owner, of: (await d.registry.call("threads.of-chat", { chat: String(/** @type {any} */ (d.registry.deps.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread)).chat) }, "module:work")) }));
+  const line = (/** @type {any} */ e) => e.type === "thread.text" && e.payload && e.payload.as_agent === "kit" && e.payload.text === "First Dana drafts the form.";
+  const found = d.events.since(0, { limit: 5000 }).find(line);
+  assert.ok(found, "the line is in the event log under the lead's name");
+  assert.equal(found.thread, thread);
+  assert.equal(launches().length, before, "no turn started");
+  // a chat the project's person is not in is somebody else's own: nothing is posted there, and the words stay as the task's result
+  const mine = await d.kernel.gateway.records.query(admin, "chat-record", { page: { limit: 50 } });
+  for (const c of mine.rows) await until(async () => { try { const f = await d.kernel.gateway.records.get(admin, "chat-record", c.id); return await d.kernel.gateway.records.update(admin, "chat-record", c.id, { people: "per_somebody_else" }, f.version); } catch (e) { if (/** @type {any} */ (e).code === "version_conflict") return null; throw e; } }, "the chat record to change", 15_000);
+  const again = await d.registry.call("work.project.say", { project: project.slug, agent: "kit", text: "Second." }, "module:vyred");
+  assert.equal(again.data.posted, false, "never another person's own chat");
+  assert.equal(d.events.since(0, { limit: 5000 }).filter((/** @type {any} */ e) => e.payload && e.payload.text === "Second.").length, 0);
+  // the line is stored, not only shown: it is in the log after the daemon is stopped and started again on the same home
+  await d.stop();
+  const d2 = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d2.stop());
+  const kept = d2.events.since(0, { limit: 5000 }).find(line);
+  assert.ok(kept && kept.thread === thread, "the line is still in the log after a restart");
+});
