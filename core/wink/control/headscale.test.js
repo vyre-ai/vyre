@@ -160,3 +160,11 @@ test("setPolicy: writes and signals the daemon, which logs the reload", async t 
   while (Date.now() < deadline && !lines.some(l => /policy reloaded/.test(l))) await new Promise(r => setTimeout(r, 50));
   assert.ok(lines.some(l => /policy reloaded/.test(l)));
 });
+
+test("what a session on the box could reach of Headscale is loopback only, and the API needs its key (the confinement check allows Headscale's process, core/wink/index.js nodePids)", () => {
+  const c = buildConfig({ dir: "/s", serverUrl: "https://h.example", prefix: "100.97.143.0/24", listenPort: 18080, metricsPort: 19090, grpcPort: 50443 });
+  for (const k of ["listen_addr", "metrics_listen_addr", "grpc_listen_addr"]) assert.match(c, new RegExp(`^${k}: "127\\.0\\.0\\.1:\\d+"$`, "m"), `${k} binds loopback only`);
+  assert.match(c, /^grpc_allow_insecure: false$/m, "grpc refuses a call without its API key");
+  // (Headscale's grpc listens on a TCP address in its configuration; the CLI Vyre drives goes by the unix socket below, so the TCP grpc port is the one a session could knock on.)
+  assert.match(c, /^unix_socket_permission: "0600"$/m);
+});
