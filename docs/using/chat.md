@@ -136,6 +136,10 @@ After a turn that edited files, the line under it ("2 files, 1 min") opens the c
 
 When a turn used two or more of Vyre's own tools (it wrote records, made tasks, sent mail), the line under it says so ("3 actions") and has a button, Turn this into a Flow. It asks the assistant to make a draft Flow from the calls it just made and to say what is left for you to fill in. The draft is an ordinary one: you read it, test it and approve it before it can run.
 
+## When the AI answers in a shared chat
+
+A chat with more than one person has a reply mode. Open the chat's tools and press **AI replies** to switch it: **Every message** (the AI answers each message, each on its sender's own AI) or **When mentioned** (it answers only when someone @mentions it or replies to one of its messages). Anyone in the chat can change it, and the chat shows the change to everyone as a line. In both modes the AI has the whole shared conversation, so a mention gets an answer that knows the discussion. A chat with your own assistant alone is not affected.
+
 ## Records you name
 
 When your message names a client, matter or other record exactly, such as "What case type is Dana Whitfield's matter?", the session is shown a short card of that record beside your words, so it need not stop to look it up. The card has the key fields and nothing sealed: a sealed field appears only as a placeholder the session can use in an action but never read. It only appears when the name is the record's whole title and no other record has it, and it is not repeated for the same record for twenty messages. The session can still look up anything the card leaves out. You can turn cards off in Settings (Cards for records you name).
