@@ -362,8 +362,8 @@ test("another person's turn: the computer is asked to hand the chat over first a
   assert.equal(await takeBackFor(kernel(true), q), "taken");
   assert.deepEqual(calls, ["ask:another-person"], "a computer that answers is not taken from");
   calls.length = 0; where = "mac";
-  assert.equal(await takeBackFor(kernel(false), { ...q, waitMs: 300 }), "taken");
-  assert.deepEqual(calls, ["ask:another-person", "force"], "a computer that does not answer in time is taken from");
+  assert.equal(await takeBackFor(kernel(false), { ...q, waitMs: 300 }), "taken-offline");
+  assert.deepEqual(calls, ["ask:another-person", "force"], "a computer that does not answer in time is taken from, and the chat says it continues from the last saved turn");
 });
 
 test("a burst of messages from other people makes the server wait for the hand-over once, not once each", async () => {
@@ -384,7 +384,8 @@ test("a chat that works in a folder of the computer is never taken from it: the 
   assert.deepEqual(calls, [], "neither asked nor forced");
   const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB, folder: "f1" };
   const sb = { deps: { lentRow: () => row, lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, x) }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ t, /** @type {any} */ p) => said.push(p.text) };
-  assert.equal(await lentYield(sb, SESSION, { proc: { where: "lent" } }, CAROL), true);
+  assert.equal(await lentYield(sb, SESSION, { proc: { where: "lent" } }, CAROL), true, "queued at once");
+  await new Promise(r => setTimeout(r, 30));
   assert.ok(said.length === 1 && /Ask the chat's owner/.test(said[0]), "the person is told: " + said.join("|"));
 });
 
@@ -420,4 +421,16 @@ test("the owner's next turn asks for the chat back; when the computer is not rea
   assert.ok(said.length === 1 && /runs on the server/.test(said[0]), "said once: " + said.join("|"));
   assert.equal(await lentReturn(sb({ moved: true }), SESSION, {}, null), false, "no person, no offer");
   assert.equal(await lentReturn(sb({ moved: true }), SESSION, { turn: "t:1" }, BOB), false, "never while a turn runs");
+});
+
+
+test("a computer that is silent is taken by the home's sweep, and the chat says it continues from the last saved turn; the message waits for the saved turn, it is not answered from a missing one", async () => {
+  /** @type {string[]} */ const said = [];
+  let row = { session: SESSION, chat: "chat_bob", person: BOB, where: "mac", reason: null };
+  const kernel = { runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => row, askRelease: () => { setTimeout(() => { row = { ...row, where: "server", reason: "offline" }; }, 120); }, takeBack: async () => { throw new Error("must not be forced: the sweep took it"); } } }) };
+  const sb = { deps: { lentRow: () => ({ ...row, where: "mac" }), lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, x) }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ _t, /** @type {any} */ p) => said.push(p.text) };
+  assert.equal(await lentYield(sb, SESSION, { proc: { where: "lent" } }, CAROL), true, "the message is queued at once");
+  assert.deepEqual(said, [], "and nothing is said while the computer may still send its saved turn");
+  await new Promise(r => setTimeout(r, 500));
+  assert.ok(said.length === 1 && /Continuing from the last saved turn/.test(said[0]), "once the home has taken the silent computer: " + said.join("|"));
 });
