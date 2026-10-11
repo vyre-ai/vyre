@@ -26,6 +26,7 @@
   "shows": { "deck": ["panel:planner"], "capsule": [], "cli": ["alarm", "remind", "todo", "notes", "agenda"] },
   "needs": {
     "kernel": {
+   "membership": true,
       "actions": [
         "records.read",
         "records.create",
