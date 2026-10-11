@@ -4,8 +4,11 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import { start } from "../core/daemon/index.js";
-import { tempHome } from "./helpers.js";
+import { call as socketCall } from "../core/daemon/client.js";
+import { COOKIE } from "../core/presence/person.js";
+import { tempHome, pairDevice } from "./helpers.js";
 import { canonical, sha256 } from "../kernel/core/canonical.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -249,4 +252,41 @@ test("agents made before they became actors are made actors when the agents modu
   t.after(() => d.stop());
   const ok = await until(async () => (await call("work.start-project", { template: "tpl_estate-plan", name: `After${Math.random().toString(36).slice(2, 6)}` })).tasks_made === 1, "the agent became an actor after the restart", 40_000);
   assert.ok(ok);
+});
+
+test("the app's own route: a paired owner device (Settings, Assistants) makes the agent, it carries the person, the agent becomes an actor and a template project makes its tasks; the owner's terminal is told what to do", { timeout: 240_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence });
+  t.after(() => d.stop());
+  const DEVICE = "abcdefghijklmnop";
+  pairDevice(d, DEVICE, d.kernel.id.owner);   // the owner's phone or Mac, paired as a real one is
+  const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
+  const sess = d.registry.deps.cliSessions.startStandIn("dev1");
+  /** The app's call: the paired device over the listener, with the signed-in cookie session. */
+  const device = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), { method: "POST", url: `/v1/tools/${tool}`, headers: { host: "relay", "content-type": "application/json", cookie: `${COOKIE}=${sess.token}`, "sec-fetch-site": "same-origin", "sec-fetch-dest": "empty" } });
+    let out = "", status = 0;
+    const res = { setHeader() {}, writeHead(/** @type {number} */ s) { status = s; }, end(b = "") { out += b; }, headersSent: false };
+    await ctx.handler({})(req, res, `device:${DEVICE}`, { kind: "device", stableId: "dev1", node: "dev1", login: null, tags: [], caps: {} });
+    return { status, ...(out ? JSON.parse(out) : {}) };
+  };
+  const made = await device("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(made.status, 200, JSON.stringify(made));
+  assert.equal(made.data.note, undefined, `the app's create carries the person, so the agent became an actor: ${JSON.stringify(made.data.note)}`);
+  assert.equal((await device("work.template.define", { body: TEMPLATE })).status, 200);
+  assert.equal((await device("work.template.golive", { template: "tpl_estate-plan", version: 1 })).status, 200);
+  const started = await device("work.start-project", { template: "tpl_estate-plan", name: "Rivera" });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  assert.equal(started.data.tasks_made, 1, JSON.stringify(started.data));
+  assert.equal(started.data.tasks_skipped, undefined);
+  // the owner's terminal: `vyre` over the daemon's socket
+  const viaTerminal = await socketCall("agents.create", { name: "scout", kind: "agent", projects: [] }, { root, caller: "cli" });
+  assert.equal(viaTerminal.error, undefined, JSON.stringify(viaTerminal.error));
+  assert.equal(viaTerminal.data.note, undefined, "the terminal over the daemon's socket carries the owner too, so it is registered as well");
+  const SCOUT = { ...TEMPLATE, name: "Scout plan", roles: [{ role: "researcher", agent: "scout", lead: true }] };
+  assert.equal((await device("work.template.define", { body: SCOUT })).status, 200);
+  assert.equal((await device("work.template.golive", { template: "tpl_scout-plan", version: 1 })).status, 200);
+  const st = await device("work.start-project", { template: "tpl_scout-plan", name: "Okafor" });
+  assert.equal(st.data.tasks_made, 1, JSON.stringify(st.data));
+  // (the note's own command, `vyre space add-agent`, asks the owner's yes from the same terminal: presence_required on the moment "pair", approved on the phone or confirmed on the computer)
 });
