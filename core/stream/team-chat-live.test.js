@@ -152,7 +152,7 @@ test("a model's memory.space.recall in a team turn reads the TEAM Space's memory
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const made = await as(ANA, "create", { title: "Team memory", people: [BEN], agents: ["assistant"] });
-  const filed = await firm.kernel.memory.file(owner, { text: "The Harlow retainer is billed monthly", source: `chat:${made.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+  const filed = await firm.gateway.memory.file(owner, { text: "The Harlow retainer is billed monthly", source: `chat:${made.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
   assert.ok(!filed.error, `a fact filed in the team Space's memory: ${JSON.stringify(filed).slice(0, 200)}`);
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   await as(ANA, "send", { chat: made.chat, text: "vyre memory.space.recall {}" });
@@ -166,7 +166,7 @@ test("a model's files.drive.space.list in a team turn reads the TEAM Space's Dri
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const made = await as(ANA, "create", { title: "Team files", people: [BEN], agents: ["assistant"] });
-  await firm.kernel.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
+  await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   const said = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || ");
   await as(ANA, "send", { chat: made.chat, text: "vyre files.drive.space.list {}" });

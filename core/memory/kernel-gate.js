@@ -26,6 +26,12 @@ export function createKernelGate(ctx, { denied }) {
     const hasSession = Boolean(extra && typeof extra.token === "string" && extra.token);
     /** @type {any} */ let chain = null;
     try { chain = await k.chain(extra || {}); } catch { if (hasSession) throw denied(`${tool}: this session could not be checked`); }
+    // The Space's own memory (memory.space.*) is not personal memory: who may read or file a fact is the Space kernel's `authorize` for the caller's chain (a member reads, an admin files), so it needs a PERSON's
+    // chain, the call's own or, for a team member's model in a team chat's turn, the member's chain in that Space (`in_space_chain`, set only by the registry's callInSpace), and no more than that.
+    if (/^memory\.space\./.test(tool)) {
+      const own = extra && extra.in_space_chain ? extra.in_space_chain : chain;
+      if (own && Array.isArray(own.hops) && own.hops.length && own.hops[0].actor.kind === "person") return;
+    }
     // a. the room. The kernel writes the chat into a session's token, and the chain it builds carries it (`chain.room`): a chat session must have a room the kernel can build,
     //    and that room must be one person. A session with no chat, or a call with no session, is not in a chat.
     if (chain && chain.room) {
