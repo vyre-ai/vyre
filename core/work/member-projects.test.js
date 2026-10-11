@@ -105,9 +105,8 @@ test("her own project's files: she puts a file in the project's files area and r
   await assert.rejects(gw.drive.get(w.chainOf(BEN), path), "another member does not");
 });
 
-// The ownership rule (rc1-a, kernel/gateway/ownership.js): a member updates a `project` only if she owns it or is on its team, and never its owner field. These two are the red-first cases; they are `todo` until the rule is in
-// this branch, and become plain assertions then.
-test("another member's project: she cannot rename it and cannot take its owner field", { timeout: 120_000, todo: "waits for the gateway ownership rule (rc1-a)" }, async t => {
+// The ownership rule (rc1-a, kernel/gateway/ownership.js): a member updates a `project` only if she owns it or is on its team, and never its owner field; team-member rows are the project's owner's. These were the red-first cases.
+test("another member's project: she cannot rename it and cannot take its owner field", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const bens = await w.as(BEN, "project-create", { name: "Ben's matter" });
   const row = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === bens.slug);
@@ -151,10 +150,12 @@ test("what a member can do to ANOTHER member's team-member row and task today: m
   assert.ok(true, took || "recorded above");
 });
 
-test("another member's project: she cannot add herself to its team (the row that opens its files)", { timeout: 120_000, todo: "waits for the gateway ownership rule (rc1-a)" }, async t => {
+test("another member's project: she cannot add herself to its team (the row that opens its files)", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const bens = await w.as(BEN, "project-create", { name: "Ben's team 2" });
+  await w.d.kernel.gateway.drive.put(w.chainOf(BEN), `${bens.drive_path}/files/b.txt`, new TextEncoder().encode("b"));
   await assert.rejects(w.d.kernel.gateway.records.create(w.chainOf(ANA), "team-member", { name: "ana", actor: { actor: { kind: "person", id: ANA, space: w.space } }, kind: "person", project: { urn: bens.project } }), "adding herself to his team is refused");
+  await assert.rejects(w.d.kernel.gateway.drive.get(w.chainOf(ANA), `${bens.drive_path}/files/b.txt`), "and his files stay unreadable to her");
 });
 
 test("a member keeps at most 50 live projects of her own: the next one is refused in words, and nothing is made", async () => {
