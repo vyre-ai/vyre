@@ -99,7 +99,6 @@ export default {
       await J.step(P, async () => {
         // a person adds the assistant the template names (Settings, Assistants) before starting from it: the library template's first tasks are done by "research", which a new Space does not have (every app walk does this first)
         await whenStoreIsUp(w, "agents.create", { name: "research", kind: "agent", projects: [], instructions: "Finds and reads the documents." });
-        await whenStoreIsUp(w, "spaces.members.add-agent", { space: team.space, agent: "research" });   // the task's doer is the agent as an actor of the Space ("research is not in this space yet")
         const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
