@@ -33,7 +33,7 @@ test("runQueuedOver: a hop that cannot start says so in words, tells the stream 
 test("a write that throws while a queued turn is handed over releases the drain lock, and the row behind it still runs", async () => {
   /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }), deps: { log() {} },
     write() { throw new Error("lent: the words may not go into a process on a computer"); },
     dropQueuedChatTurn: (/** @type {string} */ id) => drained.push("notice"),   // the room is told the words were not sent
@@ -49,7 +49,7 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
   /** @type {any[]} */ const drained = [];
   const st = { turn: null, stopping: false };
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Set(["t"]), once: new Map(), live: new Map([["t", st]]),
+    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", st]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => { /* the hop's whole turn ran and ended here: its turnEnded returned at the lock */ },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -64,7 +64,7 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
 test("runQueuedOver past the revert wait puts the row back instead of judging it on the hop's state", async () => {
   /** @type {any[]} */ const ran = []; /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null }]]),
+    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: (/** @type {any[]} */ ...a) => { ran.push([q.slice(0, 90), a]); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -80,7 +80,7 @@ test("runQueuedOver past the revert wait puts the row back instead of judging it
 test("while a hop back swaps the process nothing drains; the row behind a hop whose turn ended first is written after the revert, not during", async () => {
   /** @type {any[]} */ const drained = [];
   let finish; const revert = new Promise(r => { finish = r; });
-  const sb = /** @type {any} */ ({ reverting: new Map([["t", revert]]), draining: new Set(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), db: { prepare: () => ({ all: () => { drained.push("read-queue"); return []; } }) } });
+  const sb = /** @type {any} */ ({ reverting: new Map([["t", revert]]), draining: new Map(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), db: { prepare: () => ({ all: () => { drained.push("read-queue"); return []; } }) } });
   sb.drainDone = Switchboard.prototype.drainDone;
   sb.drainQueued = Switchboard.prototype.drainQueued;
   sb.drainDone("t", true);
@@ -95,7 +95,7 @@ test("a revert whose switch throws still drains the put-back row", async () => {
   /** @type {any[]} */ const drained = []; /** @type {any[]} */ const sql = [];
   const revert = new Promise(r => setTimeout(r, 60));   // (turnEnded's promise has its .catch: it settles even when the switch threw)
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 50)); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -112,7 +112,7 @@ test("a revert whose switch throws still drains the put-back row", async () => {
 test("a queued row whose hop needs no move (sendOnce answers null) still delivers its words, under their asker", async () => {
   /** @type {any[]} */ const calls = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => null,
     deliverRow: async (/** @type {string} */ id, /** @type {any} */ r, /** @type {any} */ kt) => { calls.push([id, r.text, kt.asker]); },
@@ -133,7 +133,7 @@ test("deliverRow writes the words under the asker's session, and tells the room 
 });
 
 test("a switch back that fails twice leaves the record on the base with no live process, tells the room once, and starts a waiting row on the base; nothing is written into the hop's process", async () => {
-  /** @type {any[]} */ const events = []; /** @type {any[]} */ const sql = []; /** @type {string[]} */ const resumed = []; let stops = 0, tries = 0;
+  /** @type {any[]} */ const events = []; /** @type {any[]} */ const sql = []; /** @type {string[]} */ const resumed = []; /** @type {boolean[]} */ const liveAtResume = []; let stops = 0, tries = 0;
   const hopProcess = { writes: [] };
   const sb = /** @type {any} */ ({
     once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
@@ -143,7 +143,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
     emit: (/** @type {string} */ type, /** @type {any} */ p) => events.push([type, p.text]),
     switchProvider: async () => { tries++; throw new Error("no process"); },
     stop: async () => { stops++; sb.live.delete("t"); },
-    launch: async (/** @type {any} */ o) => { resumed.push(o.resume); },
+    launch: async (/** @type {any} */ o) => { resumed.push(o.resume); liveAtResume.push(sb.live.has("t")); },
     turnEnded: () => { throw new Error("turnEnded must not run on a thread with no process"); },
   });
   sb.resumeWaiting = Switchboard.prototype.resumeWaiting;
@@ -163,6 +163,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
   assert.equal(events.filter(e => e[0] === "thread.text").length, 1, "the room is told once");
   assert.match(String(events.find(e => e[0] === "thread.text")[1]), /session stopped while switching back/);
   assert.deepEqual(resumed, ["t"], "a row already waiting starts the thread again on its base, as a restart would");
+  assert.deepEqual(liveAtResume, [false], "and the thread is not live when the resume runs: nothing of the hop is left to write into");
   assert.deepEqual(hopProcess.writes, [], "and no queued words went into the hop's process");
 });
 
@@ -179,4 +180,17 @@ test("a switch back that can never succeed (account removed) is not retried: str
   await Switchboard.prototype.revertOnce.call(sb, "t");
   assert.equal(tries, 1, "no retry for a failure that cannot change");
   assert.ok(events.includes("thread.text"), "and the room is told");
+});
+
+test("a late hand-over never releases the lock of a newer drain (the owner token)", () => {
+  /** @type {string[]} */ const drained = [];
+  const mine = Symbol("first"), theirs = Symbol("second");
+  const sb = /** @type {any} */ ({ draining: new Map([["t", theirs]]), reverting: new Map(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), drainQueued: (/** @type {string} */ id) => drained.push(id) });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  sb.drainDone("t", true, mine);
+  assert.equal(sb.draining.get("t"), theirs, "the newer drain keeps its lock");
+  assert.deepEqual(drained, [], "and nothing is drained again behind its back");
+  sb.drainDone("t", true, theirs);
+  assert.equal(sb.draining.has("t"), false, "its owner releases it");
+  assert.deepEqual(drained, ["t"], "and the rows behind it are drained");
 });

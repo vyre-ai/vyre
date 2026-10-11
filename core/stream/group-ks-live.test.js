@@ -435,6 +435,37 @@ test("V2t: the queued variant with a tool call in every turn: each tool call is 
   assert.deepEqual(order(), [BOB, ADA, BOB], "the tool calls were stamped with bob's, then ada's, then bob's own session, never another person's");
 });
 
+test("FAILBACK: the switch back after carol's hop fails twice: the chat goes dormant on bob's account, says so once, and the rows queued behind (bob's, then ada's) run after the resume, none of them written into carol's process", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  const acct = (/** @type {string} */ who) => db.prepare("SELECT id FROM sessions_accounts WHERE label = ?").get(`${who}'s Claude`).id;
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  // the switch back is made to fail twice: the first two lookups of bob's account after this point (the two tries to go back to it) answer "unavailable"
+  let failures = 2; const real = b.reg.call.bind(b.reg), bobsAccount = acct("bob");
+  b.reg.call = async (/** @type {any} */ ...a) => {
+    if (a[0] === "sessions.accounts.resolve" && a[1] && a[1].account === bobsAccount && failures > 0) { failures--; return { error: { code: "unavailable", message: "the account could not be looked up just now" } }; }
+    return real(...a);
+  };
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "carol's turn running on her own account");
+  for (const [who, text] of [["bob", "B-QUEUED"], ["ada", "A-AFTER"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const notice = () => watcher.frames.findIndex(f => f.type === "chat.text-done" && /session stopped while switching back/.test(JSON.stringify(f.data)) || (f.type === "chat.text-delta" && /session stopped while switching back/.test(String(f.data.text))));
+  await until(() => notice() >= 0, "the room is told the session stopped while switching back", 120_000);
+  assert.equal(failures, 0, "both tries to switch back failed");
+  const th = kitThread(b, chat.id);
+  const bobQueued = await answered(w, watcher, "B-QUEUED", 120_000), adaAfter = await answered(w, watcher, "A-AFTER", 120_000);
+  assert.equal(bobQueued.who, BOB, "bob's queued row ran after the resume, under bob's session");
+  assert.equal(adaAfter.who, ADA, "and ada's behind it, under ada's");
+  assert.ok(bobQueued.at > notice() && adaAfter.at > bobQueued.at, "both came after the notice and in order: none of them was written into carol's process before the thread went dormant");
+  const rec = db.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(th);
+  assert.equal(JSON.parse(rec.opts).switchPerson === undefined || JSON.parse(rec.opts).switchPerson === BOB, true, "no hop person but the starter's is recorded");
+  assert.equal(watcher.frames.filter(f => /session stopped while switching back/.test(JSON.stringify(f.data || {})) && f.type === "chat.text-done").length <= 1, true, "told once");
+});
+
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
   const w = await world(t);
   const b = await world0(w, t);

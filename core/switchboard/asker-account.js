@@ -39,12 +39,12 @@ export function busyTurn(sb, id) {
 
 /**
  * A queued one-turn (the turn's facts carry `over`) is run when the thread is free: marked delivered and sent as the one-turn it was asked as. True when this took the rows.
- * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now
+ * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now @param {symbol} [lock] the drain's lock, released only by it
  */
-export function runQueuedOver(sb, id, rows, kt, mark, now) {
+export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
   if (!kt || !kt.over) return false;
   const r = rows[0];
-  if (!mark(now, r.id).changes) { sb.drainDone(id, true); return true; }
+  if (!mark(now, r.id).changes) { sb.drainDone(id, true, lock); return true; }
   const rec = sb.record(id);
   // One hop at a time: the previous hop back is finished first, the target is checked BEFORE the stream is told a turn began (a hop that cannot start says so in words and began nothing), and the drain
   // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
@@ -55,12 +55,12 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
         // the hop back is still going past the wait: nothing is judged on the hop's state; the row goes back to the queue and the next turn's end (or resume) drains it
         // brought out again once the hop back is over (or now, when it already is and the thread is idle); a second time past the wait it is dropped in words, never left waiting for nothing
         const again = (sb.putBack ||= new Set()).has(r.id);
-        if (again) { sb.putBack.delete(r.id); sb.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?").run(r.id); sb.emit("thread.text", { message: "vyre", text: "A message waiting for this turn could not be started: the chat was busy for too long. Nothing was written to the session. Send it again from the chat.", done: true, notice: true }, id, rec ? rec.project : null); sb.drainDone(id, false); return; }
+        if (again) { sb.putBack.delete(r.id); sb.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?").run(r.id); sb.emit("thread.text", { message: "vyre", text: "A message waiting for this turn could not be started: the chat was busy for too long. Nothing was written to the session. Send it again from the chat.", done: true, notice: true }, id, rec ? rec.project : null); sb.drainDone(id, false, lock); return; }
         sb.putBack.add(r.id);
         sb.db.prepare("UPDATE threads_inbox SET delivered_at = NULL, via = NULL WHERE id = ?").run(r.id);
-        sb.drainDone(id, false);
+        sb.drainDone(id, false, lock);
         const back = sb.reverting.get(id);
-        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true);
+        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true, lock);
         return;
       }
       await sb.onceTarget(id, kt.over);
@@ -68,11 +68,11 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
       sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
       const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
       if (started === null) await sb.deliverRow(id, r, kt);   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
-      sb.drainDone(id, true);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
+      sb.drainDone(id, true, lock);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
       if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // the turn announced as begun for these words ends here (nothing was announced if the target was refused first)
-      sb.drainDone(id, true);
+      sb.drainDone(id, true, lock);
     }
   })();
   return true;

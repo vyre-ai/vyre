@@ -484,7 +484,7 @@ export class Switchboard {
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
-    /** @type {Set<string>} threads with a queued turn being handed over now: one drain at a time, so two never start two hops (drainDone releases it) */ this.draining = new Set();
+    /** @type {Map<string, symbol>} threads with a queued turn being handed over now, and the drain that owns the lock: one drain at a time, so two never start two hops; drainDone releases only its own */ this.draining = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
     /** A thread's rollover in flight (./rollover.js): a person's message to it waits for this, never racing a second start. @type {Map<string, Promise<any>>} */
@@ -2301,6 +2301,10 @@ export class Switchboard {
    *   - a hop back that failed twice: the base is written back, the hop's process stopped, the room told once, and rows waiting resume on the base (resumeWaiting), judged as any resume;
    *   - a session that opens after the 10 s bound is ended again (renewCapped); a hop row that needs no hop is delivered plainly (deliverRow); a write or an asker check that throws is logged and told, never thrown;
    *   - a plain send with no chat turn waits for the revert and the drain lock (revertSettled), is refused in words past the wait, and never rides a finished turn's session;
+   *   - turnEnded: a hop in flight (once) is handed to revertOnce and recorded in reverting, whose end (settled or thrown) drains again; otherwise steers run first, then this drain;
+   *   - sendOnce: an early throw (target refused, keyboard held, a hop already owning the thread) leaves no lock and no base change; the once entry is claimed in the same tick it is checked and a failing call touches only its own;
+   *   - revertOnce: no hop entry returns; the switch back is tried, once more, never for a failure that cannot change; a thread with no live process after it skips the tail turnEnded (resumeWaiting drains instead);
+   *   - the lock has no owner token: every release is guarded by the lock being held (a late callback never releases a newer drain's lock).
    *   - every exit releases the lock (drainDone) and re-drains only when the thread is idle with no hop pending and no hop back in flight.
    * @param {string} id @param {any} st @param {string|null} project
    */
@@ -2314,41 +2318,43 @@ export class Switchboard {
     const askerOf = (/** @type {any} */ r) => { try { return r.kturn ? JSON.parse(r.kturn).asker || null : null; } catch { return null; } };   const free = all.filter(r => !lentBlocks(this, id, st, askerOf(r)));   if (!free.length) { const other = all.find(r => askerOf(r)); if (other) void lentYield(this, id, st, askerOf(other)).catch(() => {}); return; }   all.splice(0, all.length, ...free);   const lead = all[0].kturn || null; const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
-    this.draining.add(id);
+    const lock = Symbol("drain");
+    this.draining.set(id, lock);
     if (kt0 && kt0.chat && this.deps.kernelSession) {
       this.assertAsker(id, this.record(id), kt0).then(
-        () => { try { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); else this.drainDone(id, true); } catch (e) { this.deps.log(`threads: could not hand over a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); if (this.draining.has(id)) this.drainDone(id, true); } },
+        () => { try { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project, lock); else this.drainDone(id, true, lock); } catch (e) { this.deps.log(`threads: could not hand over a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true, lock); } },
         () => { try {
           const drop = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
           for (const r of rows) drop.run(Date.now(), r.id);
           this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, project);
-          this.drainDone(id, true);
-        } catch (e) { this.deps.log(`threads: could not drop a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); if (this.draining.has(id)) this.drainDone(id, true); } });
+          this.drainDone(id, true, lock);
+        } catch (e) { this.deps.log(`threads: could not drop a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true, lock); } });
       return;
     }
-    this.drainRun(id, lead, rows, project);
+    this.drainRun(id, lead, rows, project, lock);
   }
 
   /** The leading rows of one asker go out as one turn. @param {string} id @param {string|null} lead @param {any[]} rows @param {string|null} project */
-  drainRun(id, lead, rows, project) {
+  drainRun(id, lead, rows, project, lock) {
     const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();   // this turn's asker, for the words' askedBy
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
-    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
+    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
-    if (!taken.length) { this.drainDone(id, true); return; }
+    if (!taken.length) { this.drainDone(id, true, lock); return; }
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok) { deliver(); this.draining.delete(id); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); if (this.draining.has(id)) this.drainDone(id, true); } }); return; } }
-    try { deliver(); } catch (e) { this.deps.log(`threads: could not write a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); }   // (logged here, not thrown into whatever ended the turn)   // a write that throws (lent, not live) releases the lock and the rows behind it still run
-    this.draining.delete(id);
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok) { deliver(); this.drainDone(id, false, lock); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } }); return; } }
+    try { deliver(); } catch (e) { this.deps.log(`threads: could not write a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); }   // (logged here, not thrown into whatever ended the turn)   // a write that throws (lent, not live) releases the lock and the rows behind it still run
+    this.drainDone(id, false, lock);
   }
 
-  /** A queued turn's hand-over has started or failed: the lock on the thread's drain is released, and when it FAILED and the thread is idle the rows behind it are drained now (never stranded). @param {string} id @param {boolean} again */
-  drainDone(id, again) {
+  /** A queued turn's hand-over has started or failed: the lock on the thread's drain is released, and when it FAILED and the thread is idle the rows behind it are drained now (never stranded). @param {string} id @param {boolean} again @param {symbol} [lock] the drain that owns the lock */
+  drainDone(id, again, lock) {
+    if (lock && this.draining.get(id) !== lock) return;   // not this drain's lock any more (a newer drain owns it): nothing of ours to release, and nothing to drain again
     this.draining.delete(id);
     const st = this.live.get(id);
     if (again && st && !st.turn && !st.stopping && !this.once.has(id) && !this.reverting.has(id)) { const rec = this.record(id); this.drainQueued(id, st, rec ? rec.project : null); }
