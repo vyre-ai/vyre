@@ -1142,7 +1142,7 @@ export default {
         const parts = String(e.subject || "").split("/");
         const id = parts.pop(), kind = parts.pop();
         if (id && kind) return st.external({ type: kind, id }).catch(err => ctx.log(`planner: a change to ${kind} ${id} was not read (${err.message})`));
-      });
+      }, { batch: true });   // reading a record back is harmless when repeated
       offs.push(() => { if (typeof off === "function") off(); });
     }
 

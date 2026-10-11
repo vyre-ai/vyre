@@ -561,7 +561,7 @@ async function startLocked(opts, root, p, release) {
       kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-chats", { type: "chat.*" }, (/** @type {any} */ e) => {
         // passed on after the kernel has finished writing it (the bus writes to the same kernel log): never from inside the kernel's own delivery
         if (e && (e.type === "chat.created" || e.type === "chat.changed")) setImmediate(() => { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } });
-      });
+      }, { batch: true });   // the work module's mirror of who is in a chat: a repeat writes the same ids
     } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
     // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
     const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
