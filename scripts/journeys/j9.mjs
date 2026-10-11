@@ -19,7 +19,10 @@ export default {
   id: "J9", title: "Team day", owner: "release", world: "own", store: "records", optIn: true,
   /** @param {any} ctx @param {ReturnType<typeof stepper>} J */
   async steps(ctx, J) {
-    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: "records", devBuild: true, recreate: false });
+    // J9_PARTS=chat walks only the team, the members' sign-ins and the shared chat, on the plain store (no Twenty to wait for): the quick loop while that part is built. The journey as the release runs it is all of it.
+    const only = process.env.J9_PARTS === "chat";
+    const heavy = (/** @type {any[]} */ ...a) => (only ? undefined : /** @type {any} */ (J.step)(...a));
+    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: only ? "plain" : "records", devBuild: true, recreate: false });
     if (!w.ready) { await J.step("the world is up", () => { throw new Error("the dev-build box world did not come up; see the lines above (owner: release)"); }); return; }
     const { mac, srv, ins } = w;
     mac.setYes(srv.yesFor(mac.identity.id, mac.presenceSigner));
@@ -63,7 +66,7 @@ export default {
 
       // Records filling in: the owner enters clients, both members read the same list
       const R = "Records fill in: the owner adds clients and every member reads the same list";
-      await J.step(R, async () => {
+      await heavy(R, async () => {
         const made = [];
         for (const name of NAMES) {
           const c = await whenStoreIsUp(w, "records.create", { type: "contact", space: team.space, data: { name } });
@@ -80,7 +83,7 @@ export default {
       // a project from a template, with its Flow
       const P = "a project starts from a template and its stages and tasks are made";
       /** @type {any} */ let project = null;
-      await J.step(P, async () => {
+      await heavy(P, async () => {
         const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
@@ -92,11 +95,11 @@ export default {
         project = started;
         return `${first.name}: ${started.tasks_made} tasks`;
       }, { needs: [T], owner: "projects-flows" });
-      await J.step("the project's timeline begins with where it started from", async () => {
+      await heavy("the project's timeline begins with where it started from", async () => {
         const tl = await w.call("work.timeline", { project: project.project });
         assert.match(JSON.stringify(tl), /Started from/i);
       }, { needs: [P], owner: "projects-flows" });
-      await J.step("a Flow from the template is installed, healthy, and has run", async () => {
+      await heavy("a Flow from the template is installed, healthy, and has run", async () => {
         const list = await w.call("flows.list", {});
         const flows = Array.isArray(list) ? list : list.flows || [];
         assert.ok(flows.length > 0, "the template's Flow is installed");
@@ -106,7 +109,7 @@ export default {
       }, { needs: [P], owner: "projects-flows" });
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
-      await J.step("each member has their own session on the server and sees their own Chats", async () => {
+      await heavy("each member has their own session on the server and sees their own Chats", async () => {
         const made = [];
         for (const p of people) {
           const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
@@ -120,9 +123,9 @@ export default {
         }
         return `${people.length} members, each in their own chat`;
       }, { needs: [SIGN], owner: "chat" });
-      await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
+      await heavy("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
-      await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
+      await heavy("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       for (const p of people) { try { p.app.close(); } catch { /* closed */ } }
       await w.stop().catch(() => {});

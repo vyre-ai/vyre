@@ -13,18 +13,22 @@ const BOX = "vyre-vyre-1";
 const sh = (/** @type {string[]} */ args) => spawnSync("docker", args, { encoding: "utf8" });
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 
-/** Put the stand-in Codex login (`codex`) and agent (`codex-acp`) on the running box's PATH, as root, readable by every account's user. */
+/**
+ * Put the stand-in Codex login and agent where the box's real ones are: the image's `codex` and `codex-acp` are links to the vendors' scripts, and the spawner starts only the programs those links resolve to,
+ * so the stand-ins replace the scripts the links point at and the links stay as they are. As root, readable by every account's user. The box is torn down at the end of the walk.
+ */
 export function installStandins() {
-  const t = "/usr/local/bin";
+  const found = [];
   for (const [file, name] of [["fake-login.js", "codex"], ["fake-acp.js", "codex-acp"]]) {
     const cp = sh(["cp", path.join(REPO, "core", "sessions", "testing", file), `${BOX}:/tmp/${file}`]);
     assert.equal(cp.status, 0, `docker cp ${file}: ${cp.stderr}`);
-    const inst = sh(["exec", "-u", "root", BOX, "sh", "-c", `install -m 755 /tmp/${file} ${t}/${name}`]);
+    const real = String(sh(["exec", BOX, "readlink", "-f", `/usr/local/bin/${name}`]).stdout).trim();
+    assert.match(real, /^\/usr\/local\/lib\/node_modules\//, `${name} is the image's own script: ${real}`);
+    const inst = sh(["exec", "-u", "root", BOX, "sh", "-c", `install -m 755 /tmp/${file} ${real}`]);
     assert.equal(inst.status, 0, `install ${name}: ${inst.stderr}`);
+    found.push(real);
   }
-  const seen = sh(["exec", BOX, "sh", "-c", "command -v codex codex-acp"]);
-  assert.equal(seen.status, 0, `the stand-ins are on the box's PATH: ${seen.stdout}${seen.stderr}`);
-  return String(seen.stdout).trim().split("\n");
+  return found;
 }
 
 /**
