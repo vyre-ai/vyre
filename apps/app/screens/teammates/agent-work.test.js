@@ -1,4 +1,5 @@
 import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { settingOf, usable, accountOptions, accountLine, limitOptions, reportValue, reportLine, startLine, refusal, REPORTS } from "./agent-work-model.ts";
