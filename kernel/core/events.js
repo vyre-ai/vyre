@@ -235,6 +235,10 @@ export function createEventLog(cfg) {
   }
 
   const cursors = new Map(cfg.initial ? cfg.initial.cursors || [] : []);
+  // A consumer's cursor is written once per 200 ms and on flush(), not once per event per consumer (one synchronous database write each was 30 s of a 60 s burst of nine starting sessions, live 10 Oct). A crash
+  // inside the window redelivers those events: delivery was always at-least-once, so consumers are idempotent already.
+  /** @type {Set<string>} */ const dirty = new Set(); /** @type {any} */ let flushTimer = null;
+  const flush = () => { if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; } if (cfg.persist) for (const n of dirty) cfg.persist.cursor(n, /** @type {number} */ (cursors.get(n))); dirty.clear(); };
   /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
   const MAX_ATTEMPTS = 8;
   const nextFor = (/** @type {any} */ c) => { for (const e of iterate({ since: c.cursor, ...(c.filter && c.filter.type ? { type: c.filter.type } : {}), limit: 1 })) return e; return undefined; };
@@ -250,7 +254,7 @@ export function createEventLog(cfg) {
           await c.onEvent(next);
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
-          if (cfg.persist) cfg.persist.cursor(name, c.cursor);
+          if (cfg.persist) { dirty.add(name); flushTimer ||= setTimeout(flush, 200).unref(); }
         }
       } catch {
         // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
@@ -267,7 +271,7 @@ export function createEventLog(cfg) {
   }
 
   return Object.freeze({
-    append, read, iterate, get, latestFor, verify, proves, erase, subscribe, pump,
+    append, read, iterate, get, latestFor, verify, proves, erase, subscribe, pump, flush,
     cursor: (/** @type {string} */ n) => (consumers.get(n) ? /** @type {any} */ (consumers.get(n)).cursor : cursors.get(n) ?? 0),
     latestSeq: () => count,
     deadLetters: () => [...dead],
