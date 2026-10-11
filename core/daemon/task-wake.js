@@ -11,6 +11,7 @@
 // task is handed in or flagged stuck. The doer chain is the kernel's own `agent_session` chain for [assigner, agent]; the daemon vouches for it because the daemon started the session.
 import fs from "node:fs";
 import path from "node:path";
+import { leadKind, leadBrief, parseLead, REPORT, MAX_STUCK_TIMES } from "./lead-turn.js";
 
 const WAKE_EVENTS = /^task\.(created|readied|unblocked|reopened)$/;
 const MAX_TURNS = 2;
@@ -78,18 +79,20 @@ export function createTaskWakeHost(o) {
   /** A small JSON ledger per Space: which tasks were woken, how many turns each has had. */
   function ledgerFor(/** @type {string} */ space) {
     const file = path.join(dir, `${space}.json`.replace(/[^A-Za-z0-9._-]/g, "_"));
-    /** @type {{ tasks: Record<string, any>, days: Record<string, number> }} */ let data = { tasks: {}, days: {} };
-    try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch { data = { tasks: {}, days: {} }; }
+    /** @type {{ tasks: Record<string, any>, days: Record<string, number>, reports: Record<string, number> }} */ let data = { tasks: {}, days: {}, reports: {} };
+    try { data = JSON.parse(fs.readFileSync(file, "utf8")); } catch { data = { tasks: {}, days: {}, reports: {} }; }
     if (!data.tasks) data.tasks = {};
+    if (!data.reports) data.reports = {};
     if (!data.days) data.days = {};
     const save = () => { try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { log(`task-wake: the ledger was not saved (${/** @type {Error} */ (e).message})`); } };
     return { get: (/** @type {string} */ id) => data.tasks[id], set: (/** @type {string} */ id, /** @type {any} */ v) => { data.tasks[id] = { ...(data.tasks[id] || {}), ...v }; save(); }, all: () => data.tasks,
+      reportAt: (/** @type {string} */ project) => data.reports[project], setReportAt: (/** @type {string} */ project, /** @type {number} */ at) => { data.reports[project] = at; save(); },
       /** turns the wake started today in a project, and one more */
       turns: (/** @type {string} */ key) => data.days[key] || 0, count: (/** @type {string} */ key) => { data.days[key] = (data.days[key] || 0) + 1; for (const k of Object.keys(data.days)) if (!k.endsWith(key.slice(-10))) delete data.days[k]; save(); } };
   }
 
   /**
-   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number, sweepAfterMs?: number }} s
+   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number, sweepAfterMs?: number, say?: (m: { project: string, slug: string, text: string }) => Promise<any> }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
@@ -117,23 +120,74 @@ export function createTaskWakeHost(o) {
       if (!agent) return null;
       const rows = (await s.gw.records.query(s.ownerChain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: ref.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
       const onTeam = rows.some((/** @type {any} */ r) => r.data && r.data.actor && r.data.actor.actor && r.data.actor.actor.kind === "agent" && String(r.data.actor.actor.id) === t.doer.id);
-      return onTeam ? { slug: String(ref.slug), name: String(ref.name || ref.slug), agent: String(agent.name) } : null;
+      return onTeam ? { slug: String(ref.slug), name: String(ref.name || ref.slug), agent: String(agent.name), urn: String(ref.urn), id: String(ref.id || "") } : null;
     }
 
     /** Flag the task stuck as its doer, with the words and the next step. @param {any} t @param {string} reason @param {string} fix */
     async function stuck(t, reason, fix) {
       try { await s.gw.ask.stuck(doerChain(t), t.id, { reason: cut(reason, 300), suggested_fix: cut(fix, 400) }); } catch (e) { log(`task-wake ${s.space}: ${t.id} could not be flagged stuck (${/** @type {Error} */ (e).message})`); }
-      ledger.set(t.id, { state: "stuck", at: (s.clock || Date.now)() });
+      ledger.set(t.id, { state: "stuck", stuckTimes: ((ledger.get(t.id) || {}).stuckTimes || 0) + 1, at: (s.clock || Date.now)() });
       void s.grantWork.end(t.id).catch(() => {});
     }
 
-    /** Start one turn for a task that is working. @param {any} t @param {{ slug: string, name: string, agent: string }} r @param {number} turn */
+    /** The roster of a project: each teammate's name and role, with their actor. @param {string} urn */
+    async function rosterOf(urn) {
+      const rows = (await s.gw.records.query(s.ownerChain(), "team-member", { filter: { field: "project", op: "eq", value: { urn } }, page: { limit: 200 } }).catch(() => ({ rows: [] }))).rows || [];
+      const agents = await o.callModule("agents.list", {}).catch(() => null);
+      const list = Array.isArray(agents) ? agents : agents && Array.isArray(agents.agents) ? agents.agents : [];
+      return rows.filter((/** @type {any} */ x) => x.data && x.data.role && x.data.actor && x.data.actor.actor && x.data.actor.actor.kind === "agent").map((/** @type {any} */ x) => {
+        const id = String(x.data.actor.actor.id), a = list.find((/** @type {any} */ y) => y && y.uid === id);
+        return { agent: a ? String(a.name) : id, role: String(x.data.role), actor: x.data.actor.actor };
+      });
+    }
+
+    /** Is this the project lead's own plan or report task? The lead is the agent the project record names. @param {any} t @param {{ id: string, agent: string }} r */
+    async function leadTaskKind(t, r) {
+      const kind = leadKind(t.title);
+      if (!kind || !r.id) return null;
+      const rec = await s.gw.records.get(s.ownerChain(), "project", r.id).catch(() => null);
+      return rec && rec.data && String(rec.data.lead || "").toLowerCase() === r.agent.toLowerCase() ? kind : null;
+    }
+
+    /** The words for a turn: the task's own brief, or for the lead's plan and report the team and the project's tasks, numbered for this turn. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r */
+    async function promptFor(t, r) {
+      const kind = await leadTaskKind(t, r);
+      if (!kind) return briefOf({ title: t.title, note: t.note, project: r.name });
+      const roster = await rosterOf(r.urn);
+      const all = (await s.gw.ask.list(s.ownerChain(), {}).catch(() => [])).filter((/** @type {any} */ x) => x && x.id !== t.id && (x.project === r.urn || x.record === r.urn));
+      const named = new Map(roster.map((/** @type {any} */ m) => [m.actor.id, m.agent]));
+      const tasks = all.slice(0, 60).map((/** @type {any} */ x, /** @type {number} */ i) => ({ n: i + 1, id: String(x.id), title: String(x.title), who: x.doer && x.doer.kind === "agent" ? (named.get(x.doer.id) || "an agent") : "a person", state: String(x.state), ...(x.stuck && x.stuck.reason ? { why: String(x.stuck.reason) } : {}), times: (ledger.get(x.id) || {}).stuckTimes || (x.state === "stuck" ? 1 : 0) }));
+      ledger.set(t.id, { lead: kind, map: tasks.map(x => ({ n: x.n, id: x.id })) });
+      return leadBrief({ kind, project: r.name, roster: roster.map((/** @type {any} */ m) => ({ agent: m.agent, role: m.role })), tasks });
+    }
+
+    /** Apply a lead's picks: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. The daemon moves it through the kernel as the owner's chain; the lead's own chain changes nothing. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
+    async function applyPicks(t, r, picks) {
+      const rec = ledger.get(t.id) || {}, map = Array.isArray(rec.map) ? rec.map : [], roster = await rosterOf(r.urn), out = [];
+      for (const p of picks) {
+        const entry = map.find((/** @type {any} */ m) => m.n === p.task), target = roster.find((/** @type {any} */ m) => m.role === p.to && m.agent.toLowerCase() !== r.agent.toLowerCase());
+        const cur = entry ? await s.gw.ask.get(s.ownerChain(), entry.id).catch(() => null) : null;
+        const title = cur ? `"${cut(cur.title, 60)}"` : `task ${p.task}`;
+        if (!cur || cur.state !== "stuck") { out.push(`I did not move ${title}: it is not stuck.`); continue; }
+        if (!target) { out.push(`I did not move ${title}: no one else on the team holds the role ${p.to}.`); continue; }
+        if (((ledger.get(cur.id) || {}).stuckTimes || 1) >= MAX_STUCK_TIMES) { out.push(`I did not move ${title}: it has been stuck twice. It needs you.`); continue; }
+        if (!cur.doer || cur.doer.kind !== "agent") { out.push(`I did not move ${title}: a person has it.`); continue; }
+        try {
+          await s.gw.ask.unblock(s.ownerChain(), cur.id, { reassign_to: target.actor });
+          log(`task-wake ${s.space}: the lead ${r.agent} moved a stuck task to ${target.agent} (${p.to})`);
+          out.push(`I moved ${title} to ${target.agent}, who holds the role ${p.to}.`);
+        } catch (e) { out.push(`I could not move ${title} (${cut(/** @type {Error} */ (e).message, 100)}). It needs you.`); }
+      }
+      return out;
+    }
+
+    /** Start one turn for a task that is working. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {number} turn */
     async function run(t, r, turn) {
       const person = assignerOf(t);
       let started;
       ledger.count(dayKey(r.slug));
       try {
-        started = await o.callModule("agents.work", { agent: r.agent, project: r.slug, person, owner: person === s.ownerId(), prompt: briefOf({ title: t.title, note: t.note, project: r.name }) });
+        started = await o.callModule("agents.work", { agent: r.agent, project: r.slug, person, owner: person === s.ownerId(), prompt: await promptFor(t, r) });
       } catch (e) {
         const code = /** @type {any} */ (e).code;
         if (code === "account_attention") {
@@ -164,6 +218,32 @@ export function createTaskWakeHost(o) {
         try { if (s.notify) await s.notify({ person, project: String(t.project), title: `Agent work paused on ${r.name}: daily limit`, note: `Agents have started ${limit} turns on ${r.name} today by themselves, which is this project's daily limit, so tasks given to them wait as "paused: daily limit". They start again tomorrow, or a member raises the limit in the project's agent work settings.` }); } catch (e) { log(`task-wake ${s.space}: the daily-limit notice was not raised (${/** @type {Error} */ (e).message})`); }
       }
       return ledger.get(t.id);
+    }
+
+    /**
+     * The lead's report is a duty: every project with a lead gets a report task for its lead once a day (the project's setting says how often, or off), which wakes like any teammate's task. The first
+     * time a project is seen it is only marked: its plan is the first word, not a report.
+     */
+    async function reports() {
+      const now = (s.clock || Date.now)();
+      const projects = (await s.gw.records.query(s.ownerChain(), "project", { page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+      for (const p of projects) {
+        if (stopped || !p.data || !p.data.lead) continue;
+        const slug = String(p.data.slug || ""), set = await o.callModule("agents.work.setting", { project: slug }).catch(() => null);
+        const hours = set && set.report_hours !== null && set.report_hours !== undefined ? Number(set.report_hours) : 24;
+        if (!hours) continue;   // off for this project
+        const last = ledger.reportAt(p.id);
+        if (last === undefined) { ledger.setReportAt(p.id, now); continue; }
+        if (now - last < hours * 3600_000) continue;
+        const roster = await rosterOf(p.urn), lead = roster.find((/** @type {any} */ m) => m.agent.toLowerCase() === String(p.data.lead).toLowerCase());
+        if (!lead) continue;
+        const open = (await s.gw.ask.list(s.ownerChain(), { doer: lead.actor.id, state: ["ready", "working"] }).catch(() => [])).some((/** @type {any} */ x) => String(x.title || "").startsWith(REPORT) && x.project === p.urn);
+        if (open) continue;
+        try {
+          await s.gw.ask.request(s.ownerChain(), { title: `${REPORT}${String(p.data.name || slug)}`, note: "The project's regular report for the person.", project: p.urn, record: p.urn, doer: lead.actor, output: { kind: "note" } });
+          ledger.setReportAt(p.id, now);
+        } catch (e) { log(`task-wake ${s.space}: the report for ${slug} was not asked for (${/** @type {Error} */ (e).message})`); }
+      }
     }
 
     /** Paused tasks start again once the day's count allows it. */
@@ -220,8 +300,16 @@ export function createTaskWakeHost(o) {
         if (rec.turns < MAX_TURNS && r) { ledger.set(id, { state: "starting" }); return run(t, r, rec.turns + 1); }
         return stuck(t, "the agent's turn ended without a result", "Move this task back to ready to try again, or give it to someone else.");
       }
+      let note = text;
+      if (rec.lead && r) {
+        const parsed = parseLead(text);
+        const lines = parsed.picks.length ? await applyPicks(t, r, parsed.picks) : [];
+        if (parsed.ignored) lines.push("I could not read my own list of moves, so I made none.");
+        note = [parsed.message || "No message.", ...lines].join("\n");
+        try { if (s.say) await s.say({ project: r.urn, slug: r.slug, text: note }); } catch (e) { log(`task-wake ${s.space}: the lead's message was not posted (${/** @type {Error} */ (e).message})`); }
+      }
       try {
-        await s.gw.ask.complete(doerChain(t), id, { note: text, sources: [`session:${thread}`] });
+        await s.gw.ask.complete(doerChain(t), id, { note, sources: [`session:${thread}`] });
         ledger.set(id, { state: "done", at: (s.clock || Date.now)() });
         void s.grantWork.end(id).catch(() => {});
       } catch (e) {
@@ -279,12 +367,13 @@ export function createTaskWakeHost(o) {
       return track(wake(String(t.id)));
     });
 
-    const timer = setInterval(() => { void track(resumePaused()); void track(sweep()); }, s.resumeEveryMs || RESUME_EVERY_MS); if (typeof timer.unref === "function") timer.unref();
+    const timer = setInterval(() => { void track(resumePaused()); void track(sweep()); void track(reports()); }, s.resumeEveryMs || RESUME_EVERY_MS); if (typeof timer.unref === "function") timer.unref();
     const host = Object.freeze({
       wake: (/** @type {string} */ id) => wake(id),
-      recover: () => track(recover().then(resumePaused)),
+      recover: () => track(recover().then(resumePaused).then(reports)),
       resumePaused: () => track(resumePaused()),
       sweep: () => track(sweep()),
+      reports: () => track(reports()),
       /** Wait for the work in flight (a test, or a stop). */
       async idle() { while (inflight.size) await Promise.all([...inflight]); },
       stop() { stopped = true; clearInterval(timer); if (sweepTimer) clearTimeout(sweepTimer); finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },

@@ -59,34 +59,41 @@ test("the brief names the task and the way to answer", () => {
 });
 
 /** A Space's kernel pieces, faked: one task, the calls the wake makes. */
-function rig(/** @type {{ limit?: number, now?: () => number, root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
+function rig(/** @type {{ report?: number | null, say?: any, lead?: string, others?: any[], limit?: number, now?: () => number, root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
   const calls = /** @type {string[]} */ ([]);
   const fixes = /** @type {string[]} */ ([]);
   const handlers = /** @type {Record<string, (e: any) => any>} */ ({});
   const task = o.task || { id: "tsk_1", state: "ready", title: "Write the letter", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
   const gw = {
     ask: {
-      get: async () => task,
+      get: async (_c, id) => [task, ...(o.others || [])].find(x => x.id === id) || null,
       start: async (_c, id) => { calls.push(`start ${id}`); task.state = "working"; },
       complete: async (_c, id, ev) => { calls.push(`complete ${id} ${ev.note}`); task.state = "done"; },
+      list: async () => o.others || [],
+      request: async (_c, spec) => { calls.push(`request ${spec.title}`); },
+      unblock: async (_c, id, x) => { calls.push(`unblock ${id} ${x.reassign_to.id}`); },
       stuck: async (_c, id, x) => { calls.push(`stuck ${id} ${x.reason}`); fixes.push(x.suggested_fix); task.state = "stuck"; },
     },
-    records: { query: async () => ({ rows: o.onTeam === false ? [] : [{ data: { actor: { actor: { kind: "agent", id: "agt_kit" } } } }] }) },
+    records: {
+      query: async (_c, type) => type === "project" ? { rows: o.projects || [] } : ({ rows: o.onTeam === false ? [] : [{ data: { role: "lead", actor: { actor: { kind: "agent", id: "agt_kit" } } } }, { data: { role: "design", actor: { actor: { kind: "agent", id: "agt_dana" } } } }] }),
+      get: async () => ({ data: { lead: o.lead || "" } }),
+    },
   };
   const hear = (/** @type {string} */ type, /** @type {(e: any) => any} */ fn) => { handlers[type] = fn; return () => {}; };
   const host = createTaskWakeHost({
     root: o.root || `/tmp/task-wake-${process.pid}-${Math.random().toString(36).slice(2)}`, hear,
     callModule: async (tool, input) => {
-      if (tool === "work.project.ref") return { slug: "p1", name: "P One", urn: "vyre://spc_a/project/p1" };
-      if (tool === "agents.list") return [{ uid: "agt_kit", name: "kit" }];
-      if (tool === "agents.work.setting") return { daily_limit: o.limit || null };
+      if (tool === "work.project.ref") return { id: "p1id", slug: "p1", name: "P One", urn: "vyre://spc_a/project/p1" };
+      if (tool === "agents.list") return [{ uid: "agt_kit", name: "kit" }, { uid: "agt_dana", name: "dana" }];
+      if (tool === "agents.work.setting") return { daily_limit: o.limit || null, report_hours: o.report === undefined ? null : o.report };
       if (tool === "agents.work") { calls.push(`work ${input.person} owner=${input.owner}`); return o.agentsWork ? o.agentsWork(input) : { agent: "kit", thread: "th_1" }; }
       throw new Error(`unexpected ${tool}`);
     },
   });
   let push = (/** @type {any} */ _e) => {};
   const notes = /** @type {any[]} */ ([]);
-  const h = host.attach({ space: "spc_a", ...(o.now ? { clock: o.now } : {}), notify: async n => { notes.push(n); }, gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
+  const h = host.attach({ space: "spc_a", ...(o.now ? { clock: o.now } : {}), notify: async n => { notes.push(n); },
+    ...(o.say ? { say: o.say } : {}), gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
   const ready = (/** @type {string} */ type = "task.created") => push({ type, data: { state: "ready", task } });
   const finish = async (/** @type {string} */ text, /** @type {any} */ fin = {}) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: fin }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
   return { opts: o, raw: calls, fixes, notes, root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
@@ -316,4 +323,69 @@ test("an empty turn whose provider said quota or sign-in is stuck with that word
   a.ready(); await a.h.idle();
   await a.finish("", { ok: false, error: "401 Unauthorized" });
   assert.match(a.calls.at(-1), /\(sign-in refused\)$/);
+});
+
+const stuckTask = (/** @type {string} */ id, /** @type {any} */ extra = {}) => ({ id, state: "stuck", title: `Draft ${id}`, doer: { kind: "agent", id: "agt_kit" }, project: "vyre://spc_a/project/p1", stuck: { reason: "no template" }, ...extra });
+
+test("the project lead's plan names the team and the tasks without ids, and its reply is the plan the person reads", async () => {
+  const said = /** @type {any[]} */ ([]);
+  const plan = { id: "tsk_plan", state: "ready", title: "Plan P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
+  const r = rig({ lead: "kit", task: plan, others: [stuckTask("tsk_9")], say: async (m) => { said.push(m); } });
+  r.ready(); await r.h.idle();
+  await r.finish("First Dana drafts the intake form, then I check it. I need the client's file number.");
+  const done = r.calls.at(-1);
+  assert.match(done, /^complete tsk_plan First Dana drafts the intake form/);
+  assert.equal(said.length, 1);
+  assert.match(said[0].text, /First Dana drafts/);
+  assert.doesNotMatch(said[0].text, /tsk_/);
+});
+
+test("the lead moves a stuck task to a teammate whose role fits, once; anything else is flagged to the person", async () => {
+  const mk = () => ({ id: "tsk_rep", state: "ready", title: "Report on P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" });
+  const r = rig({ lead: "kit", task: mk(), others: [stuckTask("tsk_9"), stuckTask("tsk_8", { doer: { kind: "person", id: "per_x" } })] });
+  r.ready(); await r.h.idle();
+  await r.finish('Two things are stuck.\nREASSIGN: {"picks":[{"task":1,"to":"design"},{"task":2,"to":"design"},{"task":1,"to":"nobody"}]}');
+  assert.ok(r.calls.includes("unblock tsk_9 agt_dana"), "the stuck task went to the teammate holding the role");
+  assert.ok(!r.calls.some(c => c.startsWith("unblock tsk_8")), "a task a person has is not moved");
+  const note = r.calls.at(-1);
+  assert.match(note, /I moved "Draft tsk_9" to dana/);
+  assert.match(note, /a person has it/);
+  assert.match(note, /no one else on the team holds the role nobody/);
+});
+
+test("a task already stuck twice is not moved by the lead, and an unreadable list of moves makes none", async () => {
+  const task = (/** @type {string} */ id) => ({ id, state: "ready", title: "Report on P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" });
+  // stuck twice: the daemon's own count for tsk_9 is already 2
+  const root = `/tmp/task-wake-lead-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const fs = await import("node:fs");
+  fs.mkdirSync(`${root}/task-wake`, { recursive: true });
+  fs.writeFileSync(`${root}/task-wake/spc_a.json`, JSON.stringify({ tasks: { tsk_9: { state: "stuck", stuckTimes: 2 } }, days: {}, reports: {} }));
+  const twice = rig({ root, lead: "kit", task: task("tsk_r1"), others: [stuckTask("tsk_9")] });
+  twice.ready(); await twice.h.idle();
+  await twice.finish('Stuck.\nREASSIGN: {"picks":[{"task":1,"to":"design"}]}');
+  assert.ok(!twice.calls.some(c => c.startsWith("unblock")));
+  assert.match(twice.calls.at(-1), /it has been stuck twice\. It needs you\./);
+  const bad = rig({ lead: "kit", task: task("tsk_r2"), others: [stuckTask("tsk_9")] });
+  bad.ready(); await bad.h.idle();
+  await bad.finish("Stuck.\nREASSIGN: {not json");
+  assert.ok(!bad.calls.some(c => c.startsWith("unblock")));
+  assert.match(bad.calls.at(-1), /could not read my own list of moves/);
+});
+
+test("the report is a duty: asked for once a day per project with a lead, not at first sight, not when off, not twice", async () => {
+  let now = Date.parse("2026-10-11T10:00:00Z");
+  const projects = [{ id: "p1id", urn: "vyre://spc_a/project/p1", data: { slug: "p1", name: "P One", lead: "kit" } }];
+  const root = `/tmp/task-wake-report-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const r = rig({ root, now: () => now, projects });
+  await r.h.reports(); await r.h.idle();
+  assert.deepEqual(r.calls.filter(c => c.startsWith("request")), [], "first sight only marks the project: the plan is its first word");
+  now += 23 * 3600_000; await r.h.reports(); await r.h.idle();
+  assert.deepEqual(r.calls.filter(c => c.startsWith("request")), [], "not before a day has passed");
+  now += 2 * 3600_000; await r.h.reports(); await r.h.idle();
+  assert.deepEqual(r.calls.filter(c => c.startsWith("request")), ["request Report on P One"]);
+  await r.h.reports(); await r.h.idle();
+  assert.equal(r.calls.filter(c => c.startsWith("request")).length, 1, "not twice in a day");
+  const off = rig({ root: `${root}-off`, now: () => now, projects, report: 0 });
+  await off.h.reports(); now += 48 * 3600_000; await off.h.reports(); await off.h.idle();
+  assert.deepEqual(off.calls.filter(c => c.startsWith("request")), [], "off means off");
 });

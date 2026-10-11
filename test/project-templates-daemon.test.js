@@ -79,6 +79,10 @@ test("a template is a draft until its owner puts it live; test mode shows every 
 
   const task = await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).find((/** @type {any} */ x) => x.title === "Gather documents"), "the first task to be made");
   assert.deepEqual([task.doer.kind, task.doer.id, task.stage], ["agent", "research", "Intake"]);
+  // the project lead plans first (G08): one task for the lead, given by the person who started the project
+  const plan = await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).find((/** @type {any} */ x) => x.title === "Plan Rivera Family"), "the lead's plan task");
+  assert.deepEqual([plan.doer.kind, plan.doer.id, plan.project], ["agent", "research", started.project]);
+  assert.equal((await d.kernel.gateway.ask.list(ownerChain, {})).filter((/** @type {any} */ x) => x.title === "Plan Rivera Family").length, 1, "once");
   const brief = (await d.kernel.gateway.ask.get(ownerChain, task.id)).note || "";
   assert.match(String(brief), /Goal: Gather documents for Rivera Family\./);
 

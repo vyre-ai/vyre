@@ -59,6 +59,8 @@ export const MIGRATIONS = [
   // The AI account an agent teammate's unattended work runs on (G08): one pick per project, and an optional one per agent in it. The account is the person's own (it serves them and nobody else);
   // `person` is the member who picked it. The daily limit bounds how many turns the task wake starts on its own in a project in a day.
   `CREATE TABLE agents_workset (project TEXT NOT NULL, agent TEXT NOT NULL DEFAULT '', account TEXT, person TEXT, daily_limit INTEGER, at INTEGER NOT NULL, PRIMARY KEY (project, agent))`,
+  // How often the project lead writes its report, in hours: empty is daily, 0 is off (G08).
+  `ALTER TABLE agents_workset ADD COLUMN report_hours INTEGER`,
 ];
 
 /**
@@ -647,10 +649,10 @@ export default {
 
     // The AI account for an agent teammate's unattended work (G08), and the daily bound on the turns the task wake starts by itself. A pick belongs to the person who made it: the account must serve them,
     // and it is only ever used from the vault for that project's work. Nothing is copied out or shown.
-    const worksetRow = (/** @type {string} */ project, /** @type {string} */ agent) => /** @type {any} */ (db.prepare("SELECT account, person, daily_limit FROM agents_workset WHERE project = ? AND agent = ?").get(project, agent));
+    const worksetRow = (/** @type {string} */ project, /** @type {string} */ agent) => /** @type {any} */ (db.prepare("SELECT account, person, daily_limit, report_hours FROM agents_workset WHERE project = ? AND agent = ?").get(project, agent));
     const worksetOf = (/** @type {string} */ project, /** @type {string} */ agent) => {
       const a = worksetRow(project, String(agent).toLowerCase()), p = worksetRow(project, "");
-      return { account: (a && a.account) || (p && p.account) || null, person: (a && a.account ? a.person : p && p.person) || null, daily_limit: (p && p.daily_limit) || null, agent_pick: Boolean(a && a.account) };
+      return { account: (a && a.account) || (p && p.account) || null, person: (a && a.account ? a.person : p && p.person) || null, daily_limit: (p && p.daily_limit) || null, report_hours: p && p.report_hours !== null && p.report_hours !== undefined ? Number(p.report_hours) : null, agent_pick: Boolean(a && a.account) };
     };
     ctx.tool("agents.work.setting", {
       description: "The AI account agent teammates work on in a project, and the daily limit on turns they start on their own: { account, person, daily_limit, agent_pick }. Give agent for one teammate's own pick.",
@@ -660,7 +662,7 @@ export default {
     });
     ctx.tool("agents.work.set", {
       description: "Choose the AI account agent teammates work on in a project (or for one agent in it), and optionally the daily limit on turns started on their own. The account must be your own; account null clears the pick.",
-      input: { type: "object", required: ["project"], properties: { project: { type: "string" }, agent: { type: "string" }, account: { type: ["string", "null"] }, daily_limit: { type: "integer", minimum: 1, maximum: 100000 } } },
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" }, agent: { type: "string" }, account: { type: ["string", "null"] }, daily_limit: { type: "integer", minimum: 1, maximum: 100000 }, report_hours: { type: "integer", minimum: 0, maximum: 720, description: "how often the project lead reports, in hours; 0 turns the report off; leave out for daily" } } },
       callers: ["cli", "local", "deck", "capsule", "mobile", "device"],
       run: async (i, meta) => {
         // the person behind THIS call, from the kernel's chain: personOf's fallback to the owner is for reads, not for a pick that spends someone's account
@@ -677,8 +679,9 @@ export default {
         const prior = worksetRow(project, agent);
         const pickedAccount = account === undefined ? (prior ? prior.account : null) : account || null;
         const limit = i.daily_limit !== undefined ? i.daily_limit : prior ? prior.daily_limit : null;
-        db.prepare("INSERT INTO agents_workset (project, agent, account, person, daily_limit, at) VALUES (?,?,?,?,?,?) ON CONFLICT(project, agent) DO UPDATE SET account = excluded.account, person = excluded.person, daily_limit = excluded.daily_limit, at = excluded.at")
-          .run(project, agent, pickedAccount, pickedAccount ? person : null, limit ?? null, Date.now());
+        const report = i.report_hours !== undefined ? i.report_hours : prior ? prior.report_hours : null;
+        db.prepare("INSERT INTO agents_workset (project, agent, account, person, daily_limit, report_hours, at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(project, agent) DO UPDATE SET account = excluded.account, person = excluded.person, daily_limit = excluded.daily_limit, report_hours = excluded.report_hours, at = excluded.at")
+          .run(project, agent, pickedAccount, pickedAccount ? person : null, limit ?? null, report ?? null, Date.now());
         return worksetOf(project, agent);
       },
     });

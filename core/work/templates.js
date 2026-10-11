@@ -144,6 +144,14 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     }, made.version);
     const team = [];
     for (const r of body.roles || []) if (r.agent) { try { await h.teamMember({ action: "add", project: proj.data.slug, agent: r.agent, role: r.role }); team.push({ role: r.role, agent: r.agent, ...(r.lead ? { lead: true } : {}) }); } catch (e) { log(`templates: ${r.agent} could not join ${proj.data.slug}: ${/** @type {Error} */ (e).message}`); } }
+    // The project lead plans first (G08): one task for the lead, woken like any teammate's task (core/daemon/task-wake.js). Its answer is the plan the person reads. A lead that is not on the team yet gets none.
+    if (lead) {
+      try {
+        const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 100 } })).rows;
+        const row = rows.find((/** @type {any} */ x) => x.data && x.data.role === lead.role && x.data.actor && x.data.actor.actor && x.data.actor.actor.kind === "agent");
+        if (row) await k.ask.request(chain, { title: `Plan ${name}`, note: "Plan this new project for the person: who does what first, and what you need from them.", project: proj.urn, record: proj.urn, doer: row.data.actor.actor, output: { kind: "note" } });
+      } catch (e) { log(`templates: the lead's plan task for ${proj.data.slug} was not made (${/** @type {Error} */ (e).message})`); }
+    }
     const f = flows();
     /** @type {{ made: number, skipped: { task: string, why: string }[] } | undefined} */ let entered;
     if (f && f.stages) entered = await f.stages.enter({ urn: proj.urn, type: "project", id: proj.id, stage: first, entry: `start:${proj.id}` });
