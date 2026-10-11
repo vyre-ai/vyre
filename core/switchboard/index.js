@@ -4810,7 +4810,7 @@ export default {
         // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
         const bound = Boolean(sb.sessions.boundPid(String(i.session)));
         const team = /** @type {any} */ (sb.db.prepare("SELECT space FROM threads_team WHERE thread = ?").get(owner || String(i.session)));
-        return { session: String(i.session), known: Boolean(rec), bound, human, team: (team && team.space) || null, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+        return { session: String(i.session), known: Boolean(rec), bound, human, ...(team && team.space ? { team: team.space } : {}), provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
     ctx.tool("threads.lineage", {
