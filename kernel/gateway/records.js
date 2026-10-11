@@ -2,7 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
-import { mayWrite, OWNED_TYPES, TRUSTED_SERVICES } from "./ownership.js";
+import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -632,18 +632,13 @@ export function createRecords(cfg) {
     // a list link may be changed by adding and removing entries (`{ contacts: { add: [{ urn }], remove: [{ urn }] } }`): worked out against the stored list, so the check and the store see the whole list
     if (op === "update" && hooks.expand) input = await hooks.expand(before);
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
-    if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
-      const trusted = adminish(chain) || (chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && TRUSTED_SERVICES.includes(chain.hops[0].actor.id));
-      const personId = (/** @type {any} */ a) => (a && typeof a === "object" ? (a.actor && a.actor.id) || a.id || null : typeof a === "string" ? a : null);
-      await mayWrite(chain, type, before, op === "remove" ? {} : input, {
-        op, trusted,
-        project: async (/** @type {string} */ ref) => {
-          const pid = String(ref).split("/").pop() || "";
-          const pr = await store.get("project", pid).catch(() => null);
-          if (!pr) return null;
-          const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn("project", pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
-          return { owner: personId(pr.data.owner), team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => personId(r.data.actor)).filter(Boolean) };
-        },
+    if (((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) || (op === "create" && attrs)) {
+      const trusted = isTrustedChain(chain, (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined));
+      const project = projectTeamOf(store, urn);
+      // the kernel attributes a create carries (owner, project, sensitivity) are judged for every type; the three types are judged field by field
+      if (op === "create" && attrs) await mayAttrs(chain, attrs, { trusted, project });
+      if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
+        op, trusted, project,
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }
