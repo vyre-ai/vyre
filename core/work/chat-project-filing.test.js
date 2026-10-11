@@ -25,7 +25,7 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   for (const p of [ANA, BEN]) await K.gateway.grants.setRole(ownerChain, { person: p, role: "member" }, { presence: proof() });
   const chainOf = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "relay" });
-  const chat = createChatService({ space: SPACE, kernel: K, registry: d.registry }).chat;
+  const chat = createChatService({ space: SPACE, kernel: K, registry: d.registry });
   const R = K.gateway.records, svc = K.gateway.serviceChain("work");
   const mk = (/** @type {string} */ slug, /** @type {string} */ owner) => R.create(ownerChain, "project", { name: slug, slug, status: "active", memory_scope: `project:${slug}`, owner: person(owner, SPACE) });
   await mk("owners-matter", OWNER); await mk("anas-matter", ANA);
