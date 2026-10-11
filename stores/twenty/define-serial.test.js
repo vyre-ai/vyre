@@ -44,3 +44,17 @@ test("the mirror columns of a type are made once when several callers ask at the
   assert.ok(made.length <= 1, `the column was asked for ${made.length} times`);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a write answers with the empty text it was given, though Twenty keeps an empty text as no value (store_disagreed on a chat's empty agents)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const store = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0 });
+  await store.define({ add_types: [type("eps")] });
+  const id = (await import("../../kernel/core/ids.js")).mintUuid(Date.now());
+  const made = await store.create("eps", id, { a: "x", b: "" });
+  assert.equal(made.data.b, "", "the answer to the create says what was written");
+  const upd = await store.update("eps", id, { a: "" }, made.version);
+  assert.equal(upd.data.a, "");
+  assert.equal((await store.get("eps", id)).data.b, undefined, "a read says what Twenty holds");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
