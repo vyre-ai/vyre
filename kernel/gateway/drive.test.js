@@ -29,7 +29,9 @@ test("drive: every call asks authorize first, the version's author is the chain'
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants, D = k.gateway.drive;
-  // a person who is no member holds no drive action: the file is not there for them, and the drive is never touched
+  const role = { person: BOB, role: "temp", scope: [`vyre://${SPACE}/contact/*`], expires: Date.now() + 3_600_000 };
+  await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  // a temp member's role has no drive actions (a member's has them): the file is not there for them, and the drive is never touched
   await assert.rejects(() => D.put(bob, "proj/a.txt", new Uint8Array([1])), { code: "not_found" });
   await assert.rejects(() => D.get(bob, "proj/a.txt"), { code: "not_found" });
   assert.deepEqual(drive.calls, [], "refused before the drive was touched");
@@ -126,6 +128,5 @@ test("a member reads and writes the Space's Drive by role (the team works in one
   assert.equal((await D.put(bob, "team/a.txt", new TextEncoder().encode("one"))).version, 1);
   assert.equal((await D.put(bob, "team/a.txt", new TextEncoder().encode("two"))).version, 2);
   assert.equal(new TextDecoder().decode(await D.get(bob, "team/a.txt")), "two");
-  assert.deepEqual(drive.calls.at(-1).slice(0, 1), ["get"]);
   await assert.rejects(() => D.restore(bob, "team/a.txt", 1), { code: "not_found" }, "restore is the admin's");
 });

@@ -168,7 +168,7 @@ test("a model's memory.space.recall in a team turn reads the TEAM Space's memory
   assert.deepEqual(((await w.tool("memory.space.recall", {})).data || { facts: [] }).facts.filter((/** @type {any} */ f) => /retainer/.test(String(f.text))), [], "the home's own Space memory does not have it");
 });
 
-test("a model's files.drive.space.list in a team turn reads and writes the TEAM Space's Drive, as the member who spoke, and a plain member's model does too", { timeout: 150_000 }, async t => {
+test("a model's files.drive.space.list in a team turn reads the TEAM Space's Drive, as the member who spoke, and a plain member's model does too; the model cannot write to it", { timeout: 150_000 }, async t => {
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const made = await as(ADA, "create", { title: "Team files", people: [BEN], agents: ["assistant"] });
@@ -181,8 +181,8 @@ test("a model's files.drive.space.list in a team turn reads and writes the TEAM 
     .catch(e => { throw new Error(`${e.message} :: ${got.slice(0, 600)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-4).join(" | ")}`); });
   assert.ok(!JSON.stringify((await w.tool("files.drive.space.list", {})).data || {}).includes("retainer.txt"), "the home's own Drive does not have it");
   await as(ADA, "send", { chat: made.chat, text: `vyre files.drive.upload {"path":"x.txt","base64":"eA=="}` });
-  await until(async () => { try { return new TextDecoder().decode(await firm.gateway.drive.get(owner, "x.txt")) === "x"; } catch { return false; } }, "the model's write to the team's Drive").catch(e => { throw new Error(`${e.message} :: ${lines.filter(l => /stream|threads|drive/.test(l)).slice(-4).join(" | ")}`); });
-  assert.deepEqual((await w.tool("files.drive.space.list", {})).data?.entries?.filter((/** @type {any} */ x) => x.path === "x.txt") ?? [], [], "the home's own Drive did not get the file");
+  await until(async () => { got = await said(); return /denied|not available|not_in_team_space/i.test(got.split("retainer.txt").pop() || ""); }, "the write refused").catch(e => { throw new Error(`${e.message} :: ${got.slice(-500)}`); });
+  await assert.rejects(() => firm.gateway.drive.get(owner, "x.txt"), "the model's write did not land in the team's Drive");
   // a plain member's model reads the Drive too: the member role holds drive.read and drive.write
   const m = await as(ANA, "create", { title: "Member files", people: [], agents: ["assistant"] });
   await as(ANA, "send", { chat: m.chat, text: "vyre files.drive.space.list {}" });

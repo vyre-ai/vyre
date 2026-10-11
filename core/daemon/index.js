@@ -606,7 +606,7 @@ async function startLocked(opts, root, p, release) {
       let e = teamSessions.get(space);
       if (e) return e;
       const h = /** @type {any} */ (kernel.spaces && kernel.spaces.for(space));
-      if (!h || h.hosted !== true || !h.kernel) throw Object.assign(new Error("no such team Space here"), { code: "not_found" });
+      if (!h || h.hosted !== true || !h.kernel) throw Object.assign(new Error("no such team Space here: its owner hosts it on this server, or the chat moves with it (spaces.list shows the Spaces here)"), { code: "not_found" });
       const tk = h.kernel;
       e = { kernel: tk, sessions: createKernelSessions({ kernel: tk, turns, chats: tk.kernelFor({ name: "kernel-sessions" }).chats, pinned: async () => false }) };
       teamSessions.set(space, e);
