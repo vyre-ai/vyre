@@ -76,6 +76,25 @@ async function untilAnswers(person, chat, n) {
 }
 
 /**
+ * Wait until a person sees the AI's answer to ONE message: the assistant messages that come after the person's message `said` (matched by its words) and before the next person's message. Returns
+ * those answers. A chat that shows one answer twice (two assistant messages for one turn) fails here, so this step can neither pass nor fail on a duplicate. @param {any} person @param {string} chat @param {string} said
+ */
+async function untilAnswerTo(person, chat, said) {
+  let after = /** @type {any[]} */ ([]);
+  for (let i = 0; i < 40; i++) {
+    const ms = await seen(person, chat);
+    const at = ms.findIndex(m => /^person:/.test(String(m.author)) && String(m.text).includes(said));
+    if (at >= 0) {
+      const next = ms.findIndex((m, k) => k > at && /^person:/.test(String(m.author)));
+      after = answers(ms.slice(at + 1, next < 0 ? undefined : next));
+      if (after.length >= 1) { await sleep(3000); const again = await seen(person, chat); const a2 = again.findIndex(m => /^person:/.test(String(m.author)) && String(m.text).includes(said)); const n2 = again.findIndex((m, k) => k > a2 && /^person:/.test(String(m.author))); return answers(again.slice(a2 + 1, n2 < 0 ? undefined : n2)); }
+    }
+    await sleep(4000);
+  }
+  throw new Error(`waited almost three minutes for the answer to "${said}"; ${person.name} saw ${JSON.stringify(after.map(m => m.text))}${await serverView()}`);
+}
+
+/**
  * @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: Grace and Edith, each { name, app, joined }
  */
 export async function sharedChatSteps({ J, w, team, people, needs }) {
@@ -139,13 +158,15 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   await J.step(D, async () => {
     const send = (/** @type {any} */ p, /** @type {string} */ text) => p.joined.call("chat.send", [{ chat, text, to: ["assistant:assistant"], account: `codex:${accounts[p.name].id}` }]);
     await send(grace, "The code word is AMBER-92. Then say whoami.");
-    const first = await untilAnswers(edith, chat, 1);
+    const first = await untilAnswerTo(edith, chat, "The code word is AMBER-92");
+    assert.equal(first.length, 1, `Grace's turn is answered once, not ${first.length} times: ${JSON.stringify(first.map(m => m.text))}`);
     const g = String(first[0].text);
     assert.ok(g.includes(`/${accounts[grace.name].uid}`) && !g.includes(`/${accounts[edith.name].uid}`), `Grace's turn ran as Grace's account (user ${accounts[grace.name].uid}): ${g}`);
     await send(edith, "Edith here. whoami, and which code word did Grace give?");
-    const second = await untilAnswers(grace, chat, 2);
-    const e = String(second[1].text);
-    if (e.includes(`/${accounts[grace.name].uid}`)) throw new Error(`Edith's turn did not run on her account (user ${accounts[edith.name].uid}); the answers Grace sees: ${JSON.stringify(second.map(m => [m.author, m.text]))}${await serverView()}`);
+    const second = await untilAnswerTo(grace, chat, "Edith here");
+    assert.equal(second.length, 1, `Edith's turn is answered once, not ${second.length} times: ${JSON.stringify(second.map(m => m.text))}`);
+    const e = String(second[0].text);
+    if (e.includes(`/${accounts[grace.name].uid}`)) throw new Error(`Edith's turn did not run on her account (user ${accounts[edith.name].uid}); the answer Grace sees to her message: ${JSON.stringify(e)}${await serverView()}`);
     assert.ok(e.includes(`/${accounts[edith.name].uid}`) && !e.includes(`/${accounts[grace.name].uid}`), `Edith's turn ran as Edith's account (user ${accounts[edith.name].uid}): ${e}`);
     assert.ok(e.includes("AMBER-92"), `Edith's AI was handed Grace's earlier words from the one shared history: ${e}`);
     return `Grace: ${g} | Edith: ${e}`;
@@ -178,9 +199,26 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
 
   const G = "the owner, who is in the chat too, reads the same history from their own app";
   await J.step(G, async () => {
-    const r = await w.call("stream.catchup", { chat, space: team.space }).catch((/** @type {any} */ e) => { throw new Error(/does not take space|not found|person_session_required/i.test(String(e && e.message)) ? `NOT BUILT YET: the owner reads and sends in a team chat from their own app (stream.* takes no space, and the member door is a member's: ${e.message}) (owner: chat)` : e.message); });
+    const r = await w.call("stream.catchup", { chat, space: team.space });
     const texts = /** @type {any[]} */ (r.messages || []).map(m => String(m.text));
-    assert.ok(texts.some(t => t.includes("Edith here")) && texts.some(t => t.includes("home:")), `the owner reads the members' words and the AI's answers: ${JSON.stringify(texts)}`);
+    assert.ok(texts.some(t => t.includes("Edith here")) && texts.some(t => t.startsWith("home: ")), `the owner reads the members' words and the AI's answers: ${JSON.stringify(texts)}`);
     return `${texts.length} messages`;
   }, { needs: [F], owner: "chat" });
+
+  const H = "the owner signs in their own AI and sends one message that gets a turn on the owner's own account";
+  await J.step(H, async () => {
+    // the owner's account is the home's own: signed in at the server's terminal, as the owner's sign-in always is
+    const first = await w.operator("sessions.accounts.signin", { provider: "codex", label: "Owner's Codex" });
+    assert.equal(first.step, "code", JSON.stringify(first));
+    for (let i = 0; i < 40; i++) { const st = await w.operator("sessions.accounts.signin", { flow: first.flow }); if (st.step === "done") break; if (st.step === "failed") throw new Error(`the owner's sign-in failed: ${JSON.stringify(st)}`); await sleep(3000); }
+    const mine = (await w.operator("sessions.accounts.list", { provider: "codex" })).find((/** @type {any} */ a) => a.label === "Owner's Codex");
+    assert.ok(mine && mine.uid != null, "the owner's account exists and runs as a user of its own");
+    for (const p of people) assert.notEqual(mine.uid, accounts[p.name].uid, "and it is not a member's");
+    const before = answers(await seen(grace, chat)).length;
+    await w.call("stream.send", { chat, space: team.space, text: "@assistant whoami, owner here", to: ["assistant:assistant"], account: `codex:${mine.id}` });
+    const after = await untilAnswers(grace, chat, before + 1);
+    const got = String(after[before].text);
+    assert.ok(got.includes(`/${mine.uid}`) && !got.includes(`/${accounts[grace.name].uid}`) && !got.includes(`/${accounts[edith.name].uid}`), `the owner's turn ran on the owner's account (user ${mine.uid}): ${got}`);
+    return got;
+  }, { needs: [G], owner: "chat" });
 }
