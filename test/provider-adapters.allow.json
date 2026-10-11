@@ -45,6 +45,7 @@
  "core/runner/runner.js": 1,
  "core/runner/sandbox-win.js": 1,
  "core/runner/sandbox.js": 3,
+ "core/runner/resume-lent.js": 1,
  "core/runner/sync.js": 5,
  "core/sessions/claude.js": 1,
  "core/sessions/config.js": 5,

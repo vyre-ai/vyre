@@ -50,12 +50,29 @@ export function createResumeLent(o) {
       const got = coverOf(cp.manifest || {}, lines.map((line, k) => ({ seq: k + 1, line })), cp.seq, cp.turn);
       if (want.transcript !== got.transcript || want.manifest !== got.manifest || want.seq !== cp.seq || want.turn !== cp.turn) throw err("unavailable", "the lender's checkpoint does not match its transcript: it is not carried on");
     }
+    // A provider that keeps its own session file (Claude): the lines the computer's program printed are not that file, and a resumed Claude reads only the file ("No conversation found with session ID").
+    // The computer's checkpoint carries the file as part of the agent's home, so the chat's transcript here is that file, the bytes the manifest's hash names; the printed lines stay the cover's witness.
+    let body = Buffer.from(lines.join("\n") + "\n");
+    {
+      const mf = (cp.manifest && typeof cp.manifest === "object") ? cp.manifest : {};
+      const want1 = new RegExp(`^agent/claude/projects/[^/]+/(${[tg.native, i.session].filter(x => typeof x === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(x)).join("|") || "-"})\\.jsonl$`);
+      const key = Object.keys(mf).find(k => want1.test(k));
+      const ent = /** @type {any} */ (key ? mf[key] : null);
+      if (key && ent && ent.version !== undefined && ent.version !== null && ent.hash !== "deleted" && typeof i.view.file === "function") {
+        let got = null; try { got = await i.view.file(key, ent.version); } catch { got = null; }
+        if (got) {
+          const b = Buffer.from(got);
+          if (/^[0-9a-f]{64}$/.test(String(ent.hash || "")) && crypto.createHash("sha256").update(b).digest("hex") !== ent.hash) throw err("unavailable", "the session file from the computer does not match its checkpoint: it is not carried on");
+          body = b;
+        }
+      }
+    }
     // the provider's own file, whole: a temp file in the same folder, fsynced, renamed in
     let file = tg.file, root = tg.root;
     if (tg.account !== undefined) {
       // the packaged box: the file belongs to the thread's account, and only the spawner can place one (whole, as the account, 0600); vyred then reads it to seal it
       if (typeof o.place !== "function") throw err("unavailable", "this server cannot place a transcript in an account's home");
-      await o.place(tg, Buffer.from(lines.join("\n") + "\n"));
+      await o.place(tg, body);
     } else {
       fsx.mkdirSync(path.dirname(tg.file), { recursive: true, mode: 0o700 });
       // the real paths (a temp folder on a Mac is behind a link): the seal pins the file to its folder by them
@@ -63,7 +80,7 @@ export function createResumeLent(o) {
       file = path.join(dir, path.basename(tg.file)); root = fsx.realpathSync(tg.root);
       const tmp = path.join(dir, `.${path.basename(file)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
       const fd = fsx.openSync(tmp, "w", 0o600);
-      try { fsx.writeSync(fd, lines.join("\n") + "\n"); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
+      try { fsx.writeSync(fd, body); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
       fsx.renameSync(tmp, file);
     }
     // the server's own store learns the same turn, so a later recover() lands here and not before it
