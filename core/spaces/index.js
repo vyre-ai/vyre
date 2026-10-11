@@ -1291,8 +1291,7 @@ export default {
         if (!/^spc_[a-z2-7]{12}$/.test(i.id)) throw refuse("That is not a space id.", "bad_input");
         if (K.spaces.hosts(i.id) === true) { const have = files.keys.load(i.id); return { space: i.id, existed: true, ...(have ? { rootPublic: have.publicKey } : {}) }; }
       }
-      // ONE SPACE PER SERVER: a server whose own Space is already named as a team's hosts no NEW Space beside it (a call with an id, a resume or an existing one, is untouched).
-      if (!(typeof i.id === "string" && i.id) && await kv.get("home-named").catch(() => null)) throw refuse("This server's Space is already your team's. Connect another server for My Cloud.", "server_has_team");
+      if (!(typeof i.id === "string" && i.id) && await kv.get("home-named").catch(() => null)) throw refuse("This server's Space is already your team's. Connect another server for My Cloud.", "server_has_team");   // ONE SPACE PER SERVER: a server whose own Space is named as a team's hosts no NEW Space beside it (a call with an id, a resume or an existing one, is untouched)
       // A server that cannot run the record store (Twenty) hosts nothing: the refusal carries the kernel's own words.
       const plan = typeof hooks.storePlan === "function" ? await hooks.storePlan() : typeof K.spaces.storePlan === "function" ? await K.spaces.storePlan().catch(() => null) : null;
       const confirm = plan && plan.confirm ? plan.confirm : null;
