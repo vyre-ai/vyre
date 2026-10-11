@@ -125,6 +125,11 @@
         "projectIsRecord": true
       },
       {
+        "name": "work.project.seat",
+        "summary": "where a person stands on a project: its owner, on its team, or neither (for the teammates module)",
+        "reach": "modules"
+      },
+      {
         "name": "work.chat.serve",
         "summary": "a team member's own chat call on the team's server, as that member in that Space (the daemon's member door only)",
         "reach": "modules",

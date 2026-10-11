@@ -306,6 +306,20 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return { people: [...ids], personal_of: null };
   }
 
+  /**
+   * Where a person stands on a project: its owner, on its team (a team-member row of kind person), or neither. Null when there is no such project. Not the people of its chats: this is who may SEND WORK to its teammates.
+   * @param {string} ref @param {string} person @returns {Promise<{ owner: boolean, team: boolean } | null>}
+   */
+  async function seatOf(ref, person) {
+    const proj = await projectOf(ref);
+    if (!proj) return null;
+    const d = data(proj) || {};
+    if (d.personal_of) return { owner: String(d.personal_of) === person, team: false };
+    const own = d.owner && d.owner.actor && d.owner.actor.kind === "person" ? String(d.owner.actor.id) : "";
+    const team = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+    return { owner: own === person, team: team.some((/** @type {any} */ x) => { const m = data(x) || {}; return m.kind === "person" && m.actor && m.actor.actor && String(m.actor.actor.id) === person; }) };
+  }
+
   /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
   async function moveChat(chat, projectRef, by) {
     if (!by) throw Object.assign(new Error("a chat is moved by a person"), { code: "not_allowed" });
@@ -416,5 +430,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ peopleOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

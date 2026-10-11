@@ -1374,14 +1374,28 @@ export default {
         if (!PRIORITIES.includes(priority)) throw Object.assign(new Error(`priority must be one of ${PRIORITIES.join(", ")}`), { code: "bad_input" });
         const from_kind = callerTm ? "teammate" : meta.thread ? "session" : isPerson(meta.caller) ? "person" : "session";
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
-        // WHO asked is judged HERE, where the person is on the call: a non-owner, non-admin asker gets a refusal in words (nothing is queued) unless the teammate's credential reaches the turn unreadable (the Switchboard's
-        // launch check); the pump launches later from events with no person on the call, so the request records the person and the pump passes it as for_person. A teammate asking inherits the open request's person;
-        // a call with no person at all is recorded as nobody (only the duty wake and the integrator, named below, record "automation": an owner's own setting).
+        // WHO asked is judged HERE, where the person is on the call: from this call's own chain (the module's hop to the Switchboard does not carry a session's person). A non-owner, non-admin asker may send work
+        // only to a project she owns or is on the team of, and gets a refusal in words (nothing queued) when the teammate's credential would not reach the turn unreadable (the Switchboard's launch check). A teammate
+        // asking inherits the open request's person; a first-party module asking is the owner's own setting ("automation"); the box's own terminal is the owner. Anyone else with no person on the call is nobody.
+        const K = ctx.kernel;
+        const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
+        const owner0 = K && typeof K.owner === "string" ? K.owner : "";
+        const viaChain = await chainPerson();
+        const asker0 = viaChain || (K && owner0 && (meta.caller === "cli" || meta.caller === "local") ? owner0 : null);
+        if (asker0 && K) {
+          const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
+          const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));
+          if (!trusted) {
+            const seat = await use("work.project.seat", { project, person: asker0 });
+            if (!seat || !(seat.owner || seat.team)) throw Object.assign(new Error(`You are not on this project's team. Ask the project's owner to add you, then ask again. Nothing was queued.`), { code: "denied" });
+          }
+        }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
+        const forPerson = asker0 || inherited || (String(meta.caller || "").startsWith("module:") && meta.firstParty === true ? "automation" : null);
         const filler0 = await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
-        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(inherited ? { for_person: inherited } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
-        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || inherited || null });
+        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || forPerson || null });
         if (i.wait) {
           const done = await new Promise(resolve => {
             const timer = setTimeout(() => { off(); resolve(null); }, ASK_WAIT_MS);

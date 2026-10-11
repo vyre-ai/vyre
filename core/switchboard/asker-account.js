@@ -210,8 +210,8 @@ export async function agentLaunchGuard(sb, i, who, owner) {
   const person = forPerson || who;
   if (forPerson === "automation") return;                  // an owner's or a Flow's own setting, named by the module that makes it (the duty wake, the integrator)
   if (!person) {
-    // nobody is on the call and no module named who the work is for: a teammate launch with a picked credential is refused (the pump launches from events, so it must carry the person)
-    if (launch.agent_kind === "teammate" && carriesPickedCredential(launch)) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used here: nobody is recorded as having asked. Ask the owner to send the request again. Nothing was started.`), { code: "no_account" });
+    // nobody is on the call and no module named who the work is for: a teammate launch is refused whatever credential it would run on (the pump launches from events, so it must carry the person)
+    if (launch.agent_kind === "teammate") throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used here: nobody is recorded as having asked. Ask the owner to send the request again. Nothing was started.`), { code: "no_account" });
     return;
   }
   if (owner && sb.canon(person) === sb.canon(owner)) return;
