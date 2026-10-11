@@ -1041,7 +1041,7 @@
  "test/journey-space-names.test.js": 3,
  "test/journey-signin-again.test.js": 2,
  "core/previews/previews-project.test.js": 3,
- "lib/types-extend.test.js": 3,
+ "lib/types-extend.test.js": 5,
  "core/previews/thumb-stop.test.js": 1,
  "core/switchboard/screenshots.test.js": 2,
  "core/stream/person-turns-live.test.js": 5,
