@@ -3,6 +3,7 @@
 // chain in the Space it names (lib/gateway-door.js: a token's or the person's facts, never the body), so the kernel's grants, sealed fields and rooms decide each answer. A refusal is
 // { error: { code, message } } with the kernel's own codes (not_found, version_conflict, sealed_value_refused, bad_input, denied).
 import { createDoor } from "../../lib/gateway-door.js";
+import { MEMBER_BLOCKED_TYPES, MEMBER_READ_ONLY_TYPES } from "../../kernel/remote/member-guard.js";
 import { segments } from "../../kernel/core/urn.js";
 import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
@@ -34,12 +35,14 @@ export default {
       const name = row && row.name;
       return { id, label: typeof name === "string" ? name.replace(/\.vyre\.run$/, "") : null };
     };
-    const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+    /** The Store calls a team MEMBER's app makes on the team's server, by tool name: the same bodies as the tools below, run under the member's own chain in the team's Space (the member door's rows, core/work/member-tools.js). @type {Map<string, { fn: (i: any, d: any) => Promise<any>, where: (i: any) => any }>} */
+    const ops = new Map();
+    const tool = (name, description, input, fn, where = i => i) => { ops.set(name, { fn, where }); ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(where(i || {}), meta);
       const out = await fn(i || {}, d);
       // every answer names the space it acted in
       return out && typeof out === "object" && !Array.isArray(out) ? { ...out, acted_in: await actedIn(d.space) } : out;
-    } });
+    } }); };
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
     // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. Twenty is
@@ -194,6 +197,36 @@ export default {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 500) : 100;
       return { events: await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), ...(Number.isInteger(i.since) ? { since: i.since } : {}), limit }) };
     });
+    // ---- the member door: a team member's daily work on records, run as her, in the team's Space (core/work/member-tools.js) ----
+    // The input keys each call takes: anything else is dropped before the tool sees it, so a member's call cannot name a Space, a proof or a chain. The kernel judges every record under her chain.
+    const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
+      me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"],
+      create: ["type", "data"], update: ["urn", "patch", "base_version"],
+    });
+    const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
+      if (!i || !calls.includes(i.call)) throw refuse(`call is one of ${calls.join(", ")}`, "bad_input");
+      const op = ops.get(`records.${i.call}`);
+      if (!op) throw refuse("no such call; use one of the calls this tool names in its input", "not_found");
+      const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
+      const d = await door.open({}, extra);
+      // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
+      const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
+      const trusted = role === "owner" || role === "admin";
+      const urnType = typeof clean.urn === "string" ? (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(clean.urn) || [])[1] : undefined;
+      for (const ty of [clean.type, urnType]) {
+        if (typeof ty !== "string" || trusted) continue;
+        if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
+        if ((i.call === "create" || i.call === "update") && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
+      }
+      const out = await op.fn(clean, d);
+      return !trusted && i.call === "types" && out && Array.isArray(out.types) ? { ...out, types: out.types.filter((/** @type {any} */ x) => !MEMBER_BLOCKED_TYPES.has(String(x && x.name))) } : out;
+    };
+    const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events"]), run: serve(["me", "actors", "types", "list", "get", "events"]) });
+    ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
+    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update"]), run: serve(["update"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },
