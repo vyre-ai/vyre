@@ -59,7 +59,7 @@ test("the brief names the task and the way to answer", () => {
 });
 
 /** A Space's kernel pieces, faked: one task, the calls the wake makes. */
-function rig(/** @type {{ agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
+function rig(/** @type {{ root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
   const calls = /** @type {string[]} */ ([]);
   const handlers = /** @type {Record<string, (e: any) => any>} */ ({});
   const task = o.task || { id: "tsk_1", state: "ready", title: "Write the letter", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
@@ -74,7 +74,7 @@ function rig(/** @type {{ agentsWork?: (i: any) => Promise<any>, task?: any, onT
   };
   const hear = (/** @type {string} */ type, /** @type {(e: any) => any} */ fn) => { handlers[type] = fn; return () => {}; };
   const host = createTaskWakeHost({
-    root: `/tmp/task-wake-${process.pid}-${Math.random().toString(36).slice(2)}`, hear,
+    root: o.root || `/tmp/task-wake-${process.pid}-${Math.random().toString(36).slice(2)}`, hear,
     callModule: async (tool, input) => {
       if (tool === "work.project.ref") return { slug: "p1", name: "P One", urn: "vyre://spc_a/project/p1" };
       if (tool === "agents.list") return [{ uid: "agt_kit", name: "kit" }];
@@ -86,7 +86,7 @@ function rig(/** @type {{ agentsWork?: (i: any) => Promise<any>, task?: any, onT
   const h = host.attach({ space: "spc_a", gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
   const ready = (/** @type {string} */ type = "task.created") => push({ type, data: { state: "ready", task } });
   const finish = async (/** @type {string} */ text) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: {} }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
-  return { calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
+  return { root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
 }
 
 test("one task is woken once, the turn runs on the assigner's account, and the reply is the result", async () => {
@@ -125,4 +125,30 @@ test("a reply that starts with STUCK: flags the task; a turn that ends with noth
   assert.equal(b.calls.filter(c => c.startsWith("work ")).length, 2, "a second turn was started");
   await b.finish("");
   assert.match(b.calls.at(-1), /^stuck tsk_1 the agent's turn ended without a result/);
+});
+
+test("after a restart a task that was being worked gets one more turn, then is flagged; a task already on its second turn is flagged at once", async () => {
+  const root = `/tmp/task-wake-restart-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const first = rig({ root });
+  first.ready(); await first.h.idle();
+  assert.equal(first.calls.filter(c => c.startsWith("work ")).length, 1);
+  // the daemon stops with the turn still running; a new one starts on the same ledger, the kernel's task still working
+  const second = rig({ root, task: first.task });
+  await second.h.recover(); await second.h.idle();
+  assert.equal(second.calls.filter(c => c.startsWith("work ")).length, 1, "one more turn after the restart");
+  // and it stops again before the turn ends: that was the second turn, so the next start flags it
+  const third = rig({ root, task: first.task });
+  await third.h.recover(); await third.h.idle();
+  assert.match(third.calls.at(-1), /^stuck tsk_1 the server restarted while the agent was working on this$/);
+  assert.equal(third.calls.filter(c => c.startsWith("work ")).length, 0, "no third turn");
+});
+
+test("a task that was claimed but never started is woken as new after a restart", async () => {
+  const root = `/tmp/task-wake-restart2-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const a = rig({ root });
+  a.ready(); await a.h.idle();
+  a.task.state = "ready";   // the start did not stick before the stop
+  const b = rig({ root, task: a.task });
+  await b.h.recover(); await b.h.idle();
+  assert.deepEqual(b.calls.slice(0, 2), ["grant agt_kit tsk_1", "start tsk_1"]);
 });

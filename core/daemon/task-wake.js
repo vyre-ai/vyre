@@ -165,6 +165,24 @@ export function createTaskWakeHost(o) {
     }
     finishers.set(s.space, thread => track(turnEnded(thread)));
 
+    /**
+     * After a restart: a task that was being worked when the daemon stopped has no turn any more. It gets one more turn (a task has at most two), then it is flagged stuck with the reason.
+     * A task that never got as far as working is woken as new.
+     */
+    async function recover() {
+      for (const [id, rec] of Object.entries(ledger.all())) {
+        if (stopped || !rec || (rec.state !== "woken" && rec.state !== "starting")) continue;
+        if (rec.thread && threads.has(rec.thread)) continue;   // its turn is still running in this process
+        const t = await s.gw.ask.get(s.ownerChain(), id).catch(() => null);
+        if (!t) { ledger.set(id, { state: "finished" }); continue; }
+        if (t.state === "ready") { ledger.set(id, { state: "skipped" }); await wake(id); continue; }
+        if (t.state !== "working") { ledger.set(id, { state: "finished" }); continue; }
+        const r = await resolve(t);
+        if (r && rec.turns < MAX_TURNS) { ledger.set(id, { state: "starting" }); await run(t, r, rec.turns + 1); }
+        else await stuck(t, "the server restarted while the agent was working on this", "Move this task back to ready to start it again.");
+      }
+    }
+
     const sub = s.subscribe((/** @type {any} */ e) => {
       if (stopped || !e || !WAKE_EVENTS.test(String(e.type)) || !e.data || e.data.state !== "ready") return;
       const t = e.data.task;
@@ -174,6 +192,7 @@ export function createTaskWakeHost(o) {
 
     const host = Object.freeze({
       wake: (/** @type {string} */ id) => wake(id),
+      recover: () => track(recover()),
       /** Wait for the work in flight (a test, or a stop). */
       async idle() { while (inflight.size) await Promise.all([...inflight]); },
       stop() { stopped = true; finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },
