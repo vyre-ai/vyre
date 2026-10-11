@@ -1504,8 +1504,8 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   const tokenOf = async (/** @type {string} */ person) => (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" }))).token;
   // who asks about whom: the number of the target's device points the caller is shown
   const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;
-  const add = async (/** @type {{ id: string }} */ p, role = "member") => { const r = await d.call("spaces.members.add", { space: HOME, person: p.id, role }, "cli", { token: ownerTok }); assert.ok(!r.error, JSON.stringify(r.error)); };
-  assert.equal(await d.ok("spaces.list", {}, "cli", { token: ownerTok }).then((/** @type {any[]} */ l) => l.some(x => x.id === HOME)), false, "the server's own Space is not a row of the module's table: that is the case");
+  // the home Space is the kernel's own: members are made and removed on its grants, as the owner (the module's members tools take only hosted Spaces)
+  const add = async (/** @type {{ id: string }} */ p, role = "member") => { const r = { person: p.id, role }; await K.gateway.grants.setRole(ownerChain, r, { presence: sign("setRole", r) }); };
 
   await add(casey); await add(dana);
   // two members of the home Space read each other's device points, both ways
@@ -1518,8 +1518,7 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   assert.equal(await sees(erin, casey), 0, "a stranger reads nothing of a member");
   assert.equal(await sees(casey, erin), 0, "a member reads nothing of a stranger");
   // a person invited but not joined is not a member
-  const invited = await d.call("spaces.invites.create", { space: HOME, role: "member" }, "cli", { token: ownerTok });
-  assert.equal(await sees(tess, casey), 0, `a person with no membership yet (an invite exists: ${invited.error ? invited.error.code : "made"}) reads nothing`);
+  assert.equal(await sees(tess, casey), 0, "a person with no membership (invited, not joined) reads nothing");
   // an admin is a member
   await add(hank, "admin");
   assert.equal(await sees(hank, casey), 1, "an admin reads a member's");
@@ -1527,8 +1526,7 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   // a REMOVED member and a current one learn nothing of each other
   await add(gil);
   assert.equal(await sees(gil, casey), 1, "before removal");
-  const gone = await d.call("spaces.members.remove", { space: HOME, person: gil.id }, "cli", { token: ownerTok, kernel_proof: sign("removeMember", { person: gil.id }) });
-  assert.ok(!gone.error, JSON.stringify(gone.error));
+  await K.gateway.grants.removeMember(ownerChain, { person: gil.id }, { presence: sign("removeMember", { person: gil.id }) });
   assert.equal(await sees(gil, casey), 0, "a removed member reads nothing of a current one");
   assert.equal(await sees(casey, gil), 0, "and a current one reads nothing of a removed one");
   // a target that is not a person (an agent actor's id) is refused by shape
