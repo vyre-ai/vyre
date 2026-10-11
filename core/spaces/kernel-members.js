@@ -95,7 +95,7 @@ export function kernelMembers({ handle, now = Date.now }) {
 }
 
 /** A membership as the tools show it. @param {any} m */
-const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null });
+const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null, ...(m.partial ? { partial: true } : {}) });
 
 /** The words a person may be shown about a starting store: the progress sentence the store gives, and for anything else (a failure's own text, which can hold paths or errors) one fixed sentence. */
 const PROGRESS = /^(starting Records|the record store is still starting)/;
@@ -168,4 +168,35 @@ export async function kernelTeamSpaces(K, person) {
     out.push({ space: id, name: host, color: null, link: host ? `https://${host}` : null });
   }
   return out;
+}
+
+/**
+ * Whether a Space lets its members run their sessions on their own computers (G01), read or set. The allow is ONE kernel Offer, the Space's side for member "*" with no computer named: an owner or an admin makes it (under
+ * their own yes), withdraws it the same way, and every member's own lend then counts as allowed by the Space. Each member still lends their own computer with their own yes; the Space's allow is not a lend.
+ * `allow` left out reads. Answers { space, allowed }.
+ * @param {{ i: { space: string, allow?: boolean }, meta: any, row: { id: string }, h: any, caller: string, self: string, role: string | null, kctxOf: (meta: any, space: string) => Promise<{ chain: any, proof: any }>, answerChallenge: (ch: any, space: string) => Promise<any>, refuse: (message: string, code: string) => Error }} d
+ * @returns {Promise<{ space: string, allowed: boolean }>}
+ */
+export async function membersComputers(d) {
+  const { i, meta, row, h, caller, self, role, kctxOf, answerChallenge, refuse } = d;
+  const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
+  if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here: ask the owner of this server to update it.", "unavailable");
+  const find = () => offers.find({ side: "space_allows", member: "*", device: null });
+  if (i.allow === undefined) { if (!role) throw refuse("You are not a member of this space.", "not_a_member"); return { space: row.id, allowed: Boolean(await find()) }; }
+  if (caller !== self) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
+  if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin of the Space says whether its members may run sessions on their own computers.", "forbidden");
+  const withYes = async (/** @type {(k: any) => Promise<any>} */ run) => {
+    const k = await kctxOf(meta, row.id);
+    try { return await run(k); } catch (e) {
+      const ch = /** @type {any} */ (e) && /** @type {any} */ (e).challenge;
+      if (!ch || typeof ch.nonce !== "string" || !/^(presence_required|needs_presence)$/.test(String(/** @type {any} */ (e).code))) throw plainKernelError(e);
+      const proof = await answerChallenge(ch, row.id);
+      if (!proof) throw plainKernelError(e);
+      return run(await kctxOf({ ...meta, kernel_proof: proof }, row.id));
+    }
+  };
+  const have = await find();
+  if (i.allow === true && !have) await withYes(k => offers.offer(k.chain, { side: "space_allows", member: "*", device: null }, k.proof));
+  if (i.allow === false && have) await withYes(k => offers.unoffer(k.chain, have.id, k.proof));
+  return { space: row.id, allowed: Boolean(await find()) };
 }
