@@ -72,3 +72,25 @@ test("a member's request for an agent that HAS a credential picked for it is ref
   assert.ok(own.data && !own.error, JSON.stringify(own.error));
   await until(() => w.runs() === 1, "the owner's agent thread on its picked credential");
 });
+
+test("the team pump launches with no person on the call: the asker the request recorded is judged; automation passes; a teammate launch with a picked credential and nobody recorded is refused", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const BEN = "per_" + "b".repeat(26);
+  const picked = { CLAUDE_CODE_OAUTH_TOKEN: "picked-for-the-teammate" };
+  const launch = (/** @type {any} */ extra) => w.d.registry.call("threads.launch", { agent: "kit", agent_kind: "teammate", auth: "subscription", env: picked, cwd: w.work, prompt: "hello", ...extra }, "module:team", {});
+  const memberAsked = await launch({ asker: BEN });
+  assert.equal(memberAsked.error && memberAsked.error.code, "no_account", JSON.stringify(memberAsked));
+  assert.match(memberAsked.error.message, /cannot be used for a teammate's request yet/);
+  const nobody = await launch({});
+  assert.equal(nobody.error && nobody.error.code, "no_account", "nobody recorded: " + JSON.stringify(nobody));
+  assert.match(nobody.error.message, /nobody is recorded as having asked/);
+  assert.equal(w.runs(), 0, "neither made a thread");
+  const owner = await launch({ asker: w.d.kernel.id.owner });
+  assert.ok(owner.data && !owner.error, "the owner's request: " + JSON.stringify(owner.error));
+  await until(() => w.runs() === 1, "the owner's teammate thread");
+  // the check a module asks for before it queues work answers the same, and names who asked
+  const check = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked }, "module:team", await w.tokenOf(w.bobChain));
+  assert.equal(check.error && check.error.code, "no_account", JSON.stringify(check));
+  const auto = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked, asker: "automation" }, "module:team", {});
+  assert.ok(auto.data && auto.data.asker === null, JSON.stringify(auto));
+});
