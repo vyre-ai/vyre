@@ -72,6 +72,7 @@ async function world(t, opt = {}) {
     hookPortFor: m => m.app.hookPort,
     up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets), p.publishSpace]); return { origin: `http://127.0.0.1:${app.address().port}`, hookHost: "127.0.0.1", outputs: opt.handoff === false ? null : { hook_token: "h".repeat(64), api_token: "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", login_password: "pw_1234567890abcdef" } }; },
     exec: async () => { throw new Error("the daemon must not run a command in the app"); },
+    run: async p => { log.push(["run", p.manifest["x-publish"].deployment]); return opt.runResult || { ok: true, message: "ran", output: "exit=0 seconds=1\nhi\n" }; },
     status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
   };
   seam.driver = opt.helper ? helperDriver : driver;
@@ -642,4 +643,37 @@ test("a key rotated in the Vault whose app will not start again leaves the app s
   const t0 = Date.now();
   while (!w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'stopped'").get()) { if (Date.now() - t0 > 5000) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); }
   assert.ok(w.lines.some(l => /documents did not restart with its new key/.test(l)), "the reason is in the log");
+});
+
+test("a published job is set up, not served: no origin, no host, run only by Publish and only for a job; a plain driver cannot run one", async t => {
+  const w = await world(t, { helper: true });
+  const SP = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  const IMG = "sha256:" + "a".repeat(64);
+  const job = { every_minutes: 60, timeout_s: 120 };
+  const dep = (/** @type {any} */ over = {}) => ({ id: DEP, space: SP, name: "nightly", version: 1, runtime: { kind: "image", image: IMG, port: 8080, job: true }, job, secrets: [], ...over });
+  const asPublish = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:publish") => w.d.registry.call(tool, input, caller);
+  const r = await asPublish("appmods.publish.install", { deployment: dep() });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.name, r.data.state, r.data.url], ["nightly", "running", null]);
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, [], "a job has no host to serve");
+  assert.equal((await w.web("GET", "/", { headers: { host: "nightly.localhost:9999" } })).status, 404, "the apps' front does not serve it");
+  for (const caller of ["module:comms", "module:documents"]) assert.equal((await asPublish("appmods.publish.run", { deployment: DEP }, caller)).error.code, "denied");
+  assert.ok((await w.cli("appmods.publish.run", { deployment: DEP })).error, "nor a person at the terminal");
+  const out = await asPublish("appmods.publish.run", { deployment: DEP });
+  assert.deepEqual(out.data, { ok: true, message: "ran", output: "exit=0 seconds=1\nhi\n" });
+  assert.equal(w.log.filter(l => l[0] === "run").length, 1);
+  assert.equal((await asPublish("appmods.publish.run", { deployment: "dep_ffffffffffffffff" })).error.code, "not_found");
+  // a server is not a job
+  await asPublish("appmods.publish.install", { deployment: { id: "dep_fedcba9876543210", space: SP, name: "shop", version: 1, runtime: { kind: "image", image: "sha256:" + "b".repeat(64), port: 8080 }, secrets: [] } });
+  assert.equal((await asPublish("appmods.publish.run", { deployment: "dep_fedcba9876543210" })).error.code, "bad_input");
+  // a job whose limits are not a job's is refused when it is set up
+  assert.equal((await asPublish("appmods.publish.install", { deployment: dep({ id: "dep_aaaaaaaaaaaaaaaa", name: "bad", job: { every_minutes: 1, timeout_s: 120 } }) })).error.code, "bad_input");
+});
+
+test("a job on a server with no host helper cannot be run", async t => {
+  const w = await world(t);
+  const SP = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  const r = await w.d.registry.call("appmods.publish.install", { deployment: { id: DEP, space: SP, name: "nightly", version: 1, runtime: { kind: "image", image: "sha256:" + "a".repeat(64), port: 8080 }, job: { every_minutes: 60, timeout_s: 120 }, secrets: [] } }, "module:publish");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal((await w.d.registry.call("appmods.publish.run", { deployment: DEP }, "module:publish")).error.code, "unsupported");
 });

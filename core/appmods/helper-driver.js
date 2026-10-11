@@ -48,6 +48,8 @@ export function createHelperDriver(o = {}) {
   const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
   /** A site's server (team/contracts/builder.md): asked for by its deployment's id; the helper takes the folder written for it. @param {"pub-up" | "pub-stop" | "pub-down"} verb @param {string} dep */
   const askPub = (verb, dep) => askHelper(verb, dep, { spool: o.spool, state, log, what: "this site's server", sleep: o.sleep, pollMs: o.pollMs, timeoutMs: o.timeoutMs ?? 30 * 60_000 });
+  /** A scheduled job, run once: the longest it may take, and a margin for the helper to start and clean up. @param {string} dep @param {number} limitS */
+  const askRun = (dep, limitS) => askHelper("pub-run", dep, { spool: o.spool, state, log, what: "this job", sleep: o.sleep, pollMs: o.pollMs, timeoutMs: o.timeoutMs ?? (limitS + 300) * 1000 });
   const pubOf = (/** @type {any} */ m) => (m && m["x-publish"] ? m : null);
   return {
     kind: "helper",
@@ -70,16 +72,33 @@ export function createHelperDriver(o = {}) {
       if (pub) {
         if (!o.home) throw refuse("this driver was not given the daemon's home folder", "runtime");
         const a = pub.app, x = pub["x-publish"], sp = String(/** @type {any} */ (p).publishSpace || "");
-        const request = requestText({ name, version: Number(String(pub.version).split(".").pop()) || 1, port: a.port, memoryMb: a.limits.memoryMb, cpus: a.limits.cpus, pids: a.limits.pids, health: a.health, secrets: x.secrets });
+        const request = requestText({ name, version: Number(String(pub.version).split(".").pop()) || 1, port: a.port, memoryMb: a.limits.memoryMb, cpus: a.limits.cpus, pids: a.limits.pids, health: a.health, secrets: x.secrets, ...(x.job ? { jobS: x.job.timeoutS } : {}) });
         writeServerFolder({ home: o.home, space: sp, deployment: x.deployment, request, secrets: p.secrets });
         try { await askPub("pub-up", x.deployment); } finally { removeServerFolder({ home: o.home, space: sp, deployment: x.deployment }); }
       } else await ask("app-up", name);
+      // A job joins nothing of the vyre container: it is set up and runs only when pub-run is asked.
+      if (pub && pub["x-publish"].job) return { origin: "", hookHost: "", outputs: null };
       const subs = subnetsOf(state, name);
       const nets = (o.interfaces ?? os.networkInterfaces)();
       let hookHost = "";
       for (const list of Object.values(nets)) for (const a of list || []) if (a.family === "IPv4" && subs.some(s => inSubnet(a.address, s))) hookHost = a.address;
       if (!hookHost) throw refuse(`this server's vyre container has no address on ${name}'s network`, "runtime");
       return { origin: `http://vyre-app-${name}:${p.manifest.app.port}`, hookHost, outputs: pub ? null : readHandoff(state, name) };
+    },
+
+    /**
+     * Run a job once. The helper runs only the image the owner approved when it was set up. What the job printed (the last 4 KB, its own secrets already cut out by root) is the file root keeps for it;
+     * a failed run still has its output. @param {{ manifest: any }} p
+     * @returns {Promise<{ ok: boolean, message: string, output: string }>}
+     */
+    async run(p) {
+      const x = pubOf(p.manifest) && p.manifest["x-publish"];
+      if (!x || !x.job) throw refuse("that is not a job: a job is made with publish.create and its job schedule", "unsupported");
+      /** @type {Error | null} */ let err = null;
+      try { await askRun(x.deployment, x.job.timeoutS); } catch (e) { err = /** @type {Error} */ (e); }
+      let output = "";
+      try { output = fs.readFileSync(path.join(state, `jobout-${x.deployment}`), "utf8").slice(0, 8192); } catch { /* no output was kept */ }
+      return { ok: !err, message: err ? String(err.message || err).slice(0, 300) : "ran", output };
     },
 
     /** The setup runs on the host, inside the first `up`. */

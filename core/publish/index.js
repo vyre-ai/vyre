@@ -8,6 +8,7 @@
 // can create, preview and request; it can never decide. Nothing here starts Docker: publish.edge writes the compose
 // project and the Caddyfile into <home>/publish/<spaceId>/ and stops.
 
+import { redact } from "../../lib/credential-shapes.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +39,8 @@ export const seams = {
   dns: { resolveTxt: (/** @type {string} */ name) => dns.resolveTxt(name) },
   /** How long a burst of key changes waits before a live server restarts (tests shorten it). @type {number | undefined} */
   restartMs: undefined,
+  /** How often the scheduler looks for a job that is due, in ms (tests shorten it). @type {number | undefined} */
+  jobTickMs: undefined,
   /** @type {null | ((argv: string[]) => Promise<{ code: number }>)} */
   docker: process.env.VYRE_PUBLISH_DOCKER === "1"
     ? argv => new Promise(resolve => execFile("docker", argv, { timeout: 15 * 60_000, maxBuffer: 1 << 20 }, err => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0 })))
@@ -50,6 +53,10 @@ export const MIGRATIONS = [
   CREATE TABLE publish_domains (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
   CREATE TABLE publish_holds (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
   CREATE TABLE publish_tasks (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
+  `,
+  `
+  CREATE TABLE publish_job_runs (n INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, deployment TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL, code INTEGER, seconds INTEGER, message TEXT NOT NULL, output TEXT NOT NULL);
+  CREATE INDEX publish_job_runs_dep ON publish_job_runs (deployment, n);
   `,
 ];
 
@@ -243,7 +250,7 @@ export default {
           const files = secretsFor(space.id);
           // each value is released by the Vault to Publish only on this deployment's live grant, and written where only the apps module reads it, mode 0600
           for (const s of (d.secrets || [])) if (s.use.includes("runtime")) await files.writeFile(path.join(files.dir, d.id, s.name), await files.read(s.ref, { deployment: d.id }), { mode: 0o600 });
-          const r = await call("appmods.publish.install", { deployment: { id: d.id, space: space.id, name: d.name, version: d.version, runtime: d.runtime, secrets: names(d) } });
+          const r = await call("appmods.publish.install", { deployment: { id: d.id, space: space.id, name: d.name, version: d.version, runtime: d.runtime, secrets: names(d), ...(d.job ? { job: d.job } : {}) } });
           if (r.missing) throw refuse("this server has no apps module to run a site's server", "no_runner");
           return r.data;
         },
@@ -331,7 +338,7 @@ export default {
 
     /** What may leave the module about a deployment: no secret values exist on it, but the shape is fixed anyway. @param {any} d */
     const shown = d => d && ({
-      id: d.id, name: d.name, version: d.version, stage: d.stage, url: d.url ?? null, previous: d.previous ?? null,
+      id: d.id, name: d.name, version: d.version, stage: d.stage, url: d.job ? null : d.url ?? null, previous: d.previous ?? null, ...(d.job ? { job: d.job } : {}),
       project: d.project ?? null, build_digest: d.build_digest ?? null, approved_by: d.approved_by ?? null, approved_at: d.approved_at ?? null,
       published_at: d.published_at ?? null, created_by: d.created_by, created_at: d.created_at, updated_at: d.updated_at,
       secrets: (d.secrets || []).map((/** @type {any} */ s) => ({ name: s.name, class: s.class, use: s.use })),
@@ -341,7 +348,7 @@ export default {
     ctx.tool("publish.create", {
       callers: WITH_MODELS,
       description: "Start a new site or app as a draft from a name, a source and how it builds.",
-      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object", description: "secret references, never values" }, project: str, approver: str }, ["name", "source"]),
+      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object", description: "secret references, never values" }, job: { type: "object", description: "a job runs to completion on a schedule instead of serving: { every_minutes: 5 to 10080, timeout_s: 60 to 3600 }; needs a Dockerfile build and has no address" }, project: str, approver: str }, ["name", "source"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
@@ -655,7 +662,93 @@ export default {
     };
     const offRotate = ctx.events.on("vault.item-changed", (/** @type {any} */ e) => { const item = String((e.payload || e).name || ""); if (item) restartUsers(item).catch((/** @type {Error} */ err) => ctx.log.warn(`publish: could not look for sites using ${item}: ${err.message}`)); });
 
-    return { async stop() { offRotate(); for (const t of restarting.values()) clearTimeout(t); restarting.clear(); publishers.clear(); members.clear(); } };
+
+    // ---- scheduled jobs (a deployment with `job`): run on a schedule by the root helper, one at a time, no sooner than five minutes after the last; what a run printed is kept without secret shapes ----
+    const JOB_FLOOR_MS = 5 * 60_000, JOB_KEEP = 20;
+    /** @type {Set<string>} */ const jobsRunning = new Set();
+    const lastRun = (/** @type {string} */ dep) => /** @type {any} */ (db.prepare("SELECT * FROM publish_job_runs WHERE deployment = ? ORDER BY n DESC LIMIT 1").get(dep)) || null;
+    /** Run a live job once and keep the result. @param {string} spaceId @param {any} d @param {{ force?: boolean }} [o] */
+    async function runJob(spaceId, d, o = {}) {
+      if (!d.job || d.stage !== "Production") throw refuse("only a live job runs", "bad_input");
+      if (jobsRunning.has(d.id)) throw refuse("that job is running now: wait for it to finish", "busy");
+      const last = lastRun(d.id);
+      if (last && Date.now() - last.at < JOB_FLOOR_MS) throw refuse("that job ran less than 5 minutes ago", "too_soon");
+      jobsRunning.add(d.id);
+      let ok = false, message = "", output = "", code = null, seconds = null;
+      try {
+        const r = await call("appmods.publish.run", { deployment: d.id });
+        if (r.missing) throw refuse("this server has no apps module to run a job", "no_runner");
+        ok = Boolean(r.data && r.data.ok); message = String((r.data && r.data.message) || "");
+        const raw = String((r.data && r.data.output) || "");
+        const head = /^exit=(\d+) seconds=(\d+)\n/.exec(raw);
+        if (head) { code = Number(head[1]); seconds = Number(head[2]); }
+        output = redact(raw.replace(/^exit=\d+ seconds=\d+\n/, "")).slice(0, 4096);
+      } catch (/** @type {any} */ e) { message = String(e && e.message ? e.message : e).slice(0, 300); }
+      finally { jobsRunning.delete(d.id); }
+      db.prepare("INSERT INTO publish_job_runs (space, deployment, at, ok, code, seconds, message, output) VALUES (?,?,?,?,?,?,?,?)").run(spaceId, d.id, Date.now(), ok ? 1 : 0, code, seconds, message, output);
+      db.prepare("DELETE FROM publish_job_runs WHERE deployment = ? AND n NOT IN (SELECT n FROM publish_job_runs WHERE deployment = ? ORDER BY n DESC LIMIT ?)").run(d.id, d.id, JOB_KEEP);
+      ctx.events.emit("deployment.job-ran", { deployment: d.id, space: spaceId, ok, code, seconds });
+      return { ok, message, code, seconds, output };
+    }
+    const dueJobs = async () => {
+      const out = [];
+      for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {
+        for (const d of await storeFor(space).list("deployments")) {
+          if (d.stage !== "Production" || !d.job) continue;
+          const last = lastRun(d.id);
+          if (Date.now() - (last ? last.at : d.published_at || 0) >= d.job.every_minutes * 60_000) out.push({ space, d });
+        }
+      }
+      return out;
+    };
+    const tickJobs = async () => { for (const { space, d } of await dueJobs()) { try { await runJob(space, d); } catch (/** @type {any} */ e) { ctx.log.warn(`publish: job ${d.name} did not run: ${e.message}`); } } };
+    const jobTimer = setInterval(() => { tickJobs().catch(() => {}); }, seams.jobTickMs ?? 30_000);
+    jobTimer.unref?.();
+
+    ctx.tool("publish.job.run", {
+      callers: PEOPLE,
+      description: "Run a live job now: { deployment }. Waits 5 minutes after the last run; never overlaps. Returns { ok, message, code, seconds, output }.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const d = await storeFor(b.space.id).get("deployments", String(i.deployment || ""));
+        if (!d) throw refuse("no such deployment: publish.list shows them", "not_found");
+        // a run spends the job's secrets: only who may put it live (an owner, an admin, the named approver, or the project's manager) may run it now
+        const m = members.get(`${b.space.id}:${b.person}`);
+        const ok = Boolean(m) && (m.role === "owner" || m.role === "admin" || (d.approver && d.approver === b.person) || (m.role === "manager" && d.project && Array.isArray(m.projects) && m.projects.includes(d.project)));
+        if (!ok) throw refuse("only an owner, an admin, the named approver or the project's manager can run a job now: ask one of them", "forbidden");
+        return runJob(b.space.id, d);
+      },
+    });
+    ctx.tool("publish.job.runs", {
+      callers: WITH_MODELS,
+      description: "Last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }.",
+      input: obj({ deployment: str, limit: { type: "integer", minimum: 1, maximum: 20 } }, ["deployment"]),
+      run: async (i, meta) => {
+        const w = await whoIs(i, meta);
+        const d = await storeFor(w.space.id).get("deployments", String(i.deployment || ""));
+        if (!d || !d.job) throw refuse("no such job: publish.list shows them", "not_found");
+        const rows = /** @type {any[]} */ (db.prepare("SELECT at, ok, code, seconds, message, output FROM publish_job_runs WHERE space = ? AND deployment = ? ORDER BY n DESC LIMIT ?").all(w.space.id, d.id, Math.min(20, Math.max(1, Number(i.limit) || 5))));
+        return { runs: rows.map(r => ({ at: r.at, ok: Boolean(r.ok), code: r.code, seconds: r.seconds, message: r.message, output: r.output })) };
+      },
+    });
+    ctx.tool("publish.job.attention", {
+      callers: [...PEOPLE, "module"],
+      description: "Live jobs whose last run failed: { jobs: [{ deployment, name, at, message }] }. For Needs you.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const w = await whoIs(i, meta);
+        const jobs = [];
+        for (const d of await storeFor(w.space.id).list("deployments")) {
+          if (d.stage !== "Production" || !d.job) continue;
+          const last = lastRun(d.id);
+          if (last && !last.ok) jobs.push({ deployment: d.id, name: d.name, at: last.at, message: last.message });
+        }
+        return { jobs };
+      },
+    });
+
+    return { async stop() { clearInterval(jobTimer); offRotate(); for (const t of restarting.values()) clearTimeout(t); restarting.clear(); publishers.clear(); members.clear(); } };
   },
 };
 

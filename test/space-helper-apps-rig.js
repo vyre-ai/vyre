@@ -28,8 +28,9 @@ if (a[0] === "inspect" && a[1] === "-f" && a[2].includes("index .NetworkSettings
 if (a[0] === "inspect" && a[3] === "appc1") out(a[2].includes("Global") ? "invalid IP" : "172.31.7.3");
 if (a[0] === "ps" && a.join(" ").includes("label=com.docker.compose.project=vyre-app-")) {
   const m = (/project=vyre-app-([a-z0-9-]+)/.exec(a.join(" ")) || [])[1];
-  out(m && has("app-running-" + m) ? "appc1" : "");
+  out(m && has("app-running-" + m) ? "appc1" : m && has("job-running-" + m) ? "jobc1" : "");
 }
+if (a[0] === "rm" && a.includes("jobc1")) { for (const f of fs.readdirSync(F)) if (f.startsWith("job-running-")) fs.rmSync(F + "/" + f); fs.appendFileSync(F + "/job-removed", "jobc1\\n"); process.exit(0); }
 if (a[0] === "network" && a[1] === "inspect" && appOf(a[a.length - 1]) && /vyre-app-[a-z0-9-]+_net$/.test(a[a.length - 1])) {
   if (!has("app-net-" + appOf(a[a.length - 1]))) process.exit(1);
   out(a.includes("-f") ? rd("app-subnets", "172.31.7.0/24 ") : "{}");
@@ -43,6 +44,12 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
     fs.copyFileSync(a[a.indexOf("-f") + 1], F + "/compose-at-create-" + m);
     fs.copyFileSync(a[a.indexOf("--env-file") + 1], F + "/env-at-create-" + m);
     process.exit(0);
+  }
+  if (sub === "run") {
+    fs.appendFileSync(F + "/job-runs", a.join(" ") + "\\n");
+    if (has("job-out")) process.stdout.write(rd("job-out", ""));
+    if (has("job-leftover")) fs.writeFileSync(F + "/job-running-" + m, "1");
+    process.exit(Number(rd("job-exit", "0")));
   }
   if (sub === "up") { if (has("up-fails")) process.exit(1); fs.writeFileSync(F + "/app-running-" + m, "1"); process.exit(0); }
   if (sub === "stop") { fs.rmSync(F + "/app-running-" + m, { force: true }); process.exit(0); }

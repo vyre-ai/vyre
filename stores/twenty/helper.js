@@ -10,9 +10,9 @@ import crypto from "node:crypto";
 export const SPOOL_DIR = "/run/vyre-spaces";
 export const STATE_DIR = "/run/vyre-spaces-state";
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
-const VERBS = new Set(["up", "stop", "down", "app-up", "app-stop", "app-down", "pub-build", "pub-up", "pub-stop", "pub-down"]);
+const VERBS = new Set(["up", "stop", "down", "app-up", "app-stop", "app-down", "pub-build", "pub-up", "pub-run", "pub-stop", "pub-down"]);
 /** A published server is asked for by its deployment's id (team/contracts/builder.md). */
-const PUB_VERBS = new Set(["pub-build", "pub-up", "pub-stop", "pub-down"]);
+const PUB_VERBS = new Set(["pub-build", "pub-up", "pub-run", "pub-stop", "pub-down"]);
 const DEP = /^dep_[0-9a-f]{16}$/;
 
 /** @typedef {{ spool?: string, state?: string }} HelperDirs */
@@ -29,7 +29,7 @@ export function helperPresent(d = {}) {
 
 /**
  * Ask the helper for one verb and wait for its answer. Resolves `{ state: "ok", message }`; a refusal or a failure rejects with the helper's own short message.
- * @param {"up" | "stop" | "down" | "app-up" | "app-stop" | "app-down" | "pub-build" | "pub-up" | "pub-stop" | "pub-down"} verb @param {string} name the Space's compose name (`spc-abc...`), or an app module's name for the app verbs
+ * @param {"up" | "stop" | "down" | "app-up" | "app-stop" | "app-down" | "pub-build" | "pub-up" | "pub-run" | "pub-stop" | "pub-down"} verb @param {string} name the Space's compose name (`spc-abc...`), or an app module's name for the app verbs
  * @param {HelperDirs & { what?: string, timeoutMs?: number, pollMs?: number, sleep?: (ms: number) => Promise<void>, now?: () => number, log?: (m: string) => void }} [o]
  */
 export async function askHelper(verb, name, o = {}) {

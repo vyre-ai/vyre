@@ -132,6 +132,21 @@
         "effect": "write"
       },
       {
+        "name": "publish.job.run",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "publish.job.runs",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "publish.job.attention",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "publish.retire",
         "outward": true,
         "reach": "person",
@@ -152,6 +167,7 @@
       "deployment.approved",
       "deployment.published",
       "deployment.restarted",
+      "deployment.job-ran",
       "deployment.rolled-back",
       "deployment.retired"
     ]
