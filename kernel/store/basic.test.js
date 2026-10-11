@@ -62,3 +62,14 @@ test("a module's own types are held to the same list on Basic: not made, and its
   await new Promise(r => setTimeout(r, 50));
   assert.ok((await dev.store.types()).some(t => t.name === "goal"), "a server or a development build makes every declared type");
 });
+
+test("the type list is shared and frozen until a type changes: a record read does not copy every type", async () => {
+  const k = await boot();
+  const a = await k.store.types(), b = await k.store.types();
+  assert.equal(a, b, "the same list twice, not a fresh copy each time");
+  assert.ok(Object.isFrozen(a) && Object.isFrozen(a[0]) && Object.isFrozen(a[0].fields), "frozen, so no caller can change what the next one reads");
+  await k.gateway.records.define(owner(k), { add_types: [{ name: "thing", label: "Thing", fields: [{ name: "body", kind: "text", label: "Body" }] }] });
+  const c = await k.store.types();
+  assert.notEqual(c, a, "a type change makes the next read a new list");
+  assert.ok(c.some(t => t.name === "thing"));
+});
