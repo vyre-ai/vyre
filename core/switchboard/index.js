@@ -2355,7 +2355,8 @@ export class Switchboard {
   /** A queued turn's hand-over has started or failed: the lock on the thread's drain is released, and when it FAILED and the thread is idle the rows behind it are drained now (never stranded). @param {string} id @param {boolean} again @param {symbol} [lock] the drain that owns the lock */
   drainDone(id, again, lock) {
     if (lock && this.draining.get(id) !== lock) return;   // not this drain's lock any more (a newer drain owns it): nothing of ours to release, and nothing to drain again
-    this.draining.delete(id);
+    if (lock) this.draining.delete(id);   // (no token: a request to drain again, never a release; a drain that holds the lock is left alone)
+    else if (this.draining.has(id)) return;
     const st = this.live.get(id);
     if (again && st && !st.turn && !st.stopping && !this.once.has(id) && !this.reverting.has(id)) { const rec = this.record(id); this.drainQueued(id, st, rec ? rec.project : null); }
   }
@@ -2621,6 +2622,7 @@ export class Switchboard {
     if (this.once.has(id)) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
     const mine = { back, from: cur, to: provider, sent: String(text), reply: "" };
     this.once.set(id, mine);
+    if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction)
     try {
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);

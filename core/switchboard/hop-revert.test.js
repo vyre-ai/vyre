@@ -194,3 +194,22 @@ test("a late hand-over never releases the lock of a newer drain (the owner token
   assert.equal(sb.draining.has("t"), false, "its owner releases it");
   assert.deepEqual(drained, ["t"], "and the rows behind it are drained");
 });
+
+test("a lost mark releases only its own lock and drains nothing; the revert's own drain plus the finally take the lock for the same rows once", async () => {
+  /** @type {string[]} */ const drained = [];
+  const mine = Symbol("a"), winner = Symbol("b");
+  const sb = /** @type {any} */ ({ draining: new Map([["t", winner]]), reverting: new Map(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), drainQueued: (/** @type {string} */ id) => drained.push(id) });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  runQueuedOver(sb, "t", [{ id: 5, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 0 }), 1, mine);
+  assert.equal(sb.draining.get("t"), winner, "the winner's lock is untouched");
+  assert.deepEqual(drained, [], "nothing is drained again: the winner is in flight");
+  // the revert's own turnEnded drain takes the lock; turnEnded's finally then asks to drain again with no token: it must not take it a second time
+  let takes = 0;
+  const sb2 = /** @type {any} */ ({ draining: new Map(), reverting: new Map(), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }), deps: { kernelSession: true }, canonTurn: (/** @type {any} */ x) => x, assertAsker: () => { takes++; return new Promise(() => {}); }, db: { prepare: () => ({ all: () => [{ id: 1, kturn: JSON.stringify({ chat: "c", asker: "per_ada" }), text: "A", surface: "s", uuid: "u", at: 1 }] }) } });
+  sb2.drainDone = Switchboard.prototype.drainDone; sb2.drainQueued = Switchboard.prototype.drainQueued;
+  sb2.drainQueued("t", sb2.live.get("t"), null);
+  sb2.drainDone("t", true);
+  sb2.drainQueued("t", sb2.live.get("t"), null);
+  assert.equal(takes, 1, "the same rows are taken once");
+  assert.equal(sb2.draining.size, 1, "and the lock is still held by the drain that took it");
+});

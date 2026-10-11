@@ -44,7 +44,7 @@ export function busyTurn(sb, id) {
 export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
   if (!kt || !kt.over) return false;
   const r = rows[0];
-  if (!mark(now, r.id).changes) { sb.drainDone(id, true, lock); return true; }
+  if (!mark(now, r.id).changes) { sb.drainDone(id, false, lock); return true; }   // the row is another drain's: release only our own lock, and do not drain again (the winner is in flight)
   const rec = sb.record(id);
   // One hop at a time: the previous hop back is finished first, the target is checked BEFORE the stream is told a turn began (a hop that cannot start says so in words and began nothing), and the drain
   // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
@@ -60,14 +60,14 @@ export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
         sb.db.prepare("UPDATE threads_inbox SET delivered_at = NULL, via = NULL WHERE id = ?").run(r.id);
         sb.drainDone(id, false, lock);
         const back = sb.reverting.get(id);
-        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true, lock);
+        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true);   // (a request to drain again: our own lock was released above)
         return;
       }
       await sb.onceTarget(id, kt.over);
-      announced = true;
-      sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
-      const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
-      if (started === null) await sb.deliverRow(id, r, kt);   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
+      const sent = () => { announced = true; sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null); };
+      // told to the stream from inside sendOnce, right after the hop is claimed (onClaim): a hop that loses the claim or is refused first was never announced
+      const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, onClaim: sent, kernelTurn: { chat: kt.chat, asker: kt.asker } });
+      if (started === null) { sent(); await sb.deliverRow(id, r, kt); }   // no hop was needed: announced here, then delivered plainly   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
       sb.drainDone(id, true, lock);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
