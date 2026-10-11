@@ -6,31 +6,29 @@ import assert from "node:assert/strict";
 import { createKernel } from "../index.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mayWrite } from "./ownership.js";
-import { PROJECT, TEAM_MEMBER } from "../../records/core-types.js";
+import { PROJECT, TEAM_MEMBER, TASK } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", ADMIN = "per_admin", BOB = "per_bob", DAN = "per_dan", EVE = "per_eve", FAY = "per_fay";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const used = new Set();
 const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
-// a task as the records layer sees it, without the tasks service: its words and its project link (the doer and the giver ride in the table below, as the tasks service would answer)
-const TASK = { name: "task", label: "Task", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "project", kind: "link", label: "Project", to: "project" }] };
-
 async function rig() {
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   for (const [p, role] of [[ADMIN, "admin"], [BOB, "member"], [DAN, "member"], [EVE, "member"], [FAY, "member"]]) { const r = { person: p, role }; await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
   const R = k.gateway.records;
-  await R.define(owner, { add_types: [PROJECT, TEAM_MEMBER].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })).concat([TASK]) });
+  await R.define(owner, { add_types: [PROJECT, TEAM_MEMBER, TASK].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })) });
   const person = id => ({ actor: { kind: "person", id, space: SPACE } });
   const p1 = await R.create(owner, "project", { name: "One", slug: "one", owner: person(BOB) });
   const p2 = await R.create(owner, "project", { name: "Two", slug: "two", owner: person(DAN) });
   const seat = await R.create(owner, "team-member", { name: "eve", actor: person(EVE), kind: "person", project: { urn: p1.urn } });
-  const t1 = await R.create(owner, "task", { title: "in one", project: { urn: p1.urn } });
-  const tFree = await R.create(owner, "task", { title: "mine alone" });
   const dev = (p, id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person: p, path: "direct" });
+  const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "project/*", "team-member/*"] } } });
+  const mk = async (by, doer, project) => { const t = await svc.tasks.request(by, { title: "t", doer: { kind: "person", id: doer, space: SPACE }, output: { kind: "note" }, ...(project ? { project } : {}) }); return R.get(owner, "task", t.id); };
+  const t1 = await mk(dev(BOB, "d-b"), EVE, p1.urn);
+  const tFree = await mk(dev(FAY, "d-f"), FAY);
   const chains = { owner, admin: dev(ADMIN, "d-a"), bob: dev(BOB, "d-b"), dan: dev(DAN, "d-d"), eve: dev(EVE, "d-e"), fay: dev(FAY, "d-f") };
-  // who the tasks service would say a task is for and from
-  const taskTable = { [t1.id]: { doer: { kind: "person", id: EVE }, assigned_by: { kind: "person", id: BOB }, project: p1.urn }, [tFree.id]: { doer: { kind: "person", id: FAY }, assigned_by: null, project: null } };
+  const taskOf = async id => { const t = await svc.tasks.get(owner, id); return t ? { doer: t.doer, assigned_by: t.assigned_by, project: t.project || null } : null; };
   const rawProject = async ref => {
     const id = String(ref).split("/").pop();
     const pr = await R.get(owner, "project", id).catch(() => null);
@@ -43,7 +41,7 @@ async function rig() {
   const write = async (who, op, type, id, patch) => {
     const chain = chains[who];
     const row = op === "create" ? null : await R.get(owner, type, id);
-    await mayWrite(chain, type, row, patch, { op, trusted: trustedOf(chain), project: rawProject, task: async tid => taskTable[tid] || null });
+    await mayWrite(chain, type, row, patch, { op, trusted: trustedOf(chain), project: rawProject, task: taskOf });
     if (op === "create") return R.create(chain, type, patch);
     if (op === "update") return R.update(chain, type, id, patch, row.version);
     return R.remove(chain, type, id, row.version);
