@@ -257,7 +257,7 @@ function runAcp(entry, known, o) {
   /** @type {Set<string>} */ const announced = new Set();
   /** @type {Map<string, any>} */ const terminals = new Map();
   /** @type {any[]} */ const queue = [];
-  let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
+  let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", turnId = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
   let firstPrompt = true;
   /** The plan the account is on (Grok's subscription_tier from authenticate, Codex's status update): a name only, never an email. */
   let plan = "";
@@ -356,7 +356,7 @@ function runAcp(entry, known, o) {
     if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
     if (kind === "agent_message_chunk") {
       const t = text(u.content);
-      if (t) { turnText += t; say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
+      if (t) { turnText += t; say({ type: "stream_event", message_id: turnId, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
     } else if (kind === "agent_thought_chunk") {
       const t = text(u.content);
       if (t) say({ type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: t } } });
@@ -678,6 +678,7 @@ function runAcp(entry, known, o) {
     if (!ready || busy || exited || !queue.length) return;
     const blocks = withoutImages(queue.shift());
     busy = true; cancelling = false; turnText = "";
+    turnId = `acp-turn-${Date.now()}`;   // the turn's streamed words and its whole text at the end are one message, as with Claude (else the chat shows every answer twice)
     // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
     const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
     const first = firstPrompt && !loaded;
@@ -690,7 +691,7 @@ function runAcp(entry, known, o) {
     const memory = o.memory ? within(Promise.resolve().then(() => o.memory({ prompt: words, first })), MEMORY_MS, []).catch(() => []) : Promise.resolve([]);
     memory.then(extra => request("session/prompt", { sessionId: sid, prompt: [...sys, ...(Array.isArray(extra) ? extra : []), ...blocks] })).then(r => r, e => ({ error: e })).then(r => {
       withdrawAsks();
-      if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
+      if (turnText) say({ type: "assistant", message: { id: turnId, content: [{ type: "text", text: turnText }] } });
       const bad = r && r.error;
       say({ type: "result", subtype: bad ? "error" : "success", is_error: Boolean(bad), result: bad ? String(r.error.message || r.error) : turnText,
         stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: contextUsage({ ...(usage || {}), ...(bad ? {} : promptTokens(r)) }), ...(!bad && promptModel(r) ? { model: promptModel(r) } : {}) });

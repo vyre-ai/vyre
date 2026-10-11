@@ -26,6 +26,7 @@ import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
 import { BEAT_MAX } from "./lent-home.js";
 import { createMover, sleepReason } from "./mover.js";
+import { devSwitch } from "../../kernel/devbuild.js";
 
 /** The caller name the daemon itself calls with. */
 const DAEMON = "module:vyred";
@@ -67,8 +68,14 @@ const str = { type: "string" };
  */
 export function resolveAgent(spec) {
   const args = Array.isArray(spec.args) ? spec.args : [];
-  const ro = Array.isArray(spec.readOnly) ? spec.readOnly : [];
-  if (spec.command.includes("/")) return { command: spec.command, args, readOnly: ro };
+  // The Space never names a path on a computer it cannot see, nor a folder to open to the session: a Space's definition that does (a hostile or tampered server, or a development server with its switch on) is not obeyed by a
+  // packaged computer. Only this computer's own development build, with its own switch on, takes a path or a read-only folder from the Space.
+  const dev = devSwitch(process.env.VYRE_LENT_AGENT_DEV, undefined);
+  const ro = dev && Array.isArray(spec.readOnly) ? spec.readOnly : [];
+  if (spec.command.includes("/")) {
+    if (!dev) throw Object.assign(new Error("the Space named a program by its path, which this computer does not run: ask the Space's owner to fix the Space's definition, or update Vyre on this computer"), { code: "unavailable" });
+    return { command: spec.command, args, readOnly: ro };
+  }
   let bin = spec.command === "claude" && process.env.VYRE_CLAUDE_BIN ? process.env.VYRE_CLAUDE_BIN : "";
   if (!bin) for (const d of String(process.env.PATH || "").split(path.delimiter)) { const f = path.join(d, spec.command); try { fs.accessSync(f, fs.constants.X_OK); bin = f; break; } catch { /* next */ } }
   if (!bin) throw Object.assign(new Error(`this computer has no ${spec.command} to run the session with`), { code: "unavailable" });
