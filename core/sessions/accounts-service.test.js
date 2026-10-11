@@ -83,17 +83,17 @@ test("a member cannot touch another member's account, and the door has no call t
   assert.equal((await w.as(ANA, "list", {})).length, 1, "Ana's account is still there");
 });
 
-test("a member picks their own default and removes their own account", { timeout: 90_000 }, async t => {
+test("a member has one sign-in account on the server: a second is refused with the next step, and removing the first frees the place", { timeout: 90_000 }, async t => {
   const w = await world(t);
   await signIn(w, ANA, "First");
+  const [first] = await w.as(ANA, "list", { provider: "codex" });
+  await w.as(ANA, "default", { id: first.id });
+  assert.equal(((await w.d.registry.call("sessions.accounts.resolve", { provider: "codex", person: ANA }, "module:vyred", {})).data).id, first.id);
+  await assert.rejects(() => w.as(ANA, "signin", { provider: "codex", label: "Second" }), /remove it first/, "the refusal says what to do");
+  await w.as(ANA, "remove", { id: first.id });
+  assert.deepEqual(await w.as(ANA, "list", { provider: "codex" }), []);
   await signIn(w, ANA, "Second");
-  const rows = await w.as(ANA, "list", { provider: "codex" });
-  assert.equal(rows.length, 2);
-  const second = rows.find((/** @type {any} */ a) => a.label === "Second");
-  await w.as(ANA, "default", { id: second.id });
-  assert.equal(((await w.d.registry.call("sessions.accounts.resolve", { provider: "codex", person: ANA }, "module:vyred", {})).data).id, second.id);
-  await w.as(ANA, "remove", { id: second.id });
-  assert.deepEqual((await w.as(ANA, "list", { provider: "codex" })).map((/** @type {any} */ a) => a.label), ["First"]);
+  assert.deepEqual((await w.as(ANA, "list", { provider: "codex" })).map((/** @type {any} */ a) => a.label), ["Second"]);
 });
 
 test("nobody else reaches the service: a non-member, an agent's chain, another Space's chain; and the serve tool answers only the daemon's own door", { timeout: 90_000 }, async t => {
