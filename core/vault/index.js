@@ -270,7 +270,7 @@ export default {
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`, { when: ({ name }) => { const r = vault.row(name); return Boolean(r && r.vault !== "personal"); } }));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
+      obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how, agentKind }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller, agentKind); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => isAsker(caller), session: () => true }));
