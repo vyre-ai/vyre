@@ -1464,14 +1464,14 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   // casey joins alex's space: now they share one
   const added = await d.call("spaces.members.add", { space, person: casey.id, role: "member" });
   assert.ok(!added.error, JSON.stringify(added.error));
-  await d.reg.call("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
+  await d.ok("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
   const shared = (await d.ok("spaces.identity.devices", { person: casey.id }));
   assert.equal(shared.devices.length, 1, JSON.stringify(shared));
   assert.deepEqual(Object.keys(shared.devices[0]).sort(), ["agree", "device"], "the device id and the point, no label and no other field");
   assert.equal(shared.devices[0].device, casey.eid);
   assert.match(shared.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
   // dana is known to this device but shares no space with alex: a stranger gets nothing
-  await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  await d.ok("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: dana.id })), { devices: [] }, "a stranger");
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: "per_nobodyatall000000000000000" })), { devices: [] });
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: "not a person" })), { devices: [] });
@@ -1500,7 +1500,7 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
   const claim = async (/** @type {string} */ name) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree: pt() });
   const [casey, dana, erin, gil, hank, tess] = [await claim("casey"), await claim("dana"), await claim("erin"), await claim("gil"), await claim("hank"), await claim("tess")];
-  for (const [p, n] of [[casey, "casey"], [dana, "dana"], [erin, "erin"], [gil, "gil"], [hank, "hank"], [tess, "tess"]]) await d.reg.call("spaces.person.learn", { id: p.id, name: n }, "module:vyred");
+  for (const [p, n] of [[casey, "casey"], [dana, "dana"], [erin, "erin"], [gil, "gil"], [hank, "hank"], [tess, "tess"]]) await d.ok("spaces.person.learn", { id: p.id, name: n }, "module:vyred");
   const tokenOf = async (/** @type {string} */ person) => (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" }))).token;
   // who asks about whom: the number of the target's device points the caller is shown
   const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;
@@ -1537,6 +1537,59 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   // a target that is not a person (an agent actor's id) is refused by shape
   assert.deepEqual(await d.ok("spaces.identity.devices.read", { person: "agt_" + "a".repeat(30) }, "module:work", { token: ownerTok }), { devices: [] });
   void K.membership;
+});
+
+test("a member who joined through the kernel invite is found by the key-agreement read once the door reports the join (evidence alone stores no name)", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const HOME = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null;
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const real = (/** @type {any} */ m) => (handle ||= K.kernelFor(m));
+  // the module's kernel handle as the daemon gives it: the home Space's own (its `space` and its `membership`); the routing is the only fake, the kernel is real
+  const kernelFor = (/** @type {any} */ m) => ({ space: HOME, for: () => real(m).for(HOME), chain: (/** @type {any} */ meta) => real(m).chain(meta), proofFrom: (/** @type {any} */ meta) => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (/** @type {any} */ c, /** @type {any} */ p) => real(m).acceptProofRequest(c, p), membership: (/** @type {string} */ p, /** @type {string} */ sp) => real(m).membership(p, sp || HOME) });
+  const d = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  K = await createKernel({ space: HOME, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const sign = (/** @type {string} */ call, /** @type {any[]} */ ...a) => ({ payload_hash: proofRequest(HOME, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  const ownerChain = K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const ownerTok = (await K.surfaces.open(ownerChain)).token;
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const claim = async (/** @type {string} */ name) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree: pt() });
+  const [casey, dana] = [await claim("casey"), await claim("dana")];
+  const tokenOf = async (/** @type {string} */ person) => (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" }))).token;
+  const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;
+  const add = async (/** @type {{ id: string }} */ p) => { const r = { person: p.id, role: "member" }; await K.gateway.grants.setRole(ownerChain, r, { presence: sign("setRole", r) }); };
+  await add(casey); await add(dana);
+  // a verified stranger: the door asked for identity evidence before any membership exists (kernel/remote/server.js joinKey), and that leaves NO name behind
+  assert.equal(await sees(casey, dana), 0, "before the join the server knows no name for her, so no points");
+  const ev = await d.reg.call("spaces.identity.evidence", { person: dana.id, name: "dana" }, "module:vyred");
+  assert.ok(ev && !ev.error && ev.data && Array.isArray(ev.data.ops), JSON.stringify(ev && ev.error));
+  assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM spaces_kv WHERE key LIKE 'person-name/%'").get().n, 0, "evidence for a person who has not joined stores no name");
+  assert.equal(await sees(casey, dana), 0, "and still no points");
+  // the join SUCCEEDED: the door tells the spaces module (kernel/remote/server.js personJoined -> spaces.person.learn as module:vyred); the directory must confirm the name for that id
+  const wrong = await d.reg.call("spaces.person.learn", { id: casey.id, name: "dana" }, "module:vyred");
+  assert.equal(wrong.data.known, false, "a hello naming someone else's name stores nothing");
+  assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM spaces_kv WHERE key LIKE 'person-name/%'").get().n, 0);
+  assert.equal(await sees(dana, casey), 0, "and a read for casey stays empty");
+  const ok = await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  assert.equal(ok.data.known, true);
+  assert.equal(await sees(casey, dana), 1, "after the join a member of the home Space reads her device point");
+  assert.equal(await sees(dana, casey), 0, "casey's join was not reported: no name, no points (the read is per target)");
+  // a stale name is harmless: if the name kept for dana now resolves to someone else (released and taken), stateOfPerson re-resolves it, finds another id, and answers nothing
+  const { DatabaseSync } = await import("node:sqlite");
+  const row = d.db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`person-name/${dana.id}`);
+  assert.equal(JSON.parse(String(/** @type {any} */ (row).value)), "dana", "the evidence kept her confirmed name");
+  d.db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify("casey"), `person-name/${dana.id}`);
+  assert.equal(await sees(casey, dana), 0, "the kept name now belongs to another id: nothing is answered");
+  // and a kept name that now belongs to nobody (released): the directory does not resolve it, and nothing is answered
+  d.db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify("nobodyhasthisname"), `person-name/${dana.id}`);
+  assert.equal(await sees(casey, dana), 0, "the kept name resolves to no one: nothing is answered");
+  void DatabaseSync; void K.membership;
 });
 
 /** A drop wrap made the way lib/keywrap.js does: ECDH-ES to a device's agree point, HKDF-SHA256 (salt = the ephemeral point, info vyre-identity-wrap-v1), AES-256-GCM bound to `aad`. */

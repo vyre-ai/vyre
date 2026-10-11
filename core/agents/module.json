@@ -59,6 +59,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.credentials",
+        "summary": "the sign-in picked for an agent, as a launch takes it (the team module's teammate turns only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.stop",
         "reach": "anyone",
         "effect": "write"

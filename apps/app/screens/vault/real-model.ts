@@ -107,7 +107,12 @@ export function personalUnlockRefusal(code: string | undefined, detail?: { retry
   return "The personal vault did not open. Nothing was changed.";
 }
 
+/** The server's refusal of a team member at the owner's vault (core/vault/member-gate.js MEMBER_REFUSAL), in a sentence: it is the true reason, not "this device may not" or "this server cannot unlock it from a phone". */
+export const ownerVaultWords = (message: string | undefined): string | null =>
+  /owner's vault/i.test(message ?? "") ? "This is the owner's vault. Ask the owner to share the item with you, or add your own key in your account settings." : null;
+
 export function revealRefusal(code: string | undefined, message: string, how: "phone" | "touchid" | "browser" = "browser"): string {
+  const owners = ownerVaultWords(message); if (owners) return owners;
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";
   // A release server takes an approval only from a phone key it can verify (vault, 5 Oct): until that check exists no phone can give it, and "approve on your phone" would send the person in a circle.
@@ -153,6 +158,7 @@ export function putInput(n: NewItem): { input: Record<string, unknown> } | { err
 
 /** The words for a refused add or unlock. */
 export function putRefusal(code: string | undefined, message: string): string {
+  const owners = ownerVaultWords(message); if (owners) return owners;
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "denied" || code === "forbidden") return "This device may not add to the vault.";
   if (code === "locked" || code === "vault_locked") return "Unlock the vault first.";

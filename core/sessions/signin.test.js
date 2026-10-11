@@ -137,3 +137,16 @@ test("signin: Claude's pasted code has the form <code>#<state> and is taken; spa
   assert.deepEqual(s.submit(r.flow, `${paste}\n`), { flow: r.flow, step: "waiting" }, "a trailing newline from the paste is trimmed, not refused");
   assert.equal(/^[A-Za-z0-9_.~#%=+\/-]{6,512}$/.test("a".repeat(512)), true, "512 is the limit");
 });
+
+test("signin: the real claude's output shape: one long address is read whole, its random text is never taken for a device code, and a refused code says why", async t => {
+  const { s } = world(t, "claude-real");
+  const r = await s.start({ provider: "claude", account: { id: "real" } });
+  assert.deepEqual([r.step, r.paste, r.code], ["url", true, undefined], "an AB12-CD34 pair inside the address is not a code to type");
+  assert.ok(String(r.url).length > 300 && String(r.url).endsWith("x".repeat(43)), "the whole address, however long");
+  s.submit(r.flow, "wrongcode123#abcdef");
+  for (let i = 0; i < 500 && s.status(r.flow).step !== "failed"; i++) await new Promise(x => setTimeout(x, 40));
+  const failed = s.status(r.flow);
+  assert.equal(failed.step, "failed");
+  assert.match(String(failed.message), /status code 400/, "the reason is shown, not the address that came before it");
+  assert.doesNotMatch(String(failed.message), /client_id/);
+});

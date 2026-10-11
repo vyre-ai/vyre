@@ -20,7 +20,7 @@ const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers:
 
 
 /**
- * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null>, identityEvidence?: (who: { person: string, name?: string }) => Promise<{ ops: any[], entries: { eid: string, kind: string, pub: string, founder: boolean, since: number }[] } | null>, personJoined?: (who: { person: string, name: string }) => Promise<void> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -209,6 +209,8 @@ export function createRemoteServer(cfg) {
               if (joined && typeof k.unjoinKey === "function") { try { await k.unjoinKey({ chain: who.chain, ...joined }); } catch { /* the key stays only if the sealing process cannot be reached; it is a newcomer key for a valid invite */ } }
               throw e;
             }
+            // The join SUCCEEDED (the kernel took the accept): the home remembers the Vyre name of the person who joined, which it verifies against the directory for that id, so it can read their identity list later (key-agreement points for a chat). Only after the accept: a stranger who never joins leaves nothing behind.
+            if (request.call === "grants.invites.accept" && typeof cfg.personJoined === "function" && typeof peer.name === "string" && peer.name && typeof peer.person === "string") { try { await cfg.personJoined({ person: peer.person, name: peer.name }); } catch { /* the name is learned another time; the join stands */ } }
             if (attestNonce && typeof cfg.attest === "function" && result && typeof result === "object") {
               let a = null; try { a = await cfg.attest(attestNonce); } catch { a = null; }
               if (a) result = { ...result, attest: a };

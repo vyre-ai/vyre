@@ -241,7 +241,14 @@
       "team"
     ]
   },
-  "needs": {},
+  "needs": {
+    "kernel": {
+      "membership": true,
+      "actions": [
+        "records.read"
+      ]
+    }
+  },
   "settings": [
     {
       "key": "team.default",
