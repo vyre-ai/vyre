@@ -157,8 +157,11 @@ test("a switch back that fails twice leaves the record on the base with no live 
   assert.deepEqual([opts.account, opts.person, opts.switchPerson], ["bobs", "per_bob", undefined], "nothing recorded says the thread is on the member's account");
   assert.equal(stops, 1, "the hop's process is stopped");
   assert.equal(sb.live.has("t"), false, "no live process");
+  assert.ok(events.some(e => e[0] === "thread.provider"), "the app's provider chip follows the base");
+  assert.equal(sb.carry.has("t"), true, "what the hop answered is kept for the resume to pass on");
+  assert.equal(sb.reverting.has("t"), false, "the revert mark is released before the resume");
   assert.equal(events.filter(e => e[0] === "thread.text").length, 1, "the room is told once");
-  assert.match(String(events[0][1]), /session stopped while switching back/);
+  assert.match(String(events.find(e => e[0] === "thread.text")[1]), /session stopped while switching back/);
   assert.deepEqual(resumed, ["t"], "a row already waiting starts the thread again on its base, as a restart would");
   assert.deepEqual(hopProcess.writes, [], "and no queued words went into the hop's process");
 });

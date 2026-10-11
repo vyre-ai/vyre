@@ -1179,7 +1179,14 @@ export class Switchboard {
   resumeWaiting(id) {
     if (this.closing || this.live.has(id)) return;
     let waiting; try { waiting = this.db.prepare("SELECT 1 AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL AND kturn IS NOT NULL").get(id); } catch { return; }
-    if (waiting) void this.launch({ resume: id }).catch((/** @type {Error} */ e) => this.deps.log(`threads: could not start the queued chat messages of ${id.slice(0, 8)} (${e.message})`));
+    if (!waiting) return;
+    // Launched with NO turn of its own, never with the first row's: on a resume the stored opts carry the base account, which memberAccount would judge a member's turn against and refuse. The drain gives each row
+    // its own session and its own hop afterwards. (The one place a chat thread still opens the default session until the first row's session replaces it: the known housekeeping gap.) Tried once, never in a loop.
+    void this.launch({ resume: id }).catch((/** @type {Error} */ e) => {
+      this.deps.log(`threads: could not start the queued chat messages of ${id.slice(0, 8)} (${e.message})`);
+      const rec = this.record(id);
+      this.emit("thread.text", { message: "vyre", text: "The chat could not start again, and the messages waiting for it are still queued. Send a message to start it again, or pick another account.", done: true, notice: true }, id, rec ? rec.project : null);
+    });
   }
 
   /** The turn announced as begun for words that did not run ends here: the stream's member is not left running. @param {string} id @param {string | null} project */
@@ -2649,9 +2656,12 @@ export class Switchboard {
       if (once.back.account) kept.account = once.back.account; else delete kept.account;
       if (once.back.person) kept.person = once.back.person; else delete kept.person;
       delete kept.switchPerson;
-      this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
+      this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
+      const left = this.live.get(id); if (left) left.haltReason = "switching back failed";
       await this.stop(id).catch(() => {});
-      this.emit("thread.text", { message: "vyre", text: `The chat's session stopped while switching back to ${providerName(once.back.provider)}. The next message starts it again.`, done: true, notice: true }, id, rec ? rec.project : null);
+      this.emit("thread.provider", { from: once.to, to: once.back.provider, account: once.back.account || null, model: modelName(once.back.model), reason: "back" }, id, rec ? rec.project : null);
+      this.emit("thread.text", { message: "vyre", text: `The chat's session stopped while switching back to ${providerName(once.back.provider)}. The next message starts it again, and what ${to} answered is passed on when it starts.`, done: true, notice: true }, id, rec ? rec.project : null);
+      this.reverting.delete(id);   // the mark is released first, so the resume below drains where it should
       this.resumeWaiting(id);
       return;
     }
