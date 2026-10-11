@@ -185,8 +185,8 @@ export async function startCore(o) {
   const redeem = async (input, code, pid) => {
     const no = message => ({ error: { code: "presence_required", message, methods: [...CORE_METHODS] } });
     if (presence.keys().length) return no("vyre-core already has a key: enroll with a proof from it, not a code");
-    if (input.kind !== "capsule") return no("the installer's code enrolls the Capsule's key and nothing else");
-    if (!(await codeFrom(pid))) return no("only the Capsule vyre-core signed can use the installer's code");
+    if (input.kind !== "capsule") return no("the installer's code enrolls Lumen's key and nothing else");
+    if (!(await codeFrom(pid))) return no("only Lumen vyre-core signed can use the installer's code");
     db.exec("BEGIN IMMEDIATE");
     try {
       if (presence.keys().length) { db.exec("ROLLBACK"); return no("vyre-core already has a key: enroll with a proof from it, not a code"); }
@@ -300,11 +300,11 @@ export async function startCore(o) {
       }
       if (vaults.plain[tool]) {
         // A plain value leaves core only for the Capsule core signed, to show, copy or type.
-        if (!(await capsuleFrom(c.pid))) return send(res, 403, { error: { code: "not_capsule", message: "on a vyre-core Mac, only the Capsule shows, copies or types a value" } });
+        if (!(await capsuleFrom(c.pid))) return send(res, 403, { error: { code: "not_capsule", message: "on a vyre-core Mac, only Lumen shows, copies or types a value" } });
         const at = { peer: { stableId: peerKey(c.pid) } };
         const p = await prove(tool, input, header, { caller: "capsule", peer: at.peer });
         if (!p.ok) return refused(p);
-        log(`vyre-core: ${tool} ${String(input.name || "")} for the Capsule (pid ${c.pid}), proved by ${p.method}`);
+        log(`vyre-core: ${tool} ${String(input.name || "")} for Lumen (pid ${c.pid}), proved by ${p.method}`);
         return send(res, 200, { data: await vaults.plain[tool](input, "capsule") });
       }
       if (vaults.write[tool]) {
@@ -316,7 +316,7 @@ export async function startCore(o) {
 
       // The first key of a Mac server (firstkey.js): no proof exists yet, so the key is checked against the fingerprint the install line named, from a process outside every Claude session.
       if (tool === "presence.enroll.first") {
-        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its first key comes from the Capsule" } });
+        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its first key comes from Lumen" } });
         if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "a server's first key is enrolled only by a process outside every Claude session" } });
         const k = enrollFirst({ db, presence, now: o.now }, input);
         log(`vyre-core: the first key (${k.kind} ${k.id}) enrolled for this server by pid ${c.pid}`);
@@ -325,10 +325,10 @@ export async function startCore(o) {
       }
       // The server's Capsule key (firstkey.js enrollCapsule): the setup key hands the Secure Enclave key its place and leaves, once, in the first key's hour.
       if (tool === "presence.enroll.capsule") {
-        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its Capsule comes from the Capsule" } });
-        if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "a server's Capsule key is enrolled only by a process outside every Claude session" } });
+        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its Lumen comes from Lumen" } });
+        if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "a server's Lumen key is enrolled only by a process outside every Claude session" } });
         const k = enrollCapsule({ db, presence, now: o.now }, input);
-        log(`vyre-core: the server's Capsule key (${k.id}) took the setup key's place, by pid ${c.pid}`);
+        log(`vyre-core: the server's Lumen key (${k.id}) took the setup key's place, by pid ${c.pid}`);
         emit("presence.capsule-key", { id: k.id });
         return send(res, 200, { data: k });
       }

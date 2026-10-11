@@ -461,7 +461,7 @@ export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from
  */
 const ES256 = pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }];
 const SIGNERS = {
-  capsule: { label: "Capsule", check: ES256, stale: "that Capsule key is an old kind Vyre no longer accepts; re-enroll the Capsule's key" },
+  capsule: { label: "Lumen", check: ES256, stale: "that Lumen key is an old kind Vyre no longer accepts; re-enroll Lumen's key" },
   // The algorithm comes from the alg stored at enroll time, never from the caller: ES256 for a
   // P-256 key, RS256 (RSASSA-PKCS1-v1_5, SHA-256) for an RSA key, and the key must be that type.
   device: { label: "device", stale: "that phone's key is not a kind Vyre accepts (P-256, or RSA 2048 bits or more); pair the phone again", check: (pub, alg) => {
@@ -518,7 +518,7 @@ export const core = { link: /** @type {CoreLink|null} */ (null) };
 export const CORE_CHECKED = new Set(["capsule", "device", "passkey", "code"]);
 /** A parsed proof back into its header, fields in their own order. @param {Record<string, string>} proof */
 export const format = proof => [proof.method, ...Object.entries(proof).filter(([k]) => k !== "method").map(([k, v]) => `${k}=${v}`)].join(" ");
-const coreOwned = what => Object.assign(new Error(`on this Mac, ${what} in vyre-core: do it from your own terminal or the Capsule, which talk to vyre-core directly`), { code: "core_owned" });
+const coreOwned = what => Object.assign(new Error(`on this Mac, ${what} in vyre-core: do it from your own terminal or Lumen, which talk to vyre-core directly`), { code: "core_owned" });
 
 export class Presence {
   /**
@@ -945,8 +945,8 @@ export class Presence {
     let id;
     if (kind === "capsule") {
       // The Capsule's Secure Enclave key: ES256 on P-256, nothing else (ADR 0040).
-      if (!isP256(key)) throw new Error("a Capsule key must be an EC P-256 key from the Secure Enclave");
-      if (alg !== undefined && alg !== -7) throw new Error("a Capsule key's alg must be -7 (ES256)");
+      if (!isP256(key)) throw new Error("a Lumen key must be an EC P-256 key from the Secure Enclave");
+      if (alg !== undefined && alg !== -7) throw new Error("a Lumen key's alg must be -7 (ES256)");
       alg = -7; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {

@@ -8,7 +8,7 @@ status: stable
 
 # Modules (API 1)
 
-Everything in Vyre is a module: memory, the vault, GitHub, the Capsule's actions, and whatever you or
+Everything in Vyre is a module: memory, the vault, GitHub, Lumen's actions, and whatever you or
 an agent add. This page is the contract a module is written against. The decisions and their reasons
 are in [ADR 0047](adr/0047-module-contract-v1.md). If you're an AI agent writing a module, start with
 the [agent brief](build/AGENT-BRIEF.md). A complete working module is at
@@ -83,7 +83,7 @@ Point `$schema` at it for editor help. `x-` keys are free for experiments.
 | `does.hooks` | harness points (`brief`, `enrich`, `pretool`, `stop`), each served by one of its tools |
 | `watches.emits`, `watches.on` | the events it may emit and the patterns it may listen to |
 | `shows.deck` | slots in the Vyre app on the web, Windows and the phone: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>` |
-| `shows.capsule` | results and actions in the Capsule on a Mac |
+| `shows.capsule` | results and actions in Lumen on a Mac |
 | `shows.notices` | the notice kinds it raises |
 | `settings` | its settings, drawn in Settings and `vyre config` with no UI work |
 | `needs.*` | what it asks for (next section). This is what the install card shows. |
@@ -295,8 +295,8 @@ A module you add can offer a kind too, under three limits. The kind is the modul
 
 ## Views: your screens, drawn by Vyre
 
-A module describes its screens under `views` and Vyre draws them, in the app (web, Mac, Windows, phone) and in the Capsule, in its own components. Nothing from a module runs in Vyre's window. This is the
-Capsule's view language below, promoted to the whole app and extended with a board and a summary; `shows.capsule`'s `view:<id>` entries are the older name for the same declaration, and `views` wins when both name an id.
+A module describes its screens under `views` and Vyre draws them, in the app (web, Mac, Windows, phone) and in Lumen, in its own components. Nothing from a module runs in Vyre's window. This is the
+Lumen's view language below, promoted to the whole app and extended with a board and a summary; `shows.capsule`'s `view:<id>` entries are the older name for the same declaration, and `views` wins when both name an id.
 
 ```json
 "views": {
@@ -312,15 +312,15 @@ Capsule's view language below, promoted to the whole app and extended with a boa
 A view is a `list` (with a `detail` and `actions`), a `board`, a `summary` or a `form`. A board groups the rows of its tool into the declared columns by the field `map.column` names; a row whose value is no
 declared column goes to a last column, Other. Dropping a card on a column calls the action with the id `move`, with `{column}` filled in (only a declared column; any other leaves the card where it is). A summary reads
 counts and one small bar or line chart by dotted path. `map` names fields by plain dotted path, templates fill a fixed set of names, an `outward` action shows its exact words first and sends only with the
-preview's own token, and the module's tools run as the module on behalf of the person who opened the view, never as the person. The app asks `views.list`, `views.get` and `views.act`; the Capsule asks
+preview's own token, and the module's tools run as the module on behalf of the person who opened the view, never as the person. The app asks `views.list`, `views.get` and `views.act`; Lumen asks
 `capsule.commands`, `capsule.view` and `capsule.act`, and shows only the views it can draw (list, detail, form).
 
 A view is also a sidebar screen: the entry is `{ "kind": "module", "module": "cards", "screen": "board" }` with the view's id as `screen`, and `sidebar.get` marks it `view: true`. A view id a new version drops hides
 the pin; it never deletes it.
 
-## The Capsule: `view:` entries
+## Lumen: `view:` entries
 
-A module adds commands to the Capsule by declaring them under `shows.capsule`. The Capsule draws
+A module adds commands to Lumen by declaring them under `shows.capsule`. Lumen draws
 them natively; nothing from a module runs inside it.
 
 ```json
@@ -356,6 +356,6 @@ second call must return. Icons are system symbol names from a fixed list, or
 
 A wrapped app's screens need no tool of their own. Where a view's `list`, `detail`, action or form `submit` names a `tool`, it may name `{ "connection": "docuseal", "operation": "list", "input": { "query": { "status": "pending" } } }` instead: the operation of a Connection (its `input` is `{ params, query, headers, body }`, with the same templates). A module reaches only the Connection of its own app and only the operations that Connection declares; a send, change or delete is held for your yes like any outward call.
 
-The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
+Lumen reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
 `capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and
 `action:<tool>` keys keep working and appear as one command.

@@ -80,7 +80,7 @@
   "pending": "vyre-capsule-pro/work/capsule-pro",
   "tip": {
    "id": "esc-in-capsule",
-   "text": "Press `Esc` in the Capsule during a `do` job: the turn ends and every hand stops.",
+   "text": "Press `Esc` in Lumen during a `do` job: the turn ends and every hand stops.",
    "surfaces": [
     "capsule"
    ],
@@ -109,7 +109,7 @@
   "pending": "vyre-memory-iq",
   "tip": {
    "id": "iq-not-sure",
-   "text": "Ask the Capsule about your own work and Vyre IQ answers with its sources, or says Not sure and lists what it does know.",
+   "text": "Ask Lumen about your own work and Vyre IQ answers with its sources, or says Not sure and lists what it does know.",
    "surfaces": [
     "capsule",
     "chat",
@@ -414,7 +414,7 @@
   "pending": "vyre-teammates",
   "tip": {
    "id": "at-role",
-   "text": "Type `@design ...` in Chat, the Capsule or the phone to send a request without spending your session's turn.",
+   "text": "Type `@design ...` in Chat, Lumen or the phone to send a request without spending your session's turn.",
    "surfaces": [
     "chat",
     "capsule",
@@ -729,7 +729,7 @@
   "pending": "vyre-capsule-pro/work/capsule-pro",
   "tip": {
    "id": "spoken-replies",
-   "text": "Run `vyre call voice.settings '{\"speak\":true}'` and the Capsule reads answers to spoken questions aloud.",
+   "text": "Run `vyre call voice.settings '{\"speak\":true}'` and Lumen reads answers to spoken questions aloud.",
    "surfaces": [
     "cli"
    ],

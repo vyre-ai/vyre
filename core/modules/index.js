@@ -1248,7 +1248,7 @@ export class Registry {
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
         // A screen of the space's own (core/design) is its own declaration: the owner said yes to the screen and the tools it names, so the views module may run them as the person who opened it.
         const spaceScreen = m.name === "views" && opts && opts.space === true && !String(as).startsWith("module:");
-        if ((m.name === "capsule" || m.name === "views") && !spaceScreen && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        if ((m.name === "capsule" || m.name === "views") && !spaceScreen && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Lumen view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).

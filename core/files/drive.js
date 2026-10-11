@@ -324,7 +324,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       if (OWNER_SOCKET.has(caller)) return;
       // A paired Mac: its own paired peer id AND the kernel's chain saying the call is the person's. What the caller's label looks like decides nothing.
       if (meta && meta.peer && meta.peer.stableId && paired().has(String(meta.peer.stableId)) && await personCall(meta)) return;
-      throw refuse("only the owner shares the box's folders: from the box's terminal, the Capsule or a paired Mac");
+      throw refuse("only the owner shares the box's folders: from the box's terminal, Lumen or a paired Mac");
     };
 
     /**
@@ -783,7 +783,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.mount", {
-      description: "Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and the Capsule open box files where they are.",
+      description: "Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and Lumen open box files where they are.",
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       callers: ["cli", "local", "capsule"],
       run: async ({ share }) => {
@@ -870,7 +870,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.search", {
-      description: "Find files by name or content across the box's offered VyreDrive shares, asked from this Mac (the search behind the Capsule's find-a-file and the Windows panel). An agent's identity does not survive the hop to the box (see files.search's own note on this), so this is the owner's own surfaces only for now; an agent searches this Mac's own files.search instead.",
+      description: "Find files by name or content across the box's offered VyreDrive shares, asked from this Mac (the search behind Lumen's find-a-file and the Windows panel). An agent's identity does not survive the hop to the box (see files.search's own note on this), so this is the owner's own surfaces only for now; an agent searches this Mac's own files.search instead.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
         kinds: { type: "array", items: { type: "string" } } } },

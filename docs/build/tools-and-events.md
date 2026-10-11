@@ -8,7 +8,7 @@ status: stable
 
 # Tools and events
 
-Modules talk to the rest of Vyre in two ways. A **tool** is something a module can be asked to do: Claude, the Vyre app, the Capsule, the CLI and other modules all call it the same way. An **event** is a fact about something that already happened, written to vyred's event log for anyone to hear. Tools are requests; events are news. This page covers both, from Sections 5 and 6 of the [spec](../architecture/spec.md), and ends with a module you can install and run.
+Modules talk to the rest of Vyre in two ways. A **tool** is something a module can be asked to do: Claude, the Vyre app, Lumen, the CLI and other modules all call it the same way. An **event** is a fact about something that already happened, written to vyred's event log for anyone to hear. Tools are requests; events are news. This page covers both, from Sections 5 and 6 of the [spec](../architecture/spec.md), and ends with a module you can install and run.
 
 The full contract, including every check the loader makes, is on [the module contract](module-contract.md).
 

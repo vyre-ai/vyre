@@ -94,7 +94,7 @@ export async function talkLoop({ socketPath, mic = { bin: MIC_BIN }, input = pro
   if (!fs.existsSync(mic.bin)) {
     output.write(process.platform === "darwin"
       ? `  vyre-mic is not built. Build it with: sh ${path.join(import.meta.dirname, "build.sh")}\n`
-      : "  push-to-talk needs the Capsule's mic, which is macOS only; not on this device.\n");
+      : "  push-to-talk needs Lumen's mic, which is macOS only; not on this device.\n");
     return 1;
   }
   const tty = !!output.isTTY;

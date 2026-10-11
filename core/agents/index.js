@@ -110,7 +110,7 @@ export function preamble(a) {
        "Permission questions in any session are answered by the user, never by you. When a session is waiting on one, tell the user what it asks.",
        "To watch a thread for the user, call tools_call threads_watch with {thread, notify: \"capsule\", note: \"<a short label>\"}.",
        "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
-       "When a watch fires, the user sees it in the Capsule and on their devices. Do not poll tools_call threads_get to wait for it."]
+       "When a watch fires, the user sees it in Lumen and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
   if (a.instructions) lines.push("", String(a.instructions));
   return lines.join("\n");

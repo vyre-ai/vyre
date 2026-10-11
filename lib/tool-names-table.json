@@ -1242,7 +1242,7 @@
    "effect": "write",
    "review": true,
    "description": "Change capsule (settings).",
-   "was": "Every command the running modules declare for the Capsule, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg,"
+   "was": "Every command the running modules declare for Lumen, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg,"
   },
   {
    "old": "capsule.report",
@@ -1253,7 +1253,7 @@
    "effect": "write",
    "review": true,
    "description": "Change capsule (settings). Needs: ok.",
-   "was": "The Capsule app says whether Control twice works, and if not, why. Emits capsule.hotkey."
+   "was": "Lumen app says whether Control twice works, and if not, why. Emits capsule.hotkey."
   },
   {
    "old": "capsule.show",
@@ -1264,7 +1264,7 @@
    "effect": "read",
    "review": true,
    "description": "Get capsule (settings).",
-   "was": "Open the Capsule on this Mac (or hide or toggle it). It opens ready to type; it does not answer anything by itself."
+   "was": "Open Lumen on this Mac (or hide or toggle it). It opens ready to type; it does not answer anything by itself."
   },
   {
    "old": "capsule.status",
@@ -1275,7 +1275,7 @@
    "effect": "read",
    "review": true,
    "description": "Get capsule (settings).",
-   "was": "Whether the Capsule can run on this machine: macOS, the native app's source, whether it is built, and autostart."
+   "was": "Whether Lumen can run on this machine: macOS, the native app's source, whether it is built, and autostart."
   },
   {
    "old": "capsule.view",
@@ -2705,7 +2705,7 @@
    "effect": "write",
    "review": true,
    "description": "Change drive (drive). Needs: share.",
-   "was": "Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and the Capsule open box files where they are."
+   "was": "Mount one of the box's shared folders at ~/Vyre/Box/<share>, so Finder and Lumen open box files where they are."
   },
   {
    "old": "files.drive.offer",
@@ -4377,7 +4377,7 @@
    "effect": "read",
    "review": false,
    "description": "Find google (email). Needs: q.",
-   "was": "Find events and messages for the Capsule (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }."
+   "was": "Find events and messages for Lumen (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }."
   },
   {
    "old": "google.mail.draft",
@@ -4432,7 +4432,7 @@
    "effect": "write",
    "review": false,
    "description": "Open google (email). Needs: id.",
-   "was": "A Capsule action on a google.find row: `as: \"open\"` (default) gives the event's or message's url and a line about it; `as: \"reply\"` puts an "
+   "was": "A Lumen action on a google.find row: `as: \"open\"` (default) gives the event's or message's url and a line about it; `as: \"reply\"` puts an "
   },
   {
    "old": "google.remove",
@@ -4839,7 +4839,7 @@
    "effect": "send",
    "review": false,
    "description": "Approve learn (what was said). Needs: id.",
-   "was": "Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck; an agent is refused. In a thread the user accepts by rep"
+   "was": "Accept a proposed lesson. Only the user can: from the CLI, Lumen or the Deck; an agent is refused. In a thread the user accepts by rep"
   },
   {
    "old": "learn.add",
@@ -5279,7 +5279,7 @@
    "effect": "write",
    "review": true,
    "description": "Change link (spaces).",
-   "was": "Sign this Mac's command line and Capsule in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to"
+   "was": "Sign this Mac's command line and Lumen in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to"
   },
   {
    "old": "link.signout",
@@ -5290,7 +5290,7 @@
    "effect": "write",
    "review": true,
    "description": "Change link (spaces).",
-   "was": "Sign this Mac out on the box: its command line and Capsule are only a device there again."
+   "was": "Sign this Mac out on the box: its command line and Lumen are only a device there again."
   },
   {
    "old": "link.sleep",
@@ -5356,7 +5356,7 @@
    "effect": "write",
    "review": false,
    "description": "Create mail (email). Needs: id.",
-   "was": "The Capsule's action on a mail.find row. On a send row it holds the message at the Gate with what the words named (to, subject, body, each o"
+   "was": "Lumen's action on a mail.find row. On a send row it holds the message at the Gate with what the words named (to, subject, body, each o"
   },
   {
    "old": "mail.find",
@@ -5367,7 +5367,7 @@
    "effect": "read",
    "review": false,
    "description": "Find mail (email). Needs: q.",
-   "was": "The Capsule's mail results: \"send an email\", \"email dana@northwind-bakery.example about the order\" gives one row per account to send from; \""
+   "was": "Lumen's mail results: \"send an email\", \"email dana@northwind-bakery.example about the order\" gives one row per account to send from; \""
   },
   {
    "old": "mail.map",
@@ -7028,7 +7028,7 @@
    "effect": "write",
    "review": false,
    "description": "Change presence capsule (spaces). Needs: cdhash.",
-   "was": "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous"
+   "was": "Pins Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous"
   },
   {
    "old": "presence.code",
@@ -7050,7 +7050,7 @@
    "effect": "write",
    "review": false,
    "description": "Create presence (spaces). Needs: kind, public_key.",
-   "was": "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as W"
+   "was": "Enroll a Lumen key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as W"
   },
   {
    "old": "presence.keys",
@@ -7061,7 +7061,7 @@
    "effect": "write",
    "review": true,
    "description": "Change presence (spaces).",
-   "was": "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themse"
+   "was": "Lumen keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themse"
   },
   {
    "old": "presence.person.locked",
@@ -7171,7 +7171,7 @@
    "effect": "write",
    "review": false,
    "description": "Remove presence (spaces). Needs: id.",
-   "was": "Remove an enrolled Capsule key, device key or passkey by id. Needs presence."
+   "was": "Remove an enrolled Lumen key, device key or passkey by id. Needs presence."
   },
   {
    "old": "projects.access.check",
@@ -13089,7 +13089,7 @@
    "effect": "write",
    "review": false,
    "description": "Open session (passwords). Needs: surface.",
-   "was": "Unlock the vault in the Deck, the Capsule or the extension for a while. Returns a session token for that surface only."
+   "was": "Unlock the vault in the Deck, Lumen or the extension for a while. Returns a session token for that surface only."
   },
   {
    "old": "vault.session.status",
@@ -13375,7 +13375,7 @@
    "effect": "read",
    "review": false,
    "description": "List views (settings).",
-   "was": "Every command the running modules declare for the Capsule, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg,"
+   "was": "Every command the running modules declare for Lumen, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg,"
   },
   {
    "old": "views.preview",

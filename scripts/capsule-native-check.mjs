@@ -228,7 +228,7 @@ try {
   console.log(`wake: ${wake.length} shows, median ${pct(wake, 0.5).toFixed(1)} ms, 95th ${pct(wake, 0.95).toFixed(1)} ms`);
   budget(pct(wake, 0.95) < BUDGET.wakeP95Ms, `wake 95th percentile under ${BUDGET.wakeP95Ms} ms`);
   if (process.env.GITHUB_STEP_SUMMARY) {
-    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Capsule speed\n\n| | median | 95th |\n|---|---|---|\n| keystroke to rows (ms) | ${pct(keyMs, 0.5).toFixed(1)} | ${pct(keyMs, 0.95).toFixed(1)} |\n| wake (ms) | ${pct(wake, 0.5).toFixed(1)} | ${pct(wake, 0.95).toFixed(1)} |\n`);
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Lumen speed\n\n| | median | 95th |\n|---|---|---|\n| keystroke to rows (ms) | ${pct(keyMs, 0.5).toFixed(1)} | ${pct(keyMs, 0.95).toFixed(1)} |\n| wake (ms) | ${pct(wake, 0.5).toFixed(1)} | ${pct(wake, 0.95).toFixed(1)} |\n`);
   }
   await send({ text: "" });
   await send({ hide: true });

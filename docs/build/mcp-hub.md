@@ -41,7 +41,7 @@ The Switchboard sets `VYRE_AGENT` and a key in the agent's environment. The serv
 
 ### Where the server is loaded
 
-Every Claude Code session Vyre starts, from the `vyre` home, the Vyre app, Chat, the Capsule or an agent, runs `claude` with `--plugin-dir` pointing at `harness/`. Your global Claude Code setup is never modified. A lean one-question thread (`lean: true` on `threads.start`) loads no plugin and no MCP servers at all (`--strict-mcp-config` with no config).
+Every Claude Code session Vyre starts, from the `vyre` home, the Vyre app, Chat, Lumen or an agent, runs `claude` with `--plugin-dir` pointing at `harness/`. Your global Claude Code setup is never modified. A lean one-question thread (`lean: true` on `threads.start`) loads no plugin and no MCP servers at all (`--strict-mcp-config` with no config).
 
 Every Claude session Vyre starts, lean or not, runs with `--strict-mcp-config` and an explicit config that names only Vyre's own server (the Agent SDK path sets `strictMcpConfig` the same way). So the session never loads the connectors a Claude account carries (Gmail, Drive, Slack and the like), the person's own user-scope servers, or the servers of other plugins. A server the person wants in Vyre sessions is added through the hub, and its tools go through the Gate. Two things are outside this: a Claude session you start yourself in a terminal is your own and still loads that account's connectors, and `scripts/claude-connector-check.mjs` should be rerun after each Claude Code upgrade. Grok sessions start with Grok's import of Claude and Cursor MCP servers switched off; Codex reads only the account's own Vyre-made home.
 

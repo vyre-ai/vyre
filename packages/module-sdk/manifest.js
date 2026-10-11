@@ -460,7 +460,7 @@ export function widened(before, after) {
   // A new Capsule command, or a first request for what is in front of the Capsule, needs the person's yes again.
   const cmdBefore = ((before.capsule && before.capsule.commands) || []).map(c => c.id);
   for (const c of (after.capsule && after.capsule.commands) || []) if (!had(cmdBefore, c.id)) out.push({ kind: "command", what: c.title });
-  if (after.capsule && after.capsule.front && !(before.capsule && before.capsule.front)) out.push({ kind: "slot", what: "what is in front of the Capsule" });
+  if (after.capsule && after.capsule.front && !(before.capsule && before.capsule.front)) out.push({ kind: "slot", what: "what is in front of Lumen" });
   const from = before.spend ? before.spend.dailyUsd : null, to = after.spend ? after.spend.dailyUsd : null;
   if (to !== null && (from === null || to > from)) out.push({ kind: "spend", what: `up to $${to.toFixed(2)} a day`, from, to });
   return out;

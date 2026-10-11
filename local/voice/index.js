@@ -67,7 +67,7 @@ export default {
     };
 
     const refusePeer = meta => {
-      if (meta && meta.peer) throw new VoiceError("denied", "voice is for this Mac's own Capsule, not for a tailnet peer");
+      if (meta && meta.peer) throw new VoiceError("denied", "voice is for this Mac's own Lumen, not for a tailnet peer");
     };
     // The mic and the speech key are the person's: an agent (a model's shell, "cli agent:kit")
     // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
@@ -79,7 +79,7 @@ export default {
     };
 
     ctx.tool("voice.listen", {
-      description: "A one-use ticket (30 s) for the WebSocket at path: /v1/streams/voice/listen?ticket=<t>, the same shape as term.attach. For a caller that cannot set x-vyre-caller itself (the Deck's browser WebSocket); the native Capsule may still connect directly.",
+      description: "A one-use ticket (30 s) for the WebSocket at path: /v1/streams/voice/listen?ticket=<t>, the same shape as term.attach. For a caller that cannot set x-vyre-caller itself (the Deck's browser WebSocket); the native Lumen may still connect directly.",
       callers: LOCAL,
       input: { type: "object", properties: {} },
       run: async (_input, meta) => {

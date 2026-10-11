@@ -403,7 +403,7 @@ export default {
 };
 
 /** How a queued message names where it came from. */
-const SURFACES = { capsule: "the Capsule", deck: "the Deck", cli: "the vyre command", glass: "Glass", mobile: "the phone" };
+const SURFACES = { capsule: "Lumen", deck: "the Deck", cli: "the vyre command", glass: "Glass", mobile: "the phone" };
 /** A surface as a person says it; the box's through the link is "box:<surface>". */
 const surfaceName = (/** @type {string} */ s) => {
   const box = /^box:(.*)$/.exec(String(s));

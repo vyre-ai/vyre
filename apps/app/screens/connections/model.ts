@@ -260,7 +260,7 @@ export function pickRepos(d: unknown): { repos: Repo[]; more: boolean } {
 // ---- connections granted to surfaces (vault.connections.list) ----
 
 export const SURFACES = ["capsule", "chat", "agents", "phone"] as const;
-export const SURFACE_LABEL: Record<string, string> = { capsule: "Capsule", chat: "Chat", agents: "Agents", phone: "Phone" };
+export const SURFACE_LABEL: Record<string, string> = { capsule: "Lumen", chat: "Chat", agents: "Agents", phone: "Phone" };
 const PROVIDER: Record<string, string> = { "google-oauth": "Google", "google-dwd": "Google", "google-apps-script": "Apps Script", "imap-smtp": "Mail login", mcp: "MCP server" };
 export type Conn = { id: string; provider: string; word: string; label: string; ready: boolean; needs: { module: string; need: string }[]; capabilities: string[]; surfaces: string[]; lastUsed: number | null };
 export const pickConnections = (d: unknown): Conn[] => list(Array.isArray(d) ? d : (d as { connections?: unknown } | null)?.connections).filter((c) => typeof c.id === "string").map((c) => ({

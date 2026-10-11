@@ -76,7 +76,7 @@ export function listener({ vault, config, log }) {
         return;
       }
     } else if (info.peer || isAgentCaller(info.caller) || !LOCAL.includes(kindOf(info.caller))) {
-      refuse(socket, 403, "Forbidden", { error: { code: "denied", message: "voice listens only for this Mac's own Capsule, not for a peer" } });
+      refuse(socket, 403, "Forbidden", { error: { code: "denied", message: "voice listens only for this Mac's own Lumen, not for a peer" } });
       return;
     }
     const peer = accept(req, socket, head);

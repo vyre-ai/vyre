@@ -220,7 +220,7 @@ export async function resume(t, { project, name } = {}) {
   if (st === "idle") {
     const stop = await call("threads.stop", { thread: t.id });
     if (stop.error) return fail(`could not hand ${t.label} over from vyred: ${stop.error.message}`);
-    out(dim(`  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit`));
+    out(dim(`  handed over from vyred; a message from the Deck or Lumen brings it back there once you exit`));
   }
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";

@@ -45,7 +45,7 @@ export async function listing({ all = false, only } = {}) {
 
 export default {
   name: "commands", order: 92, usage: "vyre commands [<command>] [--all] [--json]",
-  summary: "every command and its verbs, as a list (--json for the Capsule and chat)",
+  summary: "every command and its verbs, as a list (--json for Lumen and chat)",
   help: "Reads the command files, so it works before vyre up. --all includes hidden commands.",
   /** @param {string[]} args */
   async run(args) {

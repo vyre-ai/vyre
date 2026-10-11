@@ -224,7 +224,7 @@ const ENV_MEANING = {
   BOX_POLL_MS: "How often `vyre box` checks on an install in progress. Default 5000.",
   BOX_PROBE_MS: "How long `vyre box` waits for the box's address to answer. Default two minutes.",
   BOX_WAIT_MS: "How long `vyre box` waits for an install to finish. Default 65 minutes.",
-  CAPSULE_DRIVE: "In a development build, lets a script drive the Capsule.",
+  CAPSULE_DRIVE: "In a development build, lets a script drive Lumen.",
   DRIVE_ACCESS: "`ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more.",
   CLAUDE_BIN: "The `claude` binary to run. Default `claude` on the PATH.",
   CLOUDFLARE_API: "The Cloudflare API base URL, in place of the real one.",
@@ -254,7 +254,7 @@ const ENV_MEANING = {
   RELEASES_API: "Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server.",
   PROJECTS: "The projects an agent's thread is limited to, comma separated, or `*` for all of them.",
   SCOPE_CWDS: "The folders an agent's `recall.search` is held to, as JSON.",
-  SOCKET: "The path of vyred's socket, for the Capsule.",
+  SOCKET: "The path of vyred's socket, for Lumen.",
   SSH_BIN: "The `ssh` binary to run.",
   SUPERVISOR: "What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it.",
   TAILSCALE_BIN: "The `tailscale` binary to run. A path that does not exist means no tailnet.",
@@ -313,7 +313,7 @@ function cliPage(commands) {
   const anchors = new Map([...shown, ...hidden].map(c => [c, anchor(`vyre ${c.name}`)]));
   const table = cs => ["| Command | What it does |", "| --- | --- |", ...cs.map(c => `| [${code("vyre " + c.name)}](#${anchors.get(c)}) | ${cell(c.summary)} |`)].join("\n");
   const body = [
-    "`vyre` is a thin client: every command is a call to vyred, so the terminal, the Deck and the Capsule never disagree about what is true. With no arguments, `vyre` runs `vyre home` (your projects, a new session and your agents).",
+    "`vyre` is a thin client: every command is a call to vyred, so the terminal, the Deck and Lumen never disagree about what is true. With no arguments, `vyre` runs `vyre home` (your projects, a new session and your agents).",
     "",
     "## Commands",
     "",

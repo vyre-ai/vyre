@@ -361,7 +361,7 @@ export default {
     // ---- the Capsule ----
 
     ctx.tool("mail.find", {
-      description: "The Capsule's mail results: \"send an email\", \"email dana@northwind-bakery.example about the order\" gives one row per account to send from; \"email from dana\" gives messages across accounts. { rows: [{ id, name, kind, sub }] }.",
+      description: "Lumen's mail results: \"send an email\", \"email dana@northwind-bakery.example about the order\" gives one row per account to send from; \"email from dana\" gives messages across accounts. { rows: [{ id, name, kind, sub }] }.",
       input: obj({ q: str, limit: int }, ["q"]),
       callers: PEOPLE,
       run: async (input, meta) => {
@@ -383,7 +383,7 @@ export default {
     });
 
     ctx.tool("mail.compose", {
-      description: "The Capsule's action on a mail.find row. On a send row it holds the message at the Gate with what the words named (to, subject, body, each of which may be given here instead), for the user to finish and approve there; on a message row it gives the message as text.",
+      description: "Lumen's action on a mail.find row. On a send row it holds the message at the Gate with what the words named (to, subject, body, each of which may be given here instead), for the user to finish and approve there; on a message row it gives the message as text.",
       input: obj({ id: str, to: emails, subject: str, body: str }, ["id"]),
       callers: PEOPLE,
       run: async (input, meta) => {
@@ -398,7 +398,7 @@ export default {
         if (!to && fill.name) to = await resolve(list, acct, fill.name);
         if (!to) throw fail(fill.name ? `no address found for ${fill.name}; say who it goes to with an address` : "say who it goes to: an address", "needs_to");
         const { to: dest, c } = contentOf({ to, subject: fill.subject || "", body: fill.body || "" });
-        return { kind: "held", ...(await holdSend(acct, dest, c, "written in the Capsule", filing)) };
+        return { kind: "held", ...(await holdSend(acct, dest, c, "written in Lumen", filing)) };
       },
     });
 

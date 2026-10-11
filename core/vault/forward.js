@@ -52,9 +52,9 @@ export function startForwarder(ctx, link) {
   }
   for (const tool of CAPSULE_ONLY) {
     ctx.tool(tool, {
-      description: `On this Mac, only the Capsule shows, copies or types a value (${tool}).`,
+      description: `On this Mac, only Lumen shows, copies or types a value (${tool}).`,
       input: obj, callers: CALLERS, core: true,
-      run: async () => { throw fail("on this Mac a secret is shown, copied or typed only in the Capsule: open it there", "core_owned"); },
+      run: async () => { throw fail("on this Mac a secret is shown, copied or typed only in Lumen: open it there", "core_owned"); },
     });
   }
   for (const tool of declared) {

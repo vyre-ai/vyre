@@ -205,12 +205,12 @@ sentence, or a list of screenshots.
 
 ```md
 ::: demo capsule
-![The Capsule, with results for north](shots/capsule-north.png)
-Type in the Capsule and it finds agents, projects, threads, notes and logins.
+![Lumen, with results for north](shots/capsule-north.png)
+Type in Lumen and it finds agents, projects, threads, notes and logins.
 :::
 ```
 
-- `capsule`: a Capsule you can type into, with results from the sample world only.
+- `capsule`: a Lumen you can type into, with results from the sample world only.
 - `onboarding`: the fallback's list of screenshots, one per step, as Back and Next slides. Each
   step's name is its screenshot's title:
 

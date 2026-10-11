@@ -52,7 +52,7 @@ export function duration(ms) {
   return `${Math.floor(s / 3600)} h${Math.floor((s % 3600) / 60) ? ` ${Math.floor((s % 3600) / 60)} min` : ""}`;
 }
 
-const FROM = { deck: "the Deck", phone: "phone", glass: "Glass", capsule: "the Capsule" };
+const FROM = { deck: "the Deck", phone: "phone", glass: "Glass", capsule: "Lumen" };
 
 /** How long glass.open waits for link.health before opening without it. */
 const HEALTH_WAIT = 1500;

@@ -142,7 +142,7 @@ export function register({ ctx, vault }) {
   // ---- sessions --------------------------------------------------------------------------
 
   ctx.tool("vault.session.open", {
-    description: "Unlock the vault in the Deck, the Capsule or the extension for a while. Returns a session token for that surface only.",
+    description: "Unlock the vault in the Deck, Lumen or the extension for a while. Returns a session token for that surface only.",
     input: obj({ surface: { type: "string", enum: SURFACES }, ttl_s: { type: "integer" } }, ["surface"]),
     callers: [...PEOPLE, "tailnet", "device"],
     presence: { summary: async ({ surface, ttl_s }) => `Unlock the vault in ${surface} for ${minutes(ttl_s)} minutes` },

@@ -182,7 +182,7 @@
       },
       {
         "id": "capsule-glass",
-        "text": "Type `glass kit` in the Capsule to open kit's screen without going through the Deck.",
+        "text": "Type `glass kit` in Lumen to open kit's screen without going through the Deck.",
         "surfaces": [
           "capsule"
         ],

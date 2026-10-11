@@ -137,7 +137,7 @@ function candidatePaths(input) {
 const untilde = p => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
 const within = (p, dir) => p === dir || p.startsWith(dir + path.sep);
 
-const APPROVALS = "Approvals are the user's. Ask them to run it in their own terminal, or to use the Deck or the Capsule.";
+const APPROVALS = "Approvals are the user's. Ask them to run it in their own terminal, or to use the Deck or Lumen.";
 const INTERNALS = "That is Vyre's own state. Use Vyre's tools instead; its store, socket, config and keys stay out of reach.";
 const deny1 = reason => ({ decision: /** @type {const} */ ("deny"), rule: 1, reason });
 const ask1 = reason => ({ decision: /** @type {const} */ ("ask"), rule: 1, reason });

@@ -11,7 +11,7 @@
     "memory": ["draft.edited"],
     "tips": [
       {"id": "edit-then-send", "text": "Open a held draft from Now, click a field to edit it, then Send exactly what is on screen or Discard it.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
-      {"id": "capsule-waiting", "text": "Press the up arrow in an empty Capsule box to reach what waits on you. Command-Enter sends a held draft.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Up arrow", "docs": "using/capsule.md#answer-what-is-waiting-on-you"},
+      {"id": "capsule-waiting", "text": "Press the up arrow in an empty Lumen box to reach what waits on you. Command-Enter sends a held draft.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Up arrow", "docs": "using/capsule.md#answer-what-is-waiting-on-you"},
       {"id": "chat-inline", "text": "Edit a held draft right in the conversation. Edits save as you type, and Command-Enter sends.", "surfaces": ["chat"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Command-Enter"},
       {"id": "only-send-asks", "text": "Editing or discarding a held draft asks for nothing. Only Send asks you to prove you are there.", "surfaces": ["deck", "chat", "phone", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
       {"id": "exactly-approved", "text": "A held item goes out exactly as you approved it, your edits included, never the original draft.", "surfaces": ["deck", "chat", "phone", "capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#hold-and-approve-a-send"},
