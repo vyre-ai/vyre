@@ -186,7 +186,7 @@ export async function createKernel(cfg) {
       /**
        * Only for a first-party module that declares `needs.kernel.membership: true`: whether ONE named person is a member of this Space and their role, and nothing else
        * (no list, no grants, no expiry). Each call is an owner-visible event naming the module and the person asked about. A module that must list members runs under
-       * the calling PERSON's chain instead (`grants.members.list(chain)`: a manager and above sees everyone, anyone else only themselves).
+       * the calling PERSON's chain instead (`grants.members.list(chain)`: a manager and above sees everyone in full; any other non-temp member sees the person and role of the others and the full record only of themself).
        * @param {string} person @param {string} [space] this Space only
        */
       ...(needs.membership === true && grantsStore ? { membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
