@@ -7,7 +7,6 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { boot } from "../sessions/testing/boot.js";
 import { createRing, holdersOf } from "../../lib/chat-keys.js";
 
@@ -170,25 +169,27 @@ test("a model's memory.space.recall in a team turn reads the TEAM Space's memory
   assert.deepEqual(((await w.tool("memory.space.recall", {})).data || { facts: [] }).facts.filter((/** @type {any} */ f) => /retainer/.test(String(f.text))), [], "the home's own Space memory does not have it");
 });
 
-test("a model's files.drive.space.list in a team turn reads the TEAM Space's Drive, as the owner who spoke; the model cannot write to it, and a plain member's model lists none of it (the member holds no Drive right unless the owner gives one)", { timeout: 150_000 }, async t => {
+test("a model's files.drive.space.list in a team turn reads the TEAM Space's Drive, as the member who spoke, and a plain member's model does too; the model cannot write to it", { timeout: 150_000 }, async t => {
   const { w, firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
-  const made = await as(OWNER, "create", { title: "Team files", people: [BEN], agents: ["assistant"] });
+  const made = await as(ADA, "create", { title: "Team files", people: [BEN], agents: ["assistant"] });
   await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
-  await as(OWNER, "reply-mode", { chat: made.chat, mode: "every" });
+  // a member holds no Drive right unless the owner gives one: the owner gives Ada read, and her model reads as her
+  await firm.gateway.grants.create(owner, { subject: { kind: "actor", actor: { kind: "person", id: ADA, space: firm.space } }, actions: ["drive.read"], resource: { prefix: `vyre://${firm.space}/file/*` }, conditions: {}, source: "test" }, { presence: { n: Math.random() } });
+  await as(ADA, "reply-mode", { chat: made.chat, mode: "every" });
   const said = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || ");
-  await as(OWNER, "send", { chat: made.chat, text: "vyre files.drive.space.list {}" });
+  await as(ADA, "send", { chat: made.chat, text: "vyre files.drive.space.list {}" });
   let got = "";
   await until(async () => { got = await said(); return got.includes("retainer.txt"); }, "the model's listing of the team's Drive")
     .catch(e => { throw new Error(`${e.message} :: ${got.slice(0, 600)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-4).join(" | ")}`); });
   assert.ok(!JSON.stringify((await w.tool("files.drive.space.list", {})).data || {}).includes("retainer.txt"), "the home's own Drive does not have it");
-  await as(OWNER, "send", { chat: made.chat, text: `vyre files.drive.upload {"path":"x.txt","base64":"eA=="}` });
+  await as(ADA, "send", { chat: made.chat, text: `vyre files.drive.upload {"path":"x.txt","base64":"eA=="}` });
   await until(async () => { got = await said(); return /denied|not available|not_in_team_space|held_for_approval/i.test(got.split("retainer.txt").pop() || ""); }, "the write refused or held for the person's yes").catch(e => { throw new Error(`${e.message} :: ${got.slice(-500)}`); });
   await assert.rejects(() => firm.gateway.drive.get(owner, "x.txt"), "the model's write did not land in the team's Drive");
-  // a plain member's model does not see it: the member holds no Drive read
+  // a plain member's model does not see it: the member holds no Drive right
   const m = await as(ANA, "create", { title: "Member files", people: [], agents: ["assistant"] });
   await as(ANA, "send", { chat: m.chat, text: "vyre files.drive.space.list {}" });
   let mine = "";
-  await until(async () => { mine = ((await as(ANA, "catchup", { chat: m.chat })).messages || []).filter((/** @type {any} */ x) => /^assistant:/.test(String(x.author))).map((/** @type {any} */ x) => String(x.text)).join(" || "); return mine.length > 0; }, "the member's model's answer");
+  await until(async () => { mine = ((await as(ANA, "catchup", { chat: m.chat })).messages || []).filter((/** @type {any} */ x) => /^assistant:/.test(String(x.author))).map((/** @type {any} */ x) => String(x.text)).join(" || "); return mine.length > 0; }, "the member's model's answer").catch(e => { throw new Error(`${e.message} :: ${mine.slice(0, 400)}`); });
   assert.ok(!mine.includes("retainer.txt"), `a member's model lists none of the Drive: ${mine.slice(0, 200)}`);
 });
