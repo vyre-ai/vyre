@@ -229,6 +229,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.members.computers", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.identity.republish",
     "reach": "person",
     "effect": "write"

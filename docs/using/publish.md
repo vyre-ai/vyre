@@ -46,6 +46,16 @@ What it gets and does not get:
 
 On a server made by the Linux installer, the server's host helper builds and runs the image for you, the same way and with the same limits (it needs the helper that came with the installer; `vyre space-helper install` updates it). On that kind of server the build cannot use build-time secrets yet, only run-time ones.
 
+## A site built by a command, and a site from a GitHub repo
+
+A folder that needs a build step (a framework, a bundler) publishes with `"build": { "image": "node-22", "command": "npm run build", "output_dir": "dist" }` (`node-20` also works). Vyre writes the Dockerfile for you: it installs the packages (`npm ci` when the folder has a `package-lock.json`, else `npm install`), runs your command in a Node image, then serves the output folder as plain files. A folder that already has its own Dockerfile cannot also have a command; pick one. Because this builds and runs an image, it works only where apps with their own server are on (the setting `publish.servers`), and the preview and the go-live yes are the same as for any server.
+
+A deployment can also name a public GitHub repo as its source: `"source": { "kind": "repo", "ref": "owner/name" }`, or `owner/name#branch`, or a github.com address. Vyre makes a shallow copy of it for the build and throws the copy away afterwards. A private repo is refused in words for now.
+
+An app with a server is also how a site gets an API: anything the server answers (JSON over POST and PUT, large bodies, its own CORS headers) reaches the caller as the app sent it.
+
+Granting a new secret to a live server (for running) starts the server again with it, so you see it work at once; a secret granted only for building changes nothing running.
+
 ## Not here yet
 
-This server builds a folder of ready files, and an app from a folder with a Dockerfile. A site that needs a build command (a framework, a bundler) and a build from a repo or a Drive folder need the container builder for those, which is not installed here yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.
+This server builds a folder of ready files, and an app from a folder with a Dockerfile. A build from a Drive folder, from a private repo, and scheduled jobs are not here yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.

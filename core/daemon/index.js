@@ -567,6 +567,8 @@ async function startLocked(opts, root, p, release) {
     };
     // A built-in agent (the Engineer) is listed in a chat before any run of it has made it an actor of the Space: the work module asks the daemon to register it, through the kernel's own registration
     // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
+    // A provider's model names for one API-key account, from the inference door (the switchboard's threads.models-fetch asks): the owner's chain, names only, never the key.
+    registry.deps.listModels = async (/** @type {{ provider: string, account: any }} */ q) => /** @type {any} */ (kernel.gateway).model.listModels({ chain: await personChainFor(kernel.id.owner), provider: q.provider, account: q.account });
     registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
@@ -669,10 +671,10 @@ async function startLocked(opts, root, p, release) {
         canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
-          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
-          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          // the account is the asker's own: the home's own account for the owner, a member's own sign-in for a member, never another person's (sessions.accounts.resolve filters by person)
+          if (!i || typeof i.person !== "string" || !i.person) return null;
           try {
-            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude", person: String(i.person) }, "module:vyred")); const a = r && r.data;
             if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
             if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
             if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
@@ -688,7 +690,7 @@ async function startLocked(opts, root, p, release) {
       registry.deps.lentRows = (/** @type {string} */ space) => { registry.deps.lentHome(space); return lent.rows(space); };
       registry.deps.lentSpaces = () => lent.spaces();
       registry.deps.lentStop = () => lent.stop();
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const h = /** @type {any} */ (registry.modules.get("sidebar") && registry.modules.get("sidebar").handle); return h && typeof h.peerService === "function" ? { sidebar: h.peerService({ space, kernel: k, registry }) } : {}; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"); return { ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

@@ -36,6 +36,8 @@ export const plainName = (id) => {
   const s = String(id).slice(String(id).indexOf(":") + 1).replace(/[-_.]+/g, " ").trim();
   return s ? s[0].toUpperCase() + s.slice(1) : String(id);
 };
+/** Whether a name is an id in disguise ("Per tfbsa6hidwp..."): a person never sees one, they see "Someone". @param {string} n */
+export const looksLikeId = (n) => /[a-z2-7]{16,}/i.test(String(n)) && !/\s.*\s/.test(String(n).trim()) || /^(model:|per[_ ]|spc[_ ]|dev[_ ])/i.test(String(n));
 /** Who wrote a frame, for the row. @param {Frame} f */
 const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}), ...(f.via === "assistant" ? { via: "assistant" } : {}) });
 
@@ -77,7 +79,7 @@ export function createFolder() {
   };
   /** @type {Map<string, { role?: string }>} */ const participants = new Map();
   /** @type {Map<string, string>} who -> the name its participant frame gave */ const names = new Map();
-  const nameOf = (/** @type {string} */ id) => names.get(id) ?? plainName(id);
+  const nameOf = (/** @type {string} */ id) => { const n = names.get(id) ?? plainName(id); return looksLikeId(n) ? "Someone" : n; };
   /** @type {Map<string, { state: string, doing?: string, at: number }>} */ const presence = new Map();
   /** @type {Map<string, Map<string, Set<string>>>} message -> emoji -> who */ const reactions = new Map();
   /** @type {Set<string>} */ const pins = new Set();
@@ -249,7 +251,7 @@ export function createFolder() {
         // A person who joins sees the chat from their own join: the server sends who was there before as `quiet` (the roster, no marker), and the join itself is the one
         // marker a new participant sees, drawn as a quiet line ("Chris joined") with nothing above it.
         // A frame that names nobody and whose id is no readable name (a person's id, a model slot's) makes no line: "Per i44k... joined" tells a person nothing.
-        if (d.quiet || (!names.has(String(d.who)) && /(^|:)per_|^model:|#/.test(String(d.who)))) break;
+        if (d.quiet || (!names.has(String(d.who)) && /(^|:)per_|^model:|#/.test(String(d.who))) || looksLikeId(names.get(String(d.who)) ?? "")) break;
         const key = "p:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${nameOf(String(d.who))} ${kind === "participant-joined" ? "joined" : "left"}` });
         out.layout = true;
@@ -267,6 +269,14 @@ export function createFolder() {
         if (!set.size) byEmoji.delete(d.emoji);
         bump("r:" + m);
         out.touched.push("a:" + m, "u:" + m);
+        break;
+      }
+      case "reply-mode": {
+        const mode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
+        const key = "rm:" + f.cur;
+        put(key, "notice", { key, kind: "notice", text: `${f.author && names.has(String(f.author)) ? nameOf(String(f.author)) : "Someone"} set replies to: ${mode === "every" ? "the AI answers every message" : "the AI answers when mentioned"}` });
+        out.layout = true;
+        touch(key);
         break;
       }
       case "pin": {

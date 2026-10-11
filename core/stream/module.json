@@ -13,6 +13,7 @@
     { "name": "stream.send", "reach": "person", "effect": "write" },
     { "name": "stream.react", "reach": "person", "effect": "write" },
     { "name": "stream.pin", "reach": "person", "effect": "write" },
+    { "name": "stream.reply-mode", "reach": "person", "effect": "write" },
     { "name": "stream.keep", "reach": "person", "effect": "write" },
     { "name": "stream.second-opinion", "reach": "person", "effect": "write" },
     { "name": "stream.mark-read", "reach": "person", "effect": "write" }

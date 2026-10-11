@@ -6,13 +6,14 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Caret, Turning } from "./Live";
-import { runWords } from "./tool-runs.js";
+import { plainToolWords, runWords } from "./tool-runs.js";
 import { showsCaret, thoughtWord } from "./feel.js";
 import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
 import { sizeWord, thumbFor } from "./attach-model.js";
 import { Thumb } from "./Thumb";
+import { ArtifactShot } from "./ArtifactShot";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
@@ -313,7 +314,7 @@ function HandoffResult({ it }: { it: any }) {
 function ToolLine({ it, running }: { it: any; running: boolean }) {
   const [open, setOpen] = useState(false);
   // the plain words ("Looking up overdue invoices"); the tool's own name is the detail, one tap away
-  const words = String(it.summary || "").trim() || String(it.tool);
+  const words = plainToolWords(it.summary, it.tool);
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${words}. ${open ? "Hide" : "Show"} the details`} onPress={() => setOpen((v) => !v)}>
       <View style={S.s9}>
@@ -321,7 +322,7 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
         <Text size="caption" tone={running ? "default" : "muted"} numberOfLines={1} style={S.s10}>{words}</Text>
         {running ? <Text size="caption" tone="label">running</Text> : null}
       </View>
-      {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${it.tool}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
+      {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${words}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
     </Pressable>
   );
 }
@@ -458,10 +459,12 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       return <Frame wide={wide} indent dense><Nested it={it}><ToolLine it={it} running={it.status === "running"} /></Nested></Frame>;
     case "block": {
       const running = it.status === "running";
-      let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
+      let block: Block | null = it.block ? normalizeBlock(it.block, plainToolWords(it.summary, it.tool)) : null;
+      if (block && block.block === "text") block = { ...block, text: plainToolWords(block.text, it.tool) };
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
       const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
-      if (art) return <Frame wide={wide} indent><ArtifactLink title={art.title} href={artifactHref(art)} /></Frame>;
+      const shotMime = it.block && typeof it.block.mime === "string" && /^image\//.test(it.block.mime) ? String(it.block.mime) : null;
+      if (art) return <Frame wide={wide} indent>{shotMime ? <ArtifactShot id={art.id} mime={shotMime} title={art.title} href={artifactHref(art)} wide={wide} /> : <ArtifactLink title={art.title} href={artifactHref(art)} />}</Frame>;
       return (
         <Frame wide={wide} indent>
           {block ? <BlockView block={block} ctx={ctx} output={running ? it.output : undefined} running={running} /> : <ToolLine it={it} running={running} />}

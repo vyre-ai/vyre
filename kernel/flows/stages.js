@@ -40,6 +40,7 @@ const FINISHED = new Set(["done", "skipped"]);
  *   hook?: boolean,  // the gateway calls onStageEnter itself, so the record.stage-entered event is not a second way in
  *   gates?: { open: (g: any) => Promise<string>, mark: (id: string, key: string, patch: any, o?: any) => Promise<any>, close: (id: string, o?: any) => Promise<any>, list: () => Promise<any[]> },  the runner's stage gates (s1): each stage entry with tasks is a run there, so it is written down, shown and logged
  *   isAdmin?: (who: any) => Promise<boolean> | boolean,  who may move a record on early besides the stage owner
+ *   startFlow?: (flow: string, input: any, key: string) => Promise<any>,  starts an attached Flow as its own approver (the template's Automations)
  * }} o
  */
 export function createStages(o) {
@@ -104,6 +105,22 @@ export function createStages(o) {
     return parts.join("\n\n");
   }
 
+  /**
+   * The Flows a template attached to this point, pinned in the project's snapshot (`automations: [{ when, flow }]`): "start" is the first stage's entry, any other `when` a stage's name. Each starts once per
+   * entry (the key makes a replay find the run it made) with the project and the stage as input; one that cannot start is said so and never stops the stage.
+   * @param {any} e @param {string} key
+   */
+  async function automate(e, key) {
+    const snap = snapshotOf(await recordData(e.type, e.id));
+    const list = snap && Array.isArray(/** @type {any} */ (snap).automations) ? /** @type {any} */ (snap).automations : [];
+    const first = snap && snap.stages[0] ? snap.stages[0].name : null;
+    for (const a of list) {
+      if (!a || !(a.when === e.stage || (a.when === "start" && e.stage === first))) continue;
+      try { await o.startFlow?.(String(a.flow), { record: e.urn, project: e.urn, stage: e.stage }, `auto:${key}:${a.flow}`); }
+      catch (err) { emit("stage.error", { record: e.urn, stage: e.stage, why: `the attached Flow ${a.flow} did not start: ${err instanceof Error ? err.message : String(err)}` }); }
+    }
+  }
+
   /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string }} e */
   async function enter(e) {
     const stage = e.templates ? { tasks: e.templates, owner: e.owner } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
@@ -114,6 +131,7 @@ export function createStages(o) {
     const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false };
     entries.set(key, ent);
     latest.set(`${e.urn}|${e.stage}`, key);
+    if (o.startFlow) await automate(e, key);
     if (!templates.length) return;
     const chain = o.chain();
     // The stage owner (role:x or person:x) is told when one of its tasks is not done by its due offset: the task's escalate_to, read by the planner.

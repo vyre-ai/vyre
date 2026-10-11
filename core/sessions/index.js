@@ -19,7 +19,7 @@ import { environmentOf } from "./environment.js";
 import { timeLine, zoneFrom } from "../../lib/time/index.js";
 import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
@@ -104,24 +104,40 @@ export default {
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
     try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
+    try { db.prepare("SELECT person FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PERSON_MIGRATION); }
     // A provider with exactly one account has it as its default (earlier installs left it unset).
     try { db.exec("UPDATE sessions_accounts SET is_default = 1 WHERE is_default = 0 AND provider IN (SELECT provider FROM sessions_accounts GROUP BY provider HAVING COUNT(*) = 1)"); } catch {}
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
     /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
     const vaultHas = async name => { try { const r = await ctx.call("vault.list", {}); const items = r && r.data && (Array.isArray(r.data) ? r.data : r.data.items); return Array.isArray(items) ? items.some(x => x && x.name === name) : null; } catch { return null; } };
-    const accounts = new Accounts(db, { wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
+    const accounts = new Accounts(db, { owner: () => (ctx.kernel && typeof ctx.kernel.owner === "string" ? ctx.kernel.owner : null), wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
+    /** The person a call is for: the first person on its kernel chain, whatever hops follow (an assistant asks for that person); null when the call carries none (the home's own modules). */
+    const personOf = async (/** @type {any} */ meta) => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return null;
+      try { const c = await ctx.kernel.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; }
+    };
+    /** The person an account being added belongs to: a member's own id, or null for the home owner (the home's own accounts). */
+    const ownerOfAccount = async (/** @type {any} */ meta) => { const p = await personOf(meta); return p && p !== accounts.owner() ? p : null; };
+    /** An account the asker may touch: their own, or the home's own for the owner; anyone else's is "no such account", never "not yours". */
+    const mine = async (/** @type {any} */ row, /** @type {any} */ meta) => {
+      if (row && !accounts.serves(row, await personOf(meta))) throw Object.assign(new Error(`no account ${row.id} (sessions.accounts.list shows them)`), { code: "not_found" });
+      return row;
+    };
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
+    /** A person's own choice is kept under their id; the owner's (and the home's, from before) are the Space's defaults. A member's choice never changes anyone else's session. */
+    const mineScope = (/** @type {string | null} */ person, /** @type {string} */ scope) => (person ? `person:${person}/${scope}` : scope);
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
      * else its purpose's (a surface's override, then config, then the default).
-     * @param {{ purpose?: string, project?: string|null, model?: string|null }} i
+     * @param {{ purpose?: string, project?: string|null, model?: string|null, person?: string|null }} i `person`: whose session it is; their own choices come before the Space's defaults
      */
     const modelFor = i => {
       if (i.model) return { model: i.model, from: "explicit" };
-      if (i.project) { const m = override(`project:${i.project}`); if (m) return { model: m, from: `project:${i.project}` }; }
+      const who = i.person && i.person !== accounts.owner() ? String(i.person) : null;
+      if (i.project) { const m = (who && override(mineScope(who, `project:${i.project}`))) || override(`project:${i.project}`); if (m) return { model: m, from: `project:${i.project}` }; }
       const purpose = PURPOSES.includes(String(i.purpose)) ? String(i.purpose) : "chat";
-      const m = override(`purpose:${purpose}`);
+      const m = (who && override(mineScope(who, `purpose:${purpose}`))) || override(`purpose:${purpose}`);
       return m ? { model: m, from: `purpose:${purpose}` } : { model: configModel(ctx.config, purpose), from: `config:${purpose}` };
     };
     const prompts = new Prompts(ctx.store.db);
@@ -195,19 +211,25 @@ export default {
 
     tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from, plus the model aliases to offer. An agent's own model wins.",
       { type: "object", properties: {} },
-      async () => ({ aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
-        projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
+      async (_i, meta) => {
+        const person = await personOf(meta), who = person && person !== accounts.owner() ? person : null;
+        const projects = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)]));
+        if (who) for (const r of /** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE ?").all(`person:${who}/project:%`))) projects[String(r.scope).slice(`person:${who}/project:`.length)] = String(r.model);
+        return { aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p, person })])), projects };
+      });
 
     tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
       { type: "object", required: ["scope"], properties: { scope: str, model: { type: ["string", "null"] } } },
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const caller = meta && meta.caller;
         const m = /^(purpose|project):([A-Za-z0-9._-]{1,64})$/.exec(String(i.scope || ""));
         if (!m || (m[1] === "purpose" && !PURPOSES.includes(m[2]))) throw Object.assign(new Error(`scope must be purpose:<${PURPOSES.join("|")}> or project:<slug>`), { code: "bad_input" });
-        if (i.model == null || i.model === "") { db.prepare("DELETE FROM sessions_models WHERE scope = ?").run(i.scope); }
+        const mine = await ownerOfAccount(meta), stored = mineScope(mine, String(i.scope));   // a member's choice is theirs alone; the owner's is the Space's default
+        if (i.model == null || i.model === "") { db.prepare("DELETE FROM sessions_models WHERE scope = ?").run(stored); }
         else {
           if (!MODEL.test(String(i.model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
           db.prepare("INSERT INTO sessions_models (scope, model, by, at) VALUES (?,?,?,?) ON CONFLICT(scope) DO UPDATE SET model = excluded.model, by = excluded.by, at = excluded.at")
-            .run(i.scope, String(i.model), String(caller || ""), Date.now());
+            .run(stored, String(i.model), String(caller || ""), Date.now());
         }
         ctx.events.emit("model.changed", { scope: i.scope, model: i.model || null });
         return { scope: i.scope, model: i.model || null };
@@ -215,7 +237,7 @@ export default {
 
     ctx.tool("sessions.models.resolve", {
       description: "The model a session starting now runs on, and where that comes from.", internal: true,
-      input: { type: "object", properties: { purpose: str, project: str, model: str } },
+      input: { type: "object", properties: { purpose: str, project: str, model: str, person: str } },
       run: async i => modelFor(i),
     });
 
@@ -293,36 +315,36 @@ export default {
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
-      run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
-        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+      run: async (_i, meta) => { const who = await personOf(meta); return Promise.all(PROVIDERS.map(async p => ({ ...p,
+        accounts: await Promise.all(accounts.list(p.id, who).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
         models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
-        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))); },
     });
 
     // ---- the "@" picker's Accounts kind: the AI accounts that are signed in, so "@codex" picks who answers one turn
     /** Is this account one a turn could run on now: not waiting on a person, and signed in or holding its key. @param {any} a */
     const signedIn = async a => !a.pending && (a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false);
     /** One row per signed-in account: the provider's own name when it has one, "Name (label)" when it has several. */
-    const accountChoices = async () => {
+    const accountChoices = async (/** @type {string | null} */ who) => {
       const out = [];
       for (const p of PROVIDERS) {
         const ok = [];
-        for (const a of accounts.list(p.id)) if (await signedIn(a)) ok.push(a);
+        for (const a of accounts.list(p.id, who)) if (await signedIn(a)) ok.push(a);
         for (const a of ok) out.push({ kind: "account", id: ok.length === 1 ? p.id : `${p.id}:${a.id}`, name: ok.length === 1 ? p.label : `${p.label} (${a.label})`, hint: `${p.label} account, ${a.kind === "login" ? "signed in" : a.kind}`, provider: p.id, account: ok.length === 1 ? null : a.id });
       }
       return out;
     };
     tool("sessions.mention.search", "The @ picker's Accounts results: the AI accounts that are signed in (Claude, Codex, Grok, OpenRouter), by provider name. Names and a short hint only.",
       { type: "object", properties: { q: str, limit: { type: "integer", minimum: 1, maximum: 50 } } },
-      async i => {
+      async (i, meta) => {
         const q = String(i.q || "").trim().toLowerCase();
-        const rows = (await accountChoices()).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
+        const rows = (await accountChoices(await personOf(meta))).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
         return rows.slice(0, i.limit || 12).map(({ provider: _p, account: _a, ...r }) => r);
       });
     tool("sessions.mention.resolve", "What an account tagged with @ means for a thread: the person asked this one turn to run on it. No grant; threads.send reads the tag. Called by the mentions core.",
       { type: "object", required: ["id"], properties: { id: str, thread: str, said: str } },
-      async i => {
-        const hit = (await accountChoices()).find(r => r.id === String(i.id));
+      async (i, meta) => {
+        const hit = (await accountChoices(await personOf(meta))).find(r => r.id === String(i.id));
         if (!hit) throw Object.assign(new Error("that account is not signed in (sessions.accounts.list shows the accounts; sessions.accounts.signin signs one in)"), { code: "not_found" });
         return { name: hit.name, hint: hit.hint, outside: false, note: `The person asked ${hit.name} to answer this one turn. The session keeps its own provider.` };
       });
@@ -391,7 +413,7 @@ export default {
     tool("sessions.accounts.list", "List accounts on one provider or every provider, each with its vault item name (never a value) and the projects and agents it may use.",
       { type: "object", properties: { provider: str } },
       async (i, meta) => {
-        const listed = accounts.list(i.provider ? String(i.provider) : undefined);
+        const listed = accounts.list(i.provider ? String(i.provider) : undefined, await personOf(meta));
         // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
         // assistant started can tell whose it is; null reads as "account not identified".
         const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
@@ -427,8 +449,12 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
+        // A member's account is a sign-in of their own (a login, run as the account's own user). A key or token names an item in the home's vault, which is the owner's: a member could name the owner's
+        // item and have the owner's credential used for their turns. Until a member's keys live in a vault of their own, a member adds a login only.
+        const who = await ownerOfAccount(meta);
+        if (who && (i.kind || (i.vault_item ? "api-key" : "login")) !== "login") throw Object.assign(new Error("on this server you add your own sign-in (kind login); a key needs a Vault of your own, which is not here yet"), { code: "denied" });
         if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
-        const added = accounts.add(i);
+        const added = accounts.add({ ...i, person: who });
         // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
         if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
         return added;
@@ -474,6 +500,8 @@ export default {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
         if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
+        // The convenience stores the key in the home's own vault. A member keeps theirs in their own: they put it in their Vault, then add the account naming that item (sessions.accounts.add).
+        if (await ownerOfAccount(meta)) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
@@ -484,7 +512,7 @@ export default {
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
-        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
         accountChanged(row, true, "key");
         return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
@@ -498,14 +526,14 @@ export default {
         const provider = String(i.provider || "");
         if (!LOGINS[provider] || !PROVIDERS.some(p => p.id === provider)) throw Object.assign(new Error(`there is no sign-in for ${provider || "that provider"}`), { code: "bad_input" });
         if (provider === "claude" && !usesSpawner()) throw Object.assign(new Error("on this machine Claude uses the login already on it (run claude and sign in there)"), { code: "bad_input" });
-        let row = i.account ? accounts.row(String(i.account)) : null;
+        let row = i.account ? await mine(accounts.row(String(i.account)), meta) : null;
         if (i.account && (!row || row.provider !== provider || row.kind !== "login")) throw Object.assign(new Error("that is not a login account on this provider"), { code: "bad_input" });
         // A non-person starts a sign-in only for a new account, or one still pending: it never re-signs-in a working account.
         if (!byPerson && row && !row.pending) throw Object.assign(new Error("only the person signs a working account in again"), { code: "denied" });
         const created = !row;
         if (!row) {
           const project = byPerson ? null : await requestProject(meta);
-          row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login",
+          row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login", person: await ownerOfAccount(meta),
             ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
         }
         const account = row;
@@ -517,7 +545,7 @@ export default {
       { type: "object", required: ["id"], properties: { id: str } },
       async (i, meta) => {
         if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" });
-        const row = accounts.row(String(i.id));
+        const row = await mine(accounts.row(String(i.id)), meta);
         const out = accounts.remove(i.id);
         if (row && !row.pending) accountChanged(row, false, "removed");
         // A key this module vaulted goes with its account (the Vault refuses to delete anything else of ours).
@@ -530,7 +558,7 @@ export default {
       async (i, meta) => {
         askedOnly(meta, "Binding an account", { assistant: true });
         if (isPerson(meta || {})) {
-          const was = accounts.row(String(i.id)), bound = accounts.bind({ ...i, confirm: true });
+          const was = await mine(accounts.row(String(i.id)), meta), bound = accounts.bind({ ...i, confirm: true });
           const now = await bound;
           if (was && was.pending && now && !now.pending && !(now.kind === "login" && now.signed_in_at == null)) accountChanged(now, true, "confirmed");
           return bound;
@@ -538,6 +566,7 @@ export default {
         // Not a person's surface: only to the project the request came from, never "*", an agent or a default; it never finishes a pending account.
         const project = await requestProject(meta);
         if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
+        await mine(accounts.row(String(i.id)), meta);
         return accounts.bind({ id: i.id, project });
       }, ASSISTANT);
 
@@ -571,10 +600,10 @@ export default {
     // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
     tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings.",
       { type: "object", required: ["account", "privacy"], properties: { account: str, privacy: { type: "boolean" } } },
-      async i => accounts.setPrivacy(String(i.account), Boolean(i.privacy)));
+      async (i, meta) => { await mine(accounts.row(String(i.account)), meta); return accounts.setPrivacy(String(i.account), Boolean(i.privacy)); });
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
-      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str } },
       run: async i => accounts.resolve(i),
     });
 
