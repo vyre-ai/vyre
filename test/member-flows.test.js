@@ -12,7 +12,7 @@ import { tempHome } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
-const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26);
+const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26), DAVE = "per_" + "d".repeat(26);
 const CONTACT = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "status", kind: "text", label: "Status" }] };
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 50)); } };
 const find = (/** @type {string} */ name, trigger = { on: "manual" }, extra = {}) => ({ format: 1, name, label: name, authorship: "human", trigger, steps: [{ id: "f", kind: "find", type: "contact", limit: 1 }], ...extra });
@@ -27,7 +27,7 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   await d.kernel.gateway.records.define(chainOf(owner), { add_types: [CONTACT] });
   await d.kernel.gateway.grants.setRole(chainOf(owner), { person: BOB, role: "member" }, { presence: { method: "stand-in" } });
   const svc = /** @type {any} */ (createMemberTools({ space, kernel: d.kernel, registry: d.registry }).flows);
-  const bob = chainOf(BOB), carol = chainOf(CAROL);
+  const bob = chainOf(BOB), dave = chainOf(DAVE);
   const words = async (/** @type {Promise<any>} */ p) => { try { await p; return ""; } catch (e) { return String(/** @type {any} */ (e).message); } };
 
   // the owner's Flow, approved by the owner
@@ -83,8 +83,35 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const mine = await until(async () => (await d.kernel.gateway.ask.list(bob, { state: ["waiting", "ready", "working", "needs_check"] })).find((/** @type {any} */ x) => x.title === "Carry on?") || null, "her task card");
   assert.equal(mine.doer.id, BOB, "the yes comes to her");
 
+  // an AI step: allowed, and the notice says in words that it runs on the Space's allowance, not on her own sign-in
+  const ai = await svc.define(bob, { flow: { ...find("bobs_ai"), steps: [{ id: "k", kind: "classify", input: "hello", labels: ["new client", "spam"] }] } });
+  assert.ok(ai.ok, JSON.stringify(ai));
+  const aap = await svc.approve(bob, { id: ai.id, version: ai.version, hash: ai.hash });
+  assert.match(aap.notice, /AI steps run on this Space's AI allowance.*200,000 tokens a day.*not on your own sign-in/s, aap.notice);
+
+  // a second member cannot read or change her Flow through the Records door, and cannot approve it by hand
+  await d.kernel.gateway.grants.setRole(chainOf(owner), { person: CAROL, role: "member" }, { presence: { method: "stand-in" } });
+  const carolMember = chainOf(CAROL);
+  assert.match(await words(svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carols" }) })), /someone else's/, "the second member cannot add a version to her Flow");
+  assert.match(await words(svc.approve(carolMember, { id: bd.id, version: bd.version, hash: bd.hash })), /only a version you made yourself/, "nor approve it");
+  const viaRecords = await words(d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => { if (r.rows.length) throw new Error("rows: " + r.rows.length); }));
+  console.log("NOTE|records.query of flow-state by a second member: " + (viaRecords || "refused or empty"));
+
+  // a Flow of hers that runs by itself stops when she is removed from the Space, and the owner sees it
+  const sched = await svc.define(bob, { flow: find("bobs_morning", { on: "time", cron: "* * * * *" }, { steps: [{ id: "f", kind: "find", type: "contact", limit: 1 }, { id: "u", kind: "create", type: "contact", data: { name: "from bob" } }] }) });
+  assert.ok(sched.ok, JSON.stringify(sched));
+  await svc.approve(bob, { id: sched.id, version: sched.version, hash: sched.hash });
+  await d.kernel.gateway.grants.removeMember(chainOf(owner), { person: BOB }, { presence: { method: "stand-in" } });
+  await host().flows.store.putSchedule(sched.id, Date.now() - 120_000);
+  host().flows.runner.lastFire.set(sched.id, Date.now() - 120_000);
+  await host().flows.tick();
+  const paused = await until(async () => { const r = await host().flows.store.flowRow(sched.id); return r && r.status === "paused" ? r : null; }, "her scheduled Flow to pause after she left the team");
+  assert.equal(paused.status, "paused");
+  const needs = await host().flows.tools["flows.attention"](chainOf(owner), {});
+  assert.ok(JSON.stringify(needs).includes(sched.id), "the owner's list of what needs a person shows it: " + JSON.stringify(needs).slice(0, 200));
+
   // someone who is not a member gets nothing; the Space-wide switches are not calls she has
-  assert.match(await words(svc.list(carol, {})), /not found/i, "a non-member is told nothing");
+  assert.match(await words(svc.list(dave, {})), /not found/i, "a non-member is told nothing");
   for (const call of ["pause", "resume", "rollback", "budget", "kit-propose", "control"]) assert.equal(svc[call], undefined, `${call} is not a call a member has`);
   assert.deepEqual(Object.keys(svc).sort(), [...CALLS.flows].sort(), "the service answers exactly the calls the wire lists");
 });

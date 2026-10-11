@@ -32,7 +32,7 @@ export const CALLS = Object.freeze(/** @type {Record<string, { tool: string, kin
   simulate: { tool: "flows.simulate", kind: "simulate" },
   start: { tool: "flows.start", kind: "start" },
   runs: { tool: "flows.runs", kind: "runs" }, run: { tool: "flows.run", kind: "run" }, timeline: { tool: "flows.timeline", kind: "run" }, attention: { tool: "flows.attention", kind: "attention" },
-  cancel: { tool: "flows.cancel", kind: "cancelrun" },
+  cancel: { tool: "flows.cancel", kind: "cancelrun" }, retry: { tool: "flows.retry", kind: "cancelrun" },
   approve: { tool: "flows.approve", kind: "approve" }, propose: { tool: "flows.propose", kind: "propose" },
 }));
 
