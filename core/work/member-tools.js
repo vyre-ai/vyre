@@ -6,21 +6,26 @@
 //
 // ADDING A ROW (the same three steps for every group):
 //   1. kernel/remote/wire.js: put the call name in CALLS.<group> (a new group needs its name in the peer door's services, below, which is automatic from this table's keys);
-//   2. here: add `"<group>.<call>": ["<registry tool>", "<call>"]` to MEMBER_TOOLS. With a call name the tool is a *.serve entry and is run with `{ call, input }`; with `null` the tool is run with the input itself;
+//   2. here: add `"<group>.<call>": { tool, call, keys, types }` to MEMBER_TOOLS: with a call name the tool is a *.serve entry and is run with `{ call, input }`, with `null` it is run with the input itself; `keys` are the only input keys the door passes;
+//      `types` are the record types the row keeps (each in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES, a test fails otherwise);
 //   3. the tool: declare it in its module.json with "reach": "modules" and "crossSpace": "<an action the MEMBER role holds>", and read the person from `extra.in_space_chain` (NEVER assume the owner; the work
 //      module's chainOf and skills' serve tools are the pattern). Test it as a member, as the owner and as a non-member (core/work/member-tools.test.js is the template: a row without that test is not added).
 // A row is added only for a tool that takes the person from the chain.
 
 import { KernelError } from "../../kernel/core/errors.js";
 
-/** door call ("<group>.<call>") -> [registry tool, its call name or null]. Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, [string, string | null]>>} */
+/**
+ * door call ("<group>.<call>") -> the registry tool that serves it, the call name it is run with (null: the tool is run with the input itself), the input keys the door lets through (every other key is dropped,
+ * so a member never names the person, the agent, the project or the Space), and the record types the row keeps (each must be in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES: a test fails otherwise).
+ * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[] }>>}
+ */
 export const MEMBER_TOOLS = Object.freeze({
   // a member's own skills (core/skills/member-ops.js): her personal skill is drafted and approved by her alone; a draft at a higher level waits for its owner; kind "skill" only
-  "skills.list": ["skills.serve", "list"],
-  "skills.get": ["skills.serve", "get"],
-  "skills.versions": ["skills.serve", "versions"],
-  "skills.draft": ["skills.serve-write", "draft"],
-  "skills.approve": ["skills.serve-write", "approve"],
+  "skills.list": { tool: "skills.serve", call: "list", keys: ["level"], types: ["skill"] },
+  "skills.get": { tool: "skills.serve", call: "get", keys: ["id"], types: ["skill"] },
+  "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
+  "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
+  "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
 });
 
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_allowed: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found" });
@@ -36,6 +41,12 @@ export const memberGroups = () => {
  * One service per group of the table, for the peer door's `services`. @param {{ space: string, kernel: any, registry: { callInSpace(m: any, space: string, base: any, tool: string, input: any, chain: any): Promise<any> } }} o
  */
 export function createMemberTools(o) {
+  // every row's tool must be one only this door runs: internal, for modules, declared to run in another Space (a row whose tool is not is a mistake that must stop the daemon, not a hole)
+  const tools = /** @type {any} */ (o.registry).tools;
+  if (tools && typeof tools.get === "function") for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
+    const def = tools.get(row.tool);
+    if (def && !(def.internal === true && def.crossSpace && def.reach === "modules")) throw new Error(`member door row ${door}: ${row.tool} must be an internal tool for modules that declares crossSpace`);
+  }
   const who = (/** @type {any} */ chain) => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || chain.viewer === true || chain.delegated === true || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw new KernelError("not_found", "not found");
@@ -47,10 +58,10 @@ export function createMemberTools(o) {
   const run = (/** @type {string} */ door) => async (/** @type {any} */ chain, /** @type {any} */ input) => {
     const person = who(chain);
     if (!isMember(person)) throw new KernelError("not_found", "not found");   // not a member: nothing to say
-    const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
-    delete i.space; delete i.as;
-    const [tool, call] = MEMBER_TOOLS[door];
-    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, tool, call ? { call, input: i } : i, chain);
+    const row = MEMBER_TOOLS[door];
+    const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+    const i = Object.fromEntries(row.keys.filter(k => Object.hasOwn(src, k)).map(k => [k, src[k]]));   // only the keys the row names: never the person, the agent, the project or the Space
+    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, row.tool, row.call ? { call: row.call, input: i } : i, chain);
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };

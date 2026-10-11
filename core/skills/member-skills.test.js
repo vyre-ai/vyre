@@ -90,3 +90,25 @@ test("a plugin is refused for a member, with words; a person who is not a member
   await assert.rejects(w.as(ZED, "list", {}), /not found|not_found/i, "a person who is not a member");
   await assert.rejects(w.svc.list(w.d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: ANA, agent: "assistant", session: "s" }), {}), /not found|not_found/i, "an assistant's two-hop chain");
 });
+
+test("a member's drafts: her own agent or project only, a size bound, a cap on pending drafts, and she is shown only her own drafts of the Space's", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  await assert.rejects(w.as(ANA, "draft", { name: "for-an-agent", level: "agent", scope: "someone-elses", body: skill("for-an-agent", "x") }), /owner drafts a skill|not_allowed/i, "an agent's skill she does not own");
+  await assert.rejects(w.as(ANA, "draft", { name: "for-a-project", level: "project", scope: "not-hers", body: skill("for-a-project", "x") }), /owner drafts a skill|not_allowed/i, "a project's skill she does not own");
+  await assert.rejects(w.as(ANA, "draft", { name: "huge", level: "personal", body: skill("huge", "x".repeat(70_000)) }), /at most|bad_input/i, "a body past the library's bound");
+  // another member's draft at the Space level is not shown to her; her own is
+  const bens = await w.as(BEN, "draft", { name: "ben-space", level: "space", body: skill("ben-space", "Ben proposes") });
+  assert.equal(bens.state, "draft");
+  assert.ok(!(await w.as(ANA, "versions", {})).versions.some((/** @type {any} */ v) => v.name === "ben-space"), "Ana does not see Ben's draft");
+  assert.ok((await w.as(BEN, "versions", {})).versions.some((/** @type {any} */ v) => v.name === "ben-space"), "Ben sees his own");
+  // the cap on drafts waiting
+  let made = 1;
+  for (; made < 50; made++) await w.as(BEN, "draft", { name: `ben-${made}`, level: "personal", body: skill(`ben-${made}`, `draft ${made}`) });
+  await assert.rejects(w.as(BEN, "draft", { name: "ben-too-many", level: "personal", body: skill("ben-too-many", "one more") }), /50 drafts|too_many|bad_input/i, "the 51st draft is refused in words");
+});
+
+test("the door passes only the keys a row names: a member cannot name the person or the Space", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const mine = await w.as(ANA, "draft", { name: "keys", level: "personal", body: skill("keys", "mine"), person: w.OWNER, as: w.OWNER, space: "spc_other", agent: "assistant" });
+  assert.equal(mine.scope, ANA, "the draft is hers whatever else the request names");
+});

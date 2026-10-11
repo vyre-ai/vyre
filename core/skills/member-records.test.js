@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { createMemberTools } from "../work/member-tools.js";
+import { createMemberTools, MEMBER_TOOLS } from "../work/member-tools.js";
 import { guardRecordsCall, MEMBER_BLOCKED_TYPES } from "../../kernel/remote/member-guard.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
@@ -89,4 +89,17 @@ test("the door's guard closes every typed records call and the searches and list
   assert.deepEqual(found.rows.map((/** @type {any} */ h) => h.type), ["contact"], "a search leaves the protected types out");
   assert.equal((await guardRecordsCall("search", fake("search"), trusted)(owner, {})).rows.length, 3);
   assert.deepEqual(await guardRecordsCall("definitions", fake("definitions"), trusted)(member), [{ name: "contact" }], "the list of types leaves them out");
+});
+
+test("every row of the member door's table keeps only protected record types, names its input keys, and serves through an internal tool for modules", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
+    for (const type of row.types) assert.ok(MEMBER_BLOCKED_TYPES.has(type), `${door}: ${type} is not in MEMBER_BLOCKED_TYPES`);
+    assert.ok(row.keys.length > 0 && !row.keys.some(k => ["person", "agent", "space", "as", "project"].includes(k)), `${door}: its input keys never name the person, the agent, the project or the Space`);
+    const def = /** @type {any} */ (d.registry).tools.get(row.tool);
+    assert.ok(def && def.internal === true && def.reach === "modules" && def.crossSpace, `${door}: ${row.tool} is an internal tool for modules that declares crossSpace`);
+  }
+  createMemberTools({ space: d.kernel.id.space, kernel: d.kernel, registry: d.registry });   // and the daemon would stop at start for a row that is not
 });
