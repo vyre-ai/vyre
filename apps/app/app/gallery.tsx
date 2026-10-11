@@ -13,6 +13,7 @@ import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
+import { AccessView } from "../screens/assistants/AssistantAccess";
 import { SignInView } from "../screens/now/SignInAgain";
 import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
@@ -158,6 +159,7 @@ function Sample({ name }: { name: string }) {
     const key = { id: "connectors:k", title: "The key for api.example.com stopped working", detail: "The service refused the key. Fix it in the Vault, then check it.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "k" } }] };
     return <View style={{ gap: 12 }}><SignInView card={site} busy={false} hint="Still waiting. Sign in on the site, then check again." onPress={() => {}} /><SignInView card={screen} busy={false} hint="" onPress={() => {}} /><SignInView card={key} busy hint="" onPress={() => {}} /></View>;
   }
+  if (name === "assistant-access") return <AccessView s={{ assistant: "assistant", tools: [{ name: "records.delete", at: 1 }, { name: "mail.*", at: 2 }], screens: [{ id: "vault", label: "Vault", off: true }, { id: "mail", label: "Mail and messages", off: false }, { id: "records", label: "Records and contacts", off: false }, { id: "files", label: "Files and Drive", off: false }, { id: "publish", label: "Publishing", off: true }] }} busy={false} problem="" typed="" setTyped={() => {}} onSwitch={() => {}} onTurnOffTool={() => {}} onTurnOnTool={() => {}} />;
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }

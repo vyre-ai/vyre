@@ -16,6 +16,7 @@ import { glance } from "./glance.js";
 import { capabilities, render, promptBlock } from "./manifest.js";
 import { welcomeOf } from "./welcome.js";
 import { handoffPush } from "./handoff.js";
+import { askOf, refusalWords, stateOf, stoppedBy } from "../../lib/assistant-access.js";
 
 const STATE_KEY = "last_digest_day";
 const DAILY_DAY = "daily_day";
@@ -24,7 +25,11 @@ const SEED_OPEN = "Yesterday's conversation, summarized, between the markers bel
 const SEED_CLOSE = "\n</yesterday>";
 /** The digest as quoted data: the markers cannot be closed early from inside it, and it is capped. */
 export const seedOf = text => SEED_OPEN + String(text).replace(/<\/?yesterday>/gi, "").slice(0, 4000) + SEED_CLOSE;
-const MIGRATIONS = [`CREATE TABLE assistant_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
+const MIGRATIONS = [
+  `CREATE TABLE assistant_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+  // what a person turned off for their own assistant (G23): a tool, a family of tools, or a screen's whole area
+  `CREATE TABLE assistant_access (person TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (person, kind, name))`,
+];
 
 /** A caller allowed to ask for the digest or the patterns: the person's own surfaces, their own
  * Claude Code session, or the assistant itself. Never a project-scoped agent: this is the
@@ -133,6 +138,84 @@ export default {
     const gate = async meta => {
       if (!(await allowed(meta.caller, asCall, meta))) throw Object.assign(new Error("this is for the person and the assistant"), { code: "denied" });
     };
+
+    // ---- the person narrows their own assistant (G23, lib/assistant-access.js) ------------------------------------------------------------------------------------------------------------------
+    /** The person a call is: the first hop of its kernel chain, which must be a person (an assistant's chain is the person and an agent hop). With no kernel the box has one person. @param {any} meta @param {boolean} strict only the person themselves: no agent hop, no viewer */
+    const personOf = async (meta, strict, hopsOut = null) => {
+      const c = String((meta && meta.caller) || "");
+      // a call in another Space (a team turn, the member door) holds its chain as meta.in_space_chain; every other call's chain is the kernel's for the call
+      const held = meta && meta.in_space_chain && Array.isArray(meta.in_space_chain.hops) ? meta.in_space_chain : null;
+      if (held || (ctx.kernel && typeof ctx.kernel.chain === "function")) {
+        let chain = held; if (!chain) { try { chain = await ctx.kernel.chain(meta || {}); } catch { chain = null; } }
+        const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+        const first = hops[0] && hops[0].actor;
+        if (!first || first.kind !== "person" || chain.viewer === true || (strict && hops.length !== 1)) throw Object.assign(new Error(strict ? "only the person can change what their assistant may do" : "only a person's own assistant has these limits"), { code: "denied" });
+        if (hopsOut) {
+          // the assistant hop: the default assistant or a model slot. A named agent has its own grants, and an automation (a Flow) its own, so neither is limited here.
+          const after = hops.slice(1).map((/** @type {any} */ h) => h && h.actor).filter(Boolean);
+          hopsOut.n = after.length && after.every((/** @type {any} */ a) => a.kind === "agent" && (a.id === "assistant" || String(a.id).startsWith("model:"))) ? 2 : 1;
+        }
+        return String(first.id);
+      }
+      if (hopsOut) hopsOut.n = 2; // no kernel: the call was bound to a session, which is the assistant
+      if (strict && ((meta && (meta.agent || meta.assistant)) || /(?:^|[\s:])agent:|^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c))) throw Object.assign(new Error("only the person can change what their assistant may do"), { code: "denied" });
+      return "owner";
+    };
+    const rowsOf = person => db.prepare("SELECT kind, name, at FROM assistant_access WHERE person = ? ORDER BY name").all(person);
+    const accessProps = { assistant: { type: "string", enum: ["assistant"], description: "Whose access: the person's own assistant." }, tools: { type: "array", items: { type: "string" }, description: "Tool names, or a family like records.*." }, screens: { type: "array", items: { type: "string" }, description: "Areas: vault, mail, records, files, flows, projects, documents, publish, connections, memory, calendar." } };
+
+    ctx.tool("assistant.access.get", {
+      description: "What the person turned off for their own assistant, so it can say why a call was refused. Answers { tools, screens }.",
+      input: { type: "object", properties: { assistant: accessProps.assistant } },
+      run: async (_i, meta = {}) => stateOf(rowsOf(await personOf(meta, false))),
+    });
+
+    ctx.tool("assistant.access.narrow", {
+      description: "Turn off tools, a family of tools (records.*) or a whole area (screens) for the person's own assistant. It only ever makes the assistant's access smaller; nothing here gives it more, and only the person can call it. Answers the new state.",
+      input: { type: "object", properties: accessProps },
+      run: async (i, meta = {}) => {
+        const person = await personOf(meta, true);
+        const ask = askOf(i);
+        if ("problem" in ask) throw Object.assign(new Error(ask.problem), { code: "bad_input" });
+        const put = db.prepare("INSERT OR IGNORE INTO assistant_access (person, kind, name, at) VALUES (?, ?, ?, ?)");
+        const now = Date.now();
+        for (const t of ask.tools) put.run(person, "tool", t, now);
+        for (const sc of ask.screens) put.run(person, "screen", sc, now);
+        const state = stateOf(rowsOf(person));
+        try { ctx.emit("assistant.access-narrowed", { tools: ask.tools, screens: ask.screens }); } catch { /* the event is a convenience */ }
+        return state;
+      },
+    });
+
+    ctx.tool("assistant.access.restore", {
+      description: "Turn tools, a family or an area back on for the person's own assistant: the person's own yes, never the assistant's. Answers the new state.",
+      input: { type: "object", properties: accessProps },
+      presence: { summary: () => "Let your assistant use these again" },
+      run: async (i, meta = {}) => {
+        const person = await personOf(meta, true);
+        const ask = askOf(i);
+        if ("problem" in ask) throw Object.assign(new Error(ask.problem), { code: "bad_input" });
+        const del = db.prepare("DELETE FROM assistant_access WHERE person = ? AND kind = ? AND name = ?");
+        for (const t of ask.tools) del.run(person, "tool", t);
+        for (const sc of ask.screens) del.run(person, "screen", sc);
+        return stateOf(rowsOf(person));
+      },
+    });
+
+    // The registry's own question before an assistant's call runs (core/modules/index.js): is this tool turned off for the person this assistant acts for?
+    ctx.tool("assistant.access.check", {
+      description: "For the registry only: whether a tool is turned off for the assistant acting for this person. { stopped, words }.",
+      input: { type: "object", properties: { tool: { type: "string" } }, required: ["tool"] },
+      callers: ["module"],
+      run: async ({ tool }, meta = {}) => {
+        const hops = { n: 0 };
+        // a call with no person's chain (a bare session label, a module) acts as nobody: there is no person whose limit applies, and the tool's own gates decide it
+        let person; try { person = await personOf(meta, false, hops); } catch { return { stopped: false }; }
+        if (hops.n < 2) return { stopped: false }; // a chain that is only the person: the person's own call is never limited
+        const hit = stoppedBy(rowsOf(person), String(tool));
+        return hit ? { stopped: true, words: refusalWords(hit, String(tool)) } : { stopped: false };
+      },
+    });
 
     ctx.tool("assistant.glance", {
       description: "The morning glance: {day, waiting, running, finished, next, lines}, three lines at most. Reads only, no model call.",
