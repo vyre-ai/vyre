@@ -125,9 +125,10 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
   }
 
   /** Start a project from a live version (or the named one): the project, its teammates, its pinned stages and its first stage's tasks. The caller's own chain makes the project. */
-  async function start(chain, i) {
+  /** @param {any} chain @param {any} i @param {{ read?: any, markerBy?: any }} [o] `markerBy`: the chain that writes the new project's Drive folder marker (a member's role holds no Drive action); `read`: the chain the template record is read under (a member's start reads it as the work module: the `project-template` record type is closed to members; everything the project is made with stays under her own chain) */
+  async function start(chain, i, o = {}) {
     personOf(chain);
-    const rec = await pick(chain, i.template, i.version);
+    const rec = await pick(o.read || chain, i.template, i.version);
     if (i.version === undefined && rec.data.state !== "live") throw fail("bad_state", "that version is not live");
     const body = bodyOf(rec);
     const errors = problems(body, env());
@@ -135,7 +136,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const name = String(i.name || "").trim();
     if (!name) throw fail("bad_input", "name the project");
     const k = kernel(), h = hub();
-    const made = await h.createProject(chain, { name, repo: i.repo, client: i.client, slug: i.slug });
+    const made = await h.createProject(chain, { name, repo: i.repo, client: i.client, slug: i.slug, ...(o.markerBy ? { markerBy: o.markerBy } : {}) });
     const first = body.stages[0].name;
     const lead = (body.roles || []).find((/** @type {any} */ r) => r.lead && r.agent);
     const proj = await k.records.update(chain, "project", made.id, {
