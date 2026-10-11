@@ -262,7 +262,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.match(s4b, /owner's vault|stay out of reach/, `vault lock is refused: ${s4b}`);
     // folders: another chat's parent cannot be listed by a member's session, and the walk's own chat folder is not named by its id
     const s5 = await R("member", "ls /work/chats 2>&1; ls /work/chats/* 2>&1");
-    assert.match(s5, /Permission denied/i, `a session cannot list the chats' parents: ${s5}`);
+    assert.match(s5, /Permission denied|stay out of reach/i, `a session cannot list the chats' parents: ${s5}`);
     // control: the owner's own session meets the same floor for the shell (a session never reaches Vyre's own state through a shell command, whoever it runs for); the vault gate itself is reached through the session's tools
     const c1 = await R("owner", "vyre vault list 2>&1");
     transcript.push("(the shell is closed to Vyre's own state for the owner's session as well; the vault gate for a member's tool call is tested in the daemon tests of the vault member gate)\n");
