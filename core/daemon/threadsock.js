@@ -14,6 +14,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
+import { canonical } from "../../lib/tool-names.js";
 import { peerPid, processTable, ancestry } from "./peer.js";
 
 /**
@@ -62,7 +63,7 @@ export async function openThreadSocket(o) {
   const serve = (lent) => async (/** @type {any} */ req, /** @type {any} */ res) => {
     try {
       const url = new URL(req.url || "/", "http://vyred");
-      const tool = url.pathname.startsWith("/v1/tools/") ? decodeURIComponent(url.pathname.slice("/v1/tools/".length)) : null;
+      const tool = url.pathname.startsWith("/v1/tools/") ? canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length))) : null;
       // A session never answers, approves, proves presence or signs a person in.
       if (tool && (PERSON_ONLY.has(tool) || HUMAN_ONLY.has(tool))) return send(res, 403, { error: { code: "denied", message: `${tool} is the person's own; a session never runs it` } });
       if (url.pathname.startsWith("/v1/presence") || url.pathname.startsWith("/v1/person")) return send(res, 403, { error: { code: "denied", message: "presence is the person's" } });
