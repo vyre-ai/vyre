@@ -139,8 +139,8 @@ export function registerPlaceTools(ctx, d) {
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
     const { person, chain } = await who(meta, i.space);
     const hit = find(thread, i.space, person);
-    // a chat that began on the server, or one that came back to it from a computer, goes out to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
-    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server"));
+    // a chat that began on the server, or one that came back to it from a computer, goes out (a session offered back after its computer got well is the computer's to start again, not a move out) to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
+    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server" && hit.row.offer !== "mac"));
     if (!hit || goingOut) {
       if (i.to === "server") return answer(null);
       const p0 = placements();
