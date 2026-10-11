@@ -28,6 +28,7 @@ import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
+import { skillEntries } from "../../lib/tools-extras.js";
 import { createLearner } from "../../lib/tools-learn.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
@@ -142,6 +143,13 @@ async function tools() {
       cat.push({ name, tool: name, description: (t.outward ? HELD : "") + (t.description || `${t.tool} on ${t.server}`), input: { type: "object", ...(t.input || {}) } });
     }
   }
+  // The skills this caller may use go in the one index: found by tools_find, called by name, which reads the skill (skills.get).
+  const sk = await call("skills.list", { limit: 200 }, { ...ident(), session: sessionKey() });
+  if (!sk.error && sk.data && Array.isArray(sk.data.skills)) {
+    const { catalog: more, routes } = skillEntries(sk.data.skills, new Set(next.keys()));
+    for (const [n, r] of routes) next.set(n, r);
+    cat.push(...more);
+  }
   names = next;
   catalog = cat;
   index = null;   // built by the first tools_find: the index costs most of a second and the handshake should not wait for it
@@ -176,6 +184,7 @@ async function invoke(asked, args, params, timeoutMs) {
   // which checks scope itself; a module tool's name never has "__".
   if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return { r: await call("mcp.call", { name: asked, arguments: args }, { ...ident(), session: sessionKey(), timeout: timeoutMs ?? 120_000 }), tool: asked, hub: true };
   const tool = hit && "tool" in hit ? hit.tool : asked;
+  if (hit && "fixed" in hit) args = { ...args, ...hit.fixed };
   const alias = hit && "alias" in hit ? ALIASES[String(hit.alias)] : null;
   // agents.ask waits for a whole turn of another session, which can take minutes.
   const session = sessionKey();

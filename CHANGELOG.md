@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- feat(tools): G06 step 1, one index. The skills a caller may use are found by tools_find beside the registry tools (lib/tools-extras.js): each is an entry filed under `skills.use` with a ready tools_call, and calling it reads the skill (skills.get). Scope is skills.list's own, so a skill of another person or level is never offered. Ranking is unchanged (dev and sealed sets still 68% top-1, 90% top-3); learned site operations follow.
 - fix(records): the Twenty store makes a type's four mirror columns (`vyreProject`, `vyreOwner`, ...) one caller at a time, in the same line as its definitions. Two callers that both saw a column missing both created it and Twenty refused the second with a duplicate-field migration error, which left the chat record without its fields and failed `work.chat.create` with store_disagreed (J1, J6). `stores/twenty/define-serial.test.js`.
 - fix(work): the pinned-chat table (`work_persistent`) is made in the database a call lands in. A member's call on the team server runs in that Space's own file, which the table was never made in (no such table). `core/work/work.test.js`.
 - fix(records): every define on one Twenty store runs one at a time (J6). Twenty rebuilds a table for each field it adds, so two defines at once (a module's types, a Kit, the Flows host, a person's records.define) failed with a lock timeout (55P03). The line is inside the store, so no caller has to join it.

@@ -92,7 +92,7 @@ export function indexOf(catalog) {
   const core = new Set(CORE);
   const hand = Object.fromEntries(Object.entries(ASKS).map(([k, v]) => [k, { ...v, core: core.has(k) }]));
   for (const n of CORE) if (!hand[n]) hand[n] = { core: true };
-  return buildToolIndex(catalog.map((c) => ({ name: c.name, also: c.tool, description: c.description, input: c.input })), hand);
+  return buildToolIndex(catalog.map((c) => ({ name: c.name, also: c.tool, description: c.description, input: c.input, ...(c.group ? { group: c.group } : {}) })), hand);
 }
 
 /** The best tools for an intent, named as they are called. @param {ReturnType<typeof indexOf>} index @param {string} query @param {number} [limit] */
@@ -109,7 +109,7 @@ export const weak = (found) => !confident(found);
  * @param {ReturnType<typeof find>} found @param {(name: string) => any} [inputOf] the input schema of a tool, for the compact entries
  */
 export function shapeFind(found, inputOf = () => null) {
-  const full = found.slice(0, 3).map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } }));
+  const full = found.slice(0, 3).map((f) => ({ name: f.name, description: f.description, ...(f.group ? { group: f.group } : {}), call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } }));
   const more = found.slice(3).map((f) => { const inp = inputOf(f.name); const need = inp && Array.isArray(inp.required) ? inp.required.slice(0, 6) : []; return { name: f.name, description: f.description.slice(0, 80), ...(need.length ? { needs: need } : {}) }; });
   const close = found.length > 1 && weak(found) ? `Close call between ${found[0].name} and ${found[1].name}. Read both, take the one that does what the person asked, and if their words do not settle it, ask them which they mean.` : "";
   return { tools: full, ...(more.length ? { also: more } : {}), ...(close ? { unsure: close } : {}), ...(!found.length ? { browse: "Nothing fits? Call vyre_core for the map of Vyre's modules, then tools_find again with a module's name." } : {}) };
