@@ -695,18 +695,25 @@ export default {
         const a = must(i.agent);
         if (a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         const pick = worksetOf(String(i.project), a.name);
-        let who = i.person, acct;
+        // The pick is valid only if it serves the person who gave the task: resolve with their id refuses anyone else's account.
+        const who = i.person;
+        const attention = (/** @type {string} */ kind, /** @type {string} */ why) => Object.assign(new Error(`person:${who} kind:${kind} ${pick.account ? `the AI account picked for agent work in ${i.project}` : "the AI account"} cannot be used (${why})`), { code: "account_attention" });
+        let acct;
         if (pick.account) {
-          who = String(pick.person);
           acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", account: pick.account, project: i.project, agent: a.name, person: who });
-          if (acct.error || !acct.data || acct.data.synthetic || !acct.data.id) throw Object.assign(new Error(`person:${who} the AI account picked for agent work in ${i.project} cannot be used: pick another or sign in again`), { code: "account_attention" });
+          if (acct.error || !acct.data || acct.data.synthetic || !acct.data.id) throw attention("removed", "it is gone, not signed in, or not yours to use");
         } else acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", person: who, project: i.project, agent: a.name });
         // The home's own login (no account added yet) is the home owner's and nobody else's: it is never a stand-in for another member's account.
         const own = !pick.account && !acct.error && acct.data && (acct.data.synthetic || !acct.data.id) && i.owner === true;
         if (!own && (acct.error || !acct.data || acct.data.synthetic || !acct.data.id)) throw Object.assign(new Error(`no AI account for ${who}: they connect one in Settings, then the task runs`), { code: "account_required" });
         let t;
         try { t = await use("threads.launch", { agent: a.name, agent_kind: a.kind, append: preamble(a), scope: await scope(a), prompt: i.prompt, purpose: "job", once: true, project: i.project, name: a.name, ...(own ? {} : { account: String(acct.data.id), person: who }) }); }
-        catch (e) { if (pick.account) throw Object.assign(new Error(`person:${who} the AI account picked for agent work in ${i.project} did not start: ${/** @type {Error} */ (e).message}`), { code: "account_attention" }); throw e; }
+        catch (e) {
+          const m = String(/** @type {Error} */ (e).message), c = String(/** @type {any} */ (e).code || "");
+          // What failed, in one word the stuck reason can carry: the sign-in was refused, the account is out of quota or rate limited, it was removed, or something else.
+          const kind = /account_removed|removed/.test(c + m) ? "removed" : /quota|rate.?limit|429|credit|billing|exceed|overloaded/i.test(m) ? "quota" : /401|403|unauthori[sz]ed|forbidden|invalid.*(key|token|credential)|expired|revoked|not signed in|login|auth/i.test(m) ? "auth" : "other";
+          throw attention(kind, m.slice(0, 160));
+        }
         return { agent: a.name, thread: t.id };
       },
     });

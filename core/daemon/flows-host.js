@@ -16,6 +16,7 @@ import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
+import { taskGrantSpec } from "./task-wake.js";
 
 
 /** Is the Space's own record store still starting (a deferred store that has not attached)? A store with no deferral is never away. @param {any} store */
@@ -346,7 +347,7 @@ export function createFlowsHost(o) {
     const taskWorkGrants = () => {
       const h = k.kernelFor({ name: "task-wake", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
       return Object.freeze({
-        make: (/** @type {string} */ agent, /** @type {string} */ task, /** @type {number} */ until) => h.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: agent, space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${task}` }, conditions: { when: { expires: until } }, source: `task-wake:${task}`, reason: "an agent teammate works the task it was given" }),
+        make: (/** @type {string} */ agent, /** @type {string} */ task, /** @type {number} */ until) => h.mint.make(taskGrantSpec(space, agent, task, until)),
         end: (/** @type {string} */ task) => h.mint.end({ source: `task-wake:${task}`, reason: "the task was handed in or flagged" }),
       });
     };

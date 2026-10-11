@@ -33,6 +33,14 @@ export function briefOf(t) {
   ].join("\n");
 }
 
+/**
+ * The one grant a teammate agent holds to work a task: exactly this task and this agent, tasks.read and tasks.work, until `until`. Nothing else is ever asked of the kernel's mint.
+ * @param {string} space @param {string} agent the agent's stable id @param {string} task @param {number} until
+ */
+export function taskGrantSpec(space, agent, task, until) {
+  return { subject: { kind: "actor", actor: { kind: "agent", id: agent, space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${task}` }, conditions: { when: { expires: until } }, source: `task-wake:${task}`, reason: "an agent teammate works the task it was given" };
+}
+
 /** @param {{ root: string, log?: (m: string) => void, hear: (type: string, fn: (e: any) => any) => (() => void) | void, callModule: (tool: string, input: any) => Promise<any> }} o */
 export function createTaskWakeHost(o) {
   const log = o.log || (() => {});
@@ -69,7 +77,7 @@ export function createTaskWakeHost(o) {
   }
 
   /**
-   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number }} s
+   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number, sweepAfterMs?: number }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
@@ -116,7 +124,17 @@ export function createTaskWakeHost(o) {
         started = await o.callModule("agents.work", { agent: r.agent, project: r.slug, person, owner: person === s.ownerId(), prompt: briefOf({ title: t.title, note: t.note, project: r.name }) });
       } catch (e) {
         const code = /** @type {any} */ (e).code;
-        if (code === "account_attention") { const who = (/person:(\S+)/.exec(/** @type {Error} */ (e).message) || [])[1] || person; return stuck(t, `${nameOf(who)}'s AI account for agent work needs attention`, "Pick another account for agent work in the project's settings, or sign in to it again, then move this task back to ready."); }
+        if (code === "account_attention") {
+          const msg = String(/** @type {Error} */ (e).message), who = (/person:(\S+)/.exec(msg) || [])[1] || person, kind = (/kind:(\w+)/.exec(msg) || [])[1] || "other";
+          const word = /** @type {Record<string, string>} */ ({ auth: "sign-in refused", quota: "out of quota or rate limited", removed: "account removed or not usable", other: "start failed" })[kind] || "start failed";
+          const fix = /** @type {Record<string, string>} */ ({
+            auth: "Sign in to the account again, or pick another account for agent work in the project's settings, then move this task back to ready.",
+            quota: "Wait for the quota to reset, top it up, or pick another account for agent work in the project's settings, then move this task back to ready.",
+            removed: "Pick another account for agent work in the project's settings, then move this task back to ready.",
+            other: "Check the account under Settings, or pick another for agent work in the project's settings, then move this task back to ready.",
+          })[kind] || "Pick another account for agent work in the project's settings, then move this task back to ready.";
+          return stuck(t, `${nameOf(who)}'s AI account for agent work needs attention (${word})`, fix);
+        }
         if (code === "account_required") return stuck(t, `needs ${nameOf(person)} to connect an AI account`, `${nameOf(person)} adds an AI account under Settings, then moves this task back to ready.`);
         return stuck(t, `the turn could not start: ${cut(/** @type {Error} */ (e).message, 160)}`, "Check the agent and its project, then move this task back to ready.");
       }
@@ -158,10 +176,12 @@ export function createTaskWakeHost(o) {
       if (ledger.turns(dayKey(r.slug)) >= limit) return pause(t, r, limit);
       ledger.set(id, { state: "starting", turns: 0, at: (s.clock || Date.now)() });
       try {
-        await s.grantWork.make(t.doer.id, id, (s.clock || Date.now)() + WORK_MS);
+        const until = (s.clock || Date.now)() + WORK_MS;
+        await s.grantWork.make(t.doer.id, id, until);
+        ledger.set(id, { until, agent: t.doer.id });
         await s.gw.ask.start(doerChain(t), id);
       }
-      catch (e) { ledger.set(id, { state: "skipped" }); log(`task-wake ${s.space}: ${id} was not started (${/** @type {Error} */ (e).message})`); return null; }
+      catch (e) { ledger.set(id, { state: "skipped" }); void s.grantWork.end(id).catch(() => {}); log(`task-wake ${s.space}: ${id} was not started (${/** @type {Error} */ (e).message})`); return null; }
       await run(t, r, 1);
       return ledger.get(id);
     }
@@ -206,26 +226,51 @@ export function createTaskWakeHost(o) {
         if (t.state === "ready") { ledger.set(id, { state: "skipped" }); await wake(id); continue; }
         if (t.state !== "working") { ledger.set(id, { state: "finished" }); continue; }
         const r = await resolve(t);
-        if (r && rec.turns < MAX_TURNS) { ledger.set(id, { state: "starting" }); await run(t, r, rec.turns + 1); }
+        // the grant the stopped turn held is ended and a fresh one made: a restart never extends the old expiry
+        if (r && rec.turns < MAX_TURNS) {
+          try { await s.grantWork.end(id); const until = (s.clock || Date.now)() + WORK_MS; await s.grantWork.make(t.doer.id, id, until); ledger.set(id, { state: "starting", until }); }
+          catch (e) { log(`task-wake ${s.space}: ${id} could not be given a fresh grant (${/** @type {Error} */ (e).message})`); continue; }
+          await run(t, r, rec.turns + 1);
+        }
         else await stuck(t, "the server restarted while the agent was working on this", "Move this task back to ready to start it again.");
       }
     }
 
+    /**
+     * The task grant lives only as long as the agent has a reason to hold it. For every task being worked: it was handed in or moved on (end the grant); it went to another doer (end it); the agent
+     * is no longer a teammate of the project, or the project is gone (flag the task, then end it); its time ran out with the task still working (flag the task, then end it). The flag comes first
+     * because the agent's own chain needs the grant to flag its task.
+     */
+    async function sweep() {
+      for (const [id, rec] of Object.entries(ledger.all())) {
+        if (stopped || !rec || (rec.state !== "woken" && rec.state !== "starting")) continue;
+        const t = await s.gw.ask.get(s.ownerChain(), id).catch(() => null);
+        const end = async (/** @type {string} */ why) => { threads.forEach((w, th) => { if (w.task === id) threads.delete(th); }); ledger.set(id, { state: why }); await s.grantWork.end(id).catch(() => {}); };
+        if (!t || t.state !== "working" || !t.doer || t.doer.id !== rec.agent) { await end("finished"); continue; }
+        if ((s.clock || Date.now)() >= (rec.until || Infinity)) { await stuck(t, "the agent's time on this task ran out", "Move this task back to ready to give the agent a fresh turn, or give it to someone else."); await end("stuck"); continue; }
+        if (!(await resolve(t))) { await stuck(t, "the agent is no longer a teammate of this project, or the project is gone", "Add the agent back to the project's team, or give the task to someone else."); await end("stuck"); }
+      }
+    }
+    /** @type {NodeJS.Timeout | null} */ let sweepTimer = null;
+    const sweepSoon = () => { if (sweepTimer || stopped) return; sweepTimer = setTimeout(() => { sweepTimer = null; void track(sweep()); }, s.sweepAfterMs ?? 2000); if (typeof sweepTimer.unref === "function") sweepTimer.unref(); };
+
     const sub = s.subscribe((/** @type {any} */ e) => {
+      if (!stopped && e && Object.values(ledger.all()).some(r => r && (r.state === "woken" || r.state === "starting"))) sweepSoon();
       if (stopped || !e || !WAKE_EVENTS.test(String(e.type)) || !e.data || e.data.state !== "ready") return;
       const t = e.data.task;
       if (!t || !t.doer || t.doer.kind !== "agent") return;
       return track(wake(String(t.id)));
     });
 
-    const timer = setInterval(() => { void track(resumePaused()); }, s.resumeEveryMs || RESUME_EVERY_MS); if (typeof timer.unref === "function") timer.unref();
+    const timer = setInterval(() => { void track(resumePaused()); void track(sweep()); }, s.resumeEveryMs || RESUME_EVERY_MS); if (typeof timer.unref === "function") timer.unref();
     const host = Object.freeze({
       wake: (/** @type {string} */ id) => wake(id),
       recover: () => track(recover().then(resumePaused)),
       resumePaused: () => track(resumePaused()),
+      sweep: () => track(sweep()),
       /** Wait for the work in flight (a test, or a stop). */
       async idle() { while (inflight.size) await Promise.all([...inflight]); },
-      stop() { stopped = true; clearInterval(timer); finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },
+      stop() { stopped = true; clearInterval(timer); if (sweepTimer) clearTimeout(sweepTimer); finishers.delete(s.space); try { if (typeof sub === "function") sub(); else if (sub && typeof sub.stop === "function") sub.stop(); } catch { /* already stopped */ } },
     });
     spaces.set(s.space, host);
     return host;
