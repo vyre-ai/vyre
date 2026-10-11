@@ -14,7 +14,7 @@ import { createMemberTools, MEMBER_TOOLS } from "../work/member-tools.js";
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
-const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: ${says}\n---\n${says}\n`;
+const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: Use this when the person asks about ${name}, which is ${says}\n---\n${says}\n`;
 
 /** @param {any} t */
 async function world(t) {

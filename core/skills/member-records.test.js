@@ -14,7 +14,7 @@ import { guardRecordsCall, MEMBER_BLOCKED_TYPES } from "../../kernel/remote/memb
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
-const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: ${says}\n---\n${says}\n`;
+const skill = (/** @type {string} */ name, /** @type {string} */ says) => `---\nname: ${name}\ndescription: Use this when the person asks about ${name}, which is ${says}\n---\n${says}\n`;
 /** Run an operation: what it answered, or the refusal. @param {() => Promise<any>} f */
 const tried = async (f) => { try { return { ok: true, v: await f() }; } catch (e) { return { ok: false, e }; } };
 const nothing = (/** @type {any} */ r) => !r.ok || r.v == null || (Array.isArray(r.v) && r.v.length === 0) || (Array.isArray(r.v && r.v.rows) && r.v.rows.length === 0);
