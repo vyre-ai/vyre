@@ -112,6 +112,3 @@ export function makeLink(o) {
     };
   };
 }
-
-// the one shared matcher lives in test/holds.js (kernel, core and lib tests import it too)
-export { holds } from "../../test/holds.js";
