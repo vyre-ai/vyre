@@ -165,3 +165,18 @@ test("a switch back that fails twice leaves the record on the base with no live 
   assert.deepEqual(resumed, ["t"], "a row already waiting starts the thread again on its base, as a restart would");
   assert.deepEqual(hopProcess.writes, [], "and no queued words went into the hop's process");
 });
+
+test("a switch back that can never succeed (account removed) is not retried: straight to the dormant path", async () => {
+  let tries = 0; /** @type {any[]} */ const events = [];
+  const sb = /** @type {any} */ ({
+    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: true,
+    live: new Map(), deps: { log() {} }, record: () => ({ project: null }),
+    db: { prepare: () => ({ get: () => ({ opts: "{}" }), run: () => ({ changes: 1 }) }) },
+    emit: (/** @type {string} */ type) => events.push(type), stop: async () => {},
+    switchProvider: async () => { tries++; throw Object.assign(new Error("that account was removed"), { code: "account_removed" }); },
+  });
+  sb.resumeWaiting = Switchboard.prototype.resumeWaiting;
+  await Switchboard.prototype.revertOnce.call(sb, "t");
+  assert.equal(tries, 1, "no retry for a failure that cannot change");
+  assert.ok(events.includes("thread.text"), "and the room is told");
+});

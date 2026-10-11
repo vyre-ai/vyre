@@ -2645,7 +2645,7 @@ export class Switchboard {
     for (let n = 0; n < 100 && this.switches.has(id); n++) await new Promise(r => setTimeout(r, 20));
     /** @type {any} */ let failed = null;
     for (let attempt = 0; attempt < 2; attempt++) {
-      try { await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" }); failed = null; break; } catch (e) { failed = e; }
+      try { await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" }); failed = null; break; } catch (e) { failed = e; if (/** @type {any} */ (e).code === "account_removed" || /** @type {any} */ (e).code === "denied" || /** @type {any} */ (e).code === "account_required") break; }   // a failure that cannot change is not retried
     }
     if (failed) {
       // The switch back failed twice. The thread is NOT left live on the hop's account (a queued row would be written into the member's process, on the member's login): its base goes back into the record,
