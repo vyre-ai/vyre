@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, memberFacts, OWNER, MEMBERS } from "./testing.js";
+import { world, memberFacts, OWNER, MEMBERS, SPACE } from "./testing.js";
 import { PROJECT } from "../../records/core-types.js";
 
 const MEMBER = MEMBERS[0];
@@ -13,7 +13,7 @@ async function rig(/** @type {any} */ t) {
   const w = await world(t);
   const R = w.k.gateway.records;
   await R.define(w.owner, { add_types: [{ ...PROJECT, fields: PROJECT.fields.filter((/** @type {any} */ f) => f.name !== "client") }] });
-  const space = w.k.id.space;
+  const space = SPACE;
   const theirs = await R.create(w.owner, "project", { name: "Owner's", slug: "owners", owner: person(OWNER, space) });
   const mine = await R.create(w.owner, "project", { name: "Hers", slug: "hers", owner: person(MEMBER, space) });
   return { w, theirs, mine };
