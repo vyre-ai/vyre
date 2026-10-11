@@ -14,7 +14,7 @@ import { Logs } from "./log.js";
 import { createGroups } from "./group.js";
 import { serve } from "./server.js";
 import { connect } from "./client.js";
-import { prng, Sched, makeLink } from "./testkit.js";
+import { prng, Sched, makeLink, holds } from "./testkit.js";
 import { createFakeKernel } from "./fake-reply-port.js";
 
 const PORTS = ["fake appendOpen port", "stand-in port"];
@@ -320,8 +320,8 @@ test("a field value in what an assistant thinks, runs or says is dropped in a ro
   ] };
   r.say(r.threadOf("q2", "assistant:kit"), "x", { delta: "x" });
   await r.groups.idle();
-  assert.ok(!JSON.stringify(ada.frames).includes("4200"));
-  assert.ok(!JSON.stringify(r.fk.replies).includes("4200"), "and it never reached the handle");
+  assert.ok(!holds(ada.frames, 4200));
+  assert.ok(!holds(r.fk.replies, 4200), "and it never reached the handle");
   assert.ok(JSON.stringify(ada.frames).includes("progress") || ada.frames.some(f => f.type === "chat.tool-progress"), "the rest of the turn is shown");
 });
 

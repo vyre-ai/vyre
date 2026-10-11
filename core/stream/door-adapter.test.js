@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDoorAdapter, pipeDoor, drainDoor, validate, settle, HOLDBACK } from "./index.js";
 import { SessionLog } from "./log.js";
+import { holds } from "./testkit.js";
 
 const CHAIN = ["person:chris", "assistant:kit"];
 async function* gen(/** @type {any[]} */ events) { for (const e of events) yield e; }
@@ -76,7 +77,7 @@ test("a cut ends the message: text-cut with a note and no value, nothing after i
   assert.deepEqual(pipeDoor(log, ad, { type: "text", text: "1234567" }), [], "nothing after a cut");
   assert.deepEqual(pipeDoor(log, ad, { type: "done", id: "r" }), []);
   assert.ok(!log.read(0).some(f => f.type === "chat.text-done"));
-  assert.ok(!JSON.stringify(log.read(0)).includes("1234567"));
+  assert.ok(!holds(log.read(0), "1234567"));
 });
 
 test("unknown events and empty text are ignored; two answers in one log keep their own authors", async () => {

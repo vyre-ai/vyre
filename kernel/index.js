@@ -152,9 +152,9 @@ export async function createKernel(cfg) {
     const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, mints: needs.mints, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
     // On a Basic device only the fixed personal types exist: a module's other types are not made (its tools answer the Cloud line when they reach for one).
     const wanted = Array.isArray(needs.types) ? (cfg.basic ? needs.types.filter((/** @type {any} */ t) => cfg.basic.allow.has(String(t && t.name))) : needs.types) : [];
-    const ready = Promise.all([installed, wanted.length ? defineExtending(store, wanted) : Promise.resolve()]);
-    // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
-    ready.catch(() => {});
+    // A failure here (the sealing process went away; or the Space's record store was away when the types were asked for) surfaces on the module's calls, not as an unhandled rejection; and it is not kept for good: the next call asks again, so a store that failed once and joined on a retry serves the module without a restart.
+    const defineAll = () => Promise.all([installed, wanted.length ? defineExtending(store, wanted) : Promise.resolve()]); let readyP = defineAll(); readyP.catch(() => {});
+    const ready = { then: (/** @type {any} */ ok, /** @type {any} */ no) => { const p = readyP; return p.catch((/** @type {any} */ e) => { if (readyP === p && e && e.name === "StoreError" && e.code === "unavailable" && !(typeof store.attached === "function" && !store.attached())) { readyP = defineAll(); readyP.catch(() => {}); } return readyP; }).then(ok, no); } };   // asked again only after a refusal because the store was away, and only once it is not away (a refusal of the type itself is final; one while the store is still away makes no retry storm)
     // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
     // may assign to it, delete from it or redefine a method on it, so no holder can replace what another caller gets.
     const records = new Proxy({ ...gateway.records }, {

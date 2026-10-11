@@ -19,7 +19,7 @@ export function createDeferredStore(o) {
   const log = o.log ?? (() => {});
   /** @type {any} */ let real = null;
   let booting = true;
-  /** @type {any[]} */ const defs = [];
+  /** @type {any[]} definitions to play when the store attaches: a diff, or a function that is given the real store and defines on it (it reads what the store holds first, so it cannot be made before the store is there) */ const defs = [];
   let attaching = false;
   const refuse = () => unavailable(o.reason());
   const waitMs = o.waitMs ?? 56_000;
@@ -53,7 +53,7 @@ export function createDeferredStore(o) {
       try {
         // A define that arrives while this replay runs is pushed to the same queue, so take from the front until it is empty; `real` is set in the
         // same turn as the last empty check (no await between), so nothing can be queued after the loop and lost.
-        while (defs.length) await store.define(/** @type {any} */ (defs.shift()));
+        while (defs.length) { const d = defs.shift(); if (typeof d === "function") { try { await d(store); } catch (e) { log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`); } } else await store.define(/** @type {any} */ (d)); }
         if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");
@@ -66,6 +66,19 @@ export function createDeferredStore(o) {
       if (!booting) { if (await settle()) return real.define(diff, opt); throw refuse(); }
       if (defs.length >= MAX_DEFS) throw unavailable("the store is not ready and too many changes are waiting");
       defs.push(diff);
+      return { applied: false, changes: [] };
+    },
+    /**
+     * Define something that needs the real store (it reads what the store holds, then defines on top): done now when the store is attached, else kept and played, in the order asked and one at a time,
+     * before the store is let through. Never waits for the store, so whoever asks (a module starting) is not held up by a first start that takes minutes.
+     * @param {(store: any) => Promise<any>} f
+     */
+    async defer(f) {
+      if (real) return f(real);
+      // after boot, a store that is not even starting (no room, no Docker) refuses at once, in its own words, as a define does: whoever asked is a module that waits for the store (core/modules/store-waiting.js)
+      if (!booting && !(o.waits && o.waits())) throw refuse();
+      if (defs.length >= MAX_DEFS) throw unavailable("the store is not ready and too many changes are waiting");
+      defs.push(f);
       return { applied: false, changes: [] };
     },
     async types() { if (real) return real.types(); if (!booting && await settle()) return real.types(); throw refuse(); },

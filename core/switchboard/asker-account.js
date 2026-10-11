@@ -2,8 +2,8 @@
 // A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
 // accounts that serve that person), so a turn is never run on another member's sign-in:
 //   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
-//   - none, and the thread's account serves them (the home's, or theirs, or no named account at all): the thread's account is theirs to use, nothing moves;
-//   - none, and the thread's account is ANOTHER member's: the home's own default account for the provider if there is one, else the turn is refused in plain words ("add your own sign-in");
+//   - none, and the asker is not the owner: refused in plain words ("add your own sign-in"), whatever the thread names or the machine's own credential would give (an owner's login is the owner's alone);
+//   - none, and the asker is the owner: the thread's own account if it serves them (the home's, or no named account at all), else the home's default;
 // a person's chip may name only an account that serves them (onceTarget resolves it with their person). A turn that arrives while another is running waits behind it (runQueuedOver) and shows as waiting.
 
 /**
@@ -16,6 +16,10 @@ export async function askerOver(sb, id, kernelTurn) {
   const provider = rec.provider || "claude", asker = kernelTurn.asker, scope = { project: rec.project, agent: rec.agent };
   const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
+  // Nobody but the owner runs on the owner's login, nor on the machine's own credential: a person with no sign-in of their own here is refused, whatever account the thread names (or none).
+  const owner = ownerOf(sb);
+  // (with no account named, the thread runs on the machine's own login only where this machine has one to give: on a box, the vault's setup token)
+  if (owner && sb.canon(asker) !== owner && (rec.account || await holdsLogin(sb))) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -49,4 +53,40 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
 export async function servesChip(sb, over) {
   if (!over.person || !over.account) return;
   await sb.accountFor({ provider: over.provider, account: over.account, person: over.person }).catch(() => { throw Object.assign(new Error("That account is not yours to use here. Nothing was sent, and the turn did not move to another provider."), { code: "account_unavailable" }); });
+}
+
+const needOwnSignIn = () => Object.assign(new Error("You have no sign-in of your own here, and nobody else's is used for your messages. Add your own sign-in (Settings, your AI accounts) to use this chat. Nothing was sent."), { code: "account_required" });
+
+/**
+ * A session started or resumed for a chat turn whose asker is not the owner runs on that person's own account of the provider, never on the machine's own credential or the owner's login: their account
+ * is named for the launch, and a person with none is refused (the thread is not left half made). The owner's turns, a named agent's and a launch that already names an account are unchanged.
+ * @param {any} sb @param {any} rec the thread's record @param {any} o the launch options @param {string} id
+ */
+export async function memberAccount(sb, rec, o, id) {
+  const asker = o.kernelTurn && o.kernelTurn.asker, owner = ownerOf(sb);
+  if (!asker || !owner || sb.canon(asker) === owner || o.agent) return o;
+  const provider = rec.provider || o.provider || "claude";
+  // An account the launch already names must serve this person: the owner's, or another member's, is "no account" to them whatever the input says.
+  if (o.account) {
+    await sb.accountFor({ provider, account: o.account, person: asker, project: rec.project, agent: rec.agent }).catch(() => { if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id); throw Object.assign(new Error("That account is not yours to use here. Nothing was sent."), { code: "account_unavailable" }); });
+    return o;
+  }
+  if (provider === "claude" && !(await holdsLogin(sb))) return o;   // no machine login here to take: the launch has no one's credential to run on
+  const mine = await sb.accountFor({ provider, person: asker, project: rec.project, agent: rec.agent }).catch(() => null);
+  if (mine && mine.id) return { ...o, account: String(mine.id) };
+  if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
+  throw needOwnSignIn();
+}
+
+/** The kernel's owner, in the form askers are compared in (canonical); "" when there is none, which refuses nothing and is only a build without a kernel. @param {any} sb */
+function ownerOf(sb) {
+  const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
+  return o ? sb.canon(o) : "";
+}
+
+/** Does this machine hold a credential of its own that a launch with no account would run on (on a box, the vault's setup token or key)? Ambient (Claude Code's own login on a Mac) names none here. @param {any} sb */
+async function holdsLogin(sb) {
+  if (!sb.deps || typeof sb.deps.auth !== "function") return false;
+  const a = await sb.deps.auth({ agent: null }).catch(() => null);
+  return Boolean(a && a.env && Object.keys(a.env).length);
 }

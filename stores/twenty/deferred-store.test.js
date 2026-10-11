@@ -132,3 +132,86 @@ test("records.define on a store that attaches late waits for it; past the wait i
   await assert.rejects(() => k2.gateway.records.define(owner2, { add_types: [T] }), e => !/could not be read/.test(/** @type {any} */ (e).message) && /starting Records.*so far/.test(/** @type {any} */ (e).message));
   clearInterval(keep);
 });
+
+test("defer: kept while the store is away and booting or starting, played in order before the store is let through; after boot a store that is not starting refuses at once", async () => {
+  const seen = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "Twenty cannot start here", waits: () => false });
+  assert.deepEqual(await d.defer(async () => seen.push("x")), { applied: false, changes: [] }, "while booting it is kept");
+  await d.defer(async () => seen.push("y"));
+  d.bootDone();
+  await assert.rejects(() => d.defer(async () => seen.push("z")), { code: "unavailable", name: "StoreError" });
+  await d.attach(createMemoryStore());
+  assert.deepEqual(seen, ["x", "y"], "in the order asked; the refused one never ran");
+  assert.equal(await d.defer(async () => "now"), "now", "attached: run at once");
+  const starting = createDeferredStore({ reason: () => "starting", waits: () => true });
+  starting.bootDone();
+  assert.deepEqual(await starting.defer(async () => {}), { applied: false, changes: [] }, "a store that is starting is not waited for");
+});
+
+test("defer: a kept define the store refuses is logged and the ones after it still play, in order; the store still attaches", async () => {
+  const logged = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "starting", log: m => logged.push(m) });
+  const seen = /** @type {string[]} */ ([]);
+  await d.defer(async () => { throw Object.assign(new Error('Field "created_by" of goal collides with a name Twenty uses on every object'), { code: "invalid" }); });
+  await d.defer(async () => seen.push("second"));
+  await d.attach(createMemoryStore());
+  assert.deepEqual(seen, ["second"]);
+  assert.ok(d.attached(), "the store joined");
+  assert.ok(logged.some(m => /refused: Field "created_by"/.test(m)), "and the refusal is in the log");
+});
+
+test("a module handle made while the store is away after boot still works once the store has attached (the first refusal is not kept forever)", async () => {
+  const d = createDeferredStore({ reason: () => "the compose file could not be regenerated", waits: () => false });
+  const k = await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: d });
+  d.bootDone();   // the server is up; this store failed its first start and is trying again
+  const THING = { name: "thing", label: "Thing", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const svc = /** @type {any} */ (k).kernelFor({ name: "thinger", needs: { kernel: { actions: ["records.create", "records.read"], prefixes: ["thing/*"], types: [THING] } } });
+  const owner = /** @type {any} */ (k).chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await assert.rejects(() => svc.records.create(owner, "thing", { name: "early" }), e => /** @type {any} */ (e).code === "unavailable", "while the store is away the module is told so");
+  await d.attach(createMemoryStore());
+  const made = await svc.records.create(owner, "thing", { name: "late" });
+  assert.equal(made.data.name, "late", "after the store attached the same handle works, and its type was defined");
+});
+
+test("a module handle's refused define is asked again only when the store is no longer away; a refusal of the type itself is final", async () => {
+  const mkKernel = async (/** @type {any} */ store) => bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store });
+  const THING = { name: "thing", label: "Thing", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const need = { name: "thinger", needs: { kernel: { actions: ["records.create", "records.read"], prefixes: ["thing/*"], types: [THING] } } };
+  const chain = (/** @type {any} */ k) => k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  // away: refused again and again without a new define each time; attached: asked again once and it works
+  const d = createDeferredStore({ reason: () => "Records is down", waits: () => false });
+  const k = /** @type {any} */ (await mkKernel(d));
+  d.bootDone();
+  let asked = 0; const defer0 = d.defer; d.defer = async (/** @type {any} */ f) => { asked++; return defer0(f); };
+  const svc = k.kernelFor(need);
+  const owner = chain(k);
+  for (let i = 0; i < 3; i++) await assert.rejects(() => svc.records.create(owner, "thing", { name: "x" }), (e) => e.code === "unavailable");
+  assert.equal(asked, 1, "three calls while the store is away asked for the types once");
+  await d.attach(createMemoryStore());
+  assert.equal((await svc.records.create(owner, "thing", { name: "now" })).data.name, "now", "attached: the next call asks again and the module is served");
+  assert.equal(asked, 1, "(the second ask went to the attached store directly)");
+  // a refusal of the type itself, by an attached store, is final: reported on every call, asked once
+  const real = createMemoryStore(); let defines = 0; const define0 = real.define;
+  real.define = async (/** @type {any} */ x) => { if (JSON.stringify(x).includes('"thing"')) { defines++; throw Object.assign(new Error('Field "created_by" of thing collides with a name Twenty uses on every object'), { name: "StoreError", code: "invalid" }); } return define0.call(real, x); };
+  const k2 = /** @type {any} */ (await mkKernel(real));
+  const s2 = k2.kernelFor(need);
+  for (let i = 0; i < 3; i++) await assert.rejects(() => s2.records.create(chain(k2), "thing", { name: "x" }), (e) => /collides/.test(e.message));
+  assert.equal(defines, 1, "a refused type is not asked for again on every call");
+});
+
+test("two calls at once after a store-away refusal run one define, not two", async () => {
+  const THING = { name: "thing", label: "Thing", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const d = createDeferredStore({ reason: () => "Records is down", waits: () => false });
+  const k = /** @type {any} */ (await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: d }));
+  d.bootDone();
+  const svc = k.kernelFor({ name: "thinger", needs: { kernel: { actions: ["records.create", "records.read"], prefixes: ["thing/*"], types: [THING] } } });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await assert.rejects(() => svc.records.create(owner, "thing", { name: "a" }), (e) => e.code === "unavailable");
+  const real = createMemoryStore(); let defines = 0; const define0 = real.define;
+  real.define = async (/** @type {any} */ x) => { if (JSON.stringify(x).includes('"thing"')) { defines++; await new Promise((r) => setTimeout(r, 30)); } return define0.call(real, x); };
+  await d.attach(real);
+  defines = 0;
+  const both = await Promise.all([svc.records.create(owner, "thing", { name: "b" }), svc.records.create(owner, "thing", { name: "c" })]);
+  assert.equal(both.length, 2);
+  assert.equal(defines, 1, "one define for two callers");
+});

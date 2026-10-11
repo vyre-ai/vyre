@@ -260,6 +260,8 @@ export function createNetd(o) {
       if (!starting) starting = attempt();
       return starting;
     },
+    /** The pids of the programs this network started and still runs: Headscale and the Wink node (wink-forwarder). Only the daemon's confinement check reads them (core/spawner/confine.js ownListeners). */
+    pids() { return [hs && hs.pid, ...(host && typeof host.pids === "function" ? host.pids() : [])].filter(n => Number.isInteger(n)); },
     async stop() { stopped = true; if (retryTimer) clearTimeout(retryTimer); if (wake) wake(); if (starting) await starting.catch(() => {}); await teardown(); },
     /** The box's name changed (claimed, released): the network starts again so the control address and the public gate follow it. */
     async nameChanged() {
