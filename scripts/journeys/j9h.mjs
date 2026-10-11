@@ -34,8 +34,18 @@ export default {
         const home = rows.find((/** @type {any} */ r) => r.home === true || r.hosted !== true) || rows[0];
         assert.ok(home && /^spc_/.test(String(home.id || home.space)), `the server's own Space is listed: ${JSON.stringify(rows).slice(0, 400)}`);
         team = { space: String(home.id || home.space), label: String(home.name || home.label || ""), name: String(home.name || home.label || home.id), home };
-        const r = team.label ? await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`) : null;
-        return `${team.space} "${team.label}" (names directory: ${r ? r.status : "no name"})`;
+        const r0 = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
+        const f1 = `names-directory record for "${team.label}" before the workaround: HTTP ${r0.status}`;
+        // HARNESS WORKAROUND so the walk can go on past finding 1: give the home Space a root key (host-here does this for a hosted Space only) and publish its record as a hosted Space's is.
+        const { spaceFiles } = await import("../../core/spaces/host.js");
+        const files = spaceFiles(path.join(w.dir, "server", ".vyre", "spaces"));
+        const kp = await files.keys.generate();
+        await files.keys.hold(team.space, kp.privateKey);
+        const claimed = await mac.claimExistingSpace(`day${w.person.slice(-5)}`, team.space, kp.publicKey);
+        team.label = claimed.label; team.name = claimed.name;
+        const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
+        assert.equal(r.status, 200, "the directory resolves the Space's name after the harness claimed it");
+        return `${team.space} (was "${home.name}") now ${team.name}; harness workaround for findings 1 and 2; ${f1}`;
       }, { owner: "projects-flows" });
 
       // two more people, each with their own app, name and keys
