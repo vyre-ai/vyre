@@ -462,7 +462,7 @@ export function createGrantsStore(cfg) {
         .sort((a, b) => (a.id < b.id ? -1 : 1));
     },
 
-    /** The Space's members, as the same read `list` is: a manager and above sees everyone, anyone else only themselves. Each is a Membership (role, scope, expires). */
+    /** The Space's members: a manager and above sees everyone in full; any other non-temp member sees the person and role of the others (partial) and the full Membership (role, scope, expires) only of themself. */
     async membersList(chain) {
       const me = reader(chain);
       const all = await bound.allowed(chain, "grants.list", urn("member", "*"));

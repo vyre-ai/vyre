@@ -158,7 +158,10 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);
-  const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
+  // the thread goes back to its own provider once the one turn has ended, which is after the reply's last word: wait for it, not for the clock
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back" && e.payload.to === "claude"), "the thread going back to its own provider", 30_000).catch(() => {});
+  const ev = await events();
   assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.to === "codex" && e.payload.reason === "once"), "the turn ran on carol's provider for that one turn");
   assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back" && e.payload.to === "claude"), "and the thread went back to its own");
   await b.stop();

@@ -7,7 +7,7 @@ import { checkDockerfile, buildImage } from "./container.js";
 import { askHelper, helperPresent } from "../../stores/twenty/helper.js";
 import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
 import { repoOf, cloneArgs, cloneEnv, tokenShape, TOKEN_ID, CLONE_MAX_BYTES } from "../../lib/publish/repo-source.js";
-import { execFile } from "node:child_process";
+import { gitCloneRun } from "../../lib/git-safe.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -116,18 +116,15 @@ export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
 
 /** git clone, shallow, of one https GitHub repo into `dir`: no hooks, no prompt, no other protocol, a time limit; with a token only for a private repo. @param {string} url @param {string | null} branch @param {string} dir @param {string | null} token */
 async function gitClone(url, branch, dir, token) {
-  await new Promise((resolve, reject) => {
-    execFile("git", cloneArgs(url, branch, dir), { env: cloneEnv(token), timeout: 120_000, maxBuffer: 1 << 20 }, (err, _out, errText) => {
-      if (!err) return resolve(undefined);
-      const t = String(errText);
-      const closed = /not found|could not read|Authentication failed|terminal prompts disabled|403|401/i.test(t);
-      const why = /Remote branch .* not found/i.test(t) ? "that branch is not in the repo"
-        : closed && token ? "GitHub did not accept the token for that repo: check that it reaches the repo (repo scope, or Contents read)"
-        : closed ? `the repo is not there, or it is private: for a private repo, grant a GitHub token as the build secret ${TOKEN_ID} (publish.secret.grant with use build)`
-        : "git could not clone it";
-      reject(refuse(`could not get the repo: ${why}; check the owner and name, or publish a folder instead`, "refused"));
-    });
-  });
+  const r = await gitCloneRun(cloneArgs(url, branch, dir), cloneEnv(token), { timeout: 120_000 });
+  if (r.ok) return;
+  const t = r.stderr;
+  const closed = /not found|could not read|Authentication failed|terminal prompts disabled|403|401/i.test(t);
+  const why = /Remote branch .* not found/i.test(t) ? "that branch is not in the repo"
+    : closed && token ? "GitHub did not accept the token for that repo: check that it reaches the repo (repo scope, or Contents read)"
+    : closed ? `the repo is not there, or it is private: for a private repo, grant a GitHub token as the build secret ${TOKEN_ID} (publish.secret.grant with use build)`
+    : "git could not clone it";
+  throw refuse(`could not get the repo: ${why}; check the owner and name, or publish a folder instead`, "refused");
 }
 
 /**
