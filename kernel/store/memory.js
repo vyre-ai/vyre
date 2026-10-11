@@ -36,11 +36,15 @@ export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
   /** @type {Map<string, Table>} */ const rows = new Map();
+  /** The type list as last read, frozen and shared until a type changes: every record read and write asks for it, and a copy each time was 14 s of a 60 s burst (live, 10 Oct). */
+  /** @type {any[] | null} */ let snap = null;
+  const frozen = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) frozen(v); } return o; };
   const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
   /** @type {{ readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] }} */
   const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, pop: () => { a.pop(); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
     for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
+    snap = null;
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
     if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
   }
@@ -109,7 +113,7 @@ export function createMemoryStore(cfg = {}) {
       for (const t of diff.add_types || []) {
         const had = types.get(t.name);
         if (had && canonical(had) === canonical(t)) continue;
-        types.set(t.name, clone(t));
+        types.set(t.name, clone(t)); snap = null;
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         rebuildUnique(t.name);
@@ -119,22 +123,22 @@ export function createMemoryStore(cfg = {}) {
         if (!types.has(t.name)) throw fail("unknown_type", `no type ${t.name}`);
         if (canonical(types.get(t.name)) === canonical(t)) continue;
         const before = types.get(t.name);
-        types.set(t.name, clone(t));
-        try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); rebuildUnique(t.name); throw e; }
+        types.set(t.name, clone(t)); snap = null;
+        try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); snap = null; rebuildUnique(t.name); throw e; }
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
         if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
-        types.delete(name); rows.delete(name);
+        types.delete(name); rows.delete(name); snap = null;
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
       }
       return { applied: changesMade.length > 0, changes: changesMade };
     },
     /** Every type definition, as defined. */
-    async types() { touch("types", []); return [...types.values()].map(t => clone(t)); },
+    async types() { touch("types", []); return snap ||= frozen([...types.values()].map(t => clone(t))); },
     /** The field names and kinds of a type, or null when there is no such type (the gateway reads sealed fields from here). */
     async describe(type) {
       touch("describe", [type]);
