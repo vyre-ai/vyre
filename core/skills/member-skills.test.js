@@ -29,8 +29,9 @@ async function world(t) {
   const svc = handle.peerService({ space, kernel: d.kernel });
   const chainOf = (/** @type {string} */ person) => d.kernel.chains.fromFacts(facts(person));
   // what a person's own surface sees through the registry (the path a session's list takes)
-  const listFor = async (/** @type {string} */ person) => (await d.registry.call("skills.list", {}, "cli", { kernelFacts: facts(person) })).data;
-  return { d, OWNER, space, svc, chainOf, listFor, ownerFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }, as: (/** @type {string} */ person, /** @type {string} */ call, input = {}) => svc[call](chainOf(person), input) };
+  const tokenOf = async (/** @type {any} */ chain) => ({ token: (await d.kernel.surfaces.open(chain, {})).token });
+  const listFor = async (/** @type {string} */ person) => (await d.registry.call("skills.list", {}, "cli", await tokenOf(d.kernel.chains.fromFacts({ ...facts(person), path: "direct", session: "s" })))).data;
+  return { d, OWNER, space, svc, chainOf, listFor, tokenOf, ownerChain, ownerFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }, as: (/** @type {string} */ person, /** @type {string} */ call, input = {}) => svc[call](chainOf(person), input) };
 }
 
 test("skills is a group of the Space kernel's remote calls", () => {
@@ -54,7 +55,7 @@ test("a member drafts and approves a personal skill of her own; her list shows i
   const anaTurn = await w.listFor(ANA), benTurn = await w.listFor(BEN);
   assert.ok(anaTurn.skills.some((/** @type {any} */ s) => s.name === "ana-own"), "her turn lists it");
   assert.ok(!benTurn.skills.some((/** @type {any} */ s) => s.name === "ana-own"), "another member's turn does not");
-  const ownerTurn = (await w.d.registry.call("skills.list", {}, "cli", { kernelFacts: w.ownerFacts })).data;
+  const ownerTurn = (await w.d.registry.call("skills.list", {}, "cli", await w.tokenOf(w.ownerChain))).data;
   assert.ok(!ownerTurn.skills.some((/** @type {any} */ s) => s.name === "ana-own"), "the owner's turn does not");
   const versions = await w.as(ANA, "versions", {});
   assert.ok(versions.versions.some((/** @type {any} */ v) => v.name === "ana-own"));
@@ -71,7 +72,7 @@ test("a member's draft at the Space level stays a draft: she cannot approve it",
 
 test("a member cannot read, approve or draft into the owner's personal skills", { timeout: 90_000 }, async t => {
   const w = await world(t);
-  const call = (/** @type {string} */ tool, /** @type {any} */ input) => w.d.registry.call(tool, input, "cli", { kernelFacts: w.ownerFacts });
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => w.d.registry.call(tool, input, "cli", await w.tokenOf(w.ownerChain));
   const d1 = await call("skills.draft", { name: "owner-secret", level: "personal", kind: "skill", body: skill("owner-secret", "owner only") });
   assert.ok(!d1.error, JSON.stringify(d1.error));
   const a1 = await call("skills.approve", { name: "owner-secret", level: "personal", version: d1.data.version });
