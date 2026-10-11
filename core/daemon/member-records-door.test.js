@@ -12,6 +12,7 @@ import { createRemoteServer } from "../../kernel/remote/server.js";
 import { WIRE_VERSION } from "../../kernel/remote/wire.js";
 import { createMemberTools } from "../work/member-tools.js";
 import { flowHash, canonical } from "../../kernel/flows/schema.js";
+import { MEMORY_FACT } from "../../kernel/gateway/memory.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -189,4 +190,32 @@ test("the keeper rule: the owner and the keeper service pass, a chain that is Be
   const other = w.K.gateway.serviceChain("watchers");
   const rows = await R.query(other, "skill", { page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows, () => []);
   assert.deepEqual(rows.map((/** @type {any} */ r) => r.data.name), [], "the watchers module's chain is not the keeper of skill");
+});
+
+test("a chain that is a member plus a service name changes no protected row: Flow types (the flag, not the keeper list) and the work module's memory facts", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const R = w.K.gateway.records;
+  const ben = w.chainOf(BEN);
+  // Flow rows exist: the owner defined and approved one in world()
+  const owner = w.ownerChain;
+  const approvals = (await R.query(owner, "flow-approval", { page: { limit: 10 } })).rows, defs = (await R.query(owner, "def-flow", { page: { limit: 10 } })).rows, states = (await R.query(owner, "flow-state", { page: { limit: 10 } })).rows;
+  assert.ok(approvals.length && defs.length && states.length, "control: the owner reads the Flow rows");
+  for (const mod of ["flows", "work", "skills"]) {
+    const two = w.K.chains.forModule({ module: mod, approver: ben });
+    for (const [type, rows] of [["flow-approval", approvals], ["def-flow", defs], ["flow-state", states]]) {
+      const r = rows[0];
+      assert.deepEqual(await R.query(two, type, { page: { limit: 10 } }).then((/** @type {any} */ x) => x.rows.length, () => 0), 0, `[Ben, service:${mod}] reads no ${type}`);
+      await assert.rejects(R.update(two, type, r.id, { hash: "forged" }, r.version), `[Ben, service:${mod}] cannot update a ${type}`);
+      await assert.rejects(R.remove(two, type, r.id, r.version), `[Ben, service:${mod}] cannot remove a ${type}`);
+    }
+  }
+  // the work module's memory facts: a row the owner (an admin acting as themselves) makes, then [Ben, service:work] tries to change it
+  await R.define(owner, { add_types: [MEMORY_FACT] }).catch(() => {});
+  const fact = await R.create(owner, "memory_fact", { text: "OWNER-FACT", source: "test", kind: "fact", by: `person:${w.OWNER}`, filed_at: 1, key: "k-owner-fact", state: "active", labels: "{}", scope: "" });
+  assert.ok(fact, "control: the owner files a memory fact");
+  {
+    const two = w.K.chains.forModule({ module: "work", approver: ben });
+    await assert.rejects(R.update(two, "memory_fact", fact.id, { text: "CHANGED" }, fact.version), "[Ben, service:work] cannot change a memory fact");
+    await assert.rejects(R.remove(two, "memory_fact", fact.id, fact.version), "[Ben, service:work] cannot remove a memory fact");
+  }
 });
