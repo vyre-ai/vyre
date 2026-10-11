@@ -2232,8 +2232,7 @@ export class Switchboard {
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length || startingOver(this, id)) return;   // (another person's one-turn is being started from this queue: the rest waits for its end)
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end. A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
-    for (const r of all) r.kturn = this.canonTurn(r.kturn);
-    const lead = all[0].kturn || null;
+    for (const r of all) r.kturn = this.canonTurn(r.kturn); const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const go = () => {
     const now = Date.now();
