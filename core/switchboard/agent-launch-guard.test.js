@@ -36,7 +36,7 @@ async function world(t) {
   const db = d.registry.deps.db;
   const runs = () => db.prepare("SELECT COUNT(*) n FROM threads_runs WHERE agent = 'kit'").get().n;
   const launch = (meta, caller = "module:agents") => d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", auth: "ambient", cwd: work, prompt: "hello" }, caller, meta);
-  return { d, ownerChain, bobChain, tokenOf, runs, launch };
+  return { d, ownerChain, bobChain, tokenOf, runs, launch, work };
 }
 
 test("a member's request for an agent's thread with no sign-in picked is refused with the next step, and nothing is made", { timeout: 90_000 }, async t => {
