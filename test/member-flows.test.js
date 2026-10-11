@@ -55,7 +55,7 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.equal(g2.runs_as, owner, "a draft of it still runs as them");
   assert.equal(g2.by, BOB, "and the draft says she made it");
   // a second draft after a big one: its card compares with what RUNS, so the first draft's change is still shown to the approver
-  const v3 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob, tweaked" }) });
+  const v3 = await svc.define(bob, { id: od.id, flow: { ...find("owners_flow", { on: "manual" }, { label: "improved by bob" }), steps: [{ id: "f", kind: "find", type: "contact", limit: 2 }] } });
   assert.ok(v3.ok && v3.version === v2.version + 1, JSON.stringify(v3));
   const c2 = (await svc.card(bob, { id: od.id, version: v2.version })).changes, c3 = (await svc.card(bob, { id: od.id, version: v3.version })).changes;
   assert.ok(c2.length > 0, "the first draft changes something");
