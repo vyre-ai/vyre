@@ -5,13 +5,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { SKILL_MIGRATIONS, shapeOf, stepsOf, fingerprints, createSkills, pluginDirs, template, frontmatter, PLUGIN_NAMES } from "./skills.js";
+import { SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION, shapeOf, stepsOf, fingerprints, createSkills, pluginDirs, template, frontmatter, PLUGIN_NAMES } from "./skills.js";
 import { tempHome } from "../../test/helpers.js";
 
 /** An in-memory store with the skill tables, a fake clock and a list of emitted events. */
 function setup(t) {
   const db = new DatabaseSync(":memory:");
-  for (const sql of SKILL_MIGRATIONS) db.exec(sql);
+  for (const sql of [...SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION]) db.exec(sql);
   const home = tempHome(t);                          // a fake Vyre home; also stands in for the user's home
   const events = [];
   let clock = 1_700_000_000_000;

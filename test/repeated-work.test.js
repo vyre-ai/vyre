@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { SKILL_MIGRATIONS, stepsOf, createSkills, template } from "../core/learn/skills.js";
+import { SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION, stepsOf, createSkills, template } from "../core/learn/skills.js";
 import { skillPrompt } from "../core/learn/jobs.js";
 import { isVyreTool, vyreSteps } from "../lib/vyre-steps.js";
 import { argsOf } from "../lib/receipt.js";
@@ -90,7 +90,7 @@ test("a run with a failed step is not evidence", () => {
 
 test("the detector offers the procedure after the third clean session, once, as a skill that ends in the tools_run, and a model's draft keeps that ending", (t) => {
   const db = new DatabaseSync(":memory:");
-  for (const sql of SKILL_MIGRATIONS) db.exec(sql);
+  for (const sql of [...SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION]) db.exec(sql);
   const home = tempHome(t);
   const skills = createSkills(db, { now: () => 1_700_000_000_000, emit: () => {}, claudeDir: path.join(home, ".claude") });
   const steps = stepsOf({ tools: STEPS.map((s, i) => ({ steps: [s], at: i })) });

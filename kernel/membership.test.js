@@ -27,8 +27,11 @@ test("membership: one named person's role and nothing else, only for a module th
   const ev = k.log.read({ type: "membership.read" });
   assert.equal(ev.length, 4, "each answered call is an event, a refused one is not");
   assert.deepEqual(ev[0].data, { module: "spaces", person: BOB, member: true });
-  // enumeration is the person's own: a manager sees everyone, a member only themselves
+  // enumeration: a manager sees everyone in full; a member sees who is in the Space and their roles (J9, reviewed: trust), and only their own scope and end date
   const dev = (person, id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person, path: "direct" });
   assert.equal((await g.members.list(dev(ADA, "d-a"))).length, 3);
-  assert.deepEqual((await g.members.list(dev(BOB, "d-b"))).map(m => m.person), [BOB]);
+  const seen = await g.members.list(dev(BOB, "d-b"));
+  assert.deepEqual(seen.map(m => m.person), [ADA, OWNER, BOB].sort());
+  assert.deepEqual(seen.filter(m => m.person !== BOB).map(m => Object.keys(m).sort()), [["partial", "person", "role", "space"], ["partial", "person", "role", "space"]], "another person's scope and end date stay with managers");
+  assert.equal(seen.find(m => m.person === BOB).partial, undefined, "one's own is whole");
 });
