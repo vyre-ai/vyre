@@ -29,9 +29,7 @@ test("drive: every call asks authorize first, the version's author is the chain'
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants, D = k.gateway.drive;
-  const role = { person: BOB, role: "member" };
-  await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
-  // a member's role has no drive actions: the file is not there for them, and the drive is never touched
+  // a person who is no member holds no drive action: the file is not there for them, and the drive is never touched
   await assert.rejects(() => D.put(bob, "proj/a.txt", new Uint8Array([1])), { code: "not_found" });
   await assert.rejects(() => D.get(bob, "proj/a.txt"), { code: "not_found" });
   assert.deepEqual(drive.calls, [], "refused before the drive was touched");
@@ -115,4 +113,19 @@ test("DR-2: a listing is one authorization of the folder and a bounded page with
   assert.equal(seen.length, 5000);
   assert.equal(new Set(seen).size, 5000);
   assert.equal((await D.list(owner, "many/")).length, 5000, "list still returns everything, a page at a time inside");
+});
+
+test("a member reads and writes the Space's Drive by role (the team works in one Drive); restoring an old version stays the admin's", async () => {
+  const drive = fakeDrive();
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const role = { person: BOB, role: "member" };
+  await k.gateway.grants.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
+  const D = k.gateway.drive;
+  assert.equal((await D.put(bob, "team/a.txt", new TextEncoder().encode("one"))).version, 1);
+  assert.equal((await D.put(bob, "team/a.txt", new TextEncoder().encode("two"))).version, 2);
+  assert.equal(new TextDecoder().decode(await D.get(bob, "team/a.txt")), "two");
+  assert.deepEqual(drive.calls.at(-1).slice(0, 1), ["get"]);
+  await assert.rejects(() => D.restore(bob, "team/a.txt", 1), { code: "not_found" }, "restore is the admin's");
 });
