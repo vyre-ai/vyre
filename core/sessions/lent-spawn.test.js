@@ -400,6 +400,7 @@ test("the other person's message that waited while the chat came back is the nex
   assert.equal(ended.length, 0, "never into a process that is on a computer");
   lentDrain(sb(fresh, true), "t", before);
   assert.equal(ended.length, 1, "the fresh idle process on the server takes the waiting message as its turn");
+});
 test("a chat that another person's turn took to the server is offered back to its own person only: the row says why, nobody else's turn and no hand-over of the person's own qualifies", async () => {
   const kernel = (/** @type {any} */ row) => ({ runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => row } }) });
   const q = { thread: SESSION, chat: "chat_bob", native: SESSION, person: BOB };
