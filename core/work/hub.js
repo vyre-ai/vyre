@@ -172,7 +172,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (!me || !SLUG_RE.test(name)) return;
     const role = typeof kernel.membership === "function" ? (await kernel.membership(String(me.actor.id)).catch(() => null) || {}).role : undefined;
     if (role === "owner" || role === "admin") return;
-    const refuse = (/** @type {string} */ message, code = "not_allowed") => Object.assign(new Error(message), { code });
+    const refuse = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
     const rec = await find(PROJECT, "slug", name);
     if (!rec) throw refuse(`There is no project called ${name} yet. Start the project first, then start the chat in it.`, "not_found");
     const team = await projectTeamOf({ get: (/** @type {string} */ t, /** @type {string} */ id) => kernel.records.get(chain(), t, id), query: (/** @type {string} */ t, /** @type {any} */ spec) => kernel.records.query(chain(), t, spec) }, (/** @type {string} */ t, /** @type {string} */ id) => `vyre://${kernel.space}/${t}/${id}`)(rec.id);
