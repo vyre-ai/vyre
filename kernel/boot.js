@@ -49,7 +49,5 @@ export async function bootKernel(cfg) {
   const getT = db.prepare("SELECT text FROM kernel_task_texts WHERE task = ?"), putT = db.prepare("INSERT INTO kernel_task_texts (task, text) VALUES (?, ?) ON CONFLICT(task) DO UPDATE SET text = excluded.text"), delT = db.prepare("DELETE FROM kernel_task_texts WHERE task = ?");
   const texts = { get: (/** @type {string} */ id) => { const r = /** @type {any} */ (getT.get(String(id))); try { return r ? JSON.parse(r.text) : undefined; } catch { return undefined; } }, set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) delT.run(String(id)); else putT.run(String(id), JSON.stringify(v)); }, drop: (/** @type {string} */ id) => { delT.run(String(id)); }, all: () => /** @type {any[]} */ (db.prepare("SELECT task, text FROM kernel_task_texts").all()).map(r => { try { return [r.task, JSON.parse(r.text)]; } catch { return [r.task, null]; } }) };
   // The unit of work exists only where the record store and the log are the same database: the built-in store, not one the caller brought (Twenty).
-  const k = await createKernel({ ...rest, log, store, texts, ...(rest.store ? {} : { unit: createUnit(db) }) });
-  // The log's owner stores its batched consumer cursors when the kernel stops, so no kind of kernel (the home's, a team Space's) can forget to.
-  return Object.freeze({ ...k, stop: async () => { log.flush(); } });
+  return await createKernel({ ...rest, log, store, texts, ...(rest.store ? {} : { unit: createUnit(db) }) });
 }

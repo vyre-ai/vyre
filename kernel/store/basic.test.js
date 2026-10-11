@@ -92,3 +92,9 @@ test("a kernel's stop() stores the batched consumers' cursors: reopened on the s
   await new Promise(r => setTimeout(r, 20));
   assert.deepEqual(second, [], "the cursor was stored at stop: the three events are not delivered again");
 });
+
+test("a booted kernel is the one object the Drive keys were registered for: stop() is added to it, not to a copy", async () => {
+  const k = await boot();
+  assert.equal(typeof k.stop, "function");
+  assert.ok(Object.isFrozen(k));
+});
