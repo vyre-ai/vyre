@@ -35,7 +35,10 @@ export const firstTab = (data: Record<string, unknown> | undefined | null): Pane
  */
 export function panesAt(width: number, tab: PaneId, data: Record<string, unknown> | undefined | null): PaneId[] {
   if (width < WIDE) return [tab];
-  const base: PaneId[] = isTemplateProject(data) ? ["stages", "chats", "files"] : ["chats", "files", "memory"];
+  const first = opensOn(data);
+  // the page a template chose to open on leads (the project's first pane), the others follow in their usual order
+  const usual: PaneId[] = isTemplateProject(data) ? ["stages", "chats", "files"] : ["chats", "files", "memory"];
+  const base: PaneId[] = first && usual.includes(first) ? [first, ...usual.filter((p) => p !== first)] : usual;
   const want = width >= WIDER ? base : base.slice(0, 2);
   if (tab === "team" || tab === "timeline") return [tab];
   return want.includes(tab) ? want : [...want.slice(0, want.length - 1), tab];

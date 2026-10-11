@@ -16,7 +16,7 @@ const at = <T,>(list: T[], i: number, f: (x: T) => T): T[] => list.map((x, n) =>
 const dropEmpty = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v !== undefined)) as T;
 
 /** A template to start from: a name, a first and a last stage, one task. */
-export const blank = (): Body => ({ name: "", stages: [{ name: "Start", tasks: [{ title: "", doer: "person:owner", output: { kind: "note" } }] }, { name: "Done" }] });
+export const blank = (): Body => ({ name: "", stages: [{ name: "Start", tasks: [{ title: "", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] });
 
 export const setName = (b: Body, name: string): Body => ({ ...b, name });
 export const setDescription = (b: Body, description: string): Body => dropEmpty({ ...b, description });
@@ -59,7 +59,7 @@ export function removeRole(b: Body, role: string): Body {
 }
 
 /** The doers a task can be given: this template's roles, then "a person" for work only a person does. */
-export const doerChoices = (b: Body): [string, string][] => [...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]), ["person:owner", "A person (the project's owner)"]];
+export const doerChoices = (b: Body): [string, string][] => [...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]), ["role:owner", "The owner"]];
 export const firstDoer = (b: Body): string => doerChoices(b)[0][0];
 export const ownerChoices = (b: Body): [string, string][] => [["", "No one in particular"], ...(b.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`])];
 
