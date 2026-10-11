@@ -219,3 +219,25 @@ test("a chain that is a member plus a service name changes no protected row: Flo
     await assert.rejects(R.remove(two, "memory_fact", fact.id, fact.version), "[Ben, service:work] cannot remove a memory fact");
   }
 });
+
+test("a member's kernel attributes (opts.attrs: project, owner) cannot put a record into someone else's project or under someone else's name", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const B = (/** @type {string} */ c, /** @type {any[]} */ ...a) => w.door(BEN, c, ...a);
+  const O = (/** @type {string} */ c, /** @type {any[]} */ ...a) => w.door(w.OWNER, c, ...a);
+  const proj = await O("records.create", "project", { name: "Owner Project", slug: "owner-project", status: "active", memory_scope: "project:owner-project", owner: { actor: { kind: "person", id: w.OWNER, space: w.SPACE } } });
+  assert.ok(proj.ok, "control: the owner makes a project: " + JSON.stringify(proj).slice(0, 160));
+  const purn = proj.v.urn || `vyre://${w.SPACE}/project/${proj.v.id}`;
+  // Ben is not on it: his records may not carry its project, nor the owner as their owner
+  for (const type of ["task", "reminder", "goal"]) {
+    const data = type === "task" ? { title: "BEN" } : type === "reminder" ? { title: "BEN" } : { title: "BEN" };
+    assert.equal((await B("records.create", type, data, { attrs: { project: purn } })).ok, false, `${type} with attrs.project = the owner's project`);
+    assert.equal((await B("records.create", type, data, { attrs: { owner: w.OWNER } })).ok, false, `${type} with attrs.owner = the owner`);
+  }
+  assert.equal((await B("records.create", "task", { title: "BEN" }, { on_behalf: w.ownerChain })).ok, false, "on_behalf is not for a member");
+  // his own project and his own name are fine
+  const mine = await B("records.create", "project", { name: "Ben Project", slug: "ben-project", status: "active", memory_scope: "project:ben-project" });
+  assert.ok(mine.ok, "control: Ben makes his own project: " + JSON.stringify(mine).slice(0, 160));
+  const murn = mine.v.urn || `vyre://${w.SPACE}/project/${mine.v.id}`;
+  assert.ok((await B("records.create", "task", { title: "BEN-OWN" }, { attrs: { project: murn } })).ok, "a task in his own project is accepted");
+  assert.ok((await B("records.create", "task", { title: "BEN-SELF" }, { attrs: { owner: BEN } })).ok, "his own name as owner is accepted");
+});
