@@ -7,7 +7,7 @@
 // and keeps its scheduler idle; an unpaired Mac runs the planner itself.
 
 import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
-import { openRecords, fromEvent, recordOf } from "./records.js";
+import { openRecords, fromEvent, recordOf, callerPerson } from "./records.js";
 import { parseRule } from "./rrule.js";
 import { MIGRATIONS as LEGACY_MIGRATIONS, importLegacy } from "./legacy.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
@@ -328,6 +328,17 @@ export default {
       const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
       return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
     };
+    /**
+     * A member changes or removes only the to-dos filed for her: the owner and an admin, and a call with no person on it, any. (A reminder or a note keeps no owner of its own; a to-do's doer is the person it is for.)
+     * @param {any} item @param {{ chain?: any }} w
+     */
+    const mayChangeTodo = async (item, w) => {
+      if (!item || !item._task || !item._doer) return;
+      const me = callerPerson(w && w.chain);
+      if (!me || me === item._doer) return;
+      if (await mayScheduleJobs(w)) return;
+      throw fail("That to-do is someone else's. Ask them, or the owner, to change it.", "denied");
+    };
     const memberRefusal = () => fail("Scheduling a task that starts an AI session is for this Space's owner and its admins. Add a reminder or a to-do instead, or ask the owner to schedule it.", "denied");
 
     const agentKind = (kind, w) => {
@@ -519,6 +530,7 @@ export default {
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
       if (item.kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
+      await mayChangeTodo(item, w);
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
       // checked at add time - letting an agent redirect it afterward with planner.update would be
@@ -655,12 +667,13 @@ export default {
     };
     const oneOffEnds = item => !item.repeat;
 
-    const done = (i, w) => {
+    const done = async (i, w) => {
       const c = calTarget(i);
       if (c) return calAck(c, "done", w);
       const { f, item, due } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       owns(item, w);
+      await mayChangeTodo(item, w);
       if ((i.firing || due != null) && f && f.state !== "ringing") return already(f);
       const t = now();
       if (f && f.state === "ringing") ack(f, "done", w);
@@ -704,12 +717,13 @@ export default {
       return made;
     };
 
-    const snooze = (i, w) => {
+    const snooze = async (i, w) => {
       const c = calTarget(i);
       if (c) return calAck(c, "snooze", w, i.minutes);
       const { f, item, due } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       owns(item, w);
+      await mayChangeTodo(item, w);
       if ((i.firing || due != null) && f && f.state !== "ringing") return already(f);
       const minutes = i.minutes === undefined ? 9 : Number(i.minutes);
       if (!Number.isFinite(minutes) || minutes < 1 || minutes > 7 * 1440) throw fail("minutes is 1 to 10080");
@@ -721,12 +735,13 @@ export default {
       return { item: shape(st.item(item.id)), firing: g ? shapeFiring(st.firing(g.id)) : null, until };
     };
 
-    const dismiss = (i, w) => {
+    const dismiss = async (i, w) => {
       const c = calTarget(i);
       if (c) return calAck(c, "dismiss", w);
       const { f: rung, item, due } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       owns(item, w);
+      await mayChangeTodo(item, w);
       if (!rung && due == null) throw fail("nothing is ringing for that item", "not_found");
       if (rung && rung.state !== "ringing") return already(rung);
       const f = rung || answerUnrung(item.id, item.kind, /** @type {number} */ (due), "dismiss", w);
@@ -741,10 +756,11 @@ export default {
       return { item: shape(st.item(item.id)), firing: shapeFiring(st.firing(f.id)) };
     };
 
-    const remove = (i, w) => {
+    const remove = async (i, w) => {
       const item = st.item(i.item);
       if (!item) throw fail("no such item", "not_found");
       owns(item, w);
+      await mayChangeTodo(item, w);
       const t = now();
       if (i.restore) {
         if (!item.deleted_at) return shape(item);

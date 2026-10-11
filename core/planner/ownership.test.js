@@ -23,7 +23,7 @@ const asMember = (/** @type {any} */ w, /** @type {string} */ tool, /** @type {a
 // MEASURED GAP, not fixed here (core/planner is rc1-b's tonight): the planner files EVERY to-do as the Space owner's (doer = K.owner, assigned_by = service:planner), whoever called it, so the ownership rule sees
 // the owner as the writer and a member's planner.add reaches the owner's project. The planner has to refuse a project the CALLING person is not on before it writes; these two are the tests for that.
 const GAP = { todo: "the planner files every to-do as the owner's: it must judge the calling member (rc1-b)" };
-test("a member's to-do through the planner goes only into a project she is on", GAP, async t => {
+test("a member's to-do through the planner goes only into a project she is on", {}, async t => {
   const { w, theirs, mine } = await rig(t);
   const refused = await asMember(w, "planner.add", { kind: "todo", title: "into the owner's project", project: theirs.urn });
   assert.ok(refused.error, "refused: " + JSON.stringify(refused).slice(0, 200));
@@ -33,7 +33,7 @@ test("a member's to-do through the planner goes only into a project she is on", 
   assert.ok((await w.call("planner.add", { kind: "todo", title: "owner anywhere", project: theirs.urn })).data, "the owner files under any project");
 });
 
-test("a member cannot move her to-do into the owner's project with planner.update either", GAP, async t => {
+test("a member cannot move her to-do into the owner's project with planner.update either", {}, async t => {
   const { w, theirs, mine } = await rig(t);
   const made = (await asMember(w, "planner.add", { kind: "todo", title: "hers", project: mine.urn })).data;
   assert.ok(made && made.id, "control: she made one in her project");
@@ -41,4 +41,23 @@ test("a member cannot move her to-do into the owner's project with planner.updat
   assert.ok(moved.error, "refused: " + JSON.stringify(moved).slice(0, 200));
   const back = await asMember(w, "planner.update", { item: made.id, title: "renamed" });
   assert.ok(back.data, "she still edits her own item: " + JSON.stringify(back).slice(0, 160));
+});
+
+test("a member's to-do is filed FOR HER, never as the owner's; another member cannot change, finish or remove it, the owner can", async t => {
+  const { w, mine } = await rig(t);
+  const OTHER = MEMBERS[1];
+  const made = (await asMember(w, "planner.add", { kind: "todo", title: "hers", project: mine.urn })).data;
+  assert.ok(made && made.id);
+  const task = await w.k.gateway.ask.get(w.owner, made.id);
+  assert.equal(task.doer && task.doer.id, MEMBER, "the doer is the calling member, not the Space owner");
+  assert.notEqual(task.doer && task.doer.id, OWNER);
+  const other = (tool, input) => w.callAs(memberFacts(OTHER), tool, input);
+  for (const [tool, input] of [["planner.update", { item: made.id, title: "mine now" }], ["planner.delete", { item: made.id }]]) {
+    const r = await other(tool, input);
+    assert.equal(r.error?.code, "denied", `${tool} by another member: ${JSON.stringify(r).slice(0, 160)}`);
+    assert.match(String(r.error?.message), /someone else's/);
+  }
+  assert.ok((await w.call("planner.update", { item: made.id, title: "owner edits" })).data, "the owner changes any to-do");
+  assert.ok((await asMember(w, "planner.update", { item: made.id, title: "she edits" })).data, "and she still changes her own");
+  assert.ok(!(await asMember(w, "planner.delete", { item: made.id })).error, "and removes it");
 });
