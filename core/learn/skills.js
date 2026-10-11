@@ -33,6 +33,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Who repeated the work: the agent whose turn it was (a lesson goes to the one who repeated it, not to the install's owner). Appended at the END of the learn module's list (core/learn/index.js): SKILL_MIGRATIONS sit mid-list and released boxes have run what follows them. */
+export const PROCS_AGENT_MIGRATION = `ALTER TABLE learn_procs ADD COLUMN agent TEXT;`;
+
 export const SKILL_MIGRATIONS = [
   `CREATE TABLE learn_procs (
      hash TEXT NOT NULL, shape TEXT NOT NULL, project TEXT, session TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -49,8 +52,6 @@ export const SKILL_MIGRATIONS = [
      created INTEGER NOT NULL, updated INTEGER NOT NULL
    );
    CREATE INDEX learn_skills_status ON learn_skills (status);`,
-  // who repeated the work: the agent whose turn it was (a lesson goes to the one who repeated it, not to the install's owner)
-  `ALTER TABLE learn_procs ADD COLUMN agent TEXT;`,
 ];
 
 const MAX_COMMAND = 2000;
