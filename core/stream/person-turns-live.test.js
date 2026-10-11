@@ -218,6 +218,8 @@ test("G04: a session lives in its account's own folder: carol's turn on her acco
   const lastAnswer = () => (textOf(carol.frames).split("echo:").pop() || "");
   await say("bob", "the code word is AMBER-92", { account: `codex:${bobsAcct}` });
   await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 120_000);
+  await until(() => carol.frames.some(f => f.type === "chat.text-done"), "bob's answer to end", 30_000);
+  assert.equal(carol.frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning && String(f.data.text).includes("echo: the code word is AMBER-92")).length, 1, "an answer is one message in the chat, not the same words twice");
   await say("carol", "what was the code word?");
   await until(() => /what was the code word\?/.test(lastAnswer()), "carol's answer on her own account", 120_000);
   assert.match(lastAnswer(), /AMBER-92/, "carol's session, new to her account, was handed bob's turn");
