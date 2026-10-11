@@ -41,7 +41,8 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {string} sessionSocket  the one socket this session may reach
  * @property {string[]} [readOnly] Linux: folders bound read-only besides the system ones (the agent's install folder)
  * @property {string[]} [workdirs] folders the session may read and write (the project)
- * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
+ * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, settingsPaths?: string[], foreignSettings?: string[], hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` gives each session its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). `settingsPaths` is the other accepted shape: folders named by the provider entry, checked on the real path and mounted read-write. `foreignSettings` is the other providers' folders from that same table. A provider with neither `private` nor `settingsPaths` does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
+ * @property {{ given: string, real: string, dest: string }[]} [settingsMounts]  filled by planHome after the settings check. Callers leave it unset.
  * @property {string} [temp]  the session's own temp folder (read-write)
  * @property {number[]} [daemonPorts]  the daemon's own TCP ports: refused on every address (macOS)
  * @property {(plan: any) => any} [launch]  starts a planned process (tests: a launcher whose program is missing)
@@ -85,6 +86,51 @@ export function checkEntries(o) {
   }
 }
 
+/** A path that exists, with symlinks resolved, or null when it does not. @param {string} p */
+const realOr = p => { try { return fs.realpathSync(p); } catch { return null; } };
+const touches = (a, b) => above(a, b) || above(b, a);
+
+/**
+ * Folders a provider cannot move (`settingsPaths`), checked before any profile is built. The list is the provider entry's.
+ * Each path is resolved (symlinks first) and must be a folder strictly inside the account's home, and not Vyre's home, a secret
+ * folder, or another provider's folder. A failure names a next step. Returns where each folder is mounted: the real directory,
+ * and `$HOME/<name>` where the assistant looks for it.
+ * @param {HomeOpts} o @returns {{ given: string, real: string, dest: string }[]}
+ */
+function settingsPlan(o) {
+  const agent = o.agent;
+  if (!agent) return [];
+  const paths = Array.isArray(agent.settingsPaths) ? agent.settingsPaths.filter(s => typeof s === "string" && s) : [];
+  if (agent.private && !paths.length) return [];
+  if (!paths.length) throw new Error("this assistant can't run sandboxed yet: its provider entry has no config folder to relocate (configDirEnv and credentialFiles). Add a private config or a settings folder to the provider entry, then start the session again.");
+  const { h, v, secrets } = protectedPaths(o);
+  const secretSeen = secrets.map(s => ({ lexical: s, real: realOr(s) || s, label: SECRET_DIRS.find(d => path.join(h, d) === s) || path.basename(s) }));
+  const foreign = [];
+  for (const f of agent.foreignSettings || []) {
+    if (typeof f !== "string" || !f) continue;
+    foreign.push(path.resolve(f));
+    const rr = realOr(f); if (rr) foreign.push(rr);
+  }
+  /** @type {{ given: string, real: string, dest: string }[]} */ const mounts = [];
+  for (const given0 of paths) {
+    const given = path.resolve(given0);
+    const found = realOr(given);
+    if (!found) throw new Error("This assistant's settings folder is not there yet. Sign the account in, then start the session again.");
+    let st; try { st = fs.statSync(found); } catch { st = null; }
+    if (!st || !st.isDirectory()) throw new Error("This assistant's settings folder is not a folder. Point the provider entry at the assistant's own settings folder, then start the session again.");
+    if (found === h || above(found, h)) throw new Error("This assistant's settings folder is the whole home or contains it. Name only its own settings folder in the provider entry, then start the session again.");
+    if (!above(h, found)) throw new Error("This assistant's settings folder is outside the account's home. Point the provider entry at a folder inside the home, then start the session again.");
+    if (above(v, found)) throw new Error("This assistant's settings folder is inside Vyre's home. Point the provider entry at the assistant's own settings folder, outside Vyre, then start the session again.");
+    if (above(found, v)) throw new Error("This assistant's settings folder contains Vyre's home. Point the provider entry at the assistant's own settings folder, outside Vyre, then start the session again.");
+    for (const s of secretSeen) if (touches(found, s.lexical) || touches(found, s.real)) throw new Error(`This assistant's settings folder points at a secret folder (${s.label}). Point the provider entry at the assistant's own settings folder, then start the session again.`);
+    for (const f of foreign) if (touches(found, f)) throw new Error("This assistant's settings folder is another provider's. Point the provider entry at this assistant's own folder, then start the session again.");
+    const rel = path.relative(path.resolve(o.home), given);
+    const dest = rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? path.join(h, rel) : path.join(h, path.basename(given));
+    mounts.push({ given, real: found, dest });
+  }
+  return mounts;
+}
+
 /**
  * Each session gets its OWN copy of the agent's config folder, holding only the credential files (reviewer-3 HS-1): a session that
  * plants hooks, commands or MCP servers there changes nothing the person's own agent will ever read, and it cannot read other
@@ -105,9 +151,9 @@ export function seedConfig(o) {
 }
 
 /** The paths a session may touch besides the system: its project, the agent's own settings, its temp folder, the agent's install folder. @param {HomeOpts} o */
-const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
-/** What the session may WRITE: its project, its temp folder and its private config (inside temp). Nothing else on the disk is writable. @param {HomeOpts} o */
-const writable = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : [])].map(real))];
+const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || []), ...(o.settingsMounts || []).map(m => m.real)].map(real))];
+/** What the session may WRITE: its project, its temp folder, its private config (inside temp) and a provider folder that cannot be moved. Nothing else on the disk is writable. @param {HomeOpts} o */
+const writable = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.settingsMounts || []).map(m => m.real)].map(real))];
 /** This machine's own non-loopback addresses: a daemon port bound to all interfaces is reachable on them, and "localhost" does not cover them (reviewer-2 ES-2). */
 const ownV6 = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv6").map(a => a.address.replace(/%.*$/, ""));
 const lanAddrs = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv4").map(a => a.address);
@@ -201,10 +247,20 @@ function planLinux(o) {
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives", "--ro-bind-try", "/etc/resolv.conf", "/etc/resolv.conf",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp", "--ro-bind", fakePasswd(h), "/etc/passwd",
-    // The home is a fresh empty folder first; then the read-only tools (they may live under the home), the project, the settings and the temp folder come back.
+    // The home is a fresh empty folder first; then the read-only tools (they may live under the home), the project, the temp folder and a provider's own settings folder come back.
+    // A settings folder is the real directory, bound onto $HOME/<name> so the assistant finds it where it looks. The rest of the home stays the empty tmpfs.
     "--tmpfs", h,
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     ...rw.flatMap(d => ["--bind", d, d]),
+    ...(o.settingsMounts || []).flatMap(m => {
+      const rel = path.relative(h, m.dest);
+      const parts = rel.split(path.sep).filter(Boolean);
+      /** @type {string[]} */ const args = [];
+      let acc = h;
+      for (const part of parts) { acc = path.join(acc, part); args.push("--dir", acc); }
+      args.push("--bind", m.real, m.dest);
+      return args;
+    }),
     ...(o.workdirs?.[0] ? ["--chdir", real(o.workdirs[0])] : []),
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
     ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js"] : []),
@@ -221,7 +277,7 @@ export function planHome(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
   if (!o.sessionSocket) throw new Error("a session needs its own socket");
   checkEntries(o);
-  if (o.agent && !o.agent.private) throw new Error("this assistant can't run sandboxed yet: its provider entry has no config folder to relocate (configDirEnv and credentialFiles)");
+  o = { ...o, settingsMounts: settingsPlan(o) };
   if (o.platform === "darwin") return planDarwin(o);
   if (o.platform === "linux") return planLinux(o);
   throw new Error("sessions on this system are not sandboxed yet (Windows needs the AppContainer pipe rule), so they do not start");
@@ -254,6 +310,8 @@ const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127
  try{fs.readFileSync(P.homeFile);out.homeFile="READ"}catch(e){out.homeFile=e.code}
  try{fs.readFileSync(P.keyFile);out.keyFile="READ"}catch(e){out.keyFile=e.code}
  try{fs.readdirSync(P.vyreHome);out.vyreHome="LISTED"}catch(e){out.vyreHome=e.code}
+ out.foreign=[];for(const d of (P.foreignDirs||[])){try{fs.readdirSync(d);out.foreign.push("LISTED")}catch(e){out.foreign.push(e.code||"error")}}
+ if(P.personal){try{const st=fs.statSync(P.personal);if(st.isDirectory()){fs.readdirSync(P.personal);out.personal="LISTED"}else{fs.readFileSync(P.personal);out.personal="READ"}}catch(e){out.personal=e.code||"error"}}
  console.log(JSON.stringify(out));
 })();`;
 
@@ -292,6 +350,8 @@ export async function selfTest(o) {
   const old = await stale(o);
   const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
+  // A provider that keeps its own folder is checked here, before anything is spawned. The same check runs again inside planHome.
+  const mounts = settingsPlan(o);
   o = { ...o, daemonPorts: o.probes.daemonPorts };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
@@ -310,7 +370,12 @@ export async function selfTest(o) {
   const hostTmpProbe = o.platform === "darwin" ? path.join(os.tmpdir(), `vyre-hosttmp-${rnd}`) : "";
   const launchLabel = o.platform === "darwin" ? `vyre.selftest.${rnd}` : "", launchMarker = o.platform === "darwin" ? `/private/tmp/vyre-escape-${rnd}` : "";
   if (hostTmpProbe) fs.writeFileSync(hostTmpProbe, "host temp");
-  const probes = { ...o.probes, mustNotWrite, addrPorts, direct: o.platform === "darwin" ? "1.1.1.1" : "", ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : (o.platform === "darwin" && o.proxy?.port ? o.proxy.port : 0), hostTmp: o.platform === "darwin" ? hostTmpProbe : "", launchLabel: o.platform === "darwin" ? launchLabel : "", launchMarker: o.platform === "darwin" ? launchMarker : "", proxyToken: o.proxy?.token || "" };
+  // For a provider that keeps its own folder: the folder must be usable, and another provider's folder plus a personal file must not be readable.
+  // ~/.claude is the named other-provider probe. It is only read. Nothing is written there, and the folder is not created.
+  const ownPaths = new Set(mounts.flatMap(m => [m.real, m.dest, m.given]));
+  const foreignDirs = mounts.length ? [...new Set([path.join(real(o.home), ".claude"), ...(Array.isArray(o.agent?.foreignSettings) ? o.agent.foreignSettings : [])].map(p => realOr(p) || path.resolve(p)).filter(p => !ownPaths.has(p)))] : [];
+  const personal = !mounts.length ? "" : (o.probes.homeFile || ["Documents", "Desktop", "Downloads"].map(n => path.join(real(o.home), n)).find(c => { try { return fs.statSync(c).isDirectory(); } catch { return false; } }) || "");
+  const probes = { ...o.probes, mustNotWrite, addrPorts, direct: o.platform === "darwin" ? "1.1.1.1" : "", ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || []), ...mounts.map(m => m.dest)], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : (o.platform === "darwin" && o.proxy?.port ? o.proxy.port : 0), hostTmp: o.platform === "darwin" ? hostTmpProbe : "", launchLabel: o.platform === "darwin" ? launchLabel : "", launchMarker: o.platform === "darwin" ? launchMarker : "", proxyToken: o.proxy?.token || "", foreignDirs, personal };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
   const t0 = Date.now();
@@ -365,9 +430,12 @@ export async function selfTest(o) {
   if (res.keyFile === "READ") failures.push("a key file in the Vyre home can be read");
   if (res.homeFile === "READ") failures.push("a file in the person's home outside the allowed paths can be read");
   if (res.vyreHome === "LISTED") failures.push("the Vyre home can be listed");
+  if (mounts.length) (res.foreign || []).forEach((r, i) => { if (r === "LISTED") failures.push(`another provider's settings folder can be read (${probes.foreignDirs[i]}). Point the provider entry at this assistant's own settings folder, then start the session again.`); });
+  if (mounts.length && (res.personal === "READ" || res.personal === "LISTED") && res.homeFile !== "READ") failures.push("a personal file outside this assistant's settings folder can be read. Point the provider entry at this assistant's own settings folder, then start the session again.");
   if (res.ownSocket !== "connected") failures.push(`the session's own socket does not work (${res.ownSocket})`);
   // The other half of the proof: the provider's agent can still start and sign in.
-  (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w}${res.writeDetail?.[i] ? ": " + res.writeDetail[i] : ""})`); });
+  const settingDests = new Set(mounts.map(m => m.dest));
+  (res.writes || []).forEach((w, i) => { if (w !== "ok") { const detail = res.writeDetail?.[i] ? ": " + res.writeDetail[i] : ""; failures.push(settingDests.has(probes.writable[i]) ? `this assistant's settings folder cannot be read and written (${w}${detail}). Sign the account in, then start the session again.` : `the agent cannot use ${probes.writable[i]} (${w}${detail})`); } });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
   if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
   return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };
