@@ -51,6 +51,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.ok(v2.ok && v2.version === od.version + 1, JSON.stringify(v2));
   assert.match(await words(svc.approve(bob, { id: od.id, version: v2.version, hash: v2.hash })), /runs on someone else's authority.*Propose it/s, "her own yes does not approve a new version of the owner's Flow");
   assert.equal((await host().flows.store.active(od.id)).version, od.version, "the owner's version still runs");
+  // she proposes it; the owner approves it and it then runs on the owner's authority
+  const prop = await svc.propose(bob, { what: "flow", id: od.id, version: v2.version, note: "a clearer label" });
+  assert.ok(prop && !prop.error, "her proposal is accepted: " + JSON.stringify(prop).slice(0, 200));
+  await host().flows.tools["flows.approve"](chainOf(owner), { id: od.id, version: v2.version, hash: v2.hash });
+  assert.equal((await host().flows.store.active(od.id)).version, v2.version, "the owner approved it: it runs on the owner's authority");
 
   // her own Flow: made, approved (inside the bound), started, run as HER
   const bd = await svc.define(bob, { flow: find("bobs_flow") });
@@ -88,7 +93,7 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const ai = await svc.define(bob, { flow: { ...find("bobs_ai"), steps: [{ id: "k", kind: "classify", input: "hello", labels: ["new client", "spam"] }] } });
   assert.ok(ai.ok, JSON.stringify(ai));
   const aap = await svc.approve(bob, { id: ai.id, version: ai.version, hash: ai.hash });
-  assert.match(aap.notice, /AI steps run on this Space's AI allowance.*200,000 tokens a day.*not on your own sign-in/s, aap.notice);
+  assert.match(aap.notice, /AI steps use the Space's AI credentials.*daily allowance.*200,000 tokens a day/s, aap.notice);
 
   // a second member cannot read or change her Flow through the Records door, and cannot approve it by hand
   await d.kernel.gateway.grants.setRole(chainOf(owner), { person: CAROL, role: "member" }, { presence: { method: "stand-in" } });
