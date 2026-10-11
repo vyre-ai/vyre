@@ -142,7 +142,7 @@ test("the owner narrows a member's Drive: one member's own grant loses drive.*, 
   await D.put(bob, "team/a.txt", new TextEncoder().encode("one"));
   // a standing rule for the whole Space: members never write the Drive (they still read it)
   const rule = { kind: "never", binds: ["members"], covers: { actions: ["drive.write"] }, label: "Members read the Drive and do not write it" };
-  await g.rules.set(owner, rule, { presence: proof("rules.set", { kind: "never", binds: ["members"], covers: { actions: ["drive.write"] }, label: rule.label }, `vyre://${SPACE}/rule/new`) });
+  await g.rules.set(owner, rule, { presence: { ...proof("rules.set", { kind: "never", binds: ["members"], covers: { actions: ["drive.write"] }, label: rule.label }, `vyre://${SPACE}/rule/new`), op: "grant.rule_set" } });
   await assert.rejects(() => D.put(cat, "team/b.txt", new Uint8Array([1])), "no member writes under the rule");
   assert.equal(new TextDecoder().decode(await D.get(cat, "team/a.txt")), "one", "and every member still reads");
   // one member's own grant narrowed: the role's grant is the member's, so the owner takes drive.read from that member alone
