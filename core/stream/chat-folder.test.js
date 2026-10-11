@@ -20,7 +20,7 @@ test("a chat's folder is under the shared work folder on a box (where the spawne
   assert.equal(fs.statSync(team).mode & 0o070, 0o070, "the group the sessions share can use the chat's own folder, as before");
   assert.equal(path.dirname(path.dirname(home)), path.join(work, "chats", "home"), "a home chat has its own place beside the teams'");
   // containment: the parents can be walked through by the group but not listed, and the chat's name is not its id
-  for (const d of [path.join(work, "chats"), path.join(work, "chats", "spc_aaaaaaaaaaaa")]) assert.equal(fs.statSync(d).mode & 0o070, 0o010, `${d}: search-only for the group`);
+  for (const d of [path.join(work, "chats"), path.join(work, "chats", "spc_aaaaaaaaaaaa")]) { assert.equal(fs.statSync(d).mode & 0o070, 0o010, `${d}: search-only for the group`); assert.equal(fs.statSync(d).mode & 0o2000, 0o2000, `${d}: setgid, so what is made inside keeps the work folder's group`); }
   assert.ok(!team.includes("chat_1"), "the folder name does not carry the chat id");
   assert.equal(chatFolderFor({ root, role: "box", space: "spc_aaaaaaaaaaaa", grp: "chat_1" }), team, "the same chat finds the same folder");
   assert.notEqual(team, chatFolderFor({ root, role: "box", space: "spc_aaaaaaaaaaaa", grp: "chat_9" }));
