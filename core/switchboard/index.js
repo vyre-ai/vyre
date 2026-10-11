@@ -2304,7 +2304,7 @@ export class Switchboard {
    *   - turnEnded: a hop in flight (once) is handed to revertOnce and recorded in reverting, whose end (settled or thrown) drains again; otherwise steers run first, then this drain;
    *   - sendOnce: an early throw (target refused, keyboard held, a hop already owning the thread) leaves no lock and no base change; the once entry is claimed in the same tick it is checked and a failing call touches only its own;
    *   - revertOnce: no hop entry returns; the switch back is tried, once more, never for a failure that cannot change; a thread with no live process after it skips the tail turnEnded (resumeWaiting drains instead);
-   *   - the lock has no owner token: every release is guarded by the lock being held (a late callback never releases a newer drain's lock).
+   *   - the lock is owned by the drain's token: drainDone(id, again, lock) releases only its own; a call without a token only asks to drain when no lock is held (a late callback never releases a newer drain's lock).
    *   - every exit releases the lock (drainDone) and re-drains only when the thread is idle with no hop pending and no hop back in flight.
    * @param {string} id @param {any} st @param {string|null} project
    */
@@ -2622,8 +2622,8 @@ export class Switchboard {
     if (this.once.has(id)) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
     const mine = { back, from: cur, to: provider, sent: String(text), reply: "" };
     this.once.set(id, mine);
-    if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction)
     try {
+      if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction); inside the try, so a throw reverts only what this call owns
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
