@@ -407,7 +407,8 @@
       "kernelSession",
       "chatFor",
       "sandbox",
-      "credentials"
+      "credentials",
+      "listModels"
     ],
     "vault": [
       "claude-setup-token",

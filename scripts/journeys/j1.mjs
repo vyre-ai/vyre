@@ -102,9 +102,20 @@ export default {
       const names = JSON.stringify(ev).match(/"(?:type|kind|event)":"([a-z._-]+)"/g) || [];
       assert.ok(JSON.stringify(ev).includes("invite"), `no invite event among ${names.slice(0, 12).join(", ")}`);
     }, { needs: [JN], owner: "trust" });
-    // BLOCKED, said plainly: the second person has no session on the server (they joined through the member door), so their own Chats and Settings cannot be read with tools yet.
-    await J.step("the member's own Chats show their assistant pinned, and Settings has no @Engineer for them", () => {
-      throw Object.assign(new Error("BLOCKED: a member who joined through the member door has no session on the server to ask work.chat.persistent with; needs a member session door (owner: chat). Add this check when it exists."), { skip: true });
+    // the second person has no session of their own on the server: their own chats are the Space's chat service (kernel/remote CALLS.chat, core/work/chat-service.js), as that member in that Space
+    await J.step("the member's own Chats show their assistant pinned, and Settings has no @Engineer for them", async () => {
+      const mine = await joined.call("chat.persistent", [{ kind: "assistant" }]);
+      assert.equal(mine.allowed, true, "a member may have an assistant chat");
+      assert.equal(mine.chat ?? null, null, "none yet: the member's assistant chat is their own, not the owner's");
+      const made = await joined.call("chat.create", [{ title: "Assistant" }]);
+      assert.match(String(made.chat), /^chat_/, "the member starts their own chat on the server");
+      await joined.call("chat.pin", [{ kind: "assistant", chat: made.chat }]);
+      assert.equal((await joined.call("chat.persistent", [{ kind: "assistant" }])).chat, made.chat, "the pinned chat is the one made");
+      const list = await joined.call("chat.list", [{}]);
+      const row = (list.chats || []).find((/** @type {any} */ c) => c.chat === made.chat);
+      assert.equal(row && row.pinned, "assistant", "the member's Chats list marks it pinned");
+      const ownerList = await w.call("work.chat.list", {});
+      assert.ok(!(ownerList.chats || []).some((/** @type {any} */ c) => c.chat === made.chat), "the owner's own Chats never show the member's chat");
     }, { needs: [JN], owner: "chat" });
     if (bob) bob.close();
   },

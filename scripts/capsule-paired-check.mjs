@@ -101,6 +101,11 @@ try {
   check(boxThreadEvents.length > 0, "the question reached the box: the assistant's thread ran there");
 
   // The Mac's own things stay here.
+  // A hosted runner's Spotlight index starts cold: the first query for apps can take a minute or more while it gathers, and Lumen's own query shares its run loop with the probe. Wait here, outside Lumen, until
+  // Spotlight answers for an app at all, so the question below measures Lumen and not the runner's index.
+  { const t0 = Date.now(); let n = 0;
+    while (Date.now() - t0 < 150_000 && n === 0) { try { n = Number(execFileSync("/usr/bin/mdfind", ["-count", "-onlyin", "/Applications", "kMDItemContentType == 'com.apple.application-bundle'"], { encoding: "utf8", timeout: 30_000 }).trim()) || 0; } catch { n = 0; } if (n === 0) await pause(2000); }
+    console.log(`spotlight answered for ${n} apps after ${Math.round((Date.now() - t0) / 1000)} s`); }
   await send({ text: "" });
   // (the app search is Spotlight on a hosted runner: it can take most of a minute to answer, so ask again, patiently, until it has rows)
   await send({ text: "safari" });
@@ -124,6 +129,8 @@ try {
   await still("paired-away.png");
 } catch (e) {
   failures.push(String(e && e.message || e)); console.log(`FAIL ${e && e.message || e}`);
+  // Lumen did not answer: where is it? A sample of the main thread says whether it is busy in a search, waiting on the box, or stuck, instead of only that it was silent.
+  if (child && child.pid) { try { console.log(execFileSync("/usr/bin/sample", [String(child.pid), "3", "-mayDie"], { encoding: "utf8", timeout: 30_000 }).split("\n").slice(0, 90).join("\n")); } catch (se) { console.log(`sample failed: ${String(se && se.message || se).split("\n")[0]}`); } }
 } finally {
   try { child?.kill("SIGTERM"); } catch {}
   for (const fn of cleanups.reverse()) { try { await fn(); } catch {} }

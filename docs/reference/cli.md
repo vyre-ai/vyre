@@ -81,6 +81,7 @@ In the order `vyre help` lists them.
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
 | [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
+| [`vyre reboot`](#vyre-reboot) | restart this computer the planned way (FileVault Macs come back by themselves) |
 | [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
 | [`vyre signout`](#vyre-signout) | sign this terminal out |
 | [`vyre space`](#vyre-space) | which space this terminal acts in |
@@ -149,7 +150,7 @@ Exit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{
 Is it running, and what is it running.
 
 ```
-vyre status [--json]
+vyre status [--json] [--ready]
 ```
 
 ### vyre config
@@ -806,6 +807,20 @@ The keys that prove you are here, and a code to enroll a passkey.
 ```
 vyre presence [keys|code|remove <id>] [--json]
 ```
+
+### vyre reboot
+
+Restart this computer the planned way (FileVault Macs come back by themselves).
+
+```
+sudo vyre reboot [--yes] [--dry-run]
+```
+
+--dry-run   say what it would do and stop
+--yes       do not ask first (needed when there is no terminal to ask on)
+
+A Mac server with FileVault on restarts through `fdesetup authrestart`, so it returns to the
+desktop and Vyre starts without anyone at the login window. Other computers restart normally.
 
 ### vyre signin
 

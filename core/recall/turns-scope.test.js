@@ -12,7 +12,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller, putOnTask } from "../../test/helpers.js";
 import { ALIASES } from "../../harness/mcp/memory-tools.js";
 
 const NORTHWIND_SESSION = "11111111-aaaa-4000-8000-000000000003";
@@ -31,7 +31,8 @@ async function world(t) {
   await call("recall.index", {}, opts);
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  await putOnTask(d, root, "kit", "northwind");   // a teammate with a task (G22)
   assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   return { d, opts };
 }

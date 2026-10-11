@@ -3,7 +3,7 @@
 import { walkTestFile } from "./lib/testfile.mjs";
 
 export default {
-  id: "J4", title: "Agent builds and shares", owner: "trust", world: "own", store: "plain",
+  id: "J4", title: "Agent builds and shares", owner: "trust", world: "own", store: "plain", early: true,
   /** @param {any} _w @param {ReturnType<typeof import("./lib/journey.mjs").stepper>} J */
   async steps(_w, J) { await walkTestFile(J, "test/journey-publish-react.test.js", "trust").report(); },
 };

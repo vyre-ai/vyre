@@ -17,6 +17,14 @@ export function templatesSource(call: Call) {
     test: (template: string, version: number, sample?: Record<string, unknown>) => ask<{ ok: boolean; lines?: string[]; totals?: string; errors?: { path: string; message: string }[] }>("work.template.test", { template, version, ...(sample ? { sample } : {}) }),
     library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
     install: (id: string) => ask<Version>("work.template.install", { id }),
+    /** The Flows of this Space a template can attach (only the running ones run for a project). */
+    flows: async (): Promise<{ id: string; name: string; active: boolean }[]> => {
+      const r = await ask<any>("flows.list");
+      const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.flows) ? r.flows : [];
+      return rows.map((x) => ({ id: String(x.id), name: String(x.label || x.name || x.id), active: Boolean(x.active) }));
+    },
+    /** A draft template made from a project: its stages when it ran a template, else its tasks and team (a free-flow project). */
+    fromProject: (project: string, name?: string): Promise<Version> => ask("work.template.from-project", { project, ...(name ? { name } : {}) }),
     /** Start a project from the live version: its team, its pinned stages and the first stage's tasks. */
     start: (template: string, name: string) => ask<{ project: string; slug?: string; tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }>("work.start-project", { template, name }),
   };

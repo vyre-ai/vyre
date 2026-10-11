@@ -111,6 +111,19 @@ test("an account that carries an API key is an API-key call: with no door it is 
   }
 });
 
+test("a run that names its own endpoint, or says it is an API-key call, is not a subscription login whatever variable carries the key: refused with no door, nothing starts", async () => {
+  const ran = [];
+  const provider = { id: "p", run() { ran.push("ran"); return { pid: 1, alive: true, write() {}, interrupt: async () => {}, stop: async () => {} }; } };
+  for (const [name, o] of [["own endpoint", { env: { VYRE_API_BASE_URL: "https://llm.example.test/v1" } }], ["custom provider", { env: {}, custom: { id: "x" } }], ["api-key auth", { env: {}, auth: "api-key" }]]) {
+    ran.length = 0;
+    const got = [];
+    loginDirect(provider, {}, ["OPENAI_API_KEY"]).run({ id: "k", onMessage: m => got.push(m), onExit() {}, ...o });
+    await new Promise(r => setImmediate(r));
+    assert.equal(ran.length, 0, `${name}: nothing started`);
+    assert.match(String(got[0] && got[0].result), /inference door/, name);
+  }
+});
+
 for (const provider of ["claude", "grok", "codex"]) {
   test(`${provider}: a key the agent prints (a tool call input, its words, the result) never reaches the transcript or the thread record`, async t => {
     process.env.FAKE_LEAK = KEY;

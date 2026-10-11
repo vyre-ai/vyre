@@ -27,6 +27,8 @@ test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, s
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => (await d.registry.call(tool, input, "cli", await meta()));
   // A Space on its own record store (Twenty, as in the journeys world) answers "the type definitions could not be read" until that store has started: wait for it before defining anything.
   await until(async () => { try { await d.kernel.store.types(); return true; } catch { return false; } }, "the record store to start", 600_000);
+  // the Flows host makes its own record types (flow-state, def-flow ...) when the store joins; a Flow written before they exist reads "no type flow-state", or a record written while a type is still being made comes back different
+  await until(async () => !(await call("flows.list")).error, "the Flows record types to exist", 600_000);
   await d.kernel.gateway.records.define(admin, { add_types: [DOSSIER, NOTE] });
   const install = async (/** @type {any} */ flow) => {
     const r = await call("flows.define", { flow });

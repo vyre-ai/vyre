@@ -9,6 +9,7 @@ import { StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { connect } from "../src/api/box";
+import { syncKeepAlive } from "../src/native/keepalive";
 import { startNotices } from "../src/native/notices";
 import { PerfBadge } from "../src/perf/PerfBadge";
 import { usePerfOverlay } from "../src/perf/usePerfOverlay";
@@ -34,6 +35,8 @@ function Shell() {
   }, []);
   // Notices for what waits for your yes and for a turn that finished while you were away, made by the app from what its server says (no push service).
   useEffect(() => startNotices(), []);
+  // Android: with notices allowed, hold the connection while the app is closed (a foreground service, until the person turns it off in Settings).
+  useEffect(() => { void syncKeepAlive(); }, []);
   // The installed web app: its service worker, a tapped notification's route, push.seen.
   useEffect(() => startPwa((path) => router.push(path as never)), []);
   // In the Mac app's window the menu bar's places and Back and Forward come in as commands (src/shell).

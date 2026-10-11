@@ -33,6 +33,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** Who repeated the work: the agent whose turn it was (a lesson goes to the one who repeated it, not to the install's owner). Appended at the END of the learn module's list (core/learn/index.js): SKILL_MIGRATIONS sit mid-list and released boxes have run what follows them. */
+export const PROCS_AGENT_MIGRATION = `ALTER TABLE learn_procs ADD COLUMN agent TEXT;`;
+
 export const SKILL_MIGRATIONS = [
   `CREATE TABLE learn_procs (
      hash TEXT NOT NULL, shape TEXT NOT NULL, project TEXT, session TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -450,8 +453,8 @@ export function pluginDirs(home, { project, agent } = {}) {
  *   ~/.claude is refused as well, whatever claudeDir says.
  */
 export function createSkills(db, { now = () => Date.now(), emit = () => {}, claudeDir = path.join(os.homedir(), ".claude") } = {}) {
-  const put = db.prepare(`INSERT INTO learn_procs (hash, shape, project, session, seq, at, clean) VALUES (?,?,?,?,?,?,0)
-    ON CONFLICT (hash, session) DO UPDATE SET seq = excluded.seq, at = excluded.at, project = excluded.project, shape = excluded.shape
+  const put = db.prepare(`INSERT INTO learn_procs (hash, shape, project, session, seq, at, clean, agent) VALUES (?,?,?,?,?,?,0,?)
+    ON CONFLICT (hash, session) DO UPDATE SET seq = excluded.seq, at = excluded.at, project = excluded.project, shape = excluded.shape, agent = excluded.agent
     WHERE learn_procs.clean = 0`);
   const markClean = db.prepare("UPDATE learn_procs SET clean = 1 WHERE session = ? AND seq = ?");
   const getSkill = db.prepare("SELECT * FROM learn_skills WHERE id = ?");
@@ -480,16 +483,16 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
   return {
     /**
      * A turn's steps at Stop: its fingerprints, one transaction, at most 40 rows.
-     * @param {{ session: string, seq: number, project?: string|null, steps: string[] }} turn
+     * @param {{ session: string, seq: number, project?: string|null, agent?: string|null, steps: string[] }} turn
      */
-    record({ session, seq, project = null, steps }) {
+    record({ session, seq, project = null, agent = null, steps }) {
       if (!session) return 0;
       const fps = fingerprints(steps);
       if (!fps.length) return 0;
       const at = now();
       db.exec("SAVEPOINT learn_skills_record");
       try {
-        for (const f of fps) put.run(f.hash, JSON.stringify(f.steps), project ?? null, session, seq, at);
+        for (const f of fps) put.run(f.hash, JSON.stringify(f.steps), project ?? null, session, seq, at, agent ?? null);
         db.exec("RELEASE learn_skills_record");
       } catch (e) {
         db.exec("ROLLBACK TO learn_skills_record"); db.exec("RELEASE learn_skills_record");
@@ -516,7 +519,8 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
      */
     candidates({ min = 3 } = {}) {
       const rows = db.prepare(`SELECT hash, MAX(shape) AS shape, COUNT(DISTINCT session) AS sessions,
-          COUNT(DISTINCT COALESCE(project, '')) AS projects, MAX(project) AS project
+          COUNT(DISTINCT COALESCE(project, '')) AS projects, MAX(project) AS project,
+          COUNT(DISTINCT COALESCE(agent, '')) AS agents, MAX(agent) AS agent
         FROM learn_procs WHERE clean = 1 GROUP BY hash HAVING COUNT(DISTINCT session) >= ?`).all(min);
       const have = taken.all().map(r => { try { return JSON.parse(r.source); } catch { return {}; } });
       const done = new Set(have.map(s => s.fp).filter(Boolean));
@@ -524,6 +528,8 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
       const all = rows.filter(r => !done.has(r.hash)).map(r => ({
         hash: String(r.hash), steps: /** @type {string[]} */ (JSON.parse(String(r.shape))), sessions: Number(r.sessions),
         scope: /** @type {"all"|{project: string}} */ (Number(r.projects) === 1 && r.project ? { project: String(r.project) } : "all"),
+        // one agent repeated it every time: the lesson is that agent's
+        ...(Number(r.agents) === 1 && r.agent ? { agent: String(r.agent) } : {}),
       }));
       all.sort((a, b) => b.steps.length - a.steps.length || b.sessions - a.sessions || (a.hash < b.hash ? -1 : 1));
       const out = [];
@@ -550,7 +556,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
       const at = now();
       const r = db.prepare(`INSERT INTO learn_skills (name, scope, status, body, hash, path, source, sessions, created, updated)
         VALUES (?,?,'proposed',?,NULL,NULL,?,?,?,?)`).run(name, JSON.stringify(candidate.scope ?? "all"), final,
-        JSON.stringify({ kind: body ? "drafted" : "template", fp: candidate.hash, steps: candidate.steps }), candidate.sessions || 0, at, at);
+        JSON.stringify({ kind: body ? "drafted" : "template", fp: candidate.hash, steps: candidate.steps, ...(candidate.agent ? { agent: candidate.agent } : {}) }), candidate.sessions || 0, at, at);
       const s = must(Number(r.lastInsertRowid));
       // Events carry ids, counts and kinds: a skill's name is made from the user's commands.
       emit("skill.proposed", { skill: s.id, sessions: s.sessions, scope: s.scope === "all" ? "all" : "project" });

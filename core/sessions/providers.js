@@ -24,3 +24,4 @@ export function claudeProvider(o) {
     },
   };
 }
+export { rememberTool, screenshotsOf } from "./drivers/claude-shots.js";   // a screenshot tool's picture, for the Switchboard's translator: reached through this one file the Switchboard may import

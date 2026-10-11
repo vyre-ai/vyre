@@ -140,6 +140,7 @@ export const OPEN_NOTES = Object.freeze({
   "stream.mark-read": "moves the caller's read marker in a group chat session forward",
   "stream.open": "a one-use 15 second ticket for the session stream; the stream builds the caller's chain itself",
   "stream.pin": "pins or unpins a message in a group chat",
+  "stream.reply-mode": "says when the AI answers in a group chat (every message, or only an @mention or a reply to an AI message); the change shows to everyone as a line",
   "stream.react": "adds or takes back an emoji reaction on a group chat message",
   "stream.send": "says something in a group chat as the caller; the stream (core/stream/access.js) builds the chain and adds no people by a send",
   "system.rename": "renames this server's display name, a label and not the vyre.run address",

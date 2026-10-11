@@ -584,10 +584,10 @@ test("publish: a folder of ready files builds with the real builder, is checked,
   const made = fs.readdirSync(sitesDir);
   assert.equal(made.length, 1);
   assert.deepEqual(fs.readdirSync(path.join(sitesDir, made[0])), ["index.html"], "only the site's files were written for the box; the .env stayed behind");
-  // a build command is for the container builder, which this server does not have: Publish says so in the builder's words
+  // a build command runs in the container builder, which is on only where servers are (publish.servers): Publish says so in the builder's words
   const { deployment: cmd } = await b.ok("publish.create", { name: "bakery-app", source: { kind: "folder", ref: dir }, build: { image: "static", command: "npm run build", output_dir: "dist" }, project: "bakery" });
   const refused = await b.call("publish.preview", { deployment: cmd.id });
-  assert.match(refused.error.message, /needs the container builder, which is not installed here yet/);
+  assert.match(refused.error.message, /turned off in this test release/);
   // a folder that is not on this server is refused at create, before any draft exists
   const gone = await b.call("publish.create", { name: "ghost", source: { kind: "folder", ref: path.join(b.home, "nope") }, build: { image: "static" } });
   assert.equal(gone.error.code, "not_found");
@@ -648,4 +648,20 @@ test("publish: a key changed in the Vault restarts the live server that holds it
   await new Promise(r => setTimeout(r, 200));
   assert.equal(installs(), before + 1, "once for a burst of changes");
   assert.equal(b.pf.installs.filter((/** @type {any} */ d) => d.name === "northwind-build").length, 1, "a site that only uses the key to build is not restarted");
+});
+
+test("publish: granting a new secret to a live server restarts it with the secret, once; a build-only grant restarts nothing", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "appmods"] });
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [], logs: "ok", runtime: { kind: "image", image: "sha256:" + "f".repeat(64), port: 8080, health: { path: "/", ok: [200] } } });
+  const id = (await b.ok("publish.create", { ...DRAFT, name: "northwind-live", build: { image: "node-22", command: "npm run build" } })).deployment.id;
+  await b.ok("publish.preview", { deployment: id });
+  await goLive(b, id);
+  const installs = () => b.pf.installs.filter((/** @type {any} */ d) => d.id === id).length;
+  const before = installs();
+  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["runtime"] });
+  await b.ok("publish.decide", { task: g.task, approve: true });
+  assert.equal(installs(), before + 1, "the live server was started again with the new secret");
+  const g2 = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/other", name: "BUILD_ONLY", use: ["build"] });
+  await b.ok("publish.decide", { task: g2.task, approve: true });
+  assert.equal(installs(), before + 1, "a secret used only to build does not restart it");
 });

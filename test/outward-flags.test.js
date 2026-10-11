@@ -17,6 +17,7 @@ const NOT_OUTWARD = {
   "appmods.publish.stop": "stops a site's server; module-only (Publish), taking a site down needs no yes",
   "appmods.publish.remove": "removes a site's server and keeps its data; module-only (Publish), taking a site down needs no yes",
   "vault.mcp.agent.call": "the Vault's own tool call as an outside agent: a read runs, anything that changes something outside is held for the person by the same relay as vault.request; only the outside-agents module asks",
+  "stream.reply-mode": "says when the AI answers in a group chat; everyone in the chat sees the change as a line, and nothing leaves the chat",
   "previews.share": "chooses which people inside the Space (me, the project, everyone) may open a preview; nothing leaves the Space",
   "previews.reply": "the person types the answer a stuck run asked for, on its card; it goes to the person's own agent and nowhere else",
   "work.file.share": "a share record by someone in the chat: it opens one file to the chat's project members inside the Space; nothing leaves the Space",

@@ -39,7 +39,7 @@ export type SessionActions = {
 /** What the screen can do in a group chat (a session with several people and assistants): every call is a server tool through the outbox. The StreamSource methods (sendGroup, keep, react, pin, markRead) fire and forget; these return what the box answered. */
 export type GroupActions = {
   /** One message to several assistants at once (a fan-out set), or to whoever routing picks when `to` is empty. Resolves with the answer message ids and the fan-out group id. */
-  sendGroupText(text: string, opts?: { to?: string[]; mentions?: string[]; message?: string; replyTo?: string; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
+  sendGroupText(text: string, opts?: { to?: string[]; mentions?: string[]; account?: string; message?: string; replyTo?: string; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
   keepAnswer(group: string, message: string): Promise<string | null>;
   reactTo(message: string, emoji: string, on?: boolean): Promise<string | null>;
   pinMessage(message: string, on?: boolean): Promise<string | null>;
@@ -117,7 +117,7 @@ export function boxStream(session: string): BoxStream {
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
-      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
+      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.account ? { account: opts.account } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };

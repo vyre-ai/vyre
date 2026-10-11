@@ -11,7 +11,7 @@ import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { withSpace } from "./with-space.js";
+import { chatSpace, memberChatWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
@@ -42,6 +42,17 @@ export function setBoxOverride(f: ((name: string, input: Record<string, unknown>
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
   if (override) return (await override(name, given)) as T;
+  // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
+  const wire = memberChatWire(name);
+  if (wire) {
+    const space = chatSpace(given, useSpaces.getState().space);
+    const team = space ? await import("./team-join") : null;
+    if (space && team && (await team.joinedHere(space))) {
+      const { space: _named, ...rest } = given;
+      try { return (await team.teamCall(space, wire, [rest])) as T; }
+      catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
+    }
+  }
   // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
   const input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
