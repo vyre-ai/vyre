@@ -140,7 +140,7 @@ export const fromSignIn = rows => rows.filter(r => r && typeof r.id === "string"
   const host = clean(r.host, 80) || "the site", agent = typeof r.agent === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(r.agent) ? r.agent : "";
   const check = { tool: "connectors.connection.check", input: { id: r.id }, fill: /** @type {string[]} */ ([]) };
   const resume = { tool: "connectors.site.resume", input: { id: r.id }, fill: /** @type {string[]} */ ([]) };
-  const title = r.class === "auth" ? `Sign in to ${host} again` : r.class === "blocked" ? `${host} is checking the browser` : `No browser is signed in to ${host}`;
+  const title = r.class === "auth" && r.key === true ? `The key for ${host} stopped working` : r.class === "auth" ? `Sign in to ${host} again` : r.class === "blocked" ? `${host} is checking the browser` : `No browser is signed in to ${host}`;
   return { id: `connectors:${r.id}`, kind: "signin", title, ...opt("detail", cap(clean(r.words), DETAIL_MAX)), at: at(r.at), source: "connectors",
     answer: r.stopped ? resume : check,
     answers: [...(agent ? [{ label: "Open the computer's screen", open: `/u/glass/${agent}` }] : []), { label: "Check it now", ...check }, ...(r.stopped ? [{ label: "I cleared it", ...resume }] : [])] };
