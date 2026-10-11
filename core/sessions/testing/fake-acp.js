@@ -20,8 +20,11 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+// A walk on a real box cannot set this process's environment (the spawner gives a session its own), so settings can sit in a `fake-acp.env` file beside this script: KEY=value lines, never over a variable already set.
+try { for (const l of fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-acp.env"), "utf8").split("\n")) { const m = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(l); if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]; } } catch { /* none: the environment stands */ }
 const store = process.env.FAKE_ACP_STORE || "";
 const log = o => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + "\n"); };
 const out = o => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...o }) + "\n");

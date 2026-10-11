@@ -27,6 +27,12 @@ export function installStandins() {
     const inst = sh(["exec", "-u", "root", BOX, "sh", "-c", `install -m 755 /tmp/${file} ${real}`]);
     assert.equal(inst.status, 0, `install ${name}: ${inst.stderr}`);
     found.push(real);
+    // the agent's settings and its logs: Codex starts in "agent" and Vyre moves it to "workspace-write" (drivers/codex.js), and a walk that times out says what the agent received
+    if (name === "codex-acp") {
+      const env = "FAKE_ACP_START_MODE=agent\nFAKE_ACP_EXTRA_MODE=workspace-write\nFAKE_ACP_LOG=/work/fake-acp.log\nFAKE_ACP_RPC_LOG=/work/fake-acp-rpc.log\n";
+      const w = sh(["exec", "-u", "root", BOX, "sh", "-c", `printf '%s' '${env}' > ${path.posix.dirname(real)}/fake-acp.env && install -m 666 /dev/null /work/fake-acp.log && install -m 666 /dev/null /work/fake-acp-rpc.log`]);
+      assert.equal(w.status, 0, `the agent's settings: ${w.stderr}`);
+    }
   }
   return found;
 }
@@ -86,7 +92,8 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
         const g = await w.operator("threads.get", { thread: r.id || r.thread, limit: 12 }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
         out.push({ id: r.id || r.thread, provider: r.provider, account: r.account, status: r.status, events: ((g && g.events) || []).slice(-8).map((/** @type {any} */ x) => [x.type, String((x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to)) || "").slice(0, 100)]), error: g && g.error });
       }
-      return `${more} | server threads ${JSON.stringify(out)}`;
+      const agent = String(sh(["exec", BOX, "sh", "-c", "echo rpc:; cat /work/fake-acp-rpc.log; echo launches:; cut -c1-300 /work/fake-acp.log"]).stdout).split("\n").join(",").slice(0, 1500);
+      return `${more} | agent ${agent} | server threads ${JSON.stringify(out)}`;
     } catch (e) { return `${more} | server threads unreadable: ${String(e && /** @type {any} */ (e).message)}`; }
   });
   const accounts = /** @type {Record<string, any>} */ ({});
