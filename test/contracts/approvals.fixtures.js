@@ -33,7 +33,7 @@ export const cards = {
   draft: { id: "gate:g1", kind: "draft", title: "Re: retainer", detail: "mail to dana@example.com", project: "website", thread: "thr_1", at: 1760000000300, source: "gate",
     facts: { id: "g1", kind: "send", via: "mail", to: ["dana@example.com"], summary: "Re: retainer", agent: "kit", thread: "thr_1", project: "website", at: 1760000000300 },
     answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] } },
-  access: { id: "vault:g_1", kind: "access", title: 'Let mail/digest use "billing-key"', detail: "asked by mcp", at: 1760000000400, source: "vault", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] } },
+  access: { id: "vault:g_1", kind: "access", title: 'Let mail/digest use "billing-key"', detail: "asked by a Claude session, not by you", at: 1760000000400, source: "vault", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] } },
   run: { id: "flows:run_1", kind: "run", title: "Welcome sequence stopped at Send email", detail: "The mail server refused the message", at: 1760000000500, source: "flows",
     answer: { tool: "flows.settle", input: { run: "run_1" }, fill: ["action"], choices: ["retry", "skip", "stop"] } },
   gate: { id: "flows:run_2", kind: "run", title: "Engagement letter is held", at: 1760000000600, source: "flows", answer: { tool: "flows.settle", input: { run: "run_2", action: "advance" }, fill: ["reason"] } },

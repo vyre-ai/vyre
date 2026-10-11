@@ -30,7 +30,7 @@ import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind, ownerDevice } from "../modules/index.js";
-import { isAsker } from "./asker.js";
+import { isAsker, requestCap } from "./asker.js";
 import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
@@ -44,7 +44,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
-import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
+import { Release, RELEASE_BODY_MIGRATION, GRANT_REQUEST_KIND_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Links } from "./links.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
@@ -151,7 +151,7 @@ export const MIGRATIONS = [
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
-  CONVERSIONS_MIGRATION,
+  CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -1385,7 +1385,7 @@ export class Vault {
    *   project: this grant is good for one project only (docs/design/session-credentials.md);
    *   omitted or "" means every project, as every grant meant before this existed.
    */
-  async grant({ name, module, watcher = "", project = "" }, caller) {
+  async grant({ name, module, watcher = "", project = "" }, caller, kind = "") {
     await this.key();
     const item = this.mustRow(name);
     if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
@@ -1398,8 +1398,8 @@ export class Vault {
       // Claude asking waits as a request that carries no authority; only a person's approval makes the grant.
       if (this.releases.views().some(v => v.item === name && v.module === module && v.watcher === watcher && v.project === project)) return { grant: this.grantOut({ id: "", item: name, module, watcher, project, status: "active" }) };
       const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grant_requests WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
-      const id = old ? old.id : "g_" + newId();
-      if (!old) this.db.prepare("INSERT INTO vault_grant_requests (id, item, module, watcher, project, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, project, String(caller), now());
+      const id = old ? old.id : (requestCap(this.db, caller), "g_" + newId());
+      if (!old) this.db.prepare("INSERT INTO vault_grant_requests (id, item, module, watcher, project, by, at, by_kind) VALUES (?,?,?,?,?,?,?,?)").run(id, name, module, watcher, project, String(caller), now(), kind ? String(kind) : null);
       this.audit("grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
       this.emit("grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
       return { grant: this.grantOut({ id, item: name, module, watcher, project, status: "pending" }) };
@@ -1835,7 +1835,7 @@ export class Vault {
 
   pending() {
     return {
-      grants: /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grant_requests ORDER BY at").all()).map(g => ({ ...this.grantOut({ ...g, status: "pending" }), by: g.by, at: g.at })),
+      grants: /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grant_requests ORDER BY at").all()).map(g => ({ ...this.grantOut({ ...g, status: "pending" }), by: g.by, byKind: g.by_kind || undefined, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
       agentGrants: this.access ? this.access.pending() : [],
       ...(this.mcp ? { mcpReveals: this.mcp.reveals() } : {}),

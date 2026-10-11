@@ -8,7 +8,7 @@ import http from "node:http";
 import { SessionLog } from "./log.js";
 import { serve, serveSSE } from "./server.js";
 import { connect } from "./client.js";
-import { prng, Sched, makeLink } from "./testkit.js";
+import { prng, Sched, makeLink, holds } from "./testkit.js";
 
 const FEE = { amount: 4200, currency: "USD" };
 const ref = { block: "field-ref", record: "vyre://spc/matter/1", field: "fee", label: "Fee" };
@@ -45,7 +45,7 @@ test("SSE form: a cited field is the value for the manager and the chip for the 
   assert.deepEqual([cited(a.frames).block, cited(a.frames).value], ["field", FEE]);
   assert.equal(cited(b.frames).block, "field");
   assert.equal(cited(b.frames).placeholder, true);
-  assert.ok(!b.text.includes("4200") && !b.text.includes("field-ref"));
+  assert.ok(!holds(b.frames, 4200) && !b.text.includes("field-ref"));
   assert.ok(!a.text.includes("field-ref"));
   assert.deepEqual(a.frames.map(f => f.cur), b.frames.map(f => f.cur), "the same cursors, in order, for both");
   assert.deepEqual(a.frames.map(f => f.cur), [1, 2, 3]);
@@ -63,7 +63,7 @@ test("relay form: the same through a hop with its own delay; the member's side h
   const a = await run(MGR), b = await run(MEM);
   assert.deepEqual([cited(a).block, cited(a).value], ["field", FEE]);
   assert.equal(cited(b).placeholder, true);
-  assert.ok(!JSON.stringify(b).includes("4200") && !JSON.stringify(b).includes("field-ref"));
+  assert.ok(!holds(b, 4200) && !JSON.stringify(b).includes("field-ref"));
   const cur = (/** @type {any[]} */ g) => g.map(f => f.cur).filter(n => n > 0);
   assert.deepEqual(cur(a), [1, 2, 3]);
   assert.deepEqual(cur(b), [1, 2, 3]);
