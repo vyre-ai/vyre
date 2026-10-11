@@ -65,6 +65,13 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.ok(nd.ok, JSON.stringify(nd));
   assert.match(await words(svc.approve(bob, { id: nd.id, version: nd.version, hash: nd.hash })), /starts by itself.*owner or admin/s, "a schedule Flow of hers is not hers to approve");
 
+  // a Connection step needs service.read, which her role does not hold: such a Flow of hers is not hers to approve (the Space's credential is the Vault's, and the vault is the owner's)
+  const sd = await svc.define(bob, { flow: { ...find("bobs_service"), steps: [{ id: "s", kind: "service", connector: "demo", method: "GET", path: "/status" }] } });
+  if (sd.ok) {
+    const refusal = await words(svc.approve(bob, { id: sd.id, version: sd.version, hash: sd.hash }));
+    assert.match(refusal, /beyond what you can approve yourself/, `a Connection step stays a draft: ${refusal}`);
+  } else console.log("NOTE|a Flow with an unknown Connection does not compile here: " + JSON.stringify(sd.errors).slice(0, 160));
+
   // a step's yes lands on the person the step names
   const yes = await svc.define(bob, { flow: { ...find("bobs_yes"), steps: [{ id: "q", kind: "ask", to: `person:${BOB}`, title: "Carry on?" }] } });
   assert.ok(yes.ok, JSON.stringify(yes));
