@@ -952,7 +952,7 @@ export class Switchboard {
       // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
-      if (w.branch) kept.branch = w.branch;   if (typeof o.person === "string" && o.person) kept.person = o.person;   // who started it, from the call: a transcript is placed in this thread only for this person (threads.transcript-target)
+      if (w.branch) kept.branch = w.branch;   if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // who started it, from the verified chat turn (never a caller's word): a transcript is placed in this thread only for this person (threads.transcript-target)
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -4022,7 +4022,7 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, slot: _slot, ...restAll } = i;
+        const { mentions, pasted, starter: _claimed, slot: _slot, person: _person, ...restAll } = i;
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
