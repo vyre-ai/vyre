@@ -168,7 +168,7 @@ export function createLentHome(o) {
     try { await store.drain(session); } catch { /* the store answers for itself */ }
     // a continuation that hangs is given half a minute and told again at the next sweep
     try {
-      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
+      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || null, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
       // only what was owed at THIS take-over: a later one of the same session is owed its own
       if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); threads.delete(session); }
     } catch { /* told again at the next sweep */ }
