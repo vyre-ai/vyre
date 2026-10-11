@@ -370,7 +370,7 @@ export async function mac(box, { capsule = true, pair: asked = false } = {}, dep
   if (json) return done({ box, ready: paired !== "unpaired", ...(paired === "unpaired" ? { pairing: "vyre link pair <code>, with the code the server shows" } : {}) });
   if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
-    say(`  Lumen is not installed: ${signal("vyre capsule install")}`);
+    say(`  Lumen is not installed yet. Build it with ${signal("vyre capsule install")}`);
   }
   if (paired === "unpaired") {
     say(dim(`\n  This Mac is not paired with ${box} yet. On the server, run: vyre call wink.server.code '{"qr":true}', then here: vyre link pair <code>`));
