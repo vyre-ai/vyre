@@ -386,3 +386,36 @@ test("V4: a restart with a message queued at the Switchboard: the queue is the S
   await w.crash(b1);
   assert.ok(inbox().some((/** @type {any} */ r) => r.text === "WAITING-B"), "the restart lost nothing: the Switchboard's queue is durable");
 });
+
+for (const order of /** @type {[string, string][][]} */ ([
+  [["bob", BOB], ["carol", CAROL], ["ada", ADA], ["carol", CAROL]],
+  [["carol", CAROL], ["ada", ADA], ["bob", BOB], ["ada", ADA]],
+  [["ada", ADA], ["bob", BOB], ["carol", CAROL], ["bob", BOB]],
+])) test(`T-ID: four sequential turns (${order.map(o => o[0]).join(", ")}): every turn's kernel session is opened for its own asker, and the chain behind a tool call in the turn names that person`, { timeout: 200_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const rows = [];
+  for (const [who] of order) {
+    const before = repliesOf(watcher.frames).length, nAsked = w.asked.length;
+    const sent = await b.as(who)("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
+    assert.ok(!sent.error, sent.error && sent.error.message);
+    await until(() => w.asked.length >= nAsked + 1 && b.ks.list().length >= 1, `${who}'s turn to be running (asked ${w.asked.length}/${nAsked + 1}, sessions ${b.ks.list().length}, sent ${JSON.stringify(sent.data).slice(0, 200)})`, 20_000).catch(async e => { console.log("IDDEBUG|" + e.message + "|" + JSON.stringify(w.asked)); throw e; });
+    const [sid] = b.ks.list();
+    const claims = await w.k.surfaces.verify(await b.ks.tokenFor(sid)());
+    const ch = await w.k.surfaces.chainFor(await b.ks.tokenFor(sid)());
+    const probe = await w.k.gateway.grants.setRole(ch, { person: "per_zzprobe", role: "member" }).then(() => "allowed", (/** @type {any} */ e) => e.code);
+    const acct = /** @type {any} */ (b.reg.deps.db || b.reg.db).prepare("SELECT account FROM threads_runs WHERE id = ?").get(kitThread(b, chat.id));
+    rows.push({ turn: who, askerSent: [...new Set(w.asked.slice(nAsked).map(a => a.asker))].join(","), sessionPerson: claims.person, chainPerson: (ch.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor?.id, ownerOnlyAct: probe, account: acct ? acct.account : null });
+    await until(() => repliesOf(watcher.frames).length > before, `${who}'s reply`, 40_000);
+    rows[rows.length - 1].openedForTurn = [...new Set(w.asked.slice(nAsked).map(a => a.asker))].join(",");
+    rows[rows.length - 1].sessionsOpened = w.asked.length - nAsked;
+  }
+  console.log("IDROWS|" + JSON.stringify(rows));
+  const want = order.map(o => o[1]);
+  assert.deepEqual(rows.map(r => r.askerSent), want, "the Switchboard asked for each turn's session with that turn's asker (every session a turn opened, a hop included)");
+  assert.deepEqual(rows.map(r => r.sessionPerson), want, "the session was opened for the asker");
+  assert.deepEqual(rows.map(r => r.chainPerson), want, "and the chain behind a tool call in that turn names the asker");
+  assert.equal(new Set(rows.map(r => r.account)).size, 3, "each person's turn ran on that person's own account");
+});
