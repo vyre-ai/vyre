@@ -10067,11 +10067,12 @@ Draft a skill or plugin into the library; nothing uses it until the level's owne
 
 ### `skills.draft.learned`
 
-Draft a skill learn proposed from a repeated procedure, for the owner of this install: at the project level when it names a project, else the owner's own. A draft; the owner approves it.
+Draft a skill learn proposed from a repeated procedure: at the agent's own level when one agent repeated it, else the project's, else the owner's own. A draft; its level's owner approves it.
 
 - Input:
   - `body` string, required
   - `name` string, required
+  - `agent` string
   - `project` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
