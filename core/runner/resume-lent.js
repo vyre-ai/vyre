@@ -64,7 +64,7 @@ export function createResumeLent(o) {
         let got = null; try { got = await i.view.file(key, ent.version); } catch { got = null; }
         if (got) {
           const b = Buffer.from(got);
-          if (/^[0-9a-f]{64}$/.test(String(ent.hash || "")) && crypto.createHash("sha256").update(b).digest("hex") !== ent.hash) throw err("unavailable", "the session file from the computer does not match its checkpoint: it is not carried on");
+          if (!/^[0-9a-f]{64}$/.test(String(ent.hash || "")) || crypto.createHash("sha256").update(b).digest("hex") !== ent.hash) throw err("unavailable", "the session file from the computer does not match its checkpoint, so it is not carried on: move the chat again from that computer, and update Vyre there if it keeps happening");
           body = b;
         }
       }

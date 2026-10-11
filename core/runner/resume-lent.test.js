@@ -46,6 +46,13 @@ test("the lender's last whole turn becomes the chat's own transcript here, and t
   assert.equal(w.said[0][0], "runner.resumed");
 });
 
+/** the lender's checkpoint with a manifest naming the provider's session file, sealed over THAT manifest as the runner seals it */
+async function withFile(/** @type {any} */ view, /** @type {string} */ remote, /** @type {any} */ ent) {
+  const cp = await view.checkpoint(); const manifest = { [remote]: ent };
+  const lines = (await view.transcript(1, 1000)).filter((/** @type {any} */ e) => e.seq <= cp.seq);
+  return { ...cp, manifest, state: { cover: coverOf(manifest, lines, cp.seq, cp.turn) } };
+}
+
 test("a provider that keeps its own session file: the file the computer's agent wrote is the chat's transcript here, not the lines its program printed", async t => {
   // a real Claude prints stream events on stdout (those are the lent transcript lines); its session file is another thing, and it is the only thing a resumed Claude can read ("No conversation found" otherwise)
   const own = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"the word is PINEAPPLE\"}}\n{\"type\":\"assistant\"}\n";
@@ -53,7 +60,7 @@ test("a provider that keeps its own session file: the file the computer's agent 
   const store = w.lentView;
   const remote = `agent/claude/projects/-work/${NATIVE}.jsonl`;
   const bytes = Buffer.from(own);
-  const view = { ...store, checkpoint: async () => ({ ...(await store.checkpoint()), manifest: { [remote]: { hash: crypto.createHash("sha256").update(own).digest("hex"), version: 1, len: bytes.length } } }), file: async (/** @type {string} */ rel, /** @type {number} */ v) => (rel === remote && v === 1 ? bytes : store.file(rel, v)) };
+  const view = { ...store, checkpoint: () => withFile(store, remote, { hash: crypto.createHash("sha256").update(own).digest("hex"), version: 1, len: bytes.length }), file: async (/** @type {string} */ rel, /** @type {number} */ v) => (rel === remote && v === 1 ? bytes : store.file(rel, v)) };
   const r = await w.go({ view });
   assert.equal(r.resumed, true);
   assert.equal(fs.readFileSync(w.file, "utf8"), own, "the provider's own session file, whole");
@@ -162,4 +169,15 @@ test("a lent session with no chat or thread known to this server is not carried 
   const w = await world(t);
   await assert.rejects(() => w.go({ thread: undefined, chat: null }), (/** @type {any} */ e) => e.code === "unavailable" && /start it again from its chat/.test(e.message));
   assert.ok(!fs.existsSync(w.file));
+});
+
+test("a session file whose checkpoint hash is missing, malformed or wrong is refused, with the next step, and nothing is placed", async t => {
+  const own = "{\"type\":\"user\"}\n";
+  for (const hash of [undefined, "", "not-a-hash", "0".repeat(64)]) {
+    const w = await world(t, { whole: 4, extra: 0, files: {} });
+    const remote = `agent/claude/projects/-work/${NATIVE}.jsonl`;
+    const view = { ...w.lentView, checkpoint: () => withFile(w.lentView, remote, { ...(hash === undefined ? {} : { hash }), version: 1 }), file: async () => Buffer.from(own) };
+    await assert.rejects(() => w.go({ view }), (/** @type {any} */ e) => e.code === "unavailable" && /move the chat again/.test(e.message), `hash ${JSON.stringify(hash)}`);
+    assert.ok(!fs.existsSync(w.file), "nothing was placed");
+  }
 });
