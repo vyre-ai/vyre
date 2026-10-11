@@ -144,6 +144,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     await send(edith, "Edith here. whoami, and which code word did Grace give?");
     const second = await untilAnswers(grace, chat, 2);
     const e = String(second[1].text);
+    if (e.includes(`/${accounts[grace.name].uid}`)) throw new Error(`Edith's turn did not run on her account (user ${accounts[edith.name].uid}); the answers Grace sees: ${JSON.stringify(second.map(m => [m.author, m.text]))}${await serverView()}`);
     assert.ok(e.includes(`/${accounts[edith.name].uid}`) && !e.includes(`/${accounts[grace.name].uid}`), `Edith's turn ran as Edith's account (user ${accounts[edith.name].uid}): ${e}`);
     assert.ok(e.includes("AMBER-92"), `Edith's AI was handed Grace's earlier words from the one shared history: ${e}`);
     return `Grace: ${g} | Edith: ${e}`;
