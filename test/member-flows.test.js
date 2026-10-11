@@ -51,9 +51,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.ok(v2.ok && v2.version === od.version + 1, JSON.stringify(v2));
   assert.match(await words(svc.approve(bob, { id: od.id, version: v2.version, hash: v2.hash })), /runs on someone else's authority.*Propose it/s, "her own yes does not approve a new version of the owner's Flow");
   assert.equal((await host().flows.store.active(od.id)).version, od.version, "the owner's version still runs");
-  // she proposes it; the owner approves it and it then runs on the owner's authority
-  const prop = await svc.propose(bob, { what: "flow", id: od.id, version: v2.version, note: "a clearer label" });
-  assert.ok(prop && !prop.error, "her proposal is accepted: " + JSON.stringify(prop).slice(0, 200));
+  // she proposes it: a card goes to the person the Flow runs for (the owner), who approves it with their own yes; it then runs on the owner's authority
+  const prop = await svc.propose(bob, { id: od.id, version: v2.version, note: "a clearer label" });
+  assert.equal(prop.asked, owner, "the owner is asked");
+  const card = await until(async () => (await d.kernel.gateway.ask.list(chainOf(owner), { state: ["waiting", "ready", "working", "needs_check"] })).find((/** @type {any} */ x) => /waiting for your yes/.test(x.title)) || null, "the owner's card");
+  assert.equal(card.doer.id, owner);
   await host().flows.tools["flows.approve"](chainOf(owner), { id: od.id, version: v2.version, hash: v2.hash });
   assert.equal((await host().flows.store.active(od.id)).version, v2.version, "the owner approved it: it runs on the owner's authority");
 

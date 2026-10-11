@@ -335,8 +335,10 @@ export function createFlowsHost(o) {
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
       personChain: () => personChain(ownerOf()),
-      /** Would the Space's kernel allow this (a member's approval checks the actions her Flow declares against HER chain), without doing it? */
-      authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
+      /** Put a card in front of a person (a member's proposal for a Flow that runs on someone's authority): the Flows service asks, the person decides in their own Needs-you. */
+      notify: (/** @type {string} */ to, /** @type {string} */ title, /** @type {any} */ form, /** @type {string} */ idem) => gw.ask.request(flowsChain(), { title: title.slice(0, 200), doer: actor(to), output: { kind: "decision" }, source: "flow_step", form }, { idem }),
+      /** The people holding a role in the Space (for a card that has no better person). */
+      holders: (/** @type {string} */ role) => roleHolders(role),
       /** Would the Space's kernel allow this (a member's approval checks the actions her Flow declares against HER chain), without doing it? */
       authorizePeek: (/** @type {any} */ i) => gw.authorizePeek(i),
       /** The role the Space's kernel gives a person, or "" (the member door's rows judge a write by it). */
