@@ -83,6 +83,8 @@ export function createGateway(cfg) {
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
   async function canSee(/** @type {any} */ chain, /** @type {any} */ e) {
     if (!(await allowed(chain, "events.read", e.subject))) return false;
+    // an event about a record of a type a module keeps (its create event carries the data) is the keeper's and the owner's and admins' alone: subject vyre://<space>/<type>/<id>
+    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/[^/]+$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; }
     const vis = e.vis;
     if (vis === "space") return true;
     if (vis === "subject") return allowed(chain, "records.read", e.subject);
@@ -274,7 +276,7 @@ export function createGateway(cfg) {
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
-      try { return await cfg.store.types(); } catch (e) { throw new KernelError("unavailable", "the store could not list its types", String(e && e.message)); }
+      try { const all = await cfg.store.types(); if (!Array.isArray(all)) return all; const keep = []; for (const t of all) if (!t || await records.mayKeep(chain, t.name)) keep.push(t); return keep; } catch (e) { throw new KernelError("unavailable", "the store could not list its types", String(e && e.message)); }
     },
     /** The action registry: what each action is and how risky (ActionDef). */
     actions: () => [...authorizer.actions.values()],

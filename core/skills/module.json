@@ -43,6 +43,20 @@
         "reach": "modules"
       },
       {
+        "name": "skills.serve",
+        "summary": "a team member's own skill reads (list, get, versions) on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "read",
+        "crossSpace": "records.read"
+      },
+      {
+        "name": "skills.serve-write",
+        "summary": "a team member's own skill drafts and approvals on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "write",
+        "crossSpace": "records.create"
+      },
+      {
         "name": "skills.approve",
         "effect": "write",
         "reach": "anyone"

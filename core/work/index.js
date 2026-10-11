@@ -22,10 +22,12 @@ import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { createTemplates, registerTemplateTools } from "./templates.js";
+import { createMemberProjects } from "./member-projects.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
+import { createMemberTools } from "./member-tools.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -145,8 +147,24 @@ export default {
       void retryWhileAway(() => hubOf().personalProject().then(() => hubOf().migrateGeneral())).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
     // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
-    registerTemplateTools({ ctx, chainOf, templates: createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
-      flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } }) });
+    const templatesOf = createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
+      flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } });
+    registerTemplateTools({ ctx, chainOf, templates: templatesOf });
+    // A team member starts her own projects on the team's server: the member door's `work` rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); this server's own Space only.
+    const liveOf = async (/** @type {string} */ person) => { const k = kernelOf(); const rows = (await k.records.query(k.serviceChain("work"), "project", { page: { limit: 1000 } })).rows || []; return rows.filter((/** @type {any} */ r) => r.data && r.data.owner && r.data.owner.actor && r.data.owner.actor.id === person && r.data.status !== "archived" && r.data.status !== "moved").length; };
+    const memberProjects = createMemberProjects({ liveOf, templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); const service = k.serviceChain("work"); return { service, read: service }; } });
+    const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
+      const k = kernelOf();
+      if (String(extra.in_space) !== String(k.space || "")) throw fail("not_allowed", "Projects for members are kept in this server's own Space; this Space has none of its own. Ask the owner.");
+      if (!calls.includes(i.call)) throw fail("bad_input", `call is one of ${calls.join(", ")}`);
+      const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
+      if (!h || h.actor.kind !== "person") throw fail("not_found", "not found");
+      return /** @type {any} */ (memberProjects)[i.call](chain, i.input && typeof i.input === "object" ? i.input : {});
+    };
+    const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    ctx.tool("work.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's project reads on the team's server (the installed templates she can start from), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["templates"]), run: serve(["templates"]) });
+    ctx.tool("work.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member starts her own project on the team's server (blank, or from an installed template), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create-project", "start-project"]), run: serve(["create-project", "start-project"]) });
     // One persistent chat per person for their assistant and for @Engineer (core/work/persistent.js, R031-94)
     /** @type {any} */ let persistent = null;
     const persistentOf = () => persistent || (persistent = createPersistent({ db: ctx.store.db, kernel: kernelOf,
@@ -929,6 +947,8 @@ export default {
       async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); },
       /** The peer door asks for the member's chat service by name from this handle (the daemon imports nothing of work). */
       peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createChatService(o),
+      /** The member door's other groups (core/work/member-tools.js MEMBER_TOOLS: skills, and the Flows and projects rows others add), one service per group, for the peer door. */
+      peerServices: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createMemberTools(o),
     };
   },
 };

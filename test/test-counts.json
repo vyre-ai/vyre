@@ -607,6 +607,7 @@
  "kernel/remote/offers-port.test.js": 3,
  "kernel/remote/person-of.test.js": 1,
  "kernel/remote/proof.test.js": 3,
+ "kernel/remote/surfaces-door.test.js": 1,
  "kernel/remote/wink.test.js": 2,
  "kernel/retrofit/gates.test.js": 8,
  "kernel/rules.test.js": 13,
@@ -1049,5 +1050,6 @@
  "core/models/live-picker.test.js": 1,
  "test/journey-space-computers.test.js": 1,
  "test/journey-assistant-access.test.js": 6,
- "apps/app/screens/assistants/access-model.test.js": 2
+ "apps/app/screens/assistants/access-model.test.js": 2,
+ "core/work/member-projects.test.js": 11
 }
