@@ -164,6 +164,27 @@ export function registerPlaceTools(ctx, d) {
     return answer(row);
   };
 
+  // After another person's turn took the chat to the server (reason another-person), the chat's own person gets it back on their own computer by default: their next turn asks here, and the chat goes out again with
+  // the server's whole turns. Only for the row's own person (the Switchboard names the verified asker of the turn), and only for that reason: a chat the person handed over themself stays where they put it.
+  ctx.tool("runner.offer-back", {
+    description: "Put a chat back on its own person's computer after another person's turn took it to the server. Internal: the Switchboard, on that person's next turn. Input: thread, person. Answers { moved }.",
+    internal: true, callers: ["module"],
+    input: obj({ thread: str, person: str }, ["thread", "person"]),
+    run: async i => {
+      const thread = threadOf(i), person = String(i.person);
+      const hit = find(thread, undefined, person);
+      if (!hit || hit.row.person !== person || hit.row.where !== "server" || hit.row.reason !== "another-person") return { moved: false };
+      const p0 = placements();
+      if (typeof p0.adopt !== "function") return { moved: false };
+      const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
+      const at = named && named.data;
+      if (!at) return { moved: false };
+      { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) return { moved: false, why: "busy" }; }
+      try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { return { moved: false, why: String(/** @type {any} */ (e).message || "not ready") }; }
+      return { moved: true };
+    },
+  });
+
   ctx.tool("runner.settings", {
     description: "This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.",
     input: obj(),
