@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { askerOver, memberAccount } from "./asker-account.js";
+import { agentLaunchGuard, askerOver, memberAccount } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -74,4 +74,19 @@ test("an alias of the owner counts as the owner only through the canonical form;
   const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);
   assert.equal(await askerOver(sb({ login: true, canon }), "t", { asker: "per_owner_alias" }), null, "the owner under another id");
   await refused(askerOver(sb({ login: true }), "t", { asker: "per_owner_alias" }));
+});
+
+test("an agent's launch for a person who is not the owner is refused with the next step; the owner, no person, no kernel and a named account are unchanged; an unreadable owner fails closed", async () => {
+  const i = { agent: "kit" };
+  const refusedAgent = (/** @type {Promise<any>} */ p) => assert.rejects(p, (/** @type {any} */ e) => e.code === "no_account" && /Ask the owner to pick one/.test(e.message) && /Nothing was started/.test(e.message));
+  await refusedAgent(agentLaunchGuard(sb(), i, ANA, OWNER));
+  await agentLaunchGuard(sb(), i, OWNER, OWNER);
+  await agentLaunchGuard(sb(), i, null, OWNER);
+  await agentLaunchGuard(sb(), i, ANA, undefined);
+  await agentLaunchGuard(sb(), { ...i, account: "anas" }, ANA, OWNER);
+  await agentLaunchGuard(sb(), {}, ANA, OWNER);
+  await refusedAgent(agentLaunchGuard(sb(), i, ANA, ""));
+  await refusedAgent(agentLaunchGuard(sb(), i, OWNER, ""));
+  const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);
+  await agentLaunchGuard(sb({ canon }), i, "per_owner_alias", OWNER);
 });

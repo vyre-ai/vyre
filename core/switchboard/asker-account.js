@@ -190,3 +190,15 @@ export function hopRefusal(code) {
   if (code === "account_unavailable" || code === "account_removed" || code === "not_found" || code === "unavailable") return "Your sign-in for that AI is not available right now. Nothing was sent. Open AI accounts to sign in again, then send the message again.";
   return "Your message could not run on your own account. Nothing was sent. Send it again, or pick another account.";
 }
+
+/**
+ * An agent's thread started on behalf of a person who is not the Space owner never runs on the owner's login (the sign-in an agent without a picked credential falls back to): it is refused, with the
+ * next step, before anything is made. `who` is the one person on the call's kernel chain (null for the planner, a Flow, an automation: nobody to compare, today's behaviour), `owner` the kernel's owner
+ * (undefined: no kernel; "": a kernel whose owner cannot be read, so nobody can be told to be the owner and every person counts as a member). A launch that names an account is judged by memberAccount.
+ * @param {any} sb @param {{ agent?: string, account?: string }} i @param {string | null} who @param {string | undefined} owner
+ */
+export async function agentLaunchGuard(sb, i, who, owner) {
+  if (!i.agent || i.account || !who || owner === undefined) return;
+  if (owner && sb.canon(who) === sb.canon(owner)) return;
+  throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
+}
