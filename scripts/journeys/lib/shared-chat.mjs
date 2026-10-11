@@ -30,8 +30,11 @@ export function installStandins() {
     // the agent's settings and its logs: Codex starts in "agent" and Vyre moves it to "workspace-write" (drivers/codex.js), and a walk that times out says what the agent received
     if (name === "codex-acp") {
       const env = "FAKE_ACP_START_MODE=agent\nFAKE_ACP_EXTRA_MODE=workspace-write\nFAKE_ACP_LOG=/work/fake-acp.log\nFAKE_ACP_RPC_LOG=/work/fake-acp-rpc.log\n";
-      const w = sh(["exec", "-u", "root", BOX, "sh", "-c", `printf '%s' '${env}' > ${path.posix.dirname(real)}/fake-acp.env && install -m 666 /dev/null /work/fake-acp.log && install -m 666 /dev/null /work/fake-acp-rpc.log`]);
+      const w = sh(["exec", "-u", "root", BOX, "sh", "-c", `printf '%s' '${env}' > ${path.posix.dirname(real)}/fake-acp.env`]);
       assert.equal(w.status, 0, `the agent's settings: ${w.stderr}`);
+      // /work belongs to the box's own user: the two log files are made as that user, open to every account
+      const l = sh(["exec", "-u", "vyre", BOX, "sh", "-c", "install -m 666 /dev/null /work/fake-acp.log && install -m 666 /dev/null /work/fake-acp-rpc.log"]);
+      assert.equal(l.status, 0, `the agent's logs: ${l.stderr}`);
     }
   }
   return found;
