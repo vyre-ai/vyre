@@ -39,16 +39,43 @@ export function busyTurn(sb, id) {
 
 /**
  * A queued one-turn (the turn's facts carry `over`) is run when the thread is free: marked delivered and sent as the one-turn it was asked as. True when this took the rows.
- * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now
+ * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now @param {symbol} [lock] the drain's lock, released only by it
  */
-export function runQueuedOver(sb, id, rows, kt, mark, now) {
+export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
   if (!kt || !kt.over) return false;
   const r = rows[0];
-  if (!mark(now, r.id).changes) return true;
+  if (!mark(now, r.id).changes) { sb.drainDone(id, false, lock); return true; }   // the row is another drain's: release only our own lock, and do not drain again (the winner is in flight)
   const rec = sb.record(id);
-  // the turn begins here as a queued one does anywhere else: the stream moves the replies (and the notice that the turn moved provider) to ITS asker, not the turn that just ended
-  sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
-  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
+  // One hop at a time: the previous hop back is finished first, the target is checked BEFORE the stream is told a turn began (a hop that cannot start says so in words and began nothing), and the drain
+  // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
+  void (async () => {
+    let announced = false;
+    try {
+      if (!(await revertSettled(sb, id, false))) {
+        // the hop back is still going past the wait: nothing is judged on the hop's state; the row goes back to the queue and the next turn's end (or resume) drains it
+        // brought out again once the hop back is over (or now, when it already is and the thread is idle); a second time past the wait it is dropped in words, never left waiting for nothing
+        const again = (sb.putBack ||= new Set()).has(r.id);
+        if (again) { sb.putBack.delete(r.id); sb.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?").run(r.id); sb.emit("thread.text", { message: "vyre", text: "A message waiting for this turn could not be started: the chat was busy for too long. Nothing was written to the session. Send it again from the chat.", done: true, notice: true }, id, rec ? rec.project : null); sb.drainDone(id, false, lock); return; }
+        sb.putBack.add(r.id);
+        sb.db.prepare("UPDATE threads_inbox SET delivered_at = NULL, via = NULL WHERE id = ?").run(r.id);
+        sb.drainDone(id, false, lock);
+        const back = sb.reverting.get(id);
+        if (back) void back.finally(() => sb.drainDone(id, true)); else sb.drainDone(id, true);   // (a request to drain again: our own lock was released above)
+        return;
+      }
+      await sb.onceTarget(id, kt.over);
+      const sent = () => { announced = true; sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null); };
+      // told to the stream from inside sendOnce, right after the hop is claimed (onClaim): a hop that loses the claim or is refused first was never announced
+      const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, onClaim: sent, kernelTurn: { chat: kt.chat, asker: kt.asker } });
+      if (started === null) { sent(); await sb.deliverRow(id, r, kt); }   // no hop was needed: announced here, then delivered plainly   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
+      sb.drainDone(id, true, lock);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
+    } catch (/** @type {any} */ e) {
+      // The announced turn ends FIRST (the stream's member stops running), then the room is told: a notice while a turn still runs would take the reply path with no session and be dropped.
+      if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // (nothing was announced if the target was refused first)
+      sb.emit("thread.text", { message: "vyre", text: hopRefusal(e && e.code), done: true, notice: true }, id, rec ? rec.project : null);
+      sb.drainDone(id, true, lock);
+    }
+  })();
   return true;
 }
 
@@ -117,4 +144,61 @@ export async function chipOver(sb, id, provider, account, kt, own) {
  */
 export function movesAccount(rec, to, acct) {
   return (rec.provider || "claude") === to && (rec.account || null) !== (acct ? acct.id : null);
+}
+
+/**
+ * A hop back in flight (turnEnded records it in sb.reverting) must finish before the next person's turn is judged: the thread's provider and account are the hop's until it has. True when settled, or when
+ * nothing was reverting; false when it is still going after the wait (sb.revertWaitMs, 10 s), and nothing may be judged on the wrong base then.
+ * @param {any} sb @param {string} id @param {boolean} [waitDrain] also wait for a queued hop being started (the drain lock): a send judged meanwhile would see a base about to change @returns {Promise<boolean>}
+ */
+export async function revertSettled(sb, id, waitDrain = true) {
+  const limit = Date.now() + (typeof sb.revertWaitMs === "number" ? sb.revertWaitMs : 10_000);
+  /** @type {any} */ let timer;
+  const left = () => Math.max(0, limit - Date.now());
+  const back = sb.reverting.get(id);
+  if (back) {
+    const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), left()); })]);
+    clearTimeout(timer);
+    if (!settled) return false;
+  }
+  // a queued hop being started (the drain lock) is a base that is about to change too: wait for it to have started
+  if (!waitDrain) return true;   // (the queued hop's own start does not wait for itself)
+  while (sb.draining && sb.draining.has(id) && left() > 0) await new Promise(r => { setTimeout(r, 20); });
+  return !(sb.draining && sb.draining.has(id));
+}
+
+/** What nobody's personal skills means to the skills library: a person id that owns nothing, so a launch with no verified person gets the shared (space, project, agent) skills only. */
+export const NOBODY = "-";
+
+/**
+ * Whose personal skills a launch is given (skills.materialise `person`): the verified asker of the turn it is launched for, else the running turn's asker (a respawn); a thread that a verified chat turn
+ * started (its stored `person`) and is launched with NO verified person (the hop back, a plain resume) gets nobody's, never the starter's or, by the library's default, the owner's. A thread no chat turn
+ * started (an ordinary one: the owner's own) is unchanged: the library's default.
+ * @param {any} sb @param {any} rec @param {any} o the launch options @returns {string}
+ */
+export function libraryPerson(sb, rec, o) {
+  const verified = (o.kernelTurn && o.kernelTurn.asker) || (rec && sb.turnAsker.get(rec.id)) || null;
+  if (verified) return String(verified);
+  return o.person ? NOBODY : /** @type {any} */ (undefined);
+}
+
+
+/** The words the room sees when a person's hop onto their own account could not start: one fixed sentence per cause and the next step, never the lookup's own message (it can carry one person's account id). @param {string | undefined} code */
+export function hopRefusal(code) {
+  if (code === "busy") return "The chat is busy with another turn. Nothing was sent. Send the message again in a moment.";
+  if (code === "denied" || code === "account_required") return "That sign-in is not yours to use here. Nothing was sent. Pick your own account, or add one under AI accounts.";
+  if (code === "account_unavailable" || code === "account_removed" || code === "not_found" || code === "unavailable") return "Your sign-in for that AI is not available right now. Nothing was sent. Open AI accounts to sign in again, then send the message again.";
+  return "Your message could not run on your own account. Nothing was sent. Send it again, or pick another account.";
+}
+
+/**
+ * An agent's thread started on behalf of a person who is not the Space owner never runs on the owner's login (the sign-in an agent without a picked credential falls back to): it is refused, with the
+ * next step, before anything is made. `who` is the one person on the call's kernel chain (null for the planner, a Flow, an automation: nobody to compare, today's behaviour), `owner` the kernel's owner
+ * (undefined: no kernel; "": a kernel whose owner cannot be read, so nobody can be told to be the owner and every person counts as a member). A launch that names an account is judged by memberAccount.
+ * @param {any} sb @param {{ agent?: string, account?: string }} i @param {string | null} who @param {string | undefined} owner
+ */
+export async function agentLaunchGuard(sb, i, who, owner) {
+  if (!i.agent || i.account || !who || owner === undefined) return;
+  if (owner && sb.canon(who) === sb.canon(owner)) return;
+  throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
 }

@@ -15,6 +15,13 @@ waiting() { git fetch -q --prune origin "+refs/heads/work/q/*:refs/remotes/origi
 # Drain: keep sweeping while branches arrive (GitHub drops pending runs, so this run takes what was pushed meanwhile).
 # A train: when two or more branches wait, merge them all and preflight the combined tree ONCE. Green lands them all in one push;
 # red (or a conflict) falls back to one at a time, which names the branch at fault. One check instead of N.
+# The queue's own commits carry the queued author's public identity (the pre-push identity check). An author name that is a bare GitHub login (no space) is not that identity: it is replaced by the
+# public name the same email last committed under, so a merge or regeneration commit is never named after a login.
+as_author() {
+  local n e; n=$(git log -1 --format=%an "$1"); e=$(git log -1 --format=%ae "$1")
+  case "$n" in *" "*) ;; *) n=$(git log -300 --author="$e" --format=%an origin/"$TARGET" | grep -m1 ' ' || echo "$n") ;; esac
+  git config user.name "$n"; git config user.email "$e"
+}
 train() {
   git fetch -q origin "+refs/heads/$TARGET:refs/remotes/origin/$TARGET"
   git checkout -q -f -B land "origin/$TARGET"
@@ -22,7 +29,7 @@ train() {
   for ref in "$@"; do
     local sha; sha=$(git rev-parse "origin/$ref")
     git merge-base --is-ancestor "$sha" HEAD && continue
-    git config user.name "$(git log -1 --format=%an "$sha")"; git config user.email "$(git log -1 --format=%ae "$sha")"
+    as_author "$sha"
     if ! git merge -q --no-ff --no-edit -m "merge: $ref into $TARGET" "$sha" >/dev/null 2>&1; then git merge --abort 2>/dev/null; return 1; fi
     in+=("$ref")
   done
@@ -45,8 +52,7 @@ for ref in "${refs[@]}"; do
   git checkout -q -f -B land "origin/$TARGET"
   sha=$(git rev-parse "origin/$ref")
   if git merge-base --is-ancestor "$sha" HEAD; then echo "- $ref: already in $TARGET" | tee -a "$SUM"; drop "$ref"; continue; fi
-  # The queue's own commits carry the queued author's public identity (the pre-push identity check).
-  git config user.name "$(git log -1 --format=%an "$sha")"; git config user.email "$(git log -1 --format=%ae "$sha")"
+  as_author "$sha"
   if ! git merge -q --no-ff --no-edit -m "merge: $ref into $TARGET" "$sha" >/dev/null 2>&1; then
     { echo "### $ref: merge conflict, not landed"; git diff --name-only --diff-filter=U | sed 's/^/- /'; echo "Re-base on the current $TARGET and queue again."; } | tee -a "$SUM"
     echo "::error title=$ref was not landed::merge conflict in $(git diff --name-only --diff-filter=U | tr '\n' ' ')"

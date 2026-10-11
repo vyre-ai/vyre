@@ -23,6 +23,9 @@ test("naming the server's own Space makes its key once, lists it under the team 
   t.after(() => d.stop());
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const home = d.kernel.id.space;
+  // a Space hosted BEFORE the server's own is named (an install that has one): it stays, whatever happens to the home's name
+  const hosted = await deck("spaces.host-here", { name: "servedhere" });
+  assert.ok(!hosted.error, JSON.stringify(hosted.error));
 
   assert.equal(keyFileOf(root, home), null, "an unnamed home Space has no root key: nothing to prove it with");
   assert.equal((await deck("spaces.name-here", { name: "x" })).error?.code, "bad_name", "a bad name is refused and says what a name is");
@@ -73,8 +76,6 @@ test("naming the server's own Space makes its key once, lists it under the team 
   assert.equal(assistant.error?.code, "forbidden", JSON.stringify(assistant));
 
   // a hosted Space is unchanged: its own key, its own name, the home's naming does not touch it
-  const hosted = await deck("spaces.host-here", { name: "servedhere" });
-  assert.ok(!hosted.error, JSON.stringify(hosted.error));
   assert.notEqual(hosted.data.rootPublic, first.data.rootPublic);
   assert.ok(keyFileOf(root, hosted.data.space));
   assert.equal(hosted.data.existed, false);
@@ -107,4 +108,35 @@ test("two first calls at once make one key, and both answer with it", async t =>
   assert.equal(c.data.rootPublic, a.data.rootPublic);
   const again = await call("spaces.name-here", { name: "raceteam" }, { root, caller: "cli" });
   assert.equal(again.data.rootPublic, a.data.rootPublic, "and the key on disk is the one that was published");
+});
+
+test("a server whose own Space is named as a team's hosts no new Space beside it: the words say what to do, nothing is made, and an existing id is untouched", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "named-box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const listed = async () => { const l = (await deck("spaces.list", {})).data; return Array.isArray(l) ? l : l.spaces; };
+
+  // unnamed: the server's own Space serves as My Cloud, and a Space may still be hosted (unchanged)
+  const early = await deck("spaces.host-here", { name: "earlyone" });
+  assert.ok(!early.error, JSON.stringify(early.error));
+  const before = (await listed()).length;
+
+  // the owner names the server's own Space: the key, then the kept name (the directory does not exist on this box, so the name is put in the daemon's table as the `done` call writes it)
+  const made = await deck("spaces.name-here", { name: "theteam" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const { DatabaseSync } = await import("node:sqlite");
+  const sql = new DatabaseSync(path.join(root, "vyre.db"));
+  sql.prepare("INSERT OR REPLACE INTO spaces_kv (key, value) VALUES (?, ?)").run("home-named", JSON.stringify({ name: "theteam", at: 1 }));
+  sql.close();
+  const refused = await deck("spaces.host-here", { name: "another" });
+  assert.equal(refused.error?.code, "server_has_team", JSON.stringify(refused));
+  assert.match(refused.error?.message || "", /Connect another server for My Cloud/);
+  assert.equal((await listed()).length, before, "nothing was made");
+  const again = await deck("spaces.host-here", { name: "earlyone", id: early.data.space });
+  assert.ok(!again.error && again.data.existed === true, "an existing id is untouched: " + JSON.stringify(again));
 });

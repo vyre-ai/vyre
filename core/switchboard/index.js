@@ -57,7 +57,8 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -483,6 +484,8 @@ export class Switchboard {
     /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
+    /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
+    /** @type {Map<string, symbol>} threads with a queued turn being handed over now, and the drain that owns the lock: one drain at a time, so two never start two hops; drainDone releases only its own */ this.draining = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
     /** A thread's rollover in flight (./rollover.js): a person's message to it waits for this, never racing a second start. @type {Map<string, Promise<any>>} */
@@ -789,7 +792,7 @@ export class Switchboard {
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {
-        this.emit("thread.text", { message: "vyre", text: `Could not save a generated file as an artifact: ${String(/** @type {Error} */ (e).message).slice(0, 160)}`, done: true, notice: true }, id, rec.project);
+        this.emit("thread.text", { message: "vyre", text: "Could not save a generated file as an artifact. The file is still in the session's folder; ask for it again if you need it among your artifacts.", done: true, notice: true }, id, rec.project);
         return;
       }
     }
@@ -1169,8 +1172,44 @@ export class Switchboard {
   dropQueuedChatTurn(id, rows, project) {
     const drop = this.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?");
     for (const r of rows) drop.run(r.id);
+    this.endAnnouncedTurn(id, project);   // first: the stream's member stops running, so the notice below is shown in the room
     this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
-    this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project);   // the turn announced as begun for these words ends here
+  }
+
+  /** A thread that went dormant with queued chat turns waiting (a switch back that failed) starts again on its own base, the way a restart does: the leading row's asker opens its own session. @param {string} id */
+  resumeWaiting(id) {
+    if (this.closing || this.live.has(id)) return;
+    let waiting; try { waiting = this.db.prepare("SELECT 1 AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL AND kturn IS NOT NULL").get(id); } catch { return; }
+    if (!waiting) return;
+    // Launched with NO turn of its own, never with the first row's: on a resume the stored opts carry the base account, which memberAccount would judge a member's turn against and refuse. The drain gives each row
+    // its own session and its own hop afterwards. (The one place a chat thread still opens the default session until the first row's session replaces it: the known housekeeping gap.) Tried once, never in a loop.
+    void this.launch({ resume: id }).catch((/** @type {Error} */ e) => {
+      this.deps.log(`threads: could not start the queued chat messages of ${id.slice(0, 8)} (${e.message})`);
+      const rec = this.record(id);
+      this.emit("thread.text", { message: "vyre", text: "The chat could not start again, and the messages waiting for it are still queued. Send a message to start it again, or pick another account.", done: true, notice: true }, id, rec ? rec.project : null);
+    });
+  }
+
+  /** The turn announced as begun for words that did not run ends here: the stream's member is not left running. @param {string} id @param {string | null} project */
+  endAnnouncedTurn(id, project) { this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project); }
+
+  /** Open a queued turn's kernel session within a bound (10 s): false past it, or when it could not open. A session that completes AFTER the bound is ended again (its row was dropped; nobody's turn runs on it). @param {string} id @param {any} rec @param {{ chat?: string, asker?: string }} turn @param {number} [ms] */
+  async renewCapped(id, rec, turn, ms = 10_000) {
+    /** @type {any} */ let timer;
+    const renewing = this.renewKernelSession(id, rec, turn).then(x => x, () => false);
+    const first = await Promise.race([renewing, new Promise(r => { timer = setTimeout(() => r("capped"), ms); })]);
+    clearTimeout(timer);
+    if (first !== "capped") return Boolean(first);
+    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id); });
+    return false;
+  }
+
+  /** A queued row that needs no hop (the thread already is on the asker's account): its words go in as a plain drained turn, under their asker. @param {string} id @param {any} r @param {any} kt */
+  async deliverRow(id, r, kt) {
+    const rec = this.record(id), project = rec ? rec.project : null;
+    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker }) : false;
+    if (!ok) { this.dropQueuedChatTurn(id, [r], project); return; }
+    this.write(id, r.text, { uuid: r.uuid || crypto.randomUUID(), askedBy: kt.asker || null, images: imagesFrom(r.images) || null, ...(r.note ? { note: r.note } : {}) });
   }
 
   /** @param {string} id */
@@ -1349,7 +1388,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(o.person ? { person: String(o.person) } : {}) });   // the turn's person: their personal skills, not the owner's
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
@@ -1730,11 +1769,11 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.switchPerson = person; else delete kept.switchPerson;
+    if (acct) kept.account = acct.id; else delete kept.account;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
-    const said = () => { this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said();
+    const said = (/** @type {boolean} */ inChat = true) => { if (inChat) this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said(reason !== "back");   // the hop back says nothing in the chat: it is nobody's turn, and a reply the stream opened for it would take the next person's turn (SEQ)
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
     if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
@@ -2230,7 +2269,12 @@ export class Switchboard {
     this.releaseSlots(id, st);
     if (this.live.get(id) !== st || st.stopping) return;
     // One turn on another provider is over: the session goes back to its own, and carries what was said.
-    if (this.once.has(id)) { this.revertOnce(id).catch(e => this.deps.log(`threads: could not go back after a one-turn ask on ${id.slice(0, 8)}: ${e.message}`)); return; }
+    if (this.once.has(id)) {
+      const back = this.revertOnce(id).catch(e => this.deps.log(`threads: could not go back after a one-turn ask on ${id.slice(0, 8)}: ${e.message}`));
+      this.reverting.set(id, back);
+      void back.finally(() => { if (this.reverting.get(id) === back) this.reverting.delete(id); this.drainDone(id, true); });   // (also when the switch back threw: the rows waiting are not left on an idle thread)
+      return;
+    }
     // Vyre's own rollover: if the window is filling, look at it now (it settles after the settings are read, and only acts at a boundary).
     void this.rollCheck(id, st, project).catch(e => this.deps.log(`threads: rollover check for ${id.slice(0, 8)} failed: ${e.message}`));
     if (st.steers.size) {
@@ -2246,8 +2290,27 @@ export class Switchboard {
     this.drainQueued(id, st, project);
   }
 
-  /** The words queued for after a turn run next, one asker's at a time. @param {string} id @param {any} st @param {string|null} project */
+  /**
+   * The words queued for after a turn run next, one asker's at a time. THE CONTRACT, every exit of the hand-over (rc1-d's table, kept current):
+   *   - a drain or a hop back is already in flight for the thread: return (the rows are drained when that turn ends, or by drainDone when it fails);
+   *   - nothing waits, or none may go in (a computer's lent process): return;
+   *   - the asker left the chat: the rows are dropped, the room is told, drainDone(true);
+   *   - the thread is no longer idle by the time the asker is confirmed: drainDone(true);
+   *   - a queued hop (kt.over): runQueuedOver waits for the hop back, checks the target, tells the stream the turn began, runs the hop; a hop that needs no move delivers the words plainly (deliverRow);
+   *     a hop that cannot start says so, ends the announced turn and drains the rest; past the revert wait the row is put back once, dropped in words the second time;
+   *   - a plain turn: the asker's session opens within 10 s (else the row is dropped in words), the words are written; a write that throws is logged, told to the room and drained past;
+   *   - a hop back that failed twice: the base is written back, the hop's process stopped, the room told once, and rows waiting resume on the base (resumeWaiting), judged as any resume;
+   *   - a session that opens after the 10 s bound is ended again (renewCapped); a hop row that needs no hop is delivered plainly (deliverRow); a write or an asker check that throws is logged and told, never thrown;
+   *   - a plain send with no chat turn waits for the revert and the drain lock (revertSettled), is refused in words past the wait, and never rides a finished turn's session;
+   *   - turnEnded: a hop in flight (once) is handed to revertOnce and recorded in reverting, whose end (settled or thrown) drains again; otherwise steers run first, then this drain;
+   *   - sendOnce: an early throw (target refused, keyboard held, a hop already owning the thread) leaves no lock and no base change; the once entry is claimed in the same tick it is checked and a failing call touches only its own;
+   *   - revertOnce: no hop entry returns; the switch back is tried, once more, never for a failure that cannot change; a thread with no live process after it skips the tail turnEnded (resumeWaiting drains instead);
+   *   - the lock is owned by the drain's token: drainDone(id, again, lock) releases only its own; a call without a token only asks to drain when no lock is held (a late callback never releases a newer drain's lock).
+   *   - every exit releases the lock (drainDone) and re-drains only when the thread is idle with no hop pending and no hop back in flight.
+   * @param {string} id @param {any} st @param {string|null} project
+   */
   drainQueued(id, st, project) {
+    if (this.draining.has(id) || this.reverting.has(id)) return;   // one drain at a time per thread, and none while a hop back swaps the process (its own turnEnded drains afterwards); the rows it leaves are drained when its turn ends (or by drainDone if it fails)
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
@@ -2256,35 +2319,47 @@ export class Switchboard {
     const askerOf = (/** @type {any} */ r) => { try { return r.kturn ? JSON.parse(r.kturn).asker || null : null; } catch { return null; } };   const free = all.filter(r => !lentBlocks(this, id, st, askerOf(r)));   if (!free.length) { const other = all.find(r => askerOf(r)); if (other) void lentYield(this, id, st, askerOf(other)).catch(() => {}); return; }   all.splice(0, all.length, ...free);   const lead = all[0].kturn || null; const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
+    const lock = Symbol("drain");
+    this.draining.set(id, lock);
     if (kt0 && kt0.chat && this.deps.kernelSession) {
       this.assertAsker(id, this.record(id), kt0).then(
-        () => { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); },
-        () => {
+        () => { try { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project, lock); else this.drainDone(id, true, lock); } catch (e) { this.deps.log(`threads: could not hand over a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true, lock); } },
+        () => { try {
           const drop = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
           for (const r of rows) drop.run(Date.now(), r.id);
           this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, project);
-          if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainQueued(id, st, project);
-        });
+          this.drainDone(id, true, lock);
+        } catch (e) { this.deps.log(`threads: could not drop a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true, lock); } });
       return;
     }
-    this.drainRun(id, lead, rows, project);
+    this.drainRun(id, lead, rows, project, lock);
   }
 
   /** The leading rows of one asker go out as one turn. @param {string} id @param {string|null} lead @param {any[]} rows @param {string|null} project */
-  drainRun(id, lead, rows, project) {
+  drainRun(id, lead, rows, project, lock) {
     const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();   // this turn's asker, for the words' askedBy
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
-    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
+    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
-    if (!taken.length) return;
+    if (!taken.length) { this.drainDone(id, true, lock); return; }
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) deliver(); else { this.dropQueuedChatTurn(id, taken, project); const live = this.live.get(id); if (live && !live.stopping && !live.turn) this.drainQueued(id, live, project); } }); return; } }
-    deliver();
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok) { deliver(); this.drainDone(id, false, lock); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } }); return; } }
+    try { deliver(); } catch (e) { this.deps.log(`threads: could not write a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); }   // (logged here, not thrown into whatever ended the turn)   // a write that throws (lent, not live) releases the lock and the rows behind it still run
+    this.drainDone(id, false, lock);
+  }
+
+  /** A queued turn's hand-over has started or failed: the lock on the thread's drain is released, and when it FAILED and the thread is idle the rows behind it are drained now (never stranded). @param {string} id @param {boolean} again @param {symbol} [lock] the drain that owns the lock */
+  drainDone(id, again, lock) {
+    if (lock && this.draining.get(id) !== lock) return;   // not this drain's lock any more (a newer drain owns it): nothing of ours to release, and nothing to drain again
+    if (lock) this.draining.delete(id);   // (no token: a request to drain again, never a release; a drain that holds the lock is left alone)
+    else if (this.draining.has(id)) return;
+    const st = this.live.get(id);
+    if (again && st && !st.turn && !st.stopping && !this.once.has(id) && !this.reverting.has(id)) { const rec = this.record(id); this.drainQueued(id, st, rec ? rec.project : null); }
   }
 
   /**
@@ -2313,7 +2388,7 @@ export class Switchboard {
   resumeQueued(id) {
     const st = this.live.get(id);
     // A one-turn ask on another provider has not had its turn yet: a resume that starts it is not the end of one (turnEnded would send the session back before the answer).
-    if (!st || st.turn || this.once.has(id)) return;
+    if (!st || st.turn || this.once.has(id) || this.draining.has(id)) return;   // (a queued turn is being handed over from this queue: the end of ITS turn is the next one, not this resume)
     const rec = this.record(id);
     this.turnEnded(id, st, rec ? rec.project : null);
   }
@@ -2544,18 +2619,23 @@ export class Switchboard {
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
     const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
     const { seed } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
-    this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
+    // One hop at a time: claimed in the same tick it is checked, so a second ask never overwrites (or later reverts) the first's.
+    if (this.once.has(id)) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
+    const mine = { back, from: cur, to: provider, sent: String(text), reply: "" };
+    this.once.set(id, mine);
     try {
+      if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction); inside the try, so a throw reverts only what this call owns
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
       if (!r.sent) throw no(String(r.note || "The turn did not start."), "busy");
       return { ...r, provider, once: true };
     } catch (e) {
-      // Whatever went wrong, the session goes back to the provider it was on.
+      // Whatever went wrong, the session goes back to the provider it was on: unless another hop owns the thread now, whose session, account and once entry are not ours to touch.
+      if (this.once.get(id) !== mine) throw e;
       this.carry.delete(id);
       const at = this.record(id);
-      if (at && (at.provider || "claude") !== back.provider) await this.revertOnce(id).catch(() => {});
+      if (at && (at.provider || "claude") !== back.provider) { const undo = this.revertOnce(id).catch(() => {}); this.reverting.set(id, undo); await undo; if (this.reverting.get(id) === undo) this.reverting.delete(id); }   // recorded like any hop back: the next person's turn waits for it
       this.once.delete(id);
       throw e;
     }
@@ -2572,8 +2652,29 @@ export class Switchboard {
     this.carry.set(id, note);
     // The one-turn switch that started this turn may still be finishing (a fast turn can end before its own switch has let go): wait for it, bounded, so the return is never taken for a second switch and dropped.
     for (let n = 0; n < 100 && this.switches.has(id); n++) await new Promise(r => setTimeout(r, 20));
-    await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" });
+    /** @type {any} */ let failed = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" }); failed = null; break; } catch (e) { failed = e; if (/** @type {any} */ (e).code === "account_removed" || /** @type {any} */ (e).code === "denied" || /** @type {any} */ (e).code === "account_required") break; }   // a failure that cannot change is not retried
+    }
+    if (failed) {
+      // The switch back failed twice. The thread is NOT left live on the hop's account (a queued row would be written into the member's process, on the member's login): its base goes back into the record,
+      // anything of the hop still running is stopped, and the room is told once. The thread is then dormant: the next message, or the resume of a row already waiting, is an ordinary resume on the
+      // thread's own base, judged by the code that is always used.
+      this.deps.log(`threads: could not switch ${id.slice(0, 8)} back: ${failed.message}`);
+      const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+      if (once.back.account) kept.account = once.back.account; else delete kept.account;
+      if (once.back.person) kept.person = once.back.person; else delete kept.person;
+      this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
+      const left = this.live.get(id); if (left) left.haltReason = "switching back failed";
+      await this.stop(id).catch(() => {});
+      this.emit("thread.provider", { from: once.to, to: once.back.provider, account: once.back.account || null, model: modelName(once.back.model), reason: "back" }, id, rec ? rec.project : null);
+      this.emit("thread.text", { message: "vyre", text: `The chat's session stopped while switching back to ${providerName(once.back.provider)}. The next message starts it again, and what ${to} answered is passed on when it starts.`, done: true, notice: true }, id, rec ? rec.project : null);
+      this.reverting.delete(id);   // the mark is released first, so the resume below drains where it should
+      this.resumeWaiting(id);
+      return;
+    }
     const now = this.live.get(id);
+    this.reverting.delete(id);   // the process is swapped: the drain below is the first that may run
     if (now) this.turnEnded(id, now, rec ? rec.project : null);
   }
 
@@ -3777,6 +3878,8 @@ export const queuesFor = caller => {
 
 export default {
   async start(ctx) {
+    // threads.notice says words in any thread's room as Vyre, outside a turn: an added module that lists it in needs.tools must not reach it (first-party callers: agents, team).
+    closeToAddedModules(ctx, { only: ["threads.notice"] });
     ctx.store.migrate(MIGRATIONS);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     const cfg = sessionsConfig(ctx.config);
@@ -4282,6 +4385,9 @@ export default {
           : firstParty && /^module:/.test(String(caller || "")) && typeof i.uuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.uuid) ? i.uuid.toLowerCase() : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
         // One turn on another provider: a person's choice (their account's usage), by an @ account chip; refused before anything is said.
+        // the previous hop is fully back before this person's turn is judged; if it is not within the wait, nothing is judged on the wrong base: the send is refused in words and the stream sends it again
+        const settled = await revertSettled(sb, i.thread);
+        if (!settled) throw Object.assign(new Error("This chat is still handing over the previous turn. Nothing was sent: send it again in a few seconds."), { code: "busy" });
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
@@ -4698,7 +4804,7 @@ export default {
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
-      run: async i => sb.launch(i),
+      run: async (i, m) => { await agentLaunchGuard(sb, i, personOfChain(ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null), kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
     ctx.tool("threads.usage", {
@@ -4709,7 +4815,7 @@ export default {
     ctx.tool("threads.notice", {
       description: "Say something in a thread as Vyre.", internal: true,
       input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str } },
-      run: async i => sb.notice(i.thread, i.text),
+      run: async i => sb.notice(i.thread, String(i.text == null ? "" : i.text).replace(/\s+/g, " ").trim().slice(0, 300)),   // one line, 300 characters: it can reach a room outside a turn
     });
     // A chat's runs and their events, to leave this device with the chat (Personal to My Cloud: core/work/chat-upgrade.js) and to be put back on the other. Modules only; the caller (the work module) has
     // already checked that the person is in the chat. What is not carried: the provider's own session file (a resumed run starts from the brief, not from native context).
