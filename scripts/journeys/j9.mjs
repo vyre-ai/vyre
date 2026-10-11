@@ -30,13 +30,33 @@ export default {
     const people = /** @type {{ name: string, app: any, invite?: any, joined?: any }[]} */ ([]);
     const chainOf = (/** @type {string} */ space, /** @type {string} */ person) => ({ space, hops: [{ actor: { kind: "person", id: person, space } }] });
     try {
-      const T = "the owner makes the team Space on the server";
+      const T = "the owner makes the team in the server's own Space (one Space per server: no second Space is made)";
       await J.step(T, async () => {
+        const rowsOf = async () => { const ls = await w.call("spaces.list", {}); return Array.isArray(ls) ? ls : ls.spaces || []; };
+        const before = await rowsOf();
         team = await mac.createTeamSpace(`day${w.person.slice(-5)}`);
         assert.match(team.space, /^spc_/);
         const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
         assert.equal(r.status, 200, "the names directory resolves the Space's name");
+        const after = await rowsOf();
+        assert.equal(after.length, before.length, `no second Space appeared: ${JSON.stringify(after).slice(0, 300)}`);
+        assert.ok(after.some((/** @type {any} */ x) => (x.id || x.space) === team.space && x.label === team.label), "the server's own Space is listed under the team's name");
         return team.name;
+      }, { owner: "projects-flows" });
+
+      // the owner of the team server presses "Set up My Cloud" (its hosting call: spaces.create ends in spaces.host-here on the server): a second Space on a server whose Space is the team's is refused, in words
+      await J.step("Set up My Cloud on the team's server is refused: this server's Space is already the team's", async () => {
+        const before = (() => w.call("spaces.list", {}))();
+        const rows0 = await before;
+        const n0 = (Array.isArray(rows0) ? rows0 : rows0.spaces || []).length;
+        let err = /** @type {any} */ (null);
+        try { await mac.callTool("spaces.host-here", { name: `mycloud${w.person.slice(-4)}` }); } catch (e) { err = e; }
+        assert.ok(err, "the second Space was refused");
+        assert.equal(err.code, "server_has_team", String(err && err.message));
+        assert.match(String(err.message), /Connect another server for My Cloud/);
+        const rows1 = await w.call("spaces.list", {});
+        assert.equal((Array.isArray(rows1) ? rows1 : rows1.spaces || []).length, n0, "nothing was made");
+        return String(err.message);
       }, { owner: "projects-flows" });
 
       // two more people, each with their own app, name and keys
@@ -47,7 +67,7 @@ export default {
           const r = await app.reserve(`${who.toLowerCase()}${Math.random().toString(36).slice(2, 6)}`);
           await app.becomeYourself({ name: r.name, code: r.code });
           const owner = chainOf(team.space, mac.identity.id);
-          const invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: r.name, signPresence: async (/** @type {any} */ card) => mac.presenceSigner.proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
+          const invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: r.name, signPresence: async (/** @type {any} */ card) => (srv.team ? srv.team.ownerSigner : mac.presenceSigner).proof(owner, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }) });
           invite.close();
           const sg = app.presenceSigner, chain = chainOf(team.space, app.identity.id);
           const joined = await app.joinTeam({ link: invite.link, signPresence: async (/** @type {any} */ req) => sg.proof(chain, req.op, req.fields), presenceKey: async () => sg.enrolment(app.identity.id) });
@@ -69,8 +89,8 @@ export default {
       await heavy(R, async () => {
         const made = [];
         for (const name of NAMES) {
-          const c = await whenStoreIsUp(w, "records.create", { type: "contact", space: team.space, data: { name } });
-          const cl = await whenStoreIsUp(w, "records.create", { type: "client", space: team.space, data: { contact: { urn: c.record.urn } } });
+          const c = await whenStoreIsUp(w, "records.create", { type: "contact", data: { name } });
+          const cl = await whenStoreIsUp(w, "records.create", { type: "client", data: { contact: { urn: c.record.urn } } });
           made.push(cl.record.urn);
         }
         for (const p of people) {

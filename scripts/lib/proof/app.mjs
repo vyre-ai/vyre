@@ -310,8 +310,8 @@ export function createApp(o) {
     } finally { inv.close(); }
   }
 
-  /** A team space on the server this app is paired with: the app's claimServerSpace, with the server hosting it (spaces.host-here) and the names directory holding its record. @param {string} name */
-  async function createTeamSpace(name) {
+  /** A SECOND team space hosted on the server this app is paired with (spaces.host-here): the old path, kept for walks of installs that already have one. @param {string} name */
+  async function createHostedTeamSpace(name) {
     if (!me || !pairing) throw new Error("this app has no identity or no server yet");
     return claimServerSpace({
       identity: { id: me.id, name: me.name, eid: me.key.eid, ops: me.ops, key: me.key }, name, displayName: name, base: o.directory,
@@ -332,8 +332,11 @@ export function createApp(o) {
     return claimed;
   }
 
+  /** The team the app makes now (one Space per server): the server's OWN Space named the team's. Same answer shape as claimServerSpace. @param {string} name */
+  const createTeamSpace = name => nameOwnSpace(name);
+
   return {
-    nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, createHostedTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
