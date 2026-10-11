@@ -343,11 +343,33 @@ test("fail closed: a live process that does not say it is on the box is judged b
   assert.equal(asked, 0, "no take-back while the owner's turn runs");
 });
 
-test("the last door: Switchboard.write refuses a message for a process on a computer unless the turn it belongs to is that person's", async () => {
+test("the last door and every writer: nothing reaches a process on a computer unless the words are that person's; a missing asker counts as blocked, and the writers queue or keep their words instead of losing them", async () => {
   const { Switchboard } = await import("../switchboard/index.js");
   const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
-  const stub = (/** @type {any} */ asker) => ({ live: new Map([[SESSION, { proc: { where: undefined, write() { throw new Error("reached the process"); } } }]]), turnAsker: new Map(asker === undefined ? [] : [[SESSION, asker]]), deps: { lentRow: () => row }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
-  for (const asker of [undefined, null, CAROL]) assert.throws(() => Switchboard.prototype.write.call(stub(asker), SESSION, "hello"), (/** @type {any} */ e) => e.code === "held" && /waits/.test(e.message), `asker ${String(asker)}: refused before the process`);
+  const proc = () => ({ where: undefined, write() { throw new Error("reached the process"); } });
+  const base = () => ({ live: new Map([[SESSION, { turn: null, proc: proc() }]]), turnAsker: new Map([[SESSION, BOB]]), deps: { lentRow: () => row, lentTakeBack: async () => "taken" }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ provider: "claude", project: null, status: "idle" }), must: () => ({ provider: "claude", project: null, status: "idle" }), canonTurn: (/** @type {any} */ x) => x });
+  // write: the asker is named by the caller; the last chat turn's asker is no default (here it is Bob's, and the call still names nobody)
+  for (const asker of [undefined, null, CAROL]) assert.throws(() => Switchboard.prototype.write.call(base(), SESSION, "hello", { askedBy: asker }), (/** @type {any} */ e) => e.code === "held" && /waits/.test(e.message), `askedBy ${String(asker)}`);
+  assert.throws(() => Switchboard.prototype.write.call(base(), SESSION, "hello"), (/** @type {any} */ e) => e.code === "held", "no asker named at all");
+  assert.equal(lentBlocks(base(), SESSION, base().live.get(SESSION), BOB), false, "Bob's own words pass the door");
+  // post (a module's words, e.g. a teammate's result) is queued, not thrown
+  /** @type {any[]} */ const queued = [];
+  const t1 = { ...base(), queue: (/** @type {any[]} */ ...a) => { queued.push(a); return { queued: true }; }, write: Switchboard.prototype.write, emit() {} };
+  const r1 = await Switchboard.prototype.post.call(t1, SESSION, "a result", "agent", "k", undefined);
+  assert.equal(r1.queued, true); assert.equal(queued.length, 1, "queued, and the process was never reached");
+  // sendNow: a queued row is judged by its own asker and stays queued when it may not go in
+  /** @type {string[]} */ const ran = [];
+  const t2 = { ...base(), db: { prepare: (/** @type {string} */ sql) => ({ get: () => ({ id: 1, text: "x", surface: "s", uuid: "u", images: null, request: null, note: null, kturn: JSON.stringify({ chat: "chat_bob", asker: CAROL }) }), run: () => { ran.push(sql); return { changes: 1 }; } }) }, write: Switchboard.prototype.write, emit() {} };
+  const r2 = Switchboard.prototype.sendNow.call(t2, SESSION, 1);
+  assert.equal(r2.sent, false); assert.ok(!ran.some(q => /UPDATE threads_inbox/.test(q)), "the row was not marked handed over");
+  // restoreSteers: words with no person stay saved
+  /** @type {string[]} */ const ran3 = [];
+  const t3 = { ...base(), db: { prepare: (/** @type {string} */ sql) => ({ all: () => [{ uuid: "u", text: "t", images: null, at: 1 }], run: () => { ran3.push(sql); return { changes: 1 }; } }) }, write: Switchboard.prototype.write, emit() {} };
+  assert.equal(Switchboard.prototype.restoreSteers.call(t3, SESSION), false);
+  assert.ok(!ran3.some(q => /DELETE FROM threads_steers/.test(q)), "the saved words were kept");
+  // a Codex or Grok thread of the same chat is the server's: the owner's Claude row does not block it
+  const codex = { ...base(), record: () => ({ provider: "codex", project: null, status: "idle" }) };
+  assert.equal(lentBlocks(codex, SESSION, codex.live.get(SESSION), CAROL), false, "not a Claude thread: never on a computer");
 });
 
 
