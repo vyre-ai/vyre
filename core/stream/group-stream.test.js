@@ -14,7 +14,8 @@ import { Logs } from "./log.js";
 import { createGroups } from "./group.js";
 import { serve } from "./server.js";
 import { connect } from "./client.js";
-import { prng, Sched, makeLink, holds } from "./testkit.js";
+import { prng, Sched, makeLink } from "./testkit.js";
+import { holds } from "../../test/holds.js";
 import { createFakeKernel } from "./fake-reply-port.js";
 
 const PORTS = ["fake appendOpen port", "stand-in port"];

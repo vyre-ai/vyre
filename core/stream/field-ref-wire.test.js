@@ -8,7 +8,8 @@ import http from "node:http";
 import { SessionLog } from "./log.js";
 import { serve, serveSSE } from "./server.js";
 import { connect } from "./client.js";
-import { prng, Sched, makeLink, holds } from "./testkit.js";
+import { prng, Sched, makeLink } from "./testkit.js";
+import { holds } from "../../test/holds.js";
 
 const FEE = { amount: 4200, currency: "USD" };
 const ref = { block: "field-ref", record: "vyre://spc/matter/1", field: "fee", label: "Fee" };

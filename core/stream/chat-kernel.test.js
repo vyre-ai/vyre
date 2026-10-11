@@ -19,7 +19,7 @@ import { createKernel } from "../../kernel/index.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 import { connect, wsDuplex } from "./client.js";
-import { holds } from "./testkit.js";
+import { holds } from "../../test/holds.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
