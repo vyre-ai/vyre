@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { SESSIONS } from "./fixtures/corpus.js";
 import { OWNER, PHONE, until, pair } from "./link-harness.js";
-import { kernelCaller } from "./helpers.js";
+import { kernelCaller, putOnTask } from "./helpers.js";
 
 const T0 = Date.parse("2026-09-01T09:00:00Z");
 /** The box's own session: newer than every one on the Mac, and about the same intake form. */
@@ -280,6 +280,7 @@ test("federation reads: a Mac session picked into a box project resolves through
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: path.join(s.boxWork, "harlow") })).error);
   // juno is granted this project, so the registry lets it read it (an agent with no grant is refused).
   assert.ok(!(await kernelCaller(s.box, s.boxRoot)("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
+  await putOnTask(s.box, s.boxRoot, "juno", "harlow-legal");   // a teammate with a task (G22)
   // The Mac's session as the Mac answers it by id, and the box's own picked alongside it.
   const [mac] = (await s.macCall("recall.sessions", { ids: [MAC_ID] })).data;
   assert.equal(mac.id, MAC_ID);

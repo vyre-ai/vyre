@@ -83,6 +83,7 @@ const ALLOWED = new Map([
   ["lib/spaces/upgrade.js", "a replacer-based stable stringify over upgrade state that can hold bytes; the hashes already stored were made with it"],
   ["core/wink/storage/s3.js", "an AWS signature's canonical request, a different thing"],
   ["core/modules/index.js", "a Map named canonical"],
+  ["lib/tool-names.js", "not JSON: looks a tool name up in the rename table"],
   ["kernel/identity/chain.d.ts", "the type of the canonical it exports"],
   ["kernel/identity/chain.js", "a pinned root-of-trust file (kernel/identity/PINNED.json): it imports nothing but node:crypto and changes only through the reviewer's gate; the corpus above holds its canonical to the kernel's"],
 ]);

@@ -23,7 +23,7 @@ const { start } = await import("../core/daemon/index.js");
 const { present, asOwner } = await import("../test/helpers.js");
 const { FAKE } = await import("../core/sessions/testing/boot.js");
 const { TASKS, ARM_ENV, parseStream, passed, summarize } = await import("./lib/token-proof.js");
-const { createSkills, SKILL_MIGRATIONS } = await import("../core/learn/skills.js");
+const { createSkills, SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION } = await import("../core/learn/skills.js");
 const { DatabaseSync } = await import("node:sqlite");
 const { callsOf, runFor, evidenceOf } = await import("../lib/skill-skeleton.js");
 const { translate } = await import("../core/switchboard/translate.js");
@@ -202,7 +202,7 @@ function installRepeatSkill() {
   const runs = ["Client One", "Client Two", "Client Three"].map((w, k) => runFor(callsOf(run(w, k)), STEPS));
   if (!runs.every(Boolean)) throw new Error("the scripted runs did not match their steps");
   const db = new DatabaseSync(":memory:");
-  for (const sql of SKILL_MIGRATIONS) db.exec(sql);
+  for (const sql of [...SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION]) db.exec(sql);
   const skills = createSkills(db, { claudeDir: path.join(home, ".claude-unused") });
   const s = skills.propose({ hash: "proof-repeat", steps: STEPS, sessions: 3, scope: "all", evidence: evidenceOf(/** @type {any} */ (runs)) });
   skills.install(s.id, { home, scope: "account" });
