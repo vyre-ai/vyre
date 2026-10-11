@@ -164,6 +164,27 @@ export default {
     const urnOf = async (/** @type {string} */ slug) => { const r = await ctx.call("projects.record", { project: slug }); if (r.error) throw new Error(`no record for project ${slug}: ${r.error.message}`); return String(r.data.urn); };
     /** Whether this call carries a person to act as: a module's own call (the plugin agent's grant makes its agent this way) carries none, and then the grants are the caller's to make with its own proof. */
     const hasPerson = async (/** @type {any} */ meta) => { try { const c = await K.chain(meta); return c.hops.length === 1 && c.hops[0].actor.kind === "person"; } catch { return false; } };
+    /**
+     * An agent is made an actor of this Space under its NAME, the id a template's stage names for a task's doer (kernel/flows/stages.js) and a chat that lists it registers (core/daemon/index.js chatFor), so a
+     * project started from a template gets its assistant tasks. It is done by the daemon under the OWNER's chain, so it happens only when the call carries the Space's owner and nobody else (a member's token, a
+     * module's call with no person and a model's never do; agents.create's callers alone do not keep a member out, since a paired app device is let through as "deck"); anyone else gets the words below.
+     * Whether a member's own agent should be an actor of the Space is the owner's decision. Already an actor: nothing is written (registry.deps.agentActor checks). Returns null when done, else the words for the answer.
+     * @param {string} name @param {any} meta
+     */
+    const becomeActor = async (name, meta) => {
+      if (!K || !K.grants || typeof ctx.agentActor !== "function") return null;   // no kernel here: there is no Space to be an actor of
+      const later = (/** @type {string} */ why) => `${name} is made, but it is not a member of this Space yet, so no task can be given to it (${why}). Ask the owner to add it with: vyre space add-agent ${K.space} ${name}`;
+      let who = null;
+      try { const c = await K.chain(meta); who = c.hops.length === 1 && c.hops[0].actor.kind === "person" ? String(c.hops[0].actor.id) : null; } catch { who = null; }
+      if (!who) { ctx.log(`agents: ${name} was made by a call with no person, so it is not an actor of the Space yet`); return later("this call carried no person"); }
+      const canon = (/** @type {string} */ id) => (typeof K.canonicalPerson === "function" ? K.canonicalPerson(id) : id);
+      if (canon(who) !== canon(String(K.owner))) { ctx.log(`agents: ${name} was made by a member, so it is not an actor of the Space yet; the owner adds it`); return later("only the Space's owner adds an agent to it"); }
+      try { await ctx.agentActor(name); return null; }
+      catch (e) {
+        ctx.log(`agents: could not make ${name} an actor of the Space: ${/** @type {Error} */ (e).message}`);
+        return later(String(/** @type {Error} */ (e).message).slice(0, 160));
+      }
+    };
     const syncAccess = async (/** @type {string} */ name, /** @type {any} */ before, /** @type {any} */ after, /** @type {any} */ meta) => {
       if (!K || !K.grants) return; // no kernel here: there are no grants to keep in step with
       if (!(await hasPerson(meta))) {
@@ -479,7 +500,8 @@ export default {
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         await mirror.schedule();
-        return get(i.name);
+        const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
+        return note ? { ...get(i.name), note } : get(i.name);
       },
     });
 
@@ -760,7 +782,12 @@ export default {
           if (!(await hasPerson(meta))) throw Object.assign(new Error("deleting an agent takes back what it was given, which is the person's own act; this call carries no person"), { code: "denied" });
           await revokeReach(K, meta, { agent: a.uid });
           const { chain, proof } = await (await import("../../lib/project-reach.js")).asPerson(K, meta);
-          try { await K.grants.removeActor(chain, { kind: "agent", id: a.uid, space: K.space }, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found" && c !== "unknown") throw e; }
+          // Whatever was given to the agent's NAME goes with it (task grants, chat seats): a new agent made later under the same name must inherit nothing, and removing the actor alone leaves those grants dormant,
+          // woken by registering the name again. The grants of its stable id went above.
+          { const all = await K.grants.list(chain, {}); for (const g of (Array.isArray(all) ? all : all && all.grants ? all.grants : [])) if (g.status === "active" && g.subject && g.subject.kind === "actor" && g.subject.actor && g.subject.actor.kind === "agent" && String(g.subject.actor.id) === a.name) await K.grants.revoke(chain, g.id, "the agent was deleted", proof); }
+          for (const id of [a.uid, a.name]) {   // the stable id (reach grants) and the name (tasks, chats)
+            try { await K.grants.removeActor(chain, { kind: "agent", id, space: K.space }, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found" && c !== "unknown") throw e; }
+          }
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);

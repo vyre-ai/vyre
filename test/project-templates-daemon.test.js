@@ -4,8 +4,11 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
 import { start } from "../core/daemon/index.js";
-import { tempHome } from "./helpers.js";
+import { call as socketCall } from "../core/daemon/client.js";
+import { COOKIE } from "../core/presence/person.js";
+import { tempHome, pairDevice } from "./helpers.js";
 import { canonical, sha256 } from "../kernel/core/canonical.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -25,21 +28,21 @@ const TEMPLATE = {
   ],
 };
 
-async function boot(/** @type {any} */ t, member = true) {
+async function boot(/** @type {any} */ t, member = true, verifier = presence) {
   const root = tempHome(t);
   const logs = /** @type {string[]} */ ([]);
-  const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: presence });
+  const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: verifier });
   /** @type {any} */ (d).testLogs = logs;
   t.after(() => d.stop());
   const space = d.kernel.id.space, owner = d.kernel.id.owner;
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const meta = async () => ({ token: (await d.kernel.surfaces.open(ownerChain, {})).token });
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", await meta()); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
-  // the roster agent the template's role is filled by is a member of the Space
-  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  // the roster agent the template's role is filled by: making it makes it an actor of the Space (member = false leaves it out, so the role names an agent the Space does not have)
   const actor = { kind: "agent", id: "research", space };
   if (!member) return { d, space, owner, ownerChain, call, meta, host: d.registry.deps.flowsHost.get(space) };
-  await d.kernel.gateway.grants.addActor(ownerChain, actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
+  const made = await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(made.note, undefined, "the answer to a create that made the agent an actor has no warning");
   // and may do the tasks it is given
   const gi = { subject: { kind: "actor", actor }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
   await d.kernel.gateway.grants.create(ownerChain, gi, { presence: proof("grants.create", gi, `vyre://${space}/grant/new`) });
@@ -202,4 +205,135 @@ test("a Flow attached to a template runs for each project it starts, as its own 
   await call("work.start-project", { template: "tpl_with-automation", name: "Rivera" });
   await until(async () => (await names()).filter((/** @type {string} */ n) => n === "Welcome Intake").length === 2, "and once for each project");
   await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad auto", automations: [{ when: "Nowhere", flow: def.id }] } }), /when is "start" or the name/);
+});
+
+test("an agent is made an actor of its Space when it is made: under its name, once, and not by a call with no person; deleting it takes the actor back", { timeout: 180_000 }, async t => {
+  const { d, call, meta } = await boot(t, false);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const ask = async (/** @type {string} */ name) => { const r = await call("work.start-project", { template: "tpl_estate-plan", name }); return r; };
+  // a name with a capital is not an agent's name: the id the stage uses is the name as written
+  await assert.rejects(() => call("agents.create", { name: "Research", kind: "agent", projects: [] }), /lowercase letters, digits and dashes/);
+  // a model and a member never make an agent (the tool's callers), so neither makes an actor
+  for (const caller of ["mcp:agent:kit", "space", "mcp"]) { const r = await d.registry.call("agents.create", { name: "sneaky", kind: "agent", projects: [] }, caller, await meta()); assert.ok(r.error, `${caller} cannot make an agent`); }
+  // a module's call carries no person: the agent is made, it is not an actor, and the answer says so and what to do
+  const viaModule = await d.registry.call("agents.create", { name: "research", kind: "agent", projects: [] }, "module:onboard");
+  assert.equal(viaModule.error, undefined, JSON.stringify(viaModule.error));
+  assert.match(String(viaModule.data.note), /not a member of this Space yet.*vyre space add-agent spc_/);
+  assert.equal((await ask("Before")).tasks_made, 0, "its task is skipped, not claimed");
+  await call("agents.delete", { agent: "research" });
+  // a person makes it: an actor, so its task is made
+  const mine = await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(mine.note, undefined);
+  assert.equal((await ask("After")).tasks_made, 1);
+  // deleting it takes the actor back: a project started now skips the task again
+  await call("agents.delete", { agent: "research" });
+  const gone = await ask("Gone");
+  assert.equal(gone.tasks_made, 0);
+  assert.deepEqual(gone.tasks_skipped, [{ task: "Gather documents", why: "research is not in this space yet" }]);
+});
+
+test("agents made before they became actors are left as they are by a restart: no event is written at start, and one gets its actor the first time its owner starts a chat with it (or add-agent)", { timeout: 240_000 }, async t => {
+  const root = tempHome(t);
+  const startD = async () => start({ root, log: () => {}, kernel: true, kernelPresence: presence });
+  let d = await startD();
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const chain = () => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(chain(), {})).token }); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  const added = (/** @type {string} */ id) => d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === id).length;
+  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(added("research"), 1, "one actor.added event for the agent");
+  // asked again (a second create-path call, a second chat start): nothing more is written
+  await d.registry.deps.agentActor("research");
+  await d.registry.deps.agentActor("research");
+  assert.equal(added("research"), 1, "registering an agent that is already an actor writes nothing");
+  // the state of an install from before: the agent row is there and the Space has no such actor
+  const actor = { kind: "agent", id: "research", space };
+  await d.kernel.gateway.grants.removeActor(chain(), actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
+  await d.stop();
+  d = await startD();
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === "research").length, 1, "a restart wrote no actor.added event, for this agent or any other");
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Before" })).tasks_made, 0, "an agent from before is still not an actor: the note on create and add-agent say how");
+});
+
+test("the app's own route: a paired owner device (Settings, Assistants) makes the agent, it carries the person, the agent becomes an actor and a template project makes its tasks; the owner's terminal is told what to do", { timeout: 240_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence });
+  t.after(() => d.stop());
+  const DEVICE = "abcdefghijklmnop";
+  pairDevice(d, DEVICE, d.kernel.id.owner);   // the owner's phone or Mac, paired as a real one is
+  const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
+  const sess = d.registry.deps.cliSessions.startStandIn("dev1");
+  /** The app's call: the paired device over the listener, with the signed-in cookie session. */
+  const device = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), { method: "POST", url: `/v1/tools/${tool}`, headers: { host: "relay", "content-type": "application/json", cookie: `${COOKIE}=${sess.token}`, "sec-fetch-site": "same-origin", "sec-fetch-dest": "empty" } });
+    let out = "", status = 0;
+    const res = { setHeader() {}, writeHead(/** @type {number} */ s) { status = s; }, end(b = "") { out += b; }, headersSent: false };
+    await ctx.handler({})(req, res, `device:${DEVICE}`, { kind: "device", stableId: "dev1", node: "dev1", login: null, tags: [], caps: {} });
+    return { status, ...(out ? JSON.parse(out) : {}) };
+  };
+  const made = await device("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(made.status, 200, JSON.stringify(made));
+  assert.equal(made.data.note, undefined, `the app's create carries the person, so the agent became an actor: ${JSON.stringify(made.data.note)}`);
+  assert.equal((await device("work.template.define", { body: TEMPLATE })).status, 200);
+  assert.equal((await device("work.template.golive", { template: "tpl_estate-plan", version: 1 })).status, 200);
+  const started = await device("work.start-project", { template: "tpl_estate-plan", name: "Rivera" });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  assert.equal(started.data.tasks_made, 1, JSON.stringify(started.data));
+  assert.equal(started.data.tasks_skipped, undefined);
+  // the owner's terminal: `vyre` over the daemon's socket
+  const viaTerminal = await socketCall("agents.create", { name: "scout", kind: "agent", projects: [] }, { root, caller: "cli" });
+  assert.equal(viaTerminal.error, undefined, JSON.stringify(viaTerminal.error));
+  assert.equal(viaTerminal.data.note, undefined, "the terminal over the daemon's socket carries the owner too, so it is registered as well");
+  const SCOUT = { ...TEMPLATE, name: "Scout plan", roles: [{ role: "researcher", agent: "scout", lead: true }] };
+  assert.equal((await device("work.template.define", { body: SCOUT })).status, 200);
+  assert.equal((await device("work.template.golive", { template: "tpl_scout-plan", version: 1 })).status, 200);
+  const st = await device("work.start-project", { template: "tpl_scout-plan", name: "Okafor" });
+  assert.equal(st.data.tasks_made, 1, JSON.stringify(st.data));
+  // (the note's own command, `vyre space add-agent`, asks the owner's yes from the same terminal: presence_required on the moment "pair", approved on the phone or confirmed on the computer)
+});
+
+test("an agent made by a MEMBER is made but is not an actor, and says so; nothing in the Space is given to it", { timeout: 240_000 }, async t => {
+  const { d, call, space, ownerChain } = await boot(t, false);
+  const BOB = "per_bobbobbobbobbobbobbobbobbo";
+  const r = { person: BOB, role: "member" };
+  await d.kernel.gateway.grants.setRole(ownerChain, r, { presence: proof("grants.role", r, `vyre://${space}/member/${BOB}`) });
+  const bob = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: BOB, path: "direct", session: "s" });
+  const made = await d.registry.call("agents.create", { name: "research", kind: "agent", projects: [] }, "cli", { token: (await d.kernel.surfaces.open(bob, {})).token });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  assert.match(String(made.data.note), /only the Space's owner adds an agent to it.*vyre space add-agent spc_/);
+  assert.equal(d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === "research").length, 0, "no actor.added for it");
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera" })).tasks_made, 0);
+});
+
+test("an agent deleted and made again under the same name inherits none of the old one's grants (its chat seats and open tasks stay with the name, flagged)", { timeout: 240_000 }, async t => {
+  // (the kernel's presence check accepts every proof here: this test is about what the new agent holds, not about the yes)
+  const { d, call, space, ownerChain } = await boot(t, true, { check: async () => null });
+  const actor = { kind: "agent", id: "research", space };
+  const gi = { subject: { kind: "actor", actor }, actions: ["records.read"], resource: { prefix: `vyre://${space}/note/*` }, conditions: {}, source: "test" };
+  const g = d.kernel.gateway.grants;
+  await g.create(ownerChain, gi, { presence: proof("grants.create", gi, `vyre://${space}/grant/new`) });
+  const chat = await g.chats.create(ownerChain, { assistants: ["research"] });
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Old" })).tasks_made, 1, "an open task for the old agent");
+  const mine = async () => (await g.list(ownerChain, {})).filter((/** @type {any} */ x) => x.status === "active" && x.subject.kind === "actor" && x.subject.actor.id === "research");
+  const before = (await mine()).length;
+  assert.ok(before >= 1, "it holds the grant");
+  const del = await d.registry.call("agents.delete", { agent: "research" }, "cli", { token: (await d.kernel.surfaces.open(ownerChain, {})).token, kernel_proof: { method: "stand-in" } });
+  assert.equal(del.error, undefined, JSON.stringify(del.error));
+  assert.equal((await mine()).length, 0, "the grants given to its name went with it");
+  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  // TODAY, flagged as undecided (the owner's rulings list, "whose agents become actors", and the 0.3.4 backlog): a chat seat and an open task are given to the NAME, and the kernel lets only a person IN the chat change its seats, so deleting the agent leaves both with the name.
+  // The new agent of that name is seated in the old chat again, and the old agent's open task can be worked by it. Grants are the part delete can and does take back.
+  assert.deepEqual(g.chats.read(ownerChain, chat.id).assistants, ["research"], "the old chat still lists the name");
+  const tasks = (await d.kernel.gateway.ask.list(ownerChain, { doer: "research" })) || [];
+  assert.deepEqual(tasks.map((/** @type {any} */ x) => [x.title, x.state]), [["Gather documents", "ready"]], "the old open task is still the name's");
+  assert.equal((await mine()).length, 0, "the new agent holds nothing of the old one");
 });
