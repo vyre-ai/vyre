@@ -40,7 +40,7 @@ import os from "node:os";
 import path from "node:path";
 import { distill, fromEdit, invalid, atStop, atTool, weakens, sentBack, held, reply, loosens, fileOf, commandPattern, LEVELS, MAX_BLOCKS, CODE, TESTS } from "./checks.js";
 import { writeSnapshot, drain, SNAPSHOT } from "./offline.js";
-import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
+import { SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION, createSkills, stepsOf } from "./skills.js";
 import { toLibrary } from "./to-library.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
@@ -104,6 +104,7 @@ const MIGRATIONS = [
   `ALTER TABLE learn_turns ADD COLUMN stopped INTEGER NOT NULL DEFAULT 1;`,
   // PreToolUse and a revert look writes up by path.
   `CREATE INDEX learn_writes_path ON learn_writes (path, done);`,
+  PROCS_AGENT_MIGRATION,
 ];
 
 export { MAX_BLOCKS };

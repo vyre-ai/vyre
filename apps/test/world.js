@@ -28,7 +28,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildHome, makeProjects, makeAgents, heldItems } from "../../web/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { asOwner } from "../../test/helpers.js";
+import { asOwner, putOnTask } from "../../test/helpers.js";
 import { setPeerHosting } from "../../core/daemon/peer.js";
 
 // This world hosts vyred in its own process and drives it from that process and its children:
@@ -119,6 +119,7 @@ d.registry.deps.presence.ownerDevice = async (/** @type {string} */ caller) => S
 await new Promise(r => setTimeout(r, 1500));
 await makeProjects(w);
 await makeAgents(root);
+await putOnTask(d, root, "kit", "northwind-bakery");   // kit reaches a project only as its teammate on a task there (G22), as a Flow would put it
 // An agent's item names it by caller. One that names a thread comes in as the Deck world's does,
 // with no caller at all: vyred confirms a thread only for a session it launched.
 // gate.request declares its callers (core/gate/index.js) and "anonymous" is not among them, so a thread item comes in as a plain mcp caller.

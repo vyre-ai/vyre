@@ -20,7 +20,7 @@ const G = (a, actions) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SP
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open"] }], stages: [{ name: "intake" }, { name: "open" }] };
 const SEND = { action: "email.send", resource_type: "message", risk: "outward.send", label: "send an email", gloss: "Sends an email from the firm." };
 
-async function boot({ wired = true } = {}) {
+async function boot({ wired = true, store = {} } = {}) {
   const grants = [G(actor("person", OWNER), ["records.*", "records.define", "events.read", "tasks.*", "email.send"])];
   const members = new Set([`person:${OWNER}`, "service:tasks"]);
   const log = createEventLog({ space: SPACE, clock });
@@ -30,7 +30,7 @@ async function boot({ wired = true } = {}) {
   await gw.records.define(owner, { add_types: [MATTER] });
   const kernel = { space: SPACE, authorize: gw.authorize, records: gw.records, ask: tasks, events: gw.events, definitions: async () => [MATTER], actions: () => [SEND], chainFor: () => owner };
   const tools = {};
-  await mod.start({ tool: (name, def) => { tools[name] = def; }, store: {}, ...(wired ? { kernel } : {}) });
+  await mod.start({ tool: (name, def) => { tools[name] = def; }, store, ...(wired ? { kernel } : {}) });
   return { tools, call: (name, input = {}) => tools[name].run(input, { caller: "deck" }) };
 }
 
@@ -43,6 +43,25 @@ test("every tool in the manifest is registered, and the other way round", async 
 test("with no kernel wired, every tool answers unavailable and nothing is built", async () => {
   const { tools, call } = await boot({ wired: false });
   for (const name of Object.keys(tools)) await assert.rejects(() => call(name, { project: "vyre://x/y/z", question: "q", query: "q", record: "vyre://x/y/z", text: "t", id: "1", source: "s", proof: {}, tool: "t", role: { name: "r" } }), { code: "unavailable" }, name);
+});
+
+test("with no kernel wired, the cross-Space twins answer unavailable to the door itself, not denied", async () => {
+  const { tools } = await boot({ wired: false });
+  const twins = Object.keys(tools).filter(n => n.endsWith("-in-space"));
+  assert.ok(twins.length > 0, "the template twins are registered");
+  for (const n of twins) await assert.rejects(() => tools[n].run({}, { caller: "module:work", in_space_chain: true }), { code: "unavailable" }, n);
+});
+
+test("the pinned-chat table is made in the database of the Space a call runs in, not only in the first one asked (a member's call on the team server)", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const home = new DatabaseSync(":memory:"), team = new DatabaseSync(":memory:");
+  let now = home;
+  // the module store's db is a routing handle: one object that answers from whichever Space's file the call is for
+  const routed = new Proxy({}, { get: (_t, k) => { const v = /** @type {any} */ (now)[k]; return typeof v === "function" ? v.bind(now) : v; } });
+  const { call } = await boot({ store: { db: routed } });
+  assert.equal((await call("work.chat.persistent", { kind: "assistant" })).chat, null);
+  now = team;
+  assert.equal((await call("work.chat.persistent", { kind: "assistant" })).chat, null, "the team's own file has the table too");
 });
 
 test("work.tools lists the Space's own nouns and the outward act; work.call returns a component, never raw JSON", async () => {
