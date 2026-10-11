@@ -123,10 +123,9 @@ export function createFlows(o) {
       const v = await view(i.id, [i.version]);
       const c = await cat();
       const compiled = compileFlow(v.flow, c);
-      // What the approver compares against is what runs now: the ACTIVE version, else the newest approved one before this. Not "version minus one": with several drafts a big change followed by a small tweak would show only the tweak.
+      // What the approver compares against is what runs now: the ACTIVE version (even paused), else the version before this one. Not always "version minus one": after several drafts a big change followed by a small tweak would show only the tweak.
       const row = await store.flowRow(i.id);
-      const approved = row ? row.approvals.map((/** @type {any} */ a) => a.version).filter((/** @type {number} */ n) => n !== v.version && row.versions.some((/** @type {any} */ x) => x.version === n)) : [];
-      const baseVersion = row && row.active !== null && row.active !== v.version ? row.active : approved.length ? Math.max(...approved) : null;
+      const baseVersion = row && row.active !== null && row.active !== undefined && row.active !== v.version ? row.active : v.version > 1 ? v.version - 1 : null;
       const prev = baseVersion ? await store.getVersion(i.id, baseVersion) : null;
       return { id: v.id, version: v.version, hash: v.hash, authorship: v.flow.authorship, effects: compiled.effects, caps: compiled.caps, warnings: compiled.warnings, changes: prev ? flowChanges(prev.flow, v.flow, c) : [], text: seeAsCode(v.flow).text };
     },

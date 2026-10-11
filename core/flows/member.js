@@ -54,13 +54,9 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   const authorOf = async (/** @type {string} */ id) => { const r = await rowOf(id); const v = r && r.versions && r.versions[r.versions.length - 1]; return v ? v.by : null; };
   /** Whose authority the Flow runs on: the approver of its active version; before any approval, the person who made its first version. Null: no such Flow. */
   const setterUp = async (/** @type {string} */ id) => {
-    const r = await rowOf(id);
-    if (!r) return null;
-    // the approver of the active version (a paused Flow still runs for them when it resumes)
-    const v = r.active !== null && r.active !== undefined ? r.versions.find((/** @type {any} */ x) => x.version === r.active) : null;
-    const ap = v ? [...r.approvals].reverse().find((/** @type {any} */ a) => a.version === v.version && a.hash === v.hash) : null;
-    if (ap && ap.approver && ap.approver.kind === "person") return String(ap.approver.id);
-    const v1 = r.versions && r.versions[0];
+    const act = await store.active(id).catch(() => null);
+    if (act && act.approver && act.approver.kind === "person") return String(act.approver.id);
+    const r = await rowOf(id); const v1 = r && r.versions && r.versions[0];
     return v1 && v1.by && v1.by.kind === "person" ? String(v1.by.id) : null;
   };
   const exists = async (/** @type {string} */ id) => Boolean(await rowOf(id));
