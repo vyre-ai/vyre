@@ -281,7 +281,7 @@ export function createTasks(cfg) {
   };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
-  const ownsWrite = async (chain, t, patch, op = "update") => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op); };
+  const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
   const promote = (/** @type {any} */ chain) => {
     for (const t of [...tasks.values()]) {
       if (t.state !== "waiting") continue;
@@ -325,7 +325,7 @@ export function createTasks(cfg) {
         if (!spec.fields || typeof spec.fields !== "object" || Array.isArray(spec.fields) || Object.keys(spec.fields).some(k => RESERVED.has(k))) throw new KernelError("bad_input", "fields are the type's own custom fields, not title, note, due, status, parent or project");
       }
       if (spec.project !== undefined) await checkProject(chain, spec.project);
-      if (spec.project) await ownsWrite(chain, null, { project: { urn: spec.project } }, "create");
+      if (spec.project) await ownsWrite(chain, null, { project: { urn: spec.project } }, "create", spec.doer);
       if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
