@@ -68,9 +68,9 @@ test("a member reads or changes none of a kept type through the door's dispatch,
     for (const w of ["OWNER-PRIVATE-TEXT", "SPACE-DRAFT-TEXT", "SPACE-LIVE-TEXT", "ANA-OWN-TEXT"]) assert.ok(!leaks(ev, w), `events.read ${JSON.stringify(spec)} shows ${w}`);
   }
   assert.ok(leaks(await via(OWNER, "events.read", {}), "OWNER-PRIVATE-TEXT"), "the owner's log still shows what the owner wrote");
-  // 4. a session token the door minted: the registry tools run on her chain and see none of it either
-  const so = await via(BEN, "surfaces.open", {});
-  assert.ok(so.ok && so.v && so.v.token, "a member opens a session through the door");
+  // 4. a session token on her chain (the door no longer hands a member one, kernel/remote/surfaces-door.test.js; the server mints them for her chats): the registry tools run on her chain and see none of it either
+  assert.equal((await via(BEN, "surfaces.open", {})).ok, false, "the door refuses a member a session token");
+  const so = { v: await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev-" + BEN.slice(4, 10), person: BEN, path: "relay" }), {}) };
   for (const [tool, input] of [["records.list", { type: "skill" }], ["skills.list", {}], ["flows.list", {}]]) {
     const r = await d.registry.call(tool, input, "cli", { token: so.v.token });
     for (const w of ["OWNER-PRIVATE-TEXT", "SPACE-DRAFT-TEXT", "ANA-OWN-TEXT"]) assert.ok(!leaks(r, w), `${tool} with a door-minted token shows ${w}`);
