@@ -95,6 +95,28 @@ let vyredClientSuite = Suite("vyred client") { t in
         }
     }
 
+    t.test("an event nested several levels deep reaches the subscriber, and a document nested past the cap is refused, not parsed") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let c = VyredClient(socket: v.socket)
+        MainActor.assumeIsolated {
+            var got = 0
+            let a = c.on("thread.text") { _ in got += 1 }
+            c.useClock(ManualClock())
+            c.follower.start()
+            t.ok(until { c.follower.isStreaming && v.openStreams == 1 })
+            // the shape of the crashing event: objects inside arrays inside objects, with long text
+            let long = String(repeating: "word \"quoted\" ", count: 2000)
+            v.emit("thread.text", thread: "t1", ["message": "m", "a": ["b": [["c": ["d": [["e": long]]]]]]])
+            t.ok(until { got == 1 }, "the nested event arrived")
+            a.cancel(); c.follower.stop()
+        }
+        func nested(_ n: Int) -> Data { Data((String(repeating: "[", count: n) + String(repeating: "]", count: n)).utf8) }
+        t.ok(VJ.decode(nested(VJ.maxDepth)) != nil, "a document at the cap is read")
+        t.ok(VJ.decode(nested(VJ.maxDepth + 1)) == nil, "one past the cap is refused")
+        t.ok(VJ.decode(nested(100_000)) == nil, "a hostile depth is refused without recursing")
+        t.eq(VJ.depth(Data(#"{"a":"[[[[","b":["x\\"]]}"#.utf8)), 2, "brackets inside strings, escapes included, do not count")
+    }
+
     t.test("while vyred is down: 3 s doubling to 60 s hidden, 3 s shown, at once on show") {
         let v = FakeVyred()        // not started: vyred is down
         let c = VyredClient(socket: v.socket)

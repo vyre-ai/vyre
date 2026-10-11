@@ -66,7 +66,33 @@ enum VJ {
         return try? JSONSerialization.data(withJSONObject: v, options: [])
     }
 
-    static func decode(_ d: Data) -> Any? { try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed]) }
+    /// How deep a document may nest before it is refused. vyred's events nest a handful of levels; a team
+    /// member can write any depth into a message, and JSONSerialization recurses once per level on the
+    /// calling thread's stack, so the depth is checked on the bytes first.
+    static let maxDepth = 64
+
+    static func decode(_ d: Data) -> Any? {
+        guard depth(d) <= maxDepth else { return nil }
+        return try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed])
+    }
+
+    /// The deepest nesting of [ and { outside strings, counted without recursion.
+    static func depth(_ d: Data) -> Int {
+        var now = 0, deepest = 0, inString = false, escaped = false
+        for b in d {
+            if inString {
+                if escaped { escaped = false } else if b == 0x5C { escaped = true } else if b == 0x22 { inString = false }
+                continue
+            }
+            switch b {
+            case 0x22: inString = true
+            case 0x5B, 0x7B: now += 1; deepest = max(deepest, now)
+            case 0x5D, 0x7D: now -= 1
+            default: break
+            }
+        }
+        return deepest
+    }
 }
 
 /// Milliseconds since 1970, the unit every vyred timestamp is in.
