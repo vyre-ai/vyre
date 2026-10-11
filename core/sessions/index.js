@@ -95,6 +95,8 @@ export const testBase = u => { try { const x = new URL(String(u)); return x.prot
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** Set only by sessions.accounts.serve, in this file: a symbol cannot arrive over a wire or a tool call, so a request never names the person an account call is for. */
 const MEMBER = Symbol("member door");
+/** The caller label of the daemon's own door: the only one that may run the member calls. */
+const DOOR = "module:vyred";
 /** The sign-in calls a team member reaches through the team's server, and the account tool each runs (kernel/remote/wire.js CALLS.accounts). A member adds a login of their own; a key needs a Vault of their own (0.3.4). */
 const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind" });
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
@@ -614,7 +616,7 @@ export default {
       description: "A team member's own AI sign-in call on the team's server: list, signin, remove or default, as that member. Only the daemon's own door runs it.", internal: true,
       input: { type: "object", required: ["call", "person", "space"], properties: { call: { type: "string", enum: Object.keys(MEMBER_ACCOUNTS) }, person: str, space: str, input: { type: "object" } } },
       run: async (i, meta = {}) => {
-        if (String(meta.caller || "") !== "module:vyred") throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
+        if (String(meta.caller || "") !== DOOR) throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
         const tool = /** @type {Record<string, string>} */ (MEMBER_ACCOUNTS)[String(i.call)];
         const run = tool ? runs.get(tool) : null;
         if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(String(i.person))) throw Object.assign(new Error(`call is ${Object.keys(MEMBER_ACCOUNTS).join(", ")}`), { code: "bad_input" });
