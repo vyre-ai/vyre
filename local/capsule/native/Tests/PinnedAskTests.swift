@@ -38,8 +38,9 @@ let pinnedAskSuite = Suite("pinned ask") { t in
             _ = await until { !v.callsOf("stream.send").isEmpty }
             _ = await until { m.reply?.thread == "t-pin" }
             let said = v.callsOf("stream.send").first
+            let shownThread = await MainActor.run { m.reply?.thread ?? "none" }
             let out = ["\(v.callsOf("work.chat.create").count)", VJ.s(v.callsOf("work.chat.pin").first?["chat"]), VJ.s(said?["chat"]), VJ.s(said?["text"]),
-                       "\(v.callsOf("threads.start").count)", m.reply?.thread ?? "none"]
+                       "\(v.callsOf("threads.start").count)", shownThread]
             await MainActor.run { m.didHide() }
             return out
         }
