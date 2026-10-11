@@ -36,4 +36,10 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
   assert.ok(!(await read(team, {})).error, "the member reads in the team's Space (no Space named)");
   assert.notEqual(((await call("records.me", { space: firm.space }, asToken(home))).data || {}).person, ANA, "the home's token is never taken for the member");
   assert.ok((await read(team, { space: other.space })).error, "a team token does not read in another Space");
+
+  // the Space's Drive, read through a team token: the member sees what the Space holds
+  const putter = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner3", person: OWNER, path: "direct", session: "s" });
+  await firm.gateway.drive.put(putter, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
+  const listed = await call("files.drive.space.list", {}, asToken(team));
+  assert.ok(!listed.error && JSON.stringify(listed.data).includes("retainer.txt"), `the member's session lists the team's Drive: ${JSON.stringify(listed).slice(0, 300)}`);
 });
