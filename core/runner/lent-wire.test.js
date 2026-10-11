@@ -202,7 +202,21 @@ test("runner.revoke is the Wink module's alone, and answers plainly when nothing
   assert.equal((await tools.get("runner.revoke").run({ space: SPACE }, { caller: "module:wink" })).revoked, false);
 });
 
+test("a packaged computer obeys neither a program path nor a read-only folder from the Space's definition; only its own development build with its own switch does", () => {
+  const was = process.env.VYRE_LENT_AGENT_DEV;
+  try {
+    delete process.env.VYRE_LENT_AGENT_DEV;
+    assert.throws(() => resolveAgent({ command: "/usr/bin/agent", args: [] }), (/** @type {any} */ e) => e.code === "unavailable" && /ask the Space's owner/.test(e.message));
+    const dir = fs.mkdtempSync(path.join(SCRATCH, "ra-")); const script = path.join(dir, "agent.js"); fs.writeFileSync(script, "// agent\n");
+    const wasBin = process.env.VYRE_CLAUDE_BIN; process.env.VYRE_CLAUDE_BIN = script;
+    try { const r = resolveAgent({ command: "claude", readOnly: ["/home/someone/Documents"] }); assert.ok(!r.readOnly.includes("/home/someone/Documents"), "a folder the Space names is not opened to the session"); }
+    finally { if (wasBin === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = wasBin; }
+  } finally { if (was === undefined) delete process.env.VYRE_LENT_AGENT_DEV; else process.env.VYRE_LENT_AGENT_DEV = was; }
+});
+
 test("a name with no folder is the agent this computer has: VYRE_CLAUDE_BIN for claude, else PATH; a script runs under node; a path stays as given; none is refused", () => {
+  const wasDev = process.env.VYRE_LENT_AGENT_DEV; process.env.VYRE_LENT_AGENT_DEV = "1";
+  const restoreDev = () => { if (wasDev === undefined) delete process.env.VYRE_LENT_AGENT_DEV; else process.env.VYRE_LENT_AGENT_DEV = wasDev; };
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ra-"));
   const script = path.join(dir, "agent.js"); fs.writeFileSync(script, "// agent\n");
   const was = process.env.VYRE_CLAUDE_BIN, wasPath = process.env.PATH;
@@ -214,7 +228,7 @@ test("a name with no folder is the agent this computer has: VYRE_CLAUDE_BIN for 
     assert.deepEqual(resolveAgent({ command: "/usr/bin/agent", args: ["a"] }), { command: "/usr/bin/agent", args: ["a"], readOnly: [] });
     delete process.env.VYRE_CLAUDE_BIN; process.env.PATH = "/nonexistent-dir";
     assert.throws(() => resolveAgent({ command: "claude" }), /no claude to run/);
-  } finally { if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; process.env.PATH = wasPath; }
+  } finally { if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; process.env.PATH = wasPath; restoreDev(); }
 });
 
 test("access ended: the session stops, the encrypted workspace and everything in it is deleted from this computer, and the home still holds the transcript, the files and the checkpoint", { skip: SKIP_RUN }, async t => {
@@ -302,6 +316,8 @@ test("the lent service's rows are not a wire call", async () => {
 
 // ---- the place of a lent session (R031-95 2.4, 2.5): the epoch, the heartbeat, the release and the server's take-over ---------------------------------------------------------------------
 import { LAPSE_MS, HEARTBEAT_MS } from "./placement-book.js";
+// the rigs here give the Space a program by its path: honoured on a development build with this switch (the packaged case has its own test below)
+process.env.VYRE_LENT_AGENT_DEV = "1";
 const clockRig = async (t, o = {}) => {
   const c = { t: 1_000_000 }; const resumed = [], said = [];
   const r = await rig(t, { now: () => c.t, resume: async i => { resumed.push(i); }, emit: (type, p) => said.push([type, p]), ...o });
