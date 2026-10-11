@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "./index.js";
 import { tempHome, present, kernelCaller, putOnTask } from "../../test/helpers.js";
-import { createTaskWakeHost, briefOf, taskGrantSpec } from "./task-wake.js";
+import { createTaskWakeHost, briefOf, taskGrantSpec, classifyRefusal } from "./task-wake.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -88,7 +88,7 @@ function rig(/** @type {{ limit?: number, now?: () => number, root?: string, led
   const notes = /** @type {any[]} */ ([]);
   const h = host.attach({ space: "spc_a", ...(o.now ? { clock: o.now } : {}), notify: async n => { notes.push(n); }, gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
   const ready = (/** @type {string} */ type = "task.created") => push({ type, data: { state: "ready", task } });
-  const finish = async (/** @type {string} */ text) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: {} }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
+  const finish = async (/** @type {string} */ text, /** @type {any} */ fin = {}) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: fin }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
   return { opts: o, raw: calls, fixes, notes, root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
 }
 
@@ -301,4 +301,19 @@ test("with its grant an agent works that task and no other: not a second task in
   await ask.start(agent, a);   // the one it was given
   await handle.mint.end({ source: `task-wake:${a}`, reason: "test" });
   await assert.rejects(() => ask.complete(agent, a, { note: "done", sources: ["s"] }), "and not this one once the grant has ended");
+});
+
+test("an empty turn whose provider said quota or sign-in is stuck with that word, at once, not retried", async () => {
+  assert.equal(classifyRefusal("429 rate limit exceeded"), "quota");
+  assert.equal(classifyRefusal("401 Unauthorized: invalid API key"), "auth");
+  assert.equal(classifyRefusal("something odd"), "");
+  const q = rig();
+  q.ready(); await q.h.idle();
+  await q.finish("", { ok: false, error: "Claude usage limit reached" });
+  assert.equal(q.calls.at(-1), "stuck tsk_1 per_bob's AI account for agent work needs attention (out of quota or rate limited)");
+  assert.equal(q.calls.filter(c => c.startsWith("work ")).length, 1, "no second turn on a refused account");
+  const a = rig();
+  a.ready(); await a.h.idle();
+  await a.finish("", { ok: false, error: "401 Unauthorized" });
+  assert.match(a.calls.at(-1), /\(sign-in refused\)$/);
 });

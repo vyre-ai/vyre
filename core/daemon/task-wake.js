@@ -19,6 +19,14 @@ const DEFAULT_DAILY_LIMIT = 100;
 const RESUME_EVERY_MS = 30 * 60_000;
 const cut = (/** @type {unknown} */ s, /** @type {number} */ n) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 
+/** What a provider's refusal says, in one word: the sign-in was refused, the quota or rate limit is spent, or nothing we know. @param {string} text */
+export function classifyRefusal(text) {
+  const m = String(text || "");
+  if (/quota|rate.?limit|429|credit|billing|exceed|overloaded|usage limit/i.test(m)) return "quota";
+  if (/401|403|unauthori[sz]ed|forbidden|invalid.*(key|token|credential)|expired|revoked|not signed in|please log ?in|login|authenticat/i.test(m)) return "auth";
+  return "";
+}
+
 /**
  * The words the agent is given. The reply is the result, so it is told to reply and nothing else.
  * @param {{ title: string, note?: string, project: string }} t
@@ -48,17 +56,21 @@ export function createTaskWakeHost(o) {
   const dir = path.join(o.root, "task-wake");
   /** @type {(() => void)[]} */ const offs = [];
   /** thread id -> the task it works and the last whole text it said */
-  /** @type {Map<string, { space: string, task: string, text: string }>} */ const threads = new Map();
+  /** @type {Map<string, { space: string, task: string, text: string, err?: string }>} */ const threads = new Map();
   /** @type {Map<string, (thread: string) => Promise<void>>} */ const finishers = new Map();
 
   offs.push(/** @type {any} */ (o.hear("thread.text", (/** @type {any} */ e) => {
     const w = threads.get(String(e.thread || ""));
     const p = e.payload || {};
     if (w && p.done && !p.kind && !p.notice) w.text = String(p.text || "");
+    // what the provider said when it refused (a notice or an error line), kept to classify an empty turn
+    else if (w && (p.notice || p.kind === "error" || p.error) && (p.text || p.error)) w.err = `${w.err || ""} ${String(p.error || p.text)}`.slice(-600);
   })) || (() => {}));
   offs.push(/** @type {any} */ (o.hear("thread.finished", (/** @type {any} */ e) => {
     const w = threads.get(String(e.thread || ""));
     if (!w) return;
+    const fp = e.payload || {};
+    if (fp.ok === false || fp.error || fp.reason) w.err = `${w.err || ""} ${String(fp.error || fp.reason || "")}`.slice(-600);
     const f = finishers.get(w.space);
     if (f) void f(String(e.thread)).catch(err => log(`task-wake ${w.space}: ${/** @type {Error} */ (err).message}`));
   })) || (() => {}));
@@ -198,6 +210,11 @@ export function createTaskWakeHost(o) {
       const text = w.text.trim();
       const r = await resolve(t);
       if (/^STUCK:/i.test(text)) return stuck(t, text.replace(/^STUCK:\s*/i, ""), "Give the agent what it asked for, then move this task back to ready.");
+      if (!text && classifyRefusal(w.err || "")) {
+        const kind = classifyRefusal(w.err || ""), person = assignerOf(t);
+        return stuck(t, `${nameOf(person)}'s AI account for agent work needs attention (${kind === "quota" ? "out of quota or rate limited" : "sign-in refused"})`,
+          kind === "quota" ? "Wait for the quota to reset, top it up, or pick another account for agent work in the project's settings, then move this task back to ready." : "Sign in to the account again, or pick another account for agent work in the project's settings, then move this task back to ready.");
+      }
       if (!text) {
         // a turn that ended with neither a result nor a flag is tried once more, then flagged
         if (rec.turns < MAX_TURNS && r) { ledger.set(id, { state: "starting" }); return run(t, r, rec.turns + 1); }
