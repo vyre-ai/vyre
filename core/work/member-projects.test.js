@@ -61,7 +61,7 @@ test("a member starts a project from an installed template: its first stage's ta
   assert.ok(started.tasks_made >= 1, `its first task is made: ${JSON.stringify(started)}`);
   const mine = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === started.slug);
   assert.equal(mine.data.owner.actor.id, ANA);
-  // who made what the template made: the project is hers; print the creator of its first task (the Flows stage module makes it)
+  // who made what the template made: the project and its owner are hers; the template's first-stage tasks (and any Flow it installs) are made by the Flows stage module AS THE SPACE, not as her and not as the owner: the tasks list shows each task's doer and no creator, so this prints the doer
   try { const tasks = await w.d.kernel.gateway.ask.list(w.ownerChain, { record: started.project }); const first = (tasks.rows || tasks)[0]; console.log(`# first task: ${JSON.stringify({ by: first && (first.created_by || first.requester || first.requested_by), doer: first && first.doer })}`); } catch (e) { console.log(`# first task creator not read: ${/** @type {Error} */ (e).message}`); }
   // the door lets through only the keys the row names: a version, a repository or a client she names is dropped, and the project is made from the live version
   const dropped = await w.as(ANA, "start-project", { template: id, name: "Pinned", version: 99, repo: "git@x:y", client: "vyre://x/contact/1" });
