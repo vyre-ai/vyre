@@ -599,7 +599,7 @@ export function createRecords(cfg) {
 
   const roleFor = (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined);
   /** The kernel attributes a create carries (owner, project, sensitivity), judged for every type and by every route that creates (kernel/gateway/ownership.js). A gateway with no membership at all, as a store test rig is, cannot tell who is a member; the Space's own kernel always has it. @param {any} chain @param {any} attrs */
-  const attrsGate = async (chain, attrs) => { if (members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted: isTrustedChain(chain, roleFor), project: projectTeamOf(store, urn) }); };
+  const attrsGate = async (chain, attrs) => { if (members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted: isTrustedChain(chain, roleFor), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)) }); };
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
@@ -639,7 +639,7 @@ export function createRecords(cfg) {
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
       const trusted = isTrustedChain(chain, roleFor);
       if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
-        op, trusted, project: projectTeamOf(store, urn),
+        op, trusted, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }
