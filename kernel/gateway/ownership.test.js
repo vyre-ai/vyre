@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../index.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { isTrustedChain } from "./ownership.js";
 import { PROJECT, TEAM_MEMBER, TASK } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", ADMIN = "per_admin", BOB = "per_bob", DAN = "per_dan", EVE = "per_eve", FAY = "per_fay";
@@ -125,12 +126,19 @@ test("kernel attributes on create: a member names no other owner, no sensitivity
   assert.ok(await R.create(chains.owner, "memo", { body: "owner may" }, { attrs: { project: p2.id, sensitivity: "privileged" } }), "the owner may");
 });
 
-test("a [member, work service] chain (the memory engine's) is not the work service: it writes no project owner, seat or task into a project", async () => {
+test("a [member, work service] chain (the memory engine's) is not the work service: it is not trusted and writes no project owner, seat or task", async () => {
   const { k, R, chains, p1, p2, person } = await rig();
+  const roleOf = a => (a.id === OWNER ? "owner" : a.id === ADMIN ? "admin" : "member");
   const viaWork = k.chains.forModule({ approver: chains.fay, module: "work" });
-  await refused(R.create(viaWork, "project", { name: "x", slug: "x2", owner: { actor: { kind: "person", id: BOB, space: SPACE } } }), /yours/);
-  await refused(R.create(viaWork, "team-member", { name: "fay", actor: person(FAY), kind: "person", project: { urn: p1.urn } }), /owner/);
-  await assert.rejects(() => R.update(viaWork, "project", p2.id, { name: "taken" }, p2.version), e => ["not_allowed", "not_found"].includes(e.code), "it cannot rename another's project either");
+  const oneHop = k.chains.forModule({ approver: chains.owner, module: "work" });
+  assert.equal(isTrustedChain(viaWork, roleOf), false, "[member, service:work] is not trusted");
+  assert.equal(isTrustedChain(k.chains.fromFacts({ kind: "module", module: "work", first_party: true }), roleOf), true, "the work service's own one-hop chain is");
+  assert.equal(isTrustedChain(oneHop, roleOf), true, "an owner acting through a service is the owner");
+  for (const attempt of [
+    R.create(viaWork, "project", { name: "x", slug: "x2", owner: { actor: { kind: "person", id: BOB, space: SPACE } } }),
+    R.create(viaWork, "team-member", { name: "fay", actor: person(FAY), kind: "person", project: { urn: p1.urn } }),
+    R.update(viaWork, "project", p2.id, { name: "taken" }, p2.version),
+  ]) await assert.rejects(() => attempt, e => ["not_allowed", "not_found", "denied"].includes(e.code), "refused whichever check stops it first");
 });
 
 test("team seats: a project's owner adds a plain person; role, skills, instructions and assistant seats are for an owner or admin", async () => {
