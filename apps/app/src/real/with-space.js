@@ -29,6 +29,8 @@ const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(FLOW_C
   "work.template.list": "work.templates", "work.project.create": "work.project-create", "work.start-project": "work.start-project",
   // a member's daily Records and tasks (rc2-own-compute's rows, core/work/member-tools.js): the same tool name and the Store's own input keys; the door keeps what a member may not (the team's kept types, writes to team-member and agent). records.define, sees-as, seal-put, reveal and tasks.decide need her presence or an admin and stay on her own home; the planner has no rows
   ...Object.fromEntries(["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"].map((t) => [t, t])),
+  // a member's project files (core/work/member-files.js, door group `files`): the project's Files view lists through the door
+  "files.list": "files.list", "files.read": "files.read", "files.upload": "files.upload",
   "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" });
 
 /** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
