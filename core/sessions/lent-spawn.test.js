@@ -456,3 +456,14 @@ test("a computer that is silent is taken by the home's sweep, and the chat says 
   await new Promise(r => setTimeout(r, 500));
   assert.ok(said.length === 1 && /Continuing from the last saved turn/.test(said[0]), "once the home has taken the silent computer: " + said.join("|"));
 });
+
+
+test("a message that has waited for the chat to come back is told why", async () => {
+  /** @type {string[]} */ const said = [];
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const st = { turn: null, proc: { where: "lent" } };
+  const sb = { live: new Map([[SESSION, st]]), deps: { lentRow: () => row, lentWaitNoteMs: 40, lentTakeBack: () => new Promise(r => setTimeout(() => r("taken"), 300)) }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ _t, /** @type {any} */ p) => said.push(p.text) };
+  assert.equal(await lentYield(sb, SESSION, st, CAROL), true);
+  await new Promise(r => setTimeout(r, 120));
+  assert.ok(said.length === 1 && /waiting for the chat to come back/.test(said[0]), "told once: " + said.join("|"));
+});
