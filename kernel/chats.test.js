@@ -5,6 +5,7 @@ import { createKernel } from "./index.js";
 import { createEventLog } from "./core/events.js";
 import { canonical, sha256 } from "./core/canonical.js";
 import { CONTACT } from "./conformance/suite.js";
+import { leaks } from "../test/holds.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
@@ -167,7 +168,7 @@ test("CH-3: a reply lands only in its own chat: one-to-one cannot write into a g
   await assert.rejects(() => stream.chats.append("not.a-token", { body: "x" }), { code: "not_found" });
   const ev = k.log.read({ type: "message.added" });
   assert.equal(ev.length, 2);
-  assert.ok(!JSON.stringify(ev).includes("4321"), "the log names who wrote where and a hash, never the text");
+  assert.ok(!leaks(ev, "4321"), "the log names who wrote where and a hash, never the text");
   // an assistant's session writes only where it is listed
   const ta = await k.surfaces.open(bob, { chat: group.id, agent: "kit" });
   assert.equal((await stream.chats.append(ta.token, { body: "from kit" })).chat, group.id);

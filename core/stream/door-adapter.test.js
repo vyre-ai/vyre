@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDoorAdapter, pipeDoor, drainDoor, validate, settle, HOLDBACK } from "./index.js";
 import { SessionLog } from "./log.js";
-import { holds } from "./testkit.js";
+import { holds } from "../../test/holds.js";
 
 const CHAIN = ["person:chris", "assistant:kit"];
 async function* gen(/** @type {any[]} */ events) { for (const e of events) yield e; }

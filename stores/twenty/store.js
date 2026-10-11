@@ -57,12 +57,13 @@ function asStoreError(e) {
 
 /**
  * @typedef {import("./client.js").TwentyClient} TwentyClient
- * @typedef {{ client: TwentyClient, space: string, dir: string | null, webhookSecret: string, graceMs?: number, now?: () => number }} StoreOptions
+ * @typedef {{ client: TwentyClient, space: string, dir: string | null, webhookSecret: string, graceMs?: number, now?: () => number, log?: (line: string) => void }} StoreOptions
  */
 
 export class TwentyStore {
   /** @param {StoreOptions} o */
   constructor(o) {
+    /** @type {(line: string) => void} */ this.say = typeof o.log === "function" ? o.log : () => {};
     this.client = o.client; this.space = o.space; this.dir = o.dir; this.secret = o.webhookSecret;
     this.graceMs = o.graceMs ?? 250; this.now = o.now ?? Date.now;
     /** @type {boolean | undefined} */ this.auditSwitch = undefined;
@@ -359,7 +360,7 @@ export class TwentyStore {
   #defineLine = Promise.resolve();
   /** One define at a time on this store: Twenty rebuilds a table for each field it adds and two at once fail with a lock timeout (55P03), so every caller (modules, Kits, Flows, a person's records.define) waits its turn here. */
   define(diff, o = {}) {
-    const run = () => this.#defineNow(diff, o);
+    const run = async () => { const t0 = this.now(); try { return await this.#defineNow(diff, o); } finally { this.say(defineLine(diff, this.now() - t0)); } };
     const next = this.#defineLine.then(run, run);
     this.#defineLine = next.catch(() => {});
     return next;
@@ -928,6 +929,13 @@ export class TwentyStore {
     }
     yield chunk(true);
   }
+}
+
+/** The line a define leaves in the server's log: which types, how many fields, how long (Twenty takes about 3 s for each field it adds, so a slow first call names its cause). @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff @param {number} ms */
+export function defineLine(diff, ms) {
+  const ts = [...(diff.add_types || []), ...(diff.change_types || [])];
+  const fields = ts.reduce((n, t) => n + (Array.isArray(t && t.fields) ? t.fields.length : 0), 0);
+  return `store define: ${ts.map(t => String(t && t.name)).join(", ") || "no types"} (${fields} fields) took ${(ms / 1000).toFixed(1)} s`;
 }
 
 /** @param {StoreOptions} o */

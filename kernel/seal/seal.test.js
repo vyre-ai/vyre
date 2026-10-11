@@ -11,6 +11,7 @@ import path from "node:path";
 import { startSealer } from "./client.js";
 import { wipeSealDir } from "./wipe.js";
 import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, enrolDevice, SPACE } from "./testing.js";
+import { leaks } from "../../test/holds.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
 const dest = (over = {}) => ({ kind: "contact_point", record: REC, contact: "jane@harlow.test", verified: true, ...over });
@@ -92,7 +93,7 @@ test("reveal returns the event for the log without the value, and ledger entries
   const r = await s.api.reveal({ chain: ch, ref: ref.ref, purpose: "p", proof: alex.proof(ch, "seal.reveal", { ref: ref.ref, purpose: "p" }), ledger_key: Buffer.alloc(32, 7).toString("base64") });
   assert.equal(r.event.type, "field.revealed"); assert.ok(r.ledger.length > 10);
   assert.ok(!JSON.stringify({ ...r, value: undefined }).includes("123-45-6789"));
-  assert.ok(!JSON.stringify(r.ledger).includes("6789"));
+  assert.ok(!leaks(r.ledger, "6789"));
 });
 
 test("use: a template slot is merged into a derivative for the record's own verified contact point, and the caller learns only that it happened", async t => {
@@ -165,7 +166,7 @@ test("detect: values in text become numbered placeholders, the same value keeps 
   assert.ok(a.ledger.length > 20 && b.ledger.length === 0);
   assert.equal(diskHolds(dir, "123-45-6789"), null, "originals are held in memory, not on disk, until saved");
   const saved = await s.save({ chain: ch, session, class: "us-ssn", n: 2, record: REC, field: "ssn" });
-  assert.equal(saved.ref.sealed, "US SSN"); assert.ok(!JSON.stringify(saved).includes("321"));
+  assert.equal(saved.ref.sealed, "US SSN"); assert.ok(!leaks(saved, "321"));
   await s.endSession(ch, session);
   assert.equal(await code(s.save({ chain: ch, session, class: "us-ssn", n: 1, record: REC, field: "ssn" })), "not_found");
 });
@@ -465,7 +466,7 @@ test("seal.detect: yes or no for one candidate, first-party modules only, rate l
   assert.equal(yes.match, true);
   assert.deepEqual(yes.event, { type: "seal.detect", module: "memory", count: 1 });
   assert.equal((await ask("321-54-9876")).match, false);
-  assert.ok(!JSON.stringify(yes).includes("6789"));
+  assert.ok(!leaks(yes, "6789"));
   // Not a first-party module, a model in the chain, a value too short to mean anything.
   assert.equal(await code(ask("123-45-6789", { caller: { module: "memory" } })), "first_party_only");
   assert.equal(await code(ask("123-45-6789", { caller: undefined })), "first_party_only");

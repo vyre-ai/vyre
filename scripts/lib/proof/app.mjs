@@ -303,7 +303,7 @@ export function createApp(o) {
     const inv = await openInvite(deps, a.link);
     try {
       const joined = await inv.accept();
-      return { joined, card: inv.card, call: (/** @type {string} */ call, /** @type {any[]} */ args) => callTeam(deps, joined.space, call, args) };
+      return { joined, card: inv.card, call: (/** @type {string} */ call, /** @type {any[]} */ args, /** @type {{ timeoutMs?: number }} */ opt) => callTeam(deps, joined.space, call, args, opt) };
     } finally { inv.close(); }
   }
 

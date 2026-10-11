@@ -9,6 +9,7 @@ import { startSealer } from "../seal/client.js";
 import { createDoor, DoorRefusal } from "./door.js";
 import { compact } from "../seal/normalise.js";
 import { chain, person, withAgent, signer, tmp, property, randomSsn, luhnCard, enrolDevice } from "../seal/testing.js";
+import { leaks } from "../../test/holds.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
 async function world(t, over = {}) {
@@ -33,7 +34,7 @@ test("a prompt with a sealed-looking value reaches the model as a placeholder, i
   const out = await w.call([{ role: "system", content: "You help Harlow Legal." }, { role: "user", content: "Her SSN is 123-45-6789, call 415-555-0100." }, { role: "assistant", content: "Noted: 123 45 6789." }], { session: "s1" });
   assert.deepEqual(w.seen[0].messages.map(m => m.content), ["You help Harlow Legal.", "Her SSN is [sealed: US SSN #1], call 415-555-0100.", "Noted: [sealed: US SSN #1]."]);
   assert.equal(out.content, "I will use card [sealed: card number #1] on file");
-  assert.ok(!JSON.stringify(w.seen).includes("6789") && !JSON.stringify(w.events).includes("6789"));
+  assert.ok(!leaks(w.seen, "6789") && !leaks(w.events, "6789"));
   assert.ok(w.events.some(e => e.type === "model.sanitized" && e.p.found[0].class === "us-ssn"));
 });
 
@@ -45,7 +46,7 @@ test("a value the session revealed is refused at the door in any disguise, and t
     assert.deepEqual(r, { code: "ledger_hit", class: "passport" }, text);
   }
   assert.equal(w.seen.length, 0, "the driver was never reached");
-  assert.ok(w.events.filter(e => e.type === "model.refused").length === 5 && !JSON.stringify(w.events).includes("4471"));
+  assert.ok(w.events.filter(e => e.type === "model.refused").length === 5 && !leaks(w.events, "4471"));
   // Another session has revealed nothing: the same words pass.
   assert.equal((await w.call([{ role: "user", content: "the passport is ab4471zk9" }], { session: "s-other" })).content, "ok");
 });
@@ -133,7 +134,7 @@ test("stream: a sealed-looking value split across chunks is cut before any digit
   const ev = await run(w, ["Her number is 123", "-45", "-67", "89 and that is all."], log);
   assert.equal(ev.at(-1).type, "cut"); assert.equal(ev.at(-1).code, "sealed_shape"); assert.equal(ev.at(-1).class, "us-ssn");
   assert.ok(!/\d/.test(texts(ev)), "no digit of the value was released: " + texts(ev)); assert.equal(log.closed, true);
-  assert.ok(w.events.some(e => e.type === "model.cut" && e.p.class === "us-ssn")); assert.ok(!JSON.stringify(w.events).includes("6789"));
+  assert.ok(w.events.some(e => e.type === "model.cut" && e.p.class === "us-ssn")); assert.ok(!leaks(w.events, "6789"));
   const words = await run(w, ["one two three four five six ", "seven eight nine"]); assert.equal(words.at(-1).type, "cut", "digit words too");
   const ok = await run(w, ["Call 415-555-0100 or see page 12 of the ", "file."]); assert.equal(ok.at(-1).type, "done"); assert.equal(texts(ok), "Call 415-555-0100 or see page 12 of the file.", "an ordinary number is released after the hold");
 });
