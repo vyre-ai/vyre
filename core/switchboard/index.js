@@ -4804,7 +4804,7 @@ export default {
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
-      run: async i => { await agentLaunchGuard(sb, i, personOfChain(kchainNow()), kernelOwner()); return sb.launch(i); },
+      run: async (i, m) => { await agentLaunchGuard(sb, i, personOfChain(ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null), kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
     ctx.tool("threads.usage", {
