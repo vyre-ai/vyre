@@ -71,7 +71,7 @@ async function world(t) {
     const ks = createKernelSessions({ kernel: k, turns, chats: Object.freeze({ ...kc, beginTurn: async (/** @type {string} */ tok) => { seamCalls.push("BEGIN"); return kc.beginTurn(tok); } }) });
     const db = open(p.db);
     const events = bus;
-    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: process.env.E2E_DEBUG ? (/** @type {string} */ m) => console.error("LOG", m) : () => {}, kernelFor });
+    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: (/** @type {string} */ m) => { LOGS.push(String(m)); if (LOGS.length > 60) LOGS.shift(); if (process.env.E2E_DEBUG) console.error("LOG", m); }, kernelFor });
     // a person's local surface arrives as the owner's own device, as through the real socket (the Switchboard's chat gate needs a person chain)
     { const orig = reg.call.bind(reg); reg.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => orig(tool, input, caller, m !== undefined ? m : (/^(cli|deck|local|capsule)$/.test(String(caller)) ? { kernelFacts: { kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s" } } : undefined)); }
     reg.deps.kernelThreads = Object.freeze({
@@ -117,6 +117,7 @@ async function world(t) {
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
   return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
+/** The last lines the daemon logged, so a wait that times out can say what the daemon said. @type {string[]} */ const LOGS = [];
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
 
@@ -156,7 +157,7 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   // carol asks on Codex
   const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], account: "codex", cwd: w.work });
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
-  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))} launches ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_LOG), "utf8").slice(0, 600); } catch { return "none (the stand-in was never started)"; } })()}`); });
+  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))} log ${JSON.stringify(LOGS.slice(-12))} launches ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_LOG), "utf8").slice(0, 600); } catch { return "none (the stand-in was never started)"; } })()}`); });
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);
