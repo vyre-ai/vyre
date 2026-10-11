@@ -11,8 +11,11 @@ export default function RealConnected({ open }: { open: (tab: "any" | "mcp" | "a
   const [list, setList] = useState<Connected[] | null>(null);
   const [problem, setProblem] = useState("");
   const load = useCallback(() => {
-    Promise.all([connections.madeList().catch(() => []), connections.servers().catch(() => [])])
-      .then(([made, servers]) => { setList(unifyConnected(made, servers)); setProblem(""); }).catch((e) => setProblem(words(e)));
+    // One list failing leaves the other; both failing says why (a refusal is words, not an empty page).
+    const failed: unknown[] = [];
+    const soft = <T,>(p: Promise<T[]>) => p.catch((e) => { failed.push(e); return [] as T[]; });
+    Promise.all([soft(connections.madeList()), soft(connections.servers())])
+      .then(([made, servers]) => { if (failed.length === 2) throw failed[0]; setList(unifyConnected(made, servers)); setProblem(""); }).catch((e) => setProblem(words(e)));
   }, []);
   useEffect(load, [load]);
   if (problem && !list) return <ErrorState title="Your connections did not load" reason={problem} retry={load} />;

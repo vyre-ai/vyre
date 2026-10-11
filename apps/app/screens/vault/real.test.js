@@ -132,3 +132,14 @@ test("search: every word must match the name, the note, the site or the kind; na
   assert.deepEqual(searchItems(rows, "zzz"), []);
   assert.ok(searchItems(rows, "password").length === 0, "a field name is not searched");
 });
+
+test("a team member refused at the owner's vault is told the true reason, not 'this device may not' or 'cannot unlock from a phone'", async () => {
+  const M = "this is the owner's vault: ask the owner to share the item with you, or add your own key in your account settings";
+  const m = await import("./real-model.ts");
+  const h = await import("./held-model.ts");
+  const want = /owner's vault.*Ask the owner to share/;
+  assert.match(m.revealRefusal("denied", M), want);
+  assert.match(m.putRefusal("denied", M), want);
+  assert.match(h.shareRefusal("denied", M), want);
+  assert.match(m.putRefusal("denied", "x"), /This device may not add/, "another denial keeps its words");
+});

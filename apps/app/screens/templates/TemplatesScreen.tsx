@@ -18,7 +18,7 @@ export default function TemplatesScreen() {
   const [lib, setLib] = useState<Lib>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
-  const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
+  const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch((e) => { setLib([]); setErr((was) => was || errWords(e)); }); }, []);
   useEffect(load, [load]);
   const install = async (id: string) => {
     setBusy(id);
