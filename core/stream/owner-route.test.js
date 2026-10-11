@@ -8,7 +8,7 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
-const OWNER = "per_" + "abcdefghijklmnopqrstuvwxyz", ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
+const OWNER = "per_" + "abcdefghijklmnopqrstuvwxyz", ANA = "per_" + "bcdefghijklmnopqrstuvwxyza";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
 test("the owner reads and speaks in a member's team chat from their own app; a stranger and a chat of another Space get nothing", { timeout: 90_000 }, async t => {
@@ -21,13 +21,14 @@ test("the owner reads and speaks in a member's team chat from their own app; a s
   const svc = /** @type {any} */ (d.registry.modules.get("work")).handle.peerService({ space: firm.space, kernel: firm.kernel, registry: d.registry });
   const made = await svc.create(firm.kernel.chains.fromFacts(facts(ANA)), { title: "Huddle", people: [OWNER] });
   await svc.send(firm.kernel.chains.fromFacts(facts(ANA)), { chat: made.chat, text: "hello owner" });
-  const asOwner = (/** @type {string} */ tool, /** @type {any} */ input, person = OWNER) => d.registry.call(tool, input, "deck", { kernelFacts: facts(person) });
+  const token = (await firm.surfaces.open(owner, {})).token;   // the owner's own session in the Space, as their app holds it
+  const asOwner = (/** @type {string} */ tool, /** @type {any} */ input, tok = token) => d.registry.call(tool, input, "deck", { token: tok });
   const seen = await asOwner("stream.catchup", { chat: made.chat, space: firm.space });
   assert.ok(!seen.error, JSON.stringify(seen));
   assert.match(JSON.stringify(seen.data), /hello owner/, "the owner reads what the member said");
   const sent = await asOwner("stream.send", { chat: made.chat, text: "hello Ana", space: firm.space });
   assert.ok(!sent.error, JSON.stringify(sent));
   assert.match(JSON.stringify(await svc.catchup(firm.kernel.chains.fromFacts(facts(ANA)), { chat: made.chat })), /hello Ana/, "and Ana reads what the owner said");
-  assert.ok((await asOwner("stream.catchup", { chat: made.chat, space: firm.space }, ZED)).error, "a person who is no member of the Space gets nothing");
+  assert.ok((await asOwner("stream.catchup", { chat: made.chat, space: firm.space }, "forged.token")).error, "a call with no session of the Space gets nothing");
   assert.ok((await asOwner("stream.catchup", { chat: made.chat, space: "spc_zzzzzzzzzzzz" })).error, "a Space this home does not host is refused");
 });
