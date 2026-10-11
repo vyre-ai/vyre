@@ -409,11 +409,12 @@ export function createLentHome(o) {
       if (!lines.length) throw err("unavailable", "this chat has no whole turn to move yet");
       // the home's store already holds the turns the computer ran before the chat came back: only what the server added since goes in
       const held = had ? ((await Promise.resolve(store.getTranscript(HOME, session, 1, 1_000_000)).catch(() => [])) || []).length : 0;
-      if (held > lines.length) throw err("conflict", "the server's copy of this chat is shorter than the computer's: it cannot move");
-      return Promise.resolve(store.appendTranscript(HOME, session, lines.slice(held).map((line, k) => ({ seq: held + k + 1, line: String(line) })))).then(() => {
+      // What the store already holds is what the program of the earlier stint printed, not the provider's session file: the two are not the same lines and are never compared. The server's whole turns go in after it
+      // and the computer seeds its agent home from them alone (seed.from).
+      return Promise.resolve(store.appendTranscript(HOME, session, lines.map((line, k) => ({ seq: held + k + 1, line: String(line) })))).then(() => {
         if (had) book.bringBack(session, person);
         const row = book.lend({ session, chat: i.chat || null, person, device, key: keys.get(device) || null });
-        seeds.set(session, { native: String(i.native), count: lines.length });
+        seeds.set(session, { native: String(i.native), count: lines.length, from: held + 1 });
         threads.set(session, String(i.thread));
         reserved.add(session);
         // the chat's next turn starts the program there (the Switchboard finds this row); until then the place is kept for hours, not seconds
