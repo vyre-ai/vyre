@@ -448,6 +448,21 @@ test("the owner's next turn asks for the chat back; when the computer is not rea
 });
 
 
+test("a chat that never settles: the owner's turn asks at most 21 times for the same person, runs on the server and says so; a turn that starts meanwhile ends the wait", async () => {
+  /** @type {string[]} */ const said = [], asked = [];
+  const mk = (/** @type {any} */ live) => ({ live, deps: { lentReturnGapMs: 1, lentOfferBack: async (/** @type {any} */ x) => { asked.push(x.person); return { moved: false, why: "busy" }; } }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ _t, /** @type {any} */ p) => said.push(p.text) });
+  assert.equal(await lentReturn(mk(new Map()), SESSION, {}, BOB), false);
+  assert.equal(asked.length, 21, "one try and twenty more, never longer");
+  assert.ok(asked.every(p => p === BOB), "every try is for the person whose turn it is");
+  assert.ok(said.length === 1 && /could not take this chat back yet/.test(said[0]) && /Send your next message again/.test(said[0]), "said once, with the next step: " + said.join("|"));
+  asked.length = 0; said.length = 0;
+  const live = new Map();
+  const sb = mk(live); sb.deps.lentOfferBack = async (/** @type {any} */ x) => { asked.push(x.person); live.set(SESSION, { turn: "t:2" }); return { moved: false, why: "busy" }; };
+  await lentReturn(sb, SESSION, {}, BOB);
+  assert.equal(asked.length, 1, "a turn that starts meanwhile stops the wait");
+});
+
+
 test("a computer that is silent is taken by the home's sweep, and the chat says it continues from the last saved turn; the message waits for the saved turn, it is not answered from a missing one", async () => {
   /** @type {string[]} */ const said = [];
   let row = { session: SESSION, chat: "chat_bob", person: BOB, where: "mac", reason: null };
