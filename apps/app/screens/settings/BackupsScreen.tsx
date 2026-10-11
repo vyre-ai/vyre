@@ -5,10 +5,11 @@ import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
-import { backupLine, whenLine, type SpaceBackup } from "./backups-model.js";
+import { backupLine, whenLine, vaultBackupLines, type SpaceBackup } from "./backups-model.js";
 
 export default function BackupsScreen() {
   const [rows, setRows] = useState<SpaceBackup[] | null>(null);
+  const [vb, setVb] = useState<Parameters<typeof vaultBackupLines>[0]>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState("");
   const [code, setCode] = useState("");
@@ -17,6 +18,7 @@ export default function BackupsScreen() {
   const load = useCallback(() => {
     setErr("");
     void callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {}).then((r) => { if (r.error) setErr(r.error.message || "Backups could not be read."); else setRows(r.data?.spaces ?? []); });
+    void callT<NonNullable<Parameters<typeof vaultBackupLines>[0]>>("vault.autobackup.status", {}).then((r) => { if (!r.error) setVb(r.data ?? null); });
   }, []);
   useEffect(load, [load]);
   const turnOn = async (space: string) => {
@@ -50,6 +52,12 @@ export default function BackupsScreen() {
           ))}
         </Card>
       ) : null}
+      {vb ? (() => { const v = vaultBackupLines(vb); return (
+        <Card flush>
+          <Row title={v.title} sub={v.backup} end={<Chip>{vb.enrolled ? "On" : "Off"}</Chip>} />
+          {v.drill ? <><Divider /><Row title="Restore drill" sub={v.drill} end={vb.drill ? <Chip>{vb.drill.ok ? "Passed" : "Failed"}</Chip> : undefined} /></> : null}
+        </Card>
+      ); })() : null}
     </Page>
   );
 }
