@@ -17,7 +17,7 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
   const firm = await w.d.kernel.spaces.host({ owner: OWNER, name: "Harlow Legal" });
   const other = await w.d.kernel.spaces.host({ owner: OWNER, name: "Other Firm" });
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
-  await firm.gateway.grants.setRole(owner, { person: ANA, role: "member" }, { presence: proof() });
+  await firm.gateway.grants.setRole(owner, { person: ANA, role: "admin" }, { presence: proof() });
   const ana = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: ANA, path: "direct" });
   const team = (await firm.kernel.surfaces.open(ana, {})).token;
   const home = (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: w.d.kernel.id.owner, path: "direct" }), {})).token;
