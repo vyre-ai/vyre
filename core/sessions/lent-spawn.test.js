@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -175,7 +175,7 @@ test("a new chat of the home's owner is placed once at creation: a ready compute
       placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null },
     }),
   });
-  const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true };
+  const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true, asker: "per_owner" };
   assert.equal(await lentSpawnFor(make({ where: "box" }), q), null, "none ready: the box");
   assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "thr_9", "chat_9", "per_owner"]]);
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, fresh: false }), null, "a chat that already ran is not placed now");
@@ -189,7 +189,7 @@ test("a new chat of the home's owner is placed once at creation: a ready compute
   assert.deepEqual([placed[2].person, placed[2].chat], ["per_member", "chat_m"]);
 });
 
-test("a turn runs on its own person's computer only: another member's turn in a chat placed on someone's computer runs on the box, and a turn with no person is the owner's", async () => {
+test("a turn runs on its own person's computer only: another member's turn in a chat placed on someone's computer runs on the box, and a turn with no person goes to the box", async () => {
   const calls = /** @type {any[]} */ ([]);
   const rows = /** @type {Record<string, any>} */ ({ chat_a: { where: "mac", session: "ses_a", chat: "chat_a", person: "per_alice" } });
   const kernel = { owner: "per_alice", id: { space: "spc_a", owner: "per_alice" }, runnerHost: () => ({ lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { calls.push({ space, ...i }); return {}; }, placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null } }) };
@@ -197,8 +197,8 @@ test("a turn runs on its own person's computer only: another member's turn in a 
   assert.equal(await lentSpawnFor(kernel, { ...q, asker: "per_bob" }), null, "Bob's turn in Alice's chat never runs on Alice's computer");
   assert.equal(calls.length, 0);
   assert.ok(await lentSpawnFor(kernel, { ...q, asker: "per_alice" }), "Alice's own turn does");
-  assert.ok(await lentSpawnFor(kernel, q), "a turn with no person on its chain is the home's terminal, the owner's");
-  assert.equal(await lentSpawnFor({ ...kernel, owner: "per_bob", id: { space: "spc_a", owner: "per_bob" } }, q), null, "and on a home whose owner is someone else it is not Alice's");
+  assert.equal(await lentSpawnFor(kernel, q), null, "a turn with no person is never the owner's: it runs on the box");
+  assert.equal(await lentSpawnFor(kernel, { ...q, fresh: true, thread: "thr_n", chat: "chat_n", native: "ses_n" }), null, "and a new chat with no person is not placed on the owner's computer");
 });
 
 test("the lent process says it is starting on its computer from the first moment, and the SDK's object passes it on", async () => {
@@ -217,7 +217,7 @@ test("on the real home: a new chat of the owner is placed at creation on the own
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
   const r = await rig(t);
   const kernel = (/** @type {any} */ h) => ({ owner: BOB, id: { space: SPACE, owner: BOB }, runnerHost: () => ({ lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => h.spawn(i), placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => h.placeNew(i), placements: { spaces: () => [SPACE], find: (/** @type {string} */ _s, /** @type {string} */ id) => h.book.find(id) } }) });
-  const q = { thread: "thr_new", chat: "chat_new", native: "thr_new", fresh: true, title: "Harlow intake" };
+  const q = { thread: "thr_new", chat: "chat_new", native: "thr_new", fresh: true, title: "Harlow intake", asker: BOB };
   assert.equal(await lentSpawnFor(kernel(r.home), q), null, "no computer ready: the box");
   assert.equal(r.home.book.find("thr_new"), null, "nothing was written");
   const c = r.as(BOB, "dev_laptop");
@@ -302,7 +302,7 @@ test("on the real home: another person's turn that reaches a chat whose live pro
   assert.ok(await lentSpawnFor(kernel, q), "the chat is lent to Bob's computer");
   assert.equal(r.home.book.get(SESSION)?.where, "mac");
   // the switchboard side: a live process that is on a computer, and a turn by someone else
-  const sb = (/** @type {any} */ asker) => ({ deps: { lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, { ...x, asker }) }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
+  const sb = (/** @type {any} */ asker) => ({ deps: { lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, { ...x, asker }), lentRow: (/** @type {any} */ x) => lentRowFor(kernel, x) }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
   const live = { proc: { where: "lent" } };
   assert.equal(await lentYield(sb(BOB), SESSION, live, BOB), false, "Bob's own turn runs on his computer as before");
   assert.equal(r.home.book.get(SESSION)?.where, "mac");
@@ -310,6 +310,36 @@ test("on the real home: another person's turn that reaches a chat whose live pro
   assert.equal(r.home.book.get(SESSION)?.where, "server", "and the server took the chat back from Bob's computer: nothing of Carol's reaches it");
   assert.equal(await lentYield(sb(CAROL), SESSION, { proc: { where: "box" } }, CAROL), false, "a process on the box has nothing to yield");
   // if the server cannot take the chat back now, the message still waits
-  const stuck = { deps: { lentTakeBack: () => Promise.resolve("held") }, chatOf: () => null, nativeOf: () => SESSION };
+  const stuck = { deps: { lentTakeBack: () => Promise.resolve("held"), lentRow: (/** @type {any} */ x) => lentRowFor(kernel, x) }, chatOf: () => null, nativeOf: () => SESSION };
   assert.equal(await lentYield(stuck, SESSION, live, CAROL), true, "a held take-back still does not run the turn on the computer");
+});
+
+
+test("fail closed: a live process that does not say it is on the box is judged by the home's book, and another person's message (or one with no person) never goes into one that is on a computer", async () => {
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const sb = (/** @type {any} */ r) => ({ deps: { lentRow: () => r }, chatOf: () => "chat_bob", nativeOf: () => SESSION, canon: (/** @type {string} */ x) => (x === "per_old_bob" ? BOB : x) });
+  for (const where of [undefined, null, "", "weird", "pending", "lent"]) {
+    const st = { proc: { where } };
+    assert.equal(lentBlocks(sb(row), SESSION, st, CAROL), true, `where=${JSON.stringify(where)}: Carol's message is kept off Bob's computer`);
+    assert.equal(lentBlocks(sb(row), SESSION, st, null), true, `where=${JSON.stringify(where)}: a message with no person is kept off it too`);
+    assert.equal(lentBlocks(sb(row), SESSION, st, BOB), false, `where=${JSON.stringify(where)}: Bob's own message goes in`);
+    assert.equal(lentBlocks(sb(row), SESSION, st, "per_old_bob"), false, "Bob under a replaced id is still Bob");
+  }
+  assert.equal(lentBlocks(sb(row), SESSION, { proc: { where: "box" } }, CAROL), false, "a process that says box is the box's");
+  assert.equal(lentBlocks(sb(null), SESSION, { proc: {} }, CAROL), false, "no row and no claim: nothing says it is on a computer");
+  assert.equal(lentHolder(sb(null), SESSION, { proc: { where: "lent" } }), "", "a process that says lent with no row is held for nobody");
+  assert.equal(lentBlocks(sb(null), SESSION, { proc: { where: "lent" } }, BOB), true, "and nobody's message goes in");
+  // no take-back available: it still waits
+  assert.equal(await lentYield({ ...sb(row), deps: { lentRow: () => row } }, SESSION, { proc: { where: undefined } }, CAROL), true);
+  // a running turn is never interrupted by a take-back: the message waits
+  let asked = 0;
+  assert.equal(await lentYield({ ...sb(row), deps: { lentRow: () => row, lentTakeBack: async () => { asked++; return "taken"; } } }, SESSION, { turn: "t:1", proc: { where: "lent" } }, CAROL), true);
+  assert.equal(asked, 0, "no take-back while the owner's turn runs");
+});
+
+test("the last door: Switchboard.write refuses a message for a process on a computer unless the turn it belongs to is that person's", async () => {
+  const { Switchboard } = await import("../switchboard/index.js");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const stub = (/** @type {any} */ asker) => ({ live: new Map([[SESSION, { proc: { where: undefined, write() { throw new Error("reached the process"); } } }]]), turnAsker: new Map(asker === undefined ? [] : [[SESSION, asker]]), deps: { lentRow: () => row }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
+  for (const asker of [undefined, null, CAROL]) assert.throws(() => Switchboard.prototype.write.call(stub(asker), SESSION, "hello"), (/** @type {any} */ e) => e.code === "held" && /waits/.test(e.message), `asker ${String(asker)}: refused before the process`);
 });
