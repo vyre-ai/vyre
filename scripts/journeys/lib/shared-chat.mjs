@@ -178,7 +178,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
 
   const G = "the owner, who is in the chat too, reads the same history from their own app";
   await J.step(G, async () => {
-    const r = await w.call("stream.catchup", { chat, space: team.space });
+    const r = await w.call("stream.catchup", { chat, space: team.space }).catch((/** @type {any} */ e) => { throw new Error(/does not take space|not found|person_session_required/i.test(String(e && e.message)) ? `NOT BUILT YET: the owner reads and sends in a team chat from their own app (stream.* takes no space, and the member door is a member's: ${e.message}) (owner: chat)` : e.message); });
     const texts = /** @type {any[]} */ (r.messages || []).map(m => String(m.text));
     assert.ok(texts.some(t => t.includes("Edith here")) && texts.some(t => t.includes("home:")), `the owner reads the members' words and the AI's answers: ${JSON.stringify(texts)}`);
     return `${texts.length} messages`;
