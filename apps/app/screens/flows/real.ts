@@ -32,6 +32,6 @@ export const runReal = (run: string) => ask<{ run: any; painted: { nodes: any[];
 export const cardReal = (id: string, version: number) => ask<Card>("flows.card", { id, version });
 /** A person's own approval of one version, by its hash. The box asks for the person's proof; the app's session answers it (a real Face ID or fingerprint prompt). */
 export const approveReal = (id: string, version: number, hash: string) => ask("flows.approve", { id, version, hash });
-/** A member's version of a Flow someone else set up: a proposal for the person whose authority it runs on, or an owner or admin, to approve (flows.propose; nothing applies until they agree). */
-export const proposeReal = (id: string, version: number) => ask("flows.propose", { what: "flow", id, version });
+/** A member's version of a Flow someone else set up: a proposal for the person whose authority it runs on, or an owner or admin, to approve (the member door's flows.propose { id, version, note }: a card in front of the person the Flow runs for, who approves it in Flows with their own yes). */
+export const proposeReal = (id: string, version: number) => ask("flows.propose", { id, version });
 export const setPausedReal = (id: string, paused: boolean) => ask(paused ? "flows.pause" : "flows.resume", { id });
