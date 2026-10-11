@@ -15,6 +15,9 @@
 
 import { KernelError } from "../core/errors.js";
 
+/** The services whose one-hop chain writes these types for the whole Space (the work module's tools, the tasks service, Flows stages, the kernel itself): the caller treats them as trusted, after their own checks. */
+export const TRUSTED_SERVICES = Object.freeze(["work", "tasks", "flows", "kernel"]);
+
 /** The three types this file judges. */
 export const OWNED_TYPES = Object.freeze(["project", "team-member", "task"]);
 
@@ -33,8 +36,9 @@ const actorsOf = chain => (chain && Array.isArray(chain.hops) ? chain.hops.map((
 export async function mayWrite(chain, type, row, patch, ctx) {
   if (!OWNED_TYPES.includes(type) || ctx.trusted) return true;
   const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
-  if (!me) throw no(`only a person, or the owner or an admin, writes a ${type}. Ask the project's owner or an admin.`);
-  const person = String(me.id);
+  // a project and its team are written by people; a task also by the agent it is for, so only those two need a person here
+  if (!me && type !== "task") throw no(`only a person, or the owner or an admin, writes a ${type}. Ask the project's owner or an admin.`);
+  const person = me ? String(me.id) : "";
   const p = patch && typeof patch === "object" ? patch : {};
   const data = (row && row.data) || {};
   const ownsOrBelongs = (/** @type {{ owner: string | null, team: string[] } | null} */ pr) => Boolean(pr && (pr.owner === person || pr.team.includes(person)));
@@ -78,3 +82,22 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   if (currentProject && ownsOrBelongs(await ctx.project(currentProject))) return true;
   throw no("a task is changed by whoever it is for, whoever gave it, or its project's owner or team. Ask one of them.");
 }
+
+/** The owner or an admin acting as themselves (or through a service they started), or the owning service's own one-hop chain. @param {any} chain @param {(a: any) => string | null | undefined} roleOf */
+export function isTrustedChain(chain, roleOf) {
+  const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+  if (hops.length === 1 && hops[0].actor.kind === "service" && TRUSTED_SERVICES.includes(hops[0].actor.id)) return true;
+  const first = hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+  if (!first) return false;
+  const role = roleOf(first.actor);
+  return (role === "owner" || role === "admin") && (hops.length === 1 || hops[hops.length - 1].actor.kind === "service");
+}
+
+/** The owner and the people on a project's team, read straight from the record store (no gate: the rule's own question). @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn */
+export const projectTeamOf = (store, urn) => async (/** @type {string} */ ref) => {
+  const pid = String(ref).split("/").pop() || "";
+  const pr = await store.get("project", pid).catch(() => null);
+  if (!pr) return null;
+  const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn("project", pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
+  return { owner: idOf(pr.data.owner), team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean) };
+};

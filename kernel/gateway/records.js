@@ -2,7 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
-import { mayWrite, OWNED_TYPES } from "./ownership.js";
+import { mayWrite, OWNED_TYPES, TRUSTED_SERVICES } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -633,7 +633,7 @@ export function createRecords(cfg) {
     if (op === "update" && hooks.expand) input = await hooks.expand(before);
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
-      const trusted = adminish(chain) || (chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && chain.hops[0].actor.id === "work");
+      const trusted = adminish(chain) || (chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && TRUSTED_SERVICES.includes(chain.hops[0].actor.id));
       const personId = (/** @type {any} */ a) => (a && typeof a === "object" ? (a.actor && a.actor.id) || a.id || null : typeof a === "string" ? a : null);
       await mayWrite(chain, type, before, op === "remove" ? {} : input, {
         op, trusted,
@@ -644,7 +644,7 @@ export function createRecords(cfg) {
           const rows = ((await store.query("team-member", { filter: { field: "project", op: "eq", value: { urn: urn("project", pid) } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows) || [];
           return { owner: personId(pr.data.owner), team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => personId(r.data.actor)).filter(Boolean) };
         },
-        task: async (/** @type {string} */ tid) => { const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project).split("/").pop() : null } : null; },
+        task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }
     // a link names live records of its type: the gateway checks, so every store holds only links that stand
