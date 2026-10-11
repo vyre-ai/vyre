@@ -155,7 +155,6 @@ export const MIGRATIONS = [
    ALTER TABLE threads_turns ADD COLUMN model TEXT;`,
   // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
   `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
-  `CREATE TABLE threads_team (thread TEXT PRIMARY KEY, space TEXT NOT NULL);`, // the TEAM Space a chat's run belongs to (0.3.3 J9), kept past the run: its transcript is that Space's, never filed into the home's recall or memory
   // A rollover (Vyre's own, when a session's window fills; ./rollover.js): the thread keeps its id and its event log, and its agent starts a fresh native session
   // (for Claude a new session id, native_to, because a session id names one transcript). One row per rollover, so a seed can point into every earlier window
   // (native_from, oldest first) and a transcript under a native id still says which thread it belongs to.
@@ -173,6 +172,7 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_runs ADD COLUMN slot TEXT;`,
   // The person's current time zone (an IANA name, from the device that sent their last message), so a brief and a clock read the zone they are in now, not the server's.
   `ALTER TABLE threads_runs ADD COLUMN tz TEXT;`,
+  `CREATE TABLE threads_team (thread TEXT PRIMARY KEY, space TEXT NOT NULL);`, // the TEAM Space a chat's run belongs to (0.3.3 J9), kept past the run: its transcript is that Space's, never filed into the home's recall or memory
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
