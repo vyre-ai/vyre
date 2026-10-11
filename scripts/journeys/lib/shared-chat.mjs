@@ -54,11 +54,15 @@ async function seen(person, chat) {
 }
 const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(String(m.author)));
 
+/** What the server's own terminal says about the sessions, for a wait that timed out. */
+let serverView = async () => "";
+export const setServerView = (/** @type {() => Promise<string>} */ f) => { serverView = f; };
+
 /** Wait until a person sees `n` answers from the AI; the list is what they saw. @param {any} person @param {string} chat @param {number} n */
 async function untilAnswers(person, chat, n) {
   let got = /** @type {any[]} */ ([]);
   for (let i = 0; i < 40; i++) { got = answers(await seen(person, chat)); if (got.length >= n) return got; await sleep(4000); }
-  throw new Error(`waited almost three minutes for answer ${n} in the chat; ${person.name} saw ${JSON.stringify(got.map(m => m.text))}`);
+  throw new Error(`waited almost three minutes for answer ${n} in the chat; ${person.name} saw ${JSON.stringify(got.map(m => m.text))}${await serverView()}`);
 }
 
 /**
@@ -67,6 +71,18 @@ async function untilAnswers(person, chat, n) {
 export async function sharedChatSteps({ J, w, team, people, needs }) {
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
+  setServerView(async () => {
+    try {
+      const l = await w.operator("threads.list", { all: true });
+      const rows = (Array.isArray(l) ? l : l.threads || l.rows || []).slice(-6);
+      const out = [];
+      for (const r of rows) {
+        const g = await w.operator("threads.get", { thread: r.id || r.thread, limit: 12 }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+        out.push({ id: r.id || r.thread, provider: r.provider, account: r.account, status: r.status, events: ((g && g.events) || []).slice(-8).map((/** @type {any} */ x) => [x.type, String((x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to)) || "").slice(0, 100)]), error: g && g.error });
+      }
+      return ` | server threads ${JSON.stringify(out)}`;
+    } catch (e) { return ` | server threads unreadable: ${String(e && /** @type {any} */ (e).message)}`; }
+  });
   const accounts = /** @type {Record<string, any>} */ ({});
   const A = "the box has a stand-in Codex login and agent for the walk";
   await J.step(A, () => installStandins().join(" "), { needs, owner: "release" });
