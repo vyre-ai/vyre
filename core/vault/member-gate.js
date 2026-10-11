@@ -22,8 +22,8 @@ async function ids(k, meta) {
   return (c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id));
 }
 
-/** The labels the owner's own 0600 unix socket carries when the daemon could measure nothing more (core/daemon/index.js callerFacts; a socket only the owner's Linux user can open). */
-const SOCKET_LABELS = new Set(["cli", "local", "capsule", "mcp", "harness"]);
+/** The caller classes a listener creates for a connection that is not on the owner's own socket (core/modules/index.js callerKind classes web and setup; device: from the relay and peer door; tailnet nodes; another Space's peer). */
+const REMOTE = /^(?:device:|web:|setup:|space:|tailnet)/;
 
 /** The callers that provably have no person behind them, by the registry's own caller kind: a module's call, and an outside agent holding a pass the owner made (vault.mcp.*). */
 const NO_PERSON = (/** @type {string} */ caller) => caller.startsWith("module:") || /^ext:/.test(caller);
@@ -38,17 +38,22 @@ export function gateTools(ctx) {
     const k = ctx.kernel;
     if (!k || typeof k.chain !== "function") return;   // a home with no kernel has no members to keep out
     const caller = String((meta && meta.caller) || "");
-    // A call CLAIMS a person when it carries a session token, the daemon's proven facts about a person's connection, or a People session (meta.person). Every member reaches the server that way (their
-    // app's session, a paired device's peer stream, their assistant's or agent's thread socket, which stamps the session's token on every call and refuses the call when it has none): there is no member
-    // path without one, and a claim that does not prove to be the owner is refused below. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module's call made for a
-    // member carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
-    const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object") || meta.person));
+    // A call CLAIMS a person when it carries a session token or the daemon's proven facts about a person's connection. Every member reaches the server that way (their assistant's or agent's thread socket
+    // stamps the session's token on every call and refuses the call when it has none; a member's paired device is denied at the peer door before the registry when it has no facts: core/daemon/peer-door.js),
+    // and a claim that does not prove to be the owner at every hop is refused below. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module call made for a member
+    // carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
+    const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (!claims) {
-      // Unclaimed: only the labels of the owner's own 0600 unix socket (their terminal, the Capsule, their local Claude's plain MCP), or a call the daemon makes in-process. Every other unclaimed caller is
-      // refused by its own marker: a device or a browser session whose connection gave no facts (a member's device is given none), a thread- or agent-bound model label (the thread socket always stamps
-      // a token), a tailnet node, a guest, a deck or mobile label that no listener vouched for.
-      if (NO_PERSON(caller) || SOCKET_LABELS.has(caller)) return;
-      throw Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
+      if (NO_PERSON(caller)) return;
+      // A REMOTE caller (a device, a browser, a setup page, a tailnet node, another Space's peer) that claims no person must show a People session, the daemon's own sign-in of a device the OWNER paired
+      // (presence_people has no person column: its sessions are the owner's devices). A remote caller with neither is refused: nothing shows who it is.
+      if (REMOTE.test(caller)) {
+        if (meta && meta.person) return;
+        throw Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
+      }
+      // Every other unclaimed label reaches vyred only on the owner's own 0600 unix socket or through the owner's own listeners (their terminal, the Capsule, deck and mobile as the owner's listeners set
+      // them, their local Claude and a thread or agent label on that socket): a member's session never arrives unclaimed (it carries its token), so there is no one else to keep out here.
+      return;
     }
     // A claimed person must be proven, and be the owner at every hop: a chain that cannot be read, or whose facts did not hold (a service chain with no person), is refused.
     const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
