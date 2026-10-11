@@ -26,6 +26,10 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
   "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
   "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
+  // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
+  "work.templates": { tool: "work.serve", call: "templates", keys: [], types: ["project-template"] },
+  "work.project-create": { tool: "work.serve-write", call: "create-project", keys: ["name", "slug"], types: [] },
+  "work.start-project": { tool: "work.serve-write", call: "start-project", keys: ["template", "name", "slug"], types: ["project-template"] },
   // a member's own Flows (core/flows/member.js): Flows belong to the Space; any member drafts, a version runs on the authority of whoever approved it, and she approves her own with any trigger
   "flows.cheatsheet": { tool: "flows.serve", call: "cheatsheet", keys: [], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   "flows.compile-text": { tool: "flows.serve", call: "compile-text", keys: ["text", "id", "format"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
