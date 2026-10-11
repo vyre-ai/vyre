@@ -15,9 +15,27 @@
 
 import { KernelError } from "../core/errors.js";
 
-/** The services whose one-hop chain writes these types for the whole Space (the work module's tools, the tasks service, Flows stages, the kernel itself): the caller treats them as trusted, after their own checks. */
-export const TRUSTED_SERVICES = Object.freeze(["work", "tasks", "flows", "kernel", "planner"]);
-// planner: the planner module files and edits a person's to-dos with its own service chain (K.serviceChain()), doing its own check of whose item it is; its tools are not on the member door.
+/**
+ * The services whose one-hop chain writes these types for the whole Space, each trusted because the service checks the person itself BEFORE it writes (a service not listed here is judged as acting for the
+ * person a task is for: see actingForOf):
+ *   work    the member door takes the chain's one person and refuses a non-member (core/work/member-tools.js who/isMember); a member's own projects are written under HER chain (core/work/member-projects.js);
+ *           the work service's chain writes only the hub's bookkeeping for a project it made (drive_path, marker, seats). I did not audit every other work tool.
+ *   tasks   kernel/tasks/tasks.js: edit, skip, reopen, unblock and request run this same rule (ownsWrite) and isDoer / checkersOf before the service writes the task's record.
+ *   flows   a Flow runs as the person who approved its version and every step is bound to that approval (kernel/flows/runner.js approve, kernel/flows/stages.js).
+ *   kernel  the kernel's own bookkeeping (a task's status, tasks.move): actsAsKernel in kernel/gateway/records.js.
+ * @type {readonly string[]}
+ */
+export const TRUSTED_SERVICES = Object.freeze(["work", "tasks", "flows", "kernel"]);
+
+/**
+ * When a service that is not trusted writes a task (the planner files a to-do with its own chain), it acts for the task's person: that person is judged as the writer, so a member's to-do goes only into a
+ * project she is on, and an owner's anywhere. Null when the chain has a person hop of its own or the task is not a person's. @param {any} chain @param {any} doer
+ */
+export function actingForOf(chain, doer) {
+  const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+  if (!hops.length || hops.some((/** @type {any} */ h) => h.actor.kind === "person") || hops[hops.length - 1].actor.kind !== "service") return null;
+  return doer && doer.kind === "person" ? String(doer.id) : null;
+}
 
 /** The three types this file judges. */
 export const OWNED_TYPES = Object.freeze(["project", "team-member", "task"]);
@@ -39,11 +57,12 @@ const actorsOf = chain => (chain && Array.isArray(chain.hops) ? chain.hops.map((
 
 /**
  * May this chain write this row of this type. @param {any} chain @param {string} type @param {any} row @param {any} patch
- * @param {{ op: "create" | "update" | "remove", trusted: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, task?: (id: string) => Promise<any> }} ctx
+ * @param {{ op: "create" | "update" | "remove", trusted: boolean, actingFor?: string | null, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, task?: (id: string) => Promise<any> }} ctx
  */
 export async function mayWrite(chain, type, row, patch, ctx) {
   if (!OWNED_TYPES.includes(type) || ctx.trusted) return true;
-  const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
+  const acting = ctx.actingFor ? [...actorsOf(chain), { kind: "person", id: ctx.actingFor }] : actorsOf(chain);
+  const me = acting.find((/** @type {any} */ a) => a.kind === "person");
   // a project and its team are written by people; a task also by the agent it is for, so only those two need a person here
   if (!me && type !== "task") throw no(`only a person, or the owner or an admin, writes a ${type}. Ask the project's owner or an admin.`);
   const person = me ? String(me.id) : "";
@@ -93,7 +112,7 @@ export async function mayWrite(chain, type, row, patch, ctx) {
 
   // a task: its doer, whoever assigned it, or the owner or team of its project; and never into a project she is not on
   const t = ctx.op === "create" || !ctx.task || !row ? null : await ctx.task(String(row.id));
-  const mine = (/** @type {any} */ a) => Boolean(a) && actorsOf(chain).some((/** @type {any} */ x) => x.kind === a.kind && x.id === a.id);
+  const mine = (/** @type {any} */ a) => Boolean(a) && acting.some((/** @type {any} */ x) => x.kind === a.kind && x.id === a.id);
   const currentProject = ctx.op === "create" ? null : refOf(data.project) || (t && t.project) || null;
   const moveTo = Object.prototype.hasOwnProperty.call(p, "project") ? refOf(p.project) : undefined;
   if (moveTo || (ctx.op === "create" && refOf(p.project))) {
@@ -150,4 +169,11 @@ export async function mayAttrs(chain, attrs, ctx) {
     if (!(pr && (pr.owner === person || pr.team.includes(person)))) throw no("a record goes only under a project you are on. Ask the project's owner to add you first.");
   }
   return true;
+}
+
+/** Who is writing and whether that is trusted: the chain as it is, or, for a service that is not trusted, the person the task is for (an owner or admin there counts as trusted). @param {any} chain @param {any} doer @param {(a: any) => string | null | undefined} roleOf @param {string} space */
+export function judgeWriter(chain, doer, roleOf, space) {
+  const actingFor = actingForOf(chain, doer);
+  const trusted = isTrustedChain(chain, roleOf) || (actingFor !== null && ["owner", "admin"].includes(String(roleOf({ kind: "person", id: actingFor, space }))));
+  return { trusted, actingFor };
 }

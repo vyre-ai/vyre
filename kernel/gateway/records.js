@@ -2,7 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
-import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, projectTeamOf } from "./ownership.js";
+import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -637,9 +637,11 @@ export function createRecords(cfg) {
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if (op === "create" && attrs) await attrsGate(chain, attrs);
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
-      const trusted = isTrustedChain(chain, roleFor);
+      // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
+      const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
+      const { trusted, actingFor } = judgeWriter(chain, doer, roleFor, space);
       if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
-        op, trusted, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
+        op, trusted, actingFor, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
       });
     }
