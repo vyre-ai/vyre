@@ -2,7 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { revertSettled, runQueuedOver } from "./asker-account.js";
+import { baseRec, revertSettled, runQueuedOver } from "./asker-account.js";
 import { Switchboard } from "./index.js";
 
 test("revertSettled: true with no hop back, true once it finishes (or fails), false when it is still held open after the wait", async () => {
@@ -40,7 +40,7 @@ test("a write that throws while a queued turn is handed over releases the drain 
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
-  assert.throws(() => Switchboard.prototype.drainRun.call(sb, "t", null, [{ id: 1, text: "x", surface: "s", uuid: "u", at: 1 }], null), /lent/);
+  Switchboard.prototype.drainRun.call(sb, "t", null, [{ id: 1, text: "x", surface: "s", uuid: "u", at: 1 }], null);   // (logged and told, not thrown into whatever ended the turn)
   assert.equal(sb.draining.has("t"), false, "the lock is released");
   assert.deepEqual(drained, ["notice", "t"], "the room is told, and the rows behind it are drained again");
 });
@@ -107,4 +107,47 @@ test("a revert whose switch throws still drains the put-back row", async () => {
   assert.deepEqual(drained, [], "past the wait and the revert still going: nothing runs");
   await new Promise(r => setTimeout(r, 80));
   assert.deepEqual(drained, ["t"], "when the revert is over, thrown or not, the put-back row is drained");
+});
+
+test("a queued row whose hop needs no move (sendOnce answers null) still delivers its words, under their asker", async () => {
+  /** @type {any[]} */ const calls = [];
+  const sb = /** @type {any} */ ({
+    reverting: new Map(), draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
+    onceTarget: async () => ({}), sendOnce: async () => null,
+    deliverRow: async (/** @type {string} */ id, /** @type {any} */ r, /** @type {any} */ kt) => { calls.push([id, r.text, kt.asker]); },
+    drainQueued() {}, reverting_: 0,
+  });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  runQueuedOver(sb, "t", [{ id: 4, text: "C-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_carol", over: { provider: "claude", account: "same", person: "per_carol" } }, () => ({ changes: 1 }), 1);
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(calls, [["t", "C-ONE", "per_carol"]], "the words are delivered, not swallowed");
+});
+
+test("deliverRow writes the words under the asker's session, and tells the room when that session cannot open", async () => {
+  /** @type {any[]} */ const log = [];
+  const mk = (/** @type {boolean} */ ok) => /** @type {any} */ ({ record: () => ({ project: null }), renewKernelSession: async () => ok, write: (/** @type {string} */ id, /** @type {string} */ text, /** @type {any} */ o) => log.push(["write", text, o.askedBy]), dropQueuedChatTurn: () => log.push(["told"]) });
+  await Switchboard.prototype.deliverRow.call(mk(true), "t", { text: "C-ONE", uuid: "u" }, { chat: "c", asker: "per_carol" });
+  await Switchboard.prototype.deliverRow.call(mk(false), "t", { text: "C-TWO", uuid: "v" }, { chat: "c", asker: "per_carol" });
+  assert.deepEqual(log, [["write", "C-ONE", "per_carol"], ["told"]]);
+});
+
+test("a switch back that fails twice: tried twice, the room is told, the saved base stands in for the hop's, and a later try puts the thread back", async () => {
+  /** @type {any[]} */ const notes = []; let tries = 0, work = false;
+  const sb = /** @type {any} */ ({
+    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), pendingBack: new Map(), reverting: new Map(),
+    record: () => ({ project: null, provider: "codex", account: "carols" }), live: new Map(), deps: { log() {} },
+    emit: (/** @type {string} */ type, /** @type {any} */ p) => notes.push([type, p.text]),
+    switchProvider: async () => { tries++; if (!work) throw new Error("no process"); },
+  });
+  await Switchboard.prototype.revertOnce.call(sb, "t");
+  assert.equal(tries, 2, "retried once");
+  assert.match(String(notes[0] && notes[0][1]), /Could not switch back to .*stays on/, "the room is told");
+  assert.equal(sb.pendingBack.get("t").account, "bobs", "the original base is kept");
+  assert.equal(baseRec(sb, "t").account, "bobs", "the next asker is judged on the saved base, not on the hop's account");
+  sb.retryBack = Switchboard.prototype.retryBack;
+  assert.equal(await sb.retryBack("t"), false, "still failing: the thread is not claimed to be back");
+  work = true;
+  assert.equal(await sb.retryBack("t"), true, "when the switch works the thread is back");
+  assert.equal(sb.pendingBack.has("t"), false);
 });

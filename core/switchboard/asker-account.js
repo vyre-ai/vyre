@@ -11,7 +11,7 @@
  * @returns {Promise<{ provider: string, account: string, person: string | null } | null>} the one-turn target, or null when the thread's own account is theirs to use
  */
 export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
-  const rec = sb.record(id);
+  const rec = baseRec(sb, id);
   if (!rec || !kernelTurn || !kernelTurn.asker) return null;
   // Whether the asker is in the chat is the kernel's first word (a person who is not in it is refused as that, before anything about their sign-in is said).
   if (typeof sb.assertAsker === "function" && kernelTurn.chat) await sb.assertAsker(id, rec, kernelTurn);
@@ -64,10 +64,12 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
       }
       await sb.onceTarget(id, kt.over);
       sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
-      await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
+      const started = await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
+      if (started === null) await sb.deliverRow(id, r, kt);   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
       sb.drainDone(id, true);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
+      sb.endAnnouncedTurn(id, rec ? rec.project : null);   // the turn announced as begun for these words ends here
       sb.drainDone(id, true);
     }
   })();
@@ -121,7 +123,7 @@ const isOwner = (/** @type {any} */ sb, /** @type {string} */ owner, /** @type {
  * @param {any} sb @param {string} id the thread @param {string} provider @param {string | null} account @param {{ asker: string }} kt @param {{ provider: string, account: string, person: string | null } | null} own what askerOver gave
  */
 export async function chipOver(sb, id, provider, account, kt, own) {
-  const rec = sb.record(id), cur = (rec && rec.provider) || "claude";
+  const rec = baseRec(sb, id), cur = (rec && rec.provider) || "claude";
   if (account) return { provider, account, person: kt.asker };
   if (provider === cur) return own;
   const mine = rec ? await sb.accountFor({ provider, person: kt.asker, project: rec.project, agent: rec.agent }).catch(() => null) : null;
@@ -175,4 +177,10 @@ export function libraryPerson(sb, rec, o) {
   const verified = (o.kernelTurn && o.kernelTurn.asker) || (rec && sb.turnAsker.get(rec.id)) || null;
   if (verified) return String(verified);
   return o.person ? NOBODY : /** @type {any} */ (undefined);
+}
+
+/** The thread's record as its base is: after a switch back that failed twice, the saved provider and account stand in for the hop's, so the next asker is judged on the thread's own base. @param {any} sb @param {string} id */
+export function baseRec(sb, id) {
+  const rec = sb.record(id), saved = sb.pendingBack && sb.pendingBack.get(id);
+  return rec && saved ? { ...rec, provider: saved.provider, account: saved.account } : rec;
 }
