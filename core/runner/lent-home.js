@@ -321,6 +321,8 @@ export function createLentHome(o) {
       writer(chain, i && i.session, i && i.epoch);
       const reason = String(i.reason);
       if (!REASONS.includes(reason)) throw err("bad_input", "say why: " + REASONS.join(", "));
+      // another person's turn is handed over only while the home still asks for it: the owner who wrote meanwhile withdrew the ask, and the computer thaws and goes on with their turn
+      if (reason === "another-person") { const a = book.get(String(i.session)); if (!a || !a.ask || a.ask.do !== "release" || a.ask.reason !== "another-person") return { moved: false, why: "the owner is writing" }; }
       const r = await takeOver(String(i.session), reason, { auto: AUTO.includes(reason) });
       return r.changed ? { moved: true, epoch: r.row ? r.row.epoch : undefined } : { moved: false, why: r.why };
     },

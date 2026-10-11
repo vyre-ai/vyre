@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentReturn, lentOfferedFor, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -3814,7 +3814,7 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentOfferBack: async (/** @type {any} */ q) => { if (!lentOfferedFor(ctx.kernel, q)) return { moved: false }; const x = /** @type {any} */ (await ctx.call("runner.offer-back", { thread: q.thread, person: q.person })); return x && x.data ? x.data : { moved: false }; }, lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentSteady: (/** @type {any} */ q) => lentSteadyFor(ctx.kernel, q), lentOfferBack: async (/** @type {any} */ q) => { if (!lentOfferedFor(ctx.kernel, q)) return { moved: false }; const x = /** @type {any} */ (await ctx.call("runner.offer-back", { thread: q.thread, person: q.person })); return x && x.data ? x.data : { moved: false }; }, lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".

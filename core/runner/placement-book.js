@@ -195,6 +195,13 @@ export function createPlacementBook(o = {}) {
       live.state = "moving"; live.ask = { do: "release", reason, at: now() }; save();
       return copy(live);
     },
+    /** The row's own person writes while another person's hand-over is waiting for the computer: the ask is withdrawn, so the computer never freezes their turn for it. True when an ask was withdrawn. @param {string} id @param {string} person */
+    cancelAsk(id, person) {
+      const r = this.find(id, person); if (!r) return false;
+      const live = /** @type {Row} */ (rows.get(r.session));
+      if (live.where !== "mac" || !live.ask || live.ask.do !== "release" || live.ask.reason !== "another-person") return false;
+      live.ask = null; live.state = "here"; save(); return true;
+    },
     /** What the home wants this computer to do, told in the answer to its heartbeat: hand a session over, or start one the person brought back. @param {string} device @returns {{ do: "release" | "start", session: string, chat: string | null, reason: string | null }[]} */
     directives(device) {
       return [...rows.values()].filter(r => r.device === device && r.ask && (r.ask.do === "release" ? r.where === "mac" : r.where === "server" && r.allowMac)).map(r => ({ do: /** @type {"release" | "start"} */ (/** @type {any} */ (r.ask).do), session: r.session, chat: r.chat, reason: /** @type {any} */ (r.ask).reason }));
