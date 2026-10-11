@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, memberAccount, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -2229,6 +2229,11 @@ export class Switchboard {
       for (const u of [...st.steers.keys()]) this.steered(id, st, u, project);
       return;
     }
+    this.drainQueued(id, st, project);
+  }
+
+  /** The words queued for after a turn run next, one asker's at a time. @param {string} id @param {any} st @param {string|null} project */
+  drainQueued(id, st, project) {
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
@@ -2236,6 +2241,24 @@ export class Switchboard {
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
+    // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
+    let kt0 = null; if (lead) { try { kt0 = JSON.parse(lead); } catch { /* no turn facts */ } }
+    if (kt0 && kt0.chat && this.deps.kernelSession) {
+      this.assertAsker(id, this.record(id), kt0).then(
+        () => { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); },
+        () => {
+          const drop = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
+          for (const r of rows) drop.run(Date.now(), r.id);
+          this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, project);
+          if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainQueued(id, st, project);
+        });
+      return;
+    }
+    this.drainRun(id, lead, rows, project);
+  }
+
+  /** The leading rows of one asker go out as one turn. @param {string} id @param {string|null} lead @param {any[]} rows @param {string|null} project */
+  drainRun(id, lead, rows, project) {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
@@ -3803,7 +3826,7 @@ export default {
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       startTimeoutMs: cfg.start_timeout_s ? cfg.start_timeout_s * 1000 : undefined,
       requireAccount: Boolean(ctx.config && ctx.config.role === "box" && ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable && !process.env.VYRE_CLAUDE_BIN),
-      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome, owner: () => (ctx.kernel ? String(ctx.kernel.owner || "") : ""),
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome, owner: () => (ctx.kernel ? String(ctx.kernel.owner || "") : null),
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
@@ -4247,7 +4270,7 @@ export default {
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
-        const kt = kernelTurnOf(i, caller, firstParty); let over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null, ...(kt ? { person: kt.asker } : {}) } : null; if (!over && kt && !(i.images && i.images.length)) over = await askerOver(sb, i.thread, kt); if (over && kt && !sb.sentBefore(uuid) && busyTurn(sb, i.thread)) return sb.queue(i.thread, i.text, surfaceOf(i, caller), undefined, { uuid, kernelTurn: { ...kt, over } });
+        const kt = kernelTurnOf(i, caller, firstParty); const own = kt ? await askerOver(sb, i.thread, kt, Boolean(cp) && cp !== ((sb.record(i.thread) || {}).provider || "claude")) : null; let over = cp ? (kt ? await chipOver(sb, i.thread, cp, ca.length ? ca.join(":") : null, kt, own) : { provider: cp, account: ca.length ? ca.join(":") : null }) : own; if (over && kt && !sb.sentBefore(uuid) && busyTurn(sb, i.thread)) return sb.queue(i.thread, i.text, surfaceOf(i, caller), undefined, { uuid, kernelTurn: { ...kt, over } });
         if (over && !personTurn(caller) && !kernelTurnOf(i, caller, firstParty)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);

@@ -34,7 +34,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 5000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(10); } throw new Error(`timed out waiting for ${what}`); };
 
 /** Everything that survives a daemon restart (the kernel and its sessions' turn store, the stream's own database and home) and the stream side that does not. */
-async function world(t) {
+async function world(t, opts = {}) {
   const k = await createKernel({ space: SPACE, owner: BOB, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: BOB, path: "direct", session: "s" });   // bob is the owner of this Space: his turns may run on the machine's own login, everyone else's only on their own sign-in
   const g = k.gateway.grants;
@@ -46,7 +46,8 @@ async function world(t) {
   /** @type {Record<string, string>} */ const tokens = {};
   for (const [n, c] of Object.entries(chains)) tokens[n] = (await k.surfaces.open(c, {})).token;
   const direct = new Map(Object.entries(tokens).map(([n, tok]) => [tok, /** @type {any} */ (chains)[n]]));
-  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
+  const blank = { on: Boolean(opts.blankOwner) };   // the test turns it on once the thread exists: a kernel whose owner cannot be read
+  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, get owner() { return blank.on ? "" : h.owner; }, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
   // the open turns, kept as the daemon keeps them: durable across the stream's restart
   /** @type {Map<string, any>} */ const kept = new Map();
   const turns = { durable: true, get: (/** @type {string} */ x) => kept.get(x), set: (/** @type {string} */ x, /** @type {any} */ r) => kept.set(x, r), delete: (/** @type {string} */ x) => kept.delete(x), all: () => /** @type {[string, any][]} */ ([...kept]) };
@@ -115,7 +116,7 @@ async function world(t) {
   }
   /** A daemon that dies mid-turn: what kill -9 leaves is the durable turn store as it was (a graceful stop ends each session, which forgets its turn, so put them back). */
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
-  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
+  return { k, blank, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
@@ -198,8 +199,8 @@ test("G04: two people each with their own Codex sign-in: the thread starts on bo
 });
 
 /** Two Codex sign-ins, bob's and carol's, each held by its own person; bob's thread started on his. */
-async function bobsThread(t) {
-  const w = await world(t);
+async function bobsThread(t, opts = {}) {
+  const w = await world(t, opts);
   withCodex(t, w.work);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
@@ -216,6 +217,7 @@ async function bobsThread(t) {
   await until(() => /AMBER-92/.test(textOf(watchCarol.frames)), "bob's turn", 120_000);
   const thread = kitThread(b, chat.id);
   const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.finished"), "bob's turn to end", 60_000);
   return { w, b, chat, own, bobsAcct, thread, events, watchCarol };
 }
 
@@ -264,5 +266,108 @@ test("G04: a turn that arrives while another is running waits behind it, then ru
   const thread = kitThread(b, chat.id);
   await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.queued"), "carol's turn to be queued", 30_000);
   await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === added.data.id), "carol's turn to run on her own account after bob's", 150_000);
+  await b.stop();
+});
+
+// Review of 122f96c9c (rc1-d, 11 Oct): the same rule through every way a message reaches the Switchboard, on the real one.
+const PNG = { media_type: "image/png", data: "iVBORw0KGgo=" };
+const sentIn = (/** @type {any[]} */ ev, /** @type {RegExp} */ re) => ev.some(e => e.type === "thread.sent" && re.test(String(e.payload.text)));
+const ranOn = (/** @type {any[]} */ ev, /** @type {string} */ acct) => ev.some(e => e.type === "thread.provider" && e.payload.account === acct);
+
+test("review A: a member with no sign-in who sends a picture on a live thread is refused in words, not run on the thread's account", async t => {
+  const r = await bobsThread(t);
+  const before = (await r.events()).length;
+  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "look at this picture", chat: r.chat.id, asker: CAROL, images: [PNG] }, "module:stream", {});
+  assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
+  assert.match(sent.error.message, /sign-in/);
+  await sleep(500);
+  const ev = (await r.events()).slice(before);
+  assert.ok(!sentIn(ev, /look at this picture/), "her words never reached the thread");
+  assert.ok(!ev.some(e => e.type === "thread.provider"), "no turn ran");
+  await r.b.stop();
+});
+
+test("review A: a member WITH a sign-in of her own who sends a picture is refused with the images words: the picture never runs on bob's account", async t => {
+  const r = await bobsThread(t);
+  const hers = await r.own("carol", "Carol's Codex 2");
+  const before = (await r.events()).length;
+  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "look at this picture", chat: r.chat.id, asker: CAROL, images: [PNG] }, "module:stream", {});
+  assert.equal(sent.error && sent.error.code, "bad_input", JSON.stringify(sent));
+  assert.match(sent.error.message, /images cannot go to another provider's one-turn ask/);
+  await sleep(500);
+  const ev = (await r.events()).slice(before);
+  assert.ok(!sentIn(ev, /look at this picture/) && !ranOn(ev, r.bobsAcct) && !ranOn(ev, hers), "nothing was sent, on bob's account or any other");
+  await r.b.stop();
+});
+
+test("review B: a provider-only chip (@codex, no account) from a member with no sign-in is refused; an outsider's is refused as not in the chat", async t => {
+  const r = await bobsThread(t);
+  const before = (await r.events()).length;
+  const chip = { kind: "account", id: "codex" };
+  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "chip without an account", chat: r.chat.id, asker: CAROL, mentions: [chip] }, "module:stream", {});
+  assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
+  const out = await r.b.reg.call("threads.send", { thread: r.thread, text: "chip from outside", chat: r.chat.id, asker: "per_mallory", mentions: [chip] }, "module:stream", {});
+  assert.equal(out.error && out.error.code, "not_found", JSON.stringify(out));
+  await sleep(500);
+  const ev = (await r.events()).slice(before);
+  assert.ok(!sentIn(ev, /chip without an account|chip from outside/), "neither reached the thread, so neither ran on bob's account");
+  await r.b.stop();
+});
+
+test("review B: a provider-only chip from a member WITH a sign-in runs on her own account, never the thread's", async t => {
+  const r = await bobsThread(t);
+  const hers = await r.own("carol", "Carol's Codex 3");
+  const before = (await r.events()).length;
+  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "chip with my own account", surface: "deck", chat: r.chat.id, asker: CAROL, mentions: [{ kind: "account", id: "codex" }] }, "module:stream", {});
+  assert.ok(!sent.error, JSON.stringify(sent.error));
+  await until(async () => ranOn((await r.events()).slice(before), hers), "the turn on carol's own account", 60_000);
+  assert.ok(!ranOn((await r.events()).slice(before), r.bobsAcct), "and not on bob's");
+  await r.b.stop();
+});
+
+test("review C: a kernel whose owner cannot be read refuses a member with no sign-in of her own on a thread that names no account (fails closed)", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watch = await b.watch("carol", chat.id);
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => textOf(watch.frames).includes("echo: the code word is AMBER-92"), "claude's answer to bob", 60_000);
+  const thread = kitThread(b, chat.id);
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.finished"), "bob's turn to end", 60_000);
+  w.blank.on = true;
+  const before = (await events()).length;
+  const sent = await b.reg.call("threads.send", { thread, text: "who owns this?", surface: "deck", chat: chat.id, asker: CAROL }, "module:stream", {});
+  assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
+  await sleep(500);
+  assert.ok(!sentIn((await events()).slice(before), /who owns this/), "nothing reached the thread, so nothing ran on the machine's own login");
+  await b.stop();
+});
+
+test("review D: an asker who left the chat while their message waited gets no turn: the row is dropped with the words, and nothing is sent without their token", async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const carol = await b.watch("carol", chat.id);
+  const added = await b.reg.call("sessions.accounts.add", { provider: "codex", label: "Carols Codex", kind: "login" }, "deck", { token: w.tokens.carol });
+  b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "SECRET " + Array(500).fill("word").join(" "), to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => textOf(carol.frames).includes("SECRET"), "bob's reply to start", 30_000);
+  const second = await b.as("carol")("stream.send", { chat: chat.id, text: "my question", to: ["assistant:assistant"], account: "codex", cwd: w.work });
+  assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
+  const thread = kitThread(b, chat.id);
+  const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.queued"), "carol's turn to be queued", 30_000);
+  await w.C.change(w.chains.bob, chat.id, { remove_people: [CAROL] });
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.text" && /no longer in this chat/.test(String(e.payload.text))), "the waiting message to be dropped in words", 150_000);
+  await sleep(1000);
+  const ev = await events();
+  assert.ok(!ranOn(ev, added.data.id), "no turn ran on carol's account");
+  assert.ok(!sentIn(ev.filter((/** @type {any} */ e) => e.payload && e.payload.via === "turn"), /my question/), "her words were never handed to the thread");
+  const row = b.reg.deps.db.prepare("SELECT via, delivered_at FROM threads_inbox WHERE thread = ? AND text = 'my question'").get(thread);
+  assert.equal(row && row.via, "dropped", "the row is marked dropped, not delivered");
   await b.stop();
 });

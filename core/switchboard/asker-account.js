@@ -7,19 +7,21 @@
 // a person's chip may name only an account that serves them (onceTarget resolves it with their person). A turn that arrives while another is running waits behind it (runQueuedOver) and shows as waiting.
 
 /**
- * @param {any} sb the Switchboard @param {string} id the thread @param {{ asker: string }} kernelTurn
+ * @param {any} sb the Switchboard @param {string} id the thread @param {{ asker: string }} kernelTurn @param {boolean} [memberOnly] the turn moves to another provider by the asker's chip: only whether they are in the chat is judged here (chipOver judges their sign-in for THAT provider)
  * @returns {Promise<{ provider: string, account: string, person: string | null } | null>} the one-turn target, or null when the thread's own account is theirs to use
  */
-export async function askerOver(sb, id, kernelTurn) {
+export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   const rec = sb.record(id);
   if (!rec || !kernelTurn || !kernelTurn.asker) return null;
+  // Whether the asker is in the chat is the kernel's first word (a person who is not in it is refused as that, before anything about their sign-in is said).
+  if (typeof sb.assertAsker === "function" && kernelTurn.chat) await sb.assertAsker(id, rec, kernelTurn);
+  if (memberOnly) return null;
   const provider = rec.provider || "claude", asker = kernelTurn.asker, scope = { project: rec.project, agent: rec.agent };
   const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
-  // Nobody but the owner runs on the owner's login, nor on the machine's own credential: a person with no sign-in of their own here is refused, whatever account the thread names (or none).
+  // Nobody but the owner runs on the owner's login, nor on the machine's own credential or the ambient login of the user the server runs as (a Mac mini server's Claude Code login is the owner's): a person with no sign-in of their own is refused ALWAYS, whatever account the thread names or none, and whether or not any credential is visible to take.
   const owner = ownerOf(sb);
-  // (with no account named, the thread runs on the machine's own login only where this machine has one to give: on a box, the vault's setup token)
-  if (owner && sb.canon(asker) !== owner && (rec.account || await holdsLogin(sb))) throw needOwnSignIn();
+  if (owner !== null && !isOwner(sb, owner, asker)) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -64,29 +66,42 @@ const needOwnSignIn = () => Object.assign(new Error("You have no sign-in of your
  */
 export async function memberAccount(sb, rec, o, id) {
   const asker = o.kernelTurn && o.kernelTurn.asker, owner = ownerOf(sb);
-  if (!asker || !owner || sb.canon(asker) === owner || o.agent) return o;
+  if (!asker || owner === null || isOwner(sb, owner, asker) || o.agent) return o;
   const provider = rec.provider || o.provider || "claude";
   // An account the launch already names must serve this person: the owner's, or another member's, is "no account" to them whatever the input says.
   if (o.account) {
     await sb.accountFor({ provider, account: o.account, person: asker, project: rec.project, agent: rec.agent }).catch(() => { if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id); throw Object.assign(new Error("That account is not yours to use here. Nothing was sent."), { code: "account_unavailable" }); });
     return o;
   }
-  if (provider === "claude" && !(await holdsLogin(sb))) return o;   // no machine login here to take: the launch has no one's credential to run on
   const mine = await sb.accountFor({ provider, person: asker, project: rec.project, agent: rec.agent }).catch(() => null);
   if (mine && mine.id) return { ...o, account: String(mine.id) };
   if (!o.resume) sb.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
   throw needOwnSignIn();
 }
 
-/** The kernel's owner, in the form askers are compared in (canonical); "" when there is none, which refuses nothing and is only a build without a kernel. @param {any} sb */
+/**
+ * The kernel's owner in the form askers are compared in (canonical). null: this Switchboard has no kernel (one person, nobody to compare with). "": there is a kernel and its owner cannot be read, so
+ * nobody can be told to be the owner: every asker is treated as a member (fails closed, never open).
+ * @param {any} sb @returns {string | null}
+ */
 function ownerOf(sb) {
-  const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
-  return o ? sb.canon(o) : "";
+  const o = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : null;
+  return o == null ? null : o ? sb.canon(o) : "";
 }
+const isOwner = (/** @type {any} */ sb, /** @type {string} */ owner, /** @type {string} */ asker) => Boolean(owner) && sb.canon(asker) === owner;
 
-/** Does this machine hold a credential of its own that a launch with no account would run on (on a box, the vault's setup token or key)? Ambient (Claude Code's own login on a Mac) names none here. @param {any} sb */
-async function holdsLogin(sb) {
-  if (!sb.deps || typeof sb.deps.auth !== "function") return false;
-  const a = await sb.deps.auth({ agent: null }).catch(() => null);
-  return Boolean(a && a.env && Object.keys(a.env).length);
+/**
+ * A chip (`@claude`, `@codex:acct`) in a kernel turn: where the one turn runs, for the asker. askerOver has already judged the asker (in the chat, a sign-in of their own). A chip names an account only when it
+ * serves them (servesChip); a chip with no account is the asker's OWN account of that provider, never the thread's. Null: the thread's own account is theirs and the chip changes nothing.
+ * @param {any} sb @param {string} id the thread @param {string} provider @param {string | null} account @param {{ asker: string }} kt @param {{ provider: string, account: string, person: string | null } | null} own what askerOver gave
+ */
+export async function chipOver(sb, id, provider, account, kt, own) {
+  const rec = sb.record(id), cur = (rec && rec.provider) || "claude";
+  if (account) return { provider, account, person: kt.asker };
+  if (provider === cur) return own;
+  const mine = rec ? await sb.accountFor({ provider, person: kt.asker, project: rec.project, agent: rec.agent }).catch(() => null) : null;
+  if (mine && mine.id) return { provider, account: String(mine.id), person: kt.asker };
+  const owner = ownerOf(sb);
+  if (owner !== null && !isOwner(sb, owner, kt.asker)) throw needOwnSignIn();
+  return { provider, account: null, person: kt.asker };
 }
