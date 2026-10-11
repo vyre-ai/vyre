@@ -765,3 +765,26 @@ test("gate apps: only a GET with Upgrade: websocket to a running app's host is c
   const up = "POST /ts2021 HTTP/1.1\r\nHost: x\r\nUpgrade: tailscale-control-protocol\r\nConnection: Upgrade\r\n\r\n";
   assert.equal(head(await raw(port, up, { wait: 150 })), "HTTP/1.1 101", "Headscale's control channel is not starved by the apps' upgrades");
 });
+
+test("gate apps: the Space's own address carries /sign/... to the apps' front for a signer when the ingress names it, and nothing else of that address; with no signing app it is the ordinary 404", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const withSign = { hooks: () => null, share: () => null, apps: () => ({ port: f.port, hosts: ["docuseal.alex.vyre.run"], sign: "alex.vyre.run" }), appsSuffix: SUFFIX };
+  const { be, port } = await setup(t, { ingress: withSign });
+  const ok = (await raw(port, req("GET", "alex.vyre.run", "/sign/_/s/abc?x=1"))).toString();
+  assert.match(ok, /^HTTP\/1\.1 200 /);
+  assert.deepEqual([f.seen[0].method, f.seen[0].url, f.seen[0].headers.host], ["GET", "/sign/_/s/abc?x=1", "alex.vyre.run"], "the front gets the path whole and the Space's address as Host");
+  const posted = (await raw(port, req("POST", "alex.vyre.run", "/sign/_/s/abc/upload", { body: "x" }))).toString();
+  assert.match(posted, /^HTTP\/1\.1 200 /);
+  assert.equal(be.seen.length, 0, "Headscale was never asked");
+  // the rest of the address is not the front's: a path outside /sign/ goes the ordinary way, never to the apps
+  const before = f.seen.length;
+  for (const p of ["/", "/signature", "/s/abc", "/packs/js/form.js", "/key?v=130"]) await raw(port, req("GET", "alex.vyre.run", p));
+  assert.equal(f.seen.length, before, "no other path of the Space's address reached the apps' front");
+  // another address under the same suffix is not the Space's
+  assert.deepEqual(await raw(port, req("GET", "bob.vyre.run", "/sign/_/s/abc")), NOT_FOUND === undefined ? null : await raw(port, req("GET", "bob.vyre.run", "/sign/_/s/abc")));
+  const none = await setup(t, { ingress: { hooks: () => null, share: () => null, apps: () => ({ port: f.port, hosts: ["docuseal.alex.vyre.run"] }), appsSuffix: SUFFIX } });
+  const before2 = f.seen.length;
+  const r = (await raw(none.port, req("GET", "alex.vyre.run", "/sign/_/s/abc"))).toString();
+  assert.match(r, /^HTTP\/1\.1 404 /);
+  assert.equal(f.seen.length, before2, "with no signing app named, /sign/ is not carried");
+});
