@@ -73,14 +73,15 @@ test("team-member: only the project's owner (or an owner or admin) adds, changes
 });
 
 test("task through records: its doer, giver, or its project's owner or team change it; nobody else; never into a project she is not on", async () => {
-  const { R, chains, p1, p2, t1, tFree } = await rig();
-  assert.ok(await R.update(chains.eve, "task", t1.id, { title: "by doer" }, t1.version), "the doer");
+  const { R, chains, p1, p2, t1, tFree, owner } = await rig();
+  const ver = async id => (await R.get(owner, "task", id)).version;
+  assert.ok(await R.update(chains.eve, "task", t1.id, { title: "by doer" }, await ver(t1.id)), "the doer");
   assert.ok(await R.update(chains.bob, "task", t1.id, { title: "by giver and owner" }, (await R.get(chains.owner, "task", t1.id)).version), "the one who gave it");
-  await refused(R.update(chains.fay, "task", t1.id, { title: "x" }, 1), /whoever it is for/);
-  await refused(R.update(chains.dan, "task", tFree.id, { title: "x" }, 1), /whoever it is for/);
-  assert.ok(await R.update(chains.fay, "task", tFree.id, { title: "own to-do" }, tFree.version), "her own to-do with no project");
-  await refused(R.update(chains.eve, "task", t1.id, { project: { urn: p2.urn } }, 1), /only into a project you are on/);
-  await refused(R.update(chains.fay, "task", tFree.id, { project: { urn: p1.urn } }, 1), /only into a project you are on/);
+  await refused(R.update(chains.fay, "task", t1.id, { title: "x" }, await ver(t1.id)), /whoever it is for/);
+  await refused(R.update(chains.dan, "task", tFree.id, { title: "x" }, await ver(tFree.id)), /whoever it is for/);
+  assert.ok(await R.update(chains.fay, "task", tFree.id, { title: "own to-do" }, await ver(tFree.id)), "her own to-do with no project");
+  await refused(R.update(chains.eve, "task", t1.id, { project: { urn: p2.urn } }, await ver(t1.id)), /only into a project you are on/);
+  await refused(R.update(chains.fay, "task", tFree.id, { project: { urn: p1.urn } }, await ver(tFree.id)), /only into a project you are on/);
   assert.ok(await R.update(chains.admin, "task", t1.id, { project: { urn: p2.urn } }, (await R.get(chains.owner, "task", t1.id)).version), "an admin moves it");
 });
 
@@ -95,8 +96,8 @@ test("task through the tasks service (edit, skip, reopen, request): the same rul
   // the doer works it: start, then complete with a note; a stranger cannot do either
   await assert.rejects(() => T.start(chains.fay, t1.id), e => ["not_allowed", "denied", "forbidden", "not_found"].includes(e.code));
   await T.start(chains.eve, t1.id);
-  await assert.rejects(() => T.complete(chains.fay, t1.id, { note: "stolen" }), e => ["not_allowed", "denied", "forbidden", "not_found"].includes(e.code));
-  assert.ok(await T.complete(chains.eve, t1.id, { note: "done" }), "the doer submits");
+  await assert.rejects(() => T.complete(chains.fay, t1.id, { note: "stolen", sources: ["https://x"] }), e => ["not_allowed", "denied", "forbidden", "not_found"].includes(e.code));
+  assert.ok(await T.complete(chains.eve, t1.id, { note: "done", sources: ["https://x"] }), "the doer submits");
   // asking another member without a project works; her own to-do works; a task's project team member edits it
   const asked = await ask(chains.fay, EVE);
   assert.ok(asked, "a member asks another member");
