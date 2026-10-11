@@ -1509,8 +1509,7 @@ export class Registry {
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
-    const flowAct = meta[FLOW_ACT]; delete meta[FLOW_ACT]; // set by callFlow alone (below it becomes the same mark a redeemed card makes)
-    const viewAsk = meta[VIEW_ASK]; delete meta[VIEW_ASK]; // set by the views and capsule modules alone: the person confirmed these exact words
+    const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
