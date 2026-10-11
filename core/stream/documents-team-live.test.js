@@ -35,7 +35,8 @@ async function world(t) {
 import { docx } from "../documents/testing/docx.js";
 
 test("a model's documents tools in a team turn run in the team Space as the member: its templates are listed and read, a document is made in its Drive, and the home's Drive is not touched", { timeout: 200_000 }, async t => {
-  const { w, as, firm, lines } = await world(t);
+  const { w, as, firm } = await world(t);
+  const lines = /** @type {string[]} */ (/** @type {any} */ (w).lines);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await firm.gateway.drive.put(owner, "Templates/Team letter.docx", new Uint8Array(docx(["Dear {client}, welcome to the team."])), { base: null });
   const made = await as(ANA, "create", { title: "Team documents", people: [BEN], agents: ["assistant"] });
