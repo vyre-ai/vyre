@@ -1541,8 +1541,8 @@ export class Registry {
     if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
     // The person narrowed their own assistant (G23): a tool, a family of tools or a whole area they turned off is refused for the assistant acting for them, with the reason in plain words. Only the proven default
     // assistant (a session of the person's, no named agent: a named agent has its own grants) and only for tools it may otherwise reach; the check is the assistant module's, which keeps the person's rows.
-    // No assistant module running means nothing was narrowed. A check that fails is a refusal: never a way round the person's limit.
-    if (!door && claimsAgent(caller) && proven(meta) && !(meta.agent && meta.agentKind !== "assistant") && !(agentClaim(caller) && meta.agentKind !== "assistant")) {
+    // No assistant module running means nothing was narrowed. `proven` is the daemon's own binding of the call to a session; the module then limits only a chain that has an assistant hop, so the person's own calls are never limited. A check that fails is a refusal: never a way round the person's limit.
+    if (!door && proven(meta) && !(meta.agent && meta.agentKind !== "assistant") && !(agentClaim(caller) && meta.agentKind !== "assistant")) {
       const chk = this.tools.get("assistant.access.check");
       if (chk) {
         let said = null;

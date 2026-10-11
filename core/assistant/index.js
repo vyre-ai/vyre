@@ -141,15 +141,17 @@ export default {
 
     // ---- the person narrows their own assistant (G23, lib/assistant-access.js) ------------------------------------------------------------------------------------------------------------------
     /** The person a call is: the first hop of its kernel chain, which must be a person (an assistant's chain is the person and an agent hop). With no kernel the box has one person. @param {any} meta @param {boolean} strict only the person themselves: no agent hop, no viewer */
-    const personOf = async (meta, strict) => {
+    const personOf = async (meta, strict, hopsOut = null) => {
       const c = String((meta && meta.caller) || "");
       if (ctx.kernel && typeof ctx.kernel.chain === "function") {
         let chain = null; try { chain = await ctx.kernel.chain(meta || {}); } catch { chain = null; }
         const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
         const first = hops[0] && hops[0].actor;
         if (!first || first.kind !== "person" || chain.viewer === true || (strict && hops.length !== 1)) throw Object.assign(new Error(strict ? "only the person can change what their assistant may do" : "only a person's own assistant has these limits"), { code: "denied" });
+        if (hopsOut) hopsOut.n = hops.length;
         return String(first.id);
       }
+      if (hopsOut) hopsOut.n = 2; // no kernel: the call was bound to a session, which is the assistant
       if (strict && ((meta && (meta.agent || meta.assistant)) || /(?:^|[\s:])agent:|^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c))) throw Object.assign(new Error("only the person can change what their assistant may do"), { code: "denied" });
       return "owner";
     };
@@ -200,7 +202,9 @@ export default {
       input: { type: "object", properties: { tool: { type: "string" } }, required: ["tool"] },
       callers: ["module"],
       run: async ({ tool }, meta = {}) => {
-        const person = await personOf(meta, false);
+        const hops = { n: 0 };
+        const person = await personOf(meta, false, hops);
+        if (hops.n < 2) return { stopped: false }; // a chain that is only the person: the person's own call is never limited
         const hit = stoppedBy(rowsOf(person), String(tool));
         return hit ? { stopped: true, words: refusalWords(hit, String(tool)) } : { stopped: false };
       },
