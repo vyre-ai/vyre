@@ -316,6 +316,8 @@ test("the lent service's rows are not a wire call", async () => {
 
 // ---- the place of a lent session (R031-95 2.4, 2.5): the epoch, the heartbeat, the release and the server's take-over ---------------------------------------------------------------------
 import { LAPSE_MS, HEARTBEAT_MS } from "./placement-book.js";
+// the rigs here give the Space a program by its path: honoured on a development build with this switch (the packaged case has its own test below)
+process.env.VYRE_LENT_AGENT_DEV = "1";
 const clockRig = async (t, o = {}) => {
   const c = { t: 1_000_000 }; const resumed = [], said = [];
   const r = await rig(t, { now: () => c.t, resume: async i => { resumed.push(i); }, emit: (type, p) => said.push([type, p]), ...o });

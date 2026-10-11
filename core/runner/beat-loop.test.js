@@ -15,6 +15,8 @@ import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+// these tests give the Space a program by its path: honoured on a development build with this switch
+process.env.VYRE_LENT_AGENT_DEV = "1";
 
 const SKIP = unavailable() || workspaceUnavailable() || "";
 const LINUX = process.platform === "linux";
