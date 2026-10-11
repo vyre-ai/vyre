@@ -11,6 +11,7 @@
 //  4. A People session (meta.person) is NOT proof of the owner: it proves a device signed in, and a member enrols a device of their own. The owner's own remote surfaces get in by positive proof: callerFacts
 //     (core/daemon/index.js) builds kernelFacts for a device whose row names the owner, and that claim proves. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module's
 //     call made for a member carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
+//     On a one-person server this gate is not the only barrier for remote callers who are not members: the registry's per-tool `callers` lists still refuse them.
 //  5. Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module); a tool added later is refused for members unless its name is in MEMBER_ALLOWED; and a
 //     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
