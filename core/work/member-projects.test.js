@@ -9,6 +9,7 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 import { createMemberTools, MEMBER_TOOLS } from "./member-tools.js";
+import { createMemberProjects, MAX_LIVE } from "./member-projects.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -60,6 +61,8 @@ test("a member starts a project from an installed template: its first stage's ta
   assert.ok(started.tasks_made >= 1, `its first task is made: ${JSON.stringify(started)}`);
   const mine = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === started.slug);
   assert.equal(mine.data.owner.actor.id, ANA);
+  // who made what the template made: the project is hers; print the creator of its first task (the Flows stage module makes it)
+  try { const tasks = await w.d.kernel.gateway.ask.list(w.ownerChain, { record: started.project }); const first = (tasks.rows || tasks)[0]; console.log(`# first task: ${JSON.stringify({ by: first && (first.created_by || first.requester || first.requested_by), doer: first && first.doer })}`); } catch (e) { console.log(`# first task creator not read: ${/** @type {Error} */ (e).message}`); }
   // the door lets through only the keys the row names: a version, a repository or a client she names is dropped, and the project is made from the live version
   const dropped = await w.as(ANA, "start-project", { template: id, name: "Pinned", version: 99, repo: "git@x:y", client: "vyre://x/contact/1" });
   assert.equal(dropped.version, 1, "a pinned version she names is dropped: it starts at the live one");
@@ -152,4 +155,18 @@ test("another member's project: she cannot add herself to its team (the row that
   const w = await world(t);
   const bens = await w.as(BEN, "project-create", { name: "Ben's team 2" });
   await assert.rejects(w.d.kernel.gateway.records.create(w.chainOf(ANA), "team-member", { name: "ana", actor: { actor: { kind: "person", id: ANA, space: w.space } }, kind: "person", project: { urn: bens.project } }), "adding herself to his team is refused");
+});
+
+test("a member keeps at most 50 live projects of her own: the next one is refused in words, and nothing is made", async () => {
+  let made = 0;
+  const hub = () => ({ createProject: async () => { made++; return { urn: "u", data: {} }; } });
+  const ops = createMemberProjects({ liveOf: async () => MAX_LIVE, templates: /** @type {any} */ ({}), hub, reader: () => ({ service: {}, read: {} }) });
+  const chain = { hops: [{ actor: { kind: "person", id: ANA } }] };
+  await assert.rejects(ops["create-project"](chain, { name: "One more" }), /already have 50 live projects.*Archive one/);
+  await assert.rejects(ops["start-project"](chain, { template: "tpl_x", name: "One more" }), /already have 50 live projects/);
+  assert.equal(made, 0);
+  assert.equal(MAX_LIVE, 50);
+  const under = createMemberProjects({ liveOf: async () => MAX_LIVE - 1, templates: /** @type {any} */ ({}), hub, reader: () => ({ service: {}, read: {} }) });
+  await under["create-project"](chain, { name: "The 50th" });
+  assert.equal(made, 1);
 });

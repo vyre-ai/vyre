@@ -151,7 +151,8 @@ export default {
       flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } });
     registerTemplateTools({ ctx, chainOf, templates: templatesOf });
     // A team member starts her own projects on the team's server: the member door's `work` rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); this server's own Space only.
-    const memberProjects = createMemberProjects({ templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); const service = k.serviceChain("work"); return { service, read: service }; } });
+    const liveOf = async (/** @type {string} */ person) => { const k = kernelOf(); const rows = (await k.records.query(k.serviceChain("work"), "project", { page: { limit: 1000 } })).rows || []; return rows.filter((/** @type {any} */ r) => r.data && r.data.owner && r.data.owner.actor && r.data.owner.actor.id === person && r.data.status !== "archived" && r.data.status !== "moved").length; };
+    const memberProjects = createMemberProjects({ liveOf, templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); const service = k.serviceChain("work"); return { service, read: service }; } });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
       const k = kernelOf();

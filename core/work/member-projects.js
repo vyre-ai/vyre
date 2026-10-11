@@ -8,13 +8,22 @@
 
 import { KernelError } from "../../kernel/core/errors.js";
 
+/** How many live projects one member keeps of her own. */
+export const MAX_LIVE = 50;
+
 /** The keys each call takes; a key not here is refused with words (a member cannot name a template version, a client or a repository through the door). */
 export const KEYS = Object.freeze({ "create-project": ["name", "slug"], "start-project": ["template", "name", "slug"], templates: [] });
 
 /**
- * @param {{ templates: { list(chain: any, i?: any): Promise<any>, start(chain: any, i: any, o?: any): Promise<any> }, hub: () => any, reader: () => { service: any, read: any } }} o
+ * @param {{ cap?: number, liveOf: (person: string) => Promise<number>, templates: { list(chain: any, i?: any): Promise<any>, start(chain: any, i: any, o?: any): Promise<any> }, hub: () => any, reader: () => { service: any, read: any } }} o
  */
 export function createMemberProjects(o) {
+  const cap = o.cap ?? MAX_LIVE;
+  /** A member keeps at most `cap` live projects of her own (each makes a Drive folder marker and an adopted row). @param {any} chain */
+  const underCap = async (chain) => {
+    const n = await o.liveOf(String(chain.hops[0].actor.id));
+    if (n >= cap) throw new KernelError("not_allowed", `You already have ${cap} live projects here. Archive one you are done with, or ask the owner.`);
+  };
   /** @param {string} call @param {any} input */
   const clean = (call, input) => {
     const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
@@ -31,11 +40,13 @@ export function createMemberProjects(o) {
     },
     "create-project": async (/** @type {any} */ chain, /** @type {any} */ input) => {
       const i = clean("create-project", input);
+      await underCap(chain);
       const rec = await o.hub().createProject(chain, { name: i.name, slug: i.slug, markerBy: o.reader().service });
       return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope };
     },
     "start-project": async (/** @type {any} */ chain, /** @type {any} */ input) => {
       const i = clean("start-project", input);
+      await underCap(chain);
       return o.templates.start(chain, { template: i.template, name: i.name, slug: i.slug }, { read: o.reader().read, markerBy: o.reader().service });
     },
   });
