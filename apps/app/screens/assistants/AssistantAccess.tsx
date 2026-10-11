@@ -29,7 +29,7 @@ export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurn
           </Card>
         ) : <Text tone="label">No single tool is turned off.</Text>}
         <Card className="gap-s2">
-          <Field label="Turn off a tool" value={typed} onChangeText={setTyped} placeholder="records.list or records.*" />
+          <Field label="Turn off a tool" value={typed} onChangeText={(v) => setTyped(v ?? "")} placeholder="records.list or records.*" />
           <View className="flex-row"><Button kind="secondary" label="Turn off" disabled={busy || !typed.trim()} onPress={onTurnOffTool} /></View>
         </Card>
       </Group>

@@ -74,7 +74,7 @@ function all(/** @type {string} */ space) {
       ["Spending limits", "A daily cap per provider", "/u/settings/spend", "budget"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
-      ["What my assistant may do", "Turn tools and areas off", "/u/settings/assistant-access", "hand"],
+      ["What my assistant may do", "Turn tools and areas off", "/u/settings/assistant-access", "filter"],
     ] },
     { title: "Devices", rows: [
       ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
