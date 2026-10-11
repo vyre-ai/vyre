@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present, kernelCaller } from "./helpers.js";
+import { tempHome, present, kernelCaller, putOnTask } from "./helpers.js";
 import { MIGRATIONS } from "../core/projects/projects.js";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -35,6 +35,7 @@ test("a 0.2.x home upgrades: its access rows are kept, nothing is granted, one N
   const call = kernelCaller(d, root);
   assert.equal((await call("projects.access.pending", {})).data.pending, 2, "the rows came through the migration");
   assert.ok(!(await call("projects.create", { name: "northwind", home: path.join(work, "northwind") })).error);
+  await putOnTask(d, root, "kit", "northwind", { grant: false });   // a teammate with a task (G22), so only the grant is in question
   assert.equal((await call("projects.access.check", { project: "northwind", agent: "kit" })).data.granted, false, "nothing is granted by the upgrade");
   // 3. exactly one Needs-you item, for the owner
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
