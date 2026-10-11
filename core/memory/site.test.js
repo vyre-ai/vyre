@@ -9,6 +9,9 @@ import { open } from "../store/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
 import memory from "./index.js";
+import { whoStore } from "./who.js";
+import { learnOperation } from "../../lib/siteops/learn.js";
+import * as F from "../../lib/siteops/fixtures.js";
 
 const ORIGIN = "https://app.ghl.example";
 const AGENCY = "https://agency.example";
@@ -560,4 +563,33 @@ test("memory.site.report with a rung: the store counts which rung worked per pag
   // The old form still works, and needs its fields.
   assert.ok((await w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "ok" })).data.conf > 0);
   assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "controls" })).code, "bad_input");
+});
+
+const SITE = "https://app.example.com";
+const learned = () => learnOperation({ name: "searchPeople", exchanges: F.pageRest("alpha corp"), exchanges2: F.pageRest("beta works"), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], storage: F.restStorage, trigger: { url: `${SITE}/search?q={query}` } }).operation;
+const WHO = { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null };
+
+test("site.learned: only the person's own session is offered the learned operations, as names and input names and nothing recorded from a page", async t => {
+  const w = await world(t, { "memory.site.learn": true });
+  const op = learned();
+  assert.ok(op, "the fixture learns an operation");
+  const put = await w.call("memory.site.put", { origin: SITE, target: "origin", patch: { key: SITE, ops: [{ name: "searchPeople", kind: "read", op }] } }, "cli");
+  assert.equal(put.data && put.data.accepted, true, JSON.stringify(put));
+  const as = (who, caller = "mcp") => whoStore.run({ ...WHO, ...who }, () => w.call("memory.site.learned", {}, caller));
+  const own = await as({ ownSession: true });
+  assert.equal(own.data.ops.length, 1);
+  assert.deepEqual(Object.keys(own.data.ops[0]).sort(), ["kind", "name", "params", "site", "version"], "no request, trigger, response or cookie field leaves the store");
+  assert.equal(own.data.ops[0].site, SITE);
+  assert.ok(own.data.ops[0].params.every(p => typeof p.name === "string"));
+  assert.doesNotMatch(JSON.stringify(own), new RegExp(F.SECRET_COOKIE), "the login never appears");
+  assert.deepEqual((await as({ ownSession: true, agent: "kit" })).data.ops, [], "a named agent is offered none");
+  assert.deepEqual((await as({ ownSession: true, agent: "assistant" })).data.ops, [], "the assistant hop is not the person's own session here");
+  assert.deepEqual((await as({ ownerSurface: true })).data.ops, [], "a surface that is not a session is offered none");
+  assert.deepEqual((await as({ device: true, signedIn: true })).data.ops, [], "another device is offered none");
+  assert.deepEqual((await w.call("memory.site.learned", {}, "mcp")).data.ops, [], "no kernel Who: none");
+  // an operation that stopped working (quarantined) is not offered: the finder never leads to a dead end
+  const row = w.db.prepare("SELECT key, record FROM memory_site WHERE key = ?").get(SITE);
+  const rec = JSON.parse(row.record); rec.ops[0].qAt = 1;
+  w.db.prepare("UPDATE memory_site SET record = ? WHERE key = ?").run(JSON.stringify(rec), SITE);
+  assert.deepEqual((await as({ ownSession: true })).data.ops, [], "a quarantined operation is not offered");
 });

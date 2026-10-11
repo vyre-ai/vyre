@@ -28,7 +28,7 @@ import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
-import { skillEntries } from "../../lib/tools-extras.js";
+import { skillEntries, siteEntries } from "../../lib/tools-extras.js";
 import { createLearner } from "../../lib/tools-learn.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
@@ -149,6 +149,15 @@ async function tools() {
     const { catalog: more, routes } = skillEntries(sk.data.skills, new Set(next.keys()));
     for (const [n, r] of routes) next.set(n, r);
     cat.push(...more);
+  }
+  // The website operations Vyre learned for the person, when this session can run them (the Chrome tool is in its catalog): found by tools_find, run through chrome.op.
+  if (cat.some((c) => c.tool === "chrome.op")) {
+    const lo = await call("memory.site.learned", {}, { ...ident(), session: sessionKey() });
+    if (!lo.error && lo.data && Array.isArray(lo.data.ops)) {
+      const { catalog: more, routes } = siteEntries(lo.data.ops, new Set(next.keys()), true);
+      for (const [n, r] of routes) next.set(n, r);
+      cat.push(...more);
+    }
   }
   names = next;
   catalog = cat;

@@ -277,6 +277,30 @@ export function register(ctx, { denied }) {
     },
   });
 
+  // The operations Vyre learned on sites, as the one tools_find index lists them (harness/mcp/server.js): site, name, kind and the names of the inputs, nothing recorded from a page and nothing typed
+  // into a site. Offered only to the person's OWN session (an agent of any name, another member, a surface or a module gets an empty list), and only operations that still work.
+  ctx.tool("memory.site.learned", {
+    effect: "read",
+    callers: [...SITE_PERSON, "mcp", "harness", "module"],
+    description: "The website operations Vyre has learned for the person: { ops: [{ site, name, kind, params, version }] }. The person's own session only.",
+    input: { type: "object", properties: {} },
+    run: async () => {
+      const w = whoNow();
+      if (!w || !w.ownSession || w.agent !== null) return { ops: [] };
+      /** @type {any[]} */ const ops = [];
+      for (const r of /** @type {any[]} */ (q.all.all())) {
+        if (r.kind !== "origin") continue;
+        let rec; try { rec = JSON.parse(r.record); } catch { continue; }
+        for (const o of Array.isArray(rec.ops) ? rec.ops : []) {
+          if (!o || typeof o.name !== "string" || isQuarantined(o)) continue;
+          const params = o.op && Array.isArray(o.op.params) ? o.op.params.map((/** @type {any} */ p) => ({ name: String(p.name), required: p.required !== false })) : [];
+          ops.push({ site: String(r.key), name: o.name, kind: typeof o.kind === "string" ? o.kind : "read", params, version: Number(o.version) || 1 });
+        }
+      }
+      return { ops: ops.slice(0, 100) };
+    },
+  });
+
   ctx.tool("memory.site.forget", {
     effect: "write",
     callers: SITE_PERSON,

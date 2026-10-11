@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { tempHome } from "./helpers.js";
-import { skillEntries, SKILL_GROUP } from "../lib/tools-extras.js";
+import { skillEntries, siteEntries, SKILL_GROUP, SITE_GROUP } from "../lib/tools-extras.js";
 import { indexOf, find, shapeFind } from "../harness/mcp/core-tools.js";
 
 const SKILLS = [
@@ -73,4 +73,24 @@ test("on a real daemon: tools_find returns a skill the caller may use, and calli
   assert.ok(!read.result.isError, JSON.stringify(read.result).slice(0, 300));
   assert.match(JSON.stringify(read.result), /vyre\/use-the-vault/, "calling the entry returns the skill (skills.get with its id)");
   assert.ok(!every(await ask(5, "tools/call", { name: "tools_find", arguments: { query: "chase late invoices payment reminder", limit: 10 } })).some(x => /chase_late_invoices/.test(x.name)), "an account-level skill is not offered to a caller with no person");
+});
+
+test("learned site operations become entries only when the session can run the Chrome tool, and carry names and input names only", () => {
+  const ops = [
+    { site: "https://app.example.com", name: "searchPeople", kind: "read", params: [{ name: "query", required: true }, { name: "limit", required: false }], version: 3 },
+    { site: "https://app.example.com", name: "sendMessage", kind: "send", params: [{ name: "recipient" }, { name: "text" }] },
+    { site: "not a url", name: "bad", kind: "read", params: [] },
+  ];
+  assert.deepEqual(siteEntries(ops, new Set(), false).catalog, [], "no Chrome tool in the session: nothing is offered, so the finder never leads to a dead end");
+  const { catalog, routes } = siteEntries(ops, new Set(), true);
+  assert.equal(catalog.length, 2, "a row with no usable site is skipped");
+  const read = catalog.find(c => /search_people/.test(c.name)), send = catalog.find(c => /send_message/.test(c.name));
+  assert.equal(read.group, SITE_GROUP); assert.equal(read.tool, "chrome.op");
+  assert.deepEqual(routes.get(read.name), { tool: "chrome.op", fixed: { action: "call", site: "https://app.example.com", name: "searchPeople" } });
+  assert.deepEqual(read.input.properties.inputs.required, ["query"]);
+  assert.match(read.description, /app\.example\.com/); assert.doesNotMatch(read.description, /person is asked first/);
+  assert.match(send.description, /send: the person is asked first/, "a write says the person is asked");
+  const index = indexOf([...REGISTRY, ...catalog]);
+  const top = shapeFind(find(index, "search people on app.example.com", 5)).tools.find(x => /^site_/.test(x.name));
+  assert.ok(top && top.group === SITE_GROUP && top.call.tool === "tools_call", "tools_find returns it with its group and a ready tools_call");
 });
