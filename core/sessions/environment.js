@@ -104,7 +104,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   ]);
 
   if (s.computerDefault === true) add("computer", 6, [
-    "Vyre Computer is this person's default browser. For anything that needs a browser, call computer.use first (the cloud computer by default, or the computer they name in `on`); it fills logins from the Vault and keeps the person's approvals. Use your own browsing tool only when Vyre Computer cannot do the job.",
+    "Vyre Computer is this person's default browser. For anything that needs a browser, run tools_call computer.use first (the cloud computer by default, or the computer they name in `on`); it fills logins from the Vault and keeps the person's approvals. Use your own browsing tool only when Vyre Computer cannot do the job.",
   ]);
 
   add("approvals", 6, [

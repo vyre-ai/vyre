@@ -24,5 +24,5 @@ test("the default-browser setting is off, then on: the brief an assistant is tol
   const set = await cli("settings.set", { key: "computer.default-browser", value: true });
   assert.ok(!set.error, JSON.stringify(set));
   assert.equal((await cli("settings.get", { key: "computer.default-browser" })).data.value, true);
-  assert.match(await brief(), /Vyre Computer is this person's default browser\. For anything that needs a browser, call computer\.use first/);
+  assert.match(await brief(), /Vyre Computer is this person's default browser\. For anything that needs a browser, run tools_call computer\.use first/);
 });
