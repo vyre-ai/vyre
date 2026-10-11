@@ -71,3 +71,9 @@ test("a member's daily Records and tasks go through the door under the same name
   for (const t of ["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"]) assert.equal(memberWire(t), t, t);
   for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.add"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
 });
+
+test("a member's project files go through the door: list, read and upload, and nothing else of Drive", async () => {
+  const { memberWire } = await import("./with-space.js");
+  for (const t of ["files.list", "files.read", "files.upload"]) assert.equal(memberWire(t), t, t);
+  for (const t of ["files.drive.list", "files.drive.read", "files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
+});
