@@ -399,7 +399,8 @@ export function createLentHome(o) {
       if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
       // A chat that came back from a computer (its row says server, and the server has carried it on) may go out again: it is adopted afresh, from the server's whole turns, as the person's own ask to run there.
       const had = book.get(session);
-      if (had && (had.person !== person || had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place");
+      if (had && had.person !== person) throw err("not_found", "not found");   // a chat that is another person's is not there for this one
+      if (had && (had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place: let it finish where it is, then move it");
       const device = pickLender(person, session, null, Boolean(had));
       if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
       const lines = Array.isArray(i.lines) ? i.lines : [];
