@@ -330,7 +330,7 @@ test("an agent deleted and made again under the same name inherits none of the o
   assert.equal(del.error, undefined, JSON.stringify(del.error));
   assert.equal((await mine()).length, 0, "the grants given to its name went with it");
   await call("agents.create", { name: "research", kind: "agent", projects: [] });
-  // TODAY, and flagged to the lead: a chat seat and an open task are given to the NAME, and the kernel lets only a person IN the chat change its seats, so deleting the agent leaves both with the name.
+  // TODAY, flagged as undecided (the owner's rulings list, "whose agents become actors", and the 0.3.4 backlog): a chat seat and an open task are given to the NAME, and the kernel lets only a person IN the chat change its seats, so deleting the agent leaves both with the name.
   // The new agent of that name is seated in the old chat again, and the old agent's open task can be worked by it. Grants are the part delete can and does take back.
   assert.deepEqual(g.chats.read(ownerChain, chat.id).assistants, ["research"], "the old chat still lists the name");
   const tasks = (await d.kernel.gateway.ask.list(ownerChain, { doer: "research" })) || [];
