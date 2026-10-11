@@ -664,6 +664,8 @@ export default {
       run: async (input, extra) => {
         if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
         const chain = await chainOf(extra);
+        // a chat is filed only under a project she owns or is on (before anything is made): being in a project's chat is a way onto its memory, so the chat is not a way onto the project
+        if (input.project) await hubOf().mayFileChat(chain, String(input.project));
         // A chat with a person in it is never in the clear on disk. When no device made the ring (a chat started by the CLI, a Flow), the server makes it: a chat key wrapped to each participant device's
         // public agree point, kept only as the session lease. A participant with no agree point stops the start, by name.
         let ring = input.ring, id = input.id ? String(input.id) : undefined, keys = null;
