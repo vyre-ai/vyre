@@ -6,7 +6,7 @@
 //   "readfile <path>"  asks the client for fs/read_text_file and says what came back (or the error)
 //   "writefile <path> <text>"  the same through fs/write_text_file
 //   "term <command>"   runs it through terminal/create and says its output
-//   "walk-term:<command>"  the same, found anywhere in the prompt, and says the exit code too
+//   "walk-term:<command>"  the same, on the last line of the prompt (earlier lines of a seed are history), and says the exit code too
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
 //   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
@@ -101,8 +101,8 @@ async function prompt(id, blocks) {
       say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
       await call("terminal/release", { sessionId: session, terminalId });
     } catch (e) { say("term failed: " + e.message); }
-  } else if ((m = /walk-term:(.+)$/m.exec(t))) {
-    // a walk's command inside the session, found anywhere in what the agent was handed (a seed or catch-up block may come first)
+  } else if ((m = /walk-term:(.+)$/.exec(String(t).trimEnd().split("\n").pop() || ""))) {
+    // a walk's command inside the session: the LAST line of what the agent was handed (a seed or catch-up block may come first, and it may quote earlier walk-term lines, which are not this turn's words)
     try {
       const { terminalId } = await call("terminal/create", { sessionId: session, command: "/bin/sh", args: ["-c", m[1].trim()] });
       const ex = await call("terminal/wait_for_exit", { sessionId: session, terminalId });
