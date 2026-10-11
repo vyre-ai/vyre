@@ -42,4 +42,20 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
   await firm.gateway.drive.put(putter, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
   const listed = await call("files.drive.space.list", {}, asToken(team));
   assert.ok(!listed.error && JSON.stringify(listed.data).includes("retainer.txt"), `the member's session lists the team's Drive: ${JSON.stringify(listed).slice(0, 300)}`);
+
+  // a team turn's token acts in its own Space or nowhere, for every tool and every caller class (review F1, F2)
+  for (const [tool, input] of [["records.me", {}], ["records.list", { type: "chat-record" }], ["files.drive.space.list", {}]]) {
+    for (const named of [other.space, w.d.kernel.id.space]) {
+      const r = await call(tool, { ...input, space: named }, asToken(team));
+      assert.equal(r.error && r.error.code, "denied", `${tool} naming ${named === other.space ? "another team" : "the home"}: ${JSON.stringify(r).slice(0, 200)}`);
+      assert.match(String(r.error && r.error.message), /its own Space/, "and the refusal says what to do");
+    }
+    const own = await call(tool, { ...input, space: firm.space }, asToken(team));
+    assert.ok(!own.error, `${tool} naming the chat's own Space still works: ${JSON.stringify(own.error)}`);
+  }
+  // a tool with no `space` of its own and no crossSpace never lands in the home, whatever the caller label (cli here, as a hook or harness inside the session would be)
+  for (const caller of ["cli", "local", "harness"]) {
+    const r = await call("system.info", {}, { root: w.root, caller, headers: { "x-vyre-kernel-session": team } });
+    assert.equal(r.error && r.error.code, "not_in_team_space", `system.info as ${caller} with a team token: ${JSON.stringify(r).slice(0, 200)}`);
+  }
 });

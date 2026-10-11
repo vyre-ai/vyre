@@ -977,7 +977,7 @@ export class Registry {
     if (!chain || typeof chain !== "object" || !Array.isArray(chain.hops) || chain.space !== space) return { error: { code: "denied", message: "the chain is not for that Space" } };
     let verdict = null;
     try { verdict = await base.gateway.authorize({ chain, action: def.crossSpace, resource: `vyre://${space}/tool/${tool}` }); } catch { verdict = null; }
-    if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space" } };
+    if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space: ask its owner or an admin to give you the access, or use a Space you are a member of" } };
     // judged as the caller class the running call came from, as ctx.call does: a module acting for a person is the person's reach, never more
     // the daemon's edge, for a model running a team chat's turn, says which caller class the call came from (`originOverride`); a module's own hop keeps the running call's
     const origin = originOverride || captureOrigin();
