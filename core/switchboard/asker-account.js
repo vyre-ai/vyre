@@ -212,8 +212,8 @@ export async function agentLaunchGuard(sb, i, who, owner) {
   if (picked(env) || picked(/** @type {any} */ (i).fallback && /** @type {any} */ (i).fallback.env)) {
     const how = typeof sb.deps.credentialDelivery === "function" ? sb.deps.credentialDelivery(i) : undefined;
     if (how === "fd") return;
-    const next = how === undefined ? "The owner can run it for you." : "Ask the owner to give it an API key or a setup token.";
-    throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. ${next} Nothing was started.`), { code: "no_account" });
+    if (how === undefined) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. The owner can run it for you. Nothing was started.`), { code: "no_account" });
+    throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. Ask the owner to give it an API key or a setup token. Nothing was started.`), { code: "no_account" });
   }
   throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
 }
