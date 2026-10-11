@@ -126,3 +126,18 @@ test("a member's model cannot read a Space memory fact the member cannot: Ben's 
   assert.ok((await ask(ANA, "Ana asks")).includes("Okafor"), "Ana's model reads her own note");
   assert.ok(!(await ask(BEN, "Ben asks")).includes("Okafor"), "Ben's model never sees what only Ana's chat holds");
 });
+
+test("the Drive's read tools are open to a model, but a model in a HOME chat (a home session token) reads none of a team Space's files, even when it names the Space", { timeout: 150_000 }, async t => {
+  const { w, firm, lines } = await world(t);
+  const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
+  const made = await w.tool("work.chat.create", { title: "Home chat", people: [], agents: [] });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const chat = String(made.data.chat);
+  const sent = await w.tool("stream.send", { chat, text: `vyre files.drive.space.list {"space":"${firm.space}"}` });
+  assert.ok(!sent.error, JSON.stringify(sent.error));
+  let said = "";
+  await until(async () => { said = ((await w.tool("stream.catchup", { chat })).data.messages || []).filter((/** @type {any} */ m) => /^(assistant|model):/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || "); return said.length > 0; }, "the home model's answer")
+    .catch(e => { throw new Error(`${e.message} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-5).join(" | ")}`); });
+  assert.ok(!said.includes("retainer.txt"), `a home session names the team's Space and reads none of its Drive: ${said.slice(0, 300)}`);
+});
