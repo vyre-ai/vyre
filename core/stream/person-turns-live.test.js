@@ -46,7 +46,8 @@ async function world(t, opts = {}) {
   /** @type {Record<string, string>} */ const tokens = {};
   for (const [n, c] of Object.entries(chains)) tokens[n] = (await k.surfaces.open(c, {})).token;
   const direct = new Map(Object.entries(tokens).map(([n, tok]) => [tok, /** @type {any} */ (chains)[n]]));
-  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, ...(opts.blankOwner ? { owner: "" } : {}), chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
+  const blank = { on: Boolean(opts.blankOwner) };   // the test turns it on once the thread exists: a kernel whose owner cannot be read
+  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, get owner() { return blank.on ? "" : h.owner; }, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
   // the open turns, kept as the daemon keeps them: durable across the stream's restart
   /** @type {Map<string, any>} */ const kept = new Map();
   const turns = { durable: true, get: (/** @type {string} */ x) => kept.get(x), set: (/** @type {string} */ x, /** @type {any} */ r) => kept.set(x, r), delete: (/** @type {string} */ x) => kept.delete(x), all: () => /** @type {[string, any][]} */ ([...kept]) };
@@ -115,7 +116,7 @@ async function world(t, opts = {}) {
   }
   /** A daemon that dies mid-turn: what kill -9 leaves is the durable turn store as it was (a graceful stop ends each session, which forgets its turn, so put them back). */
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
-  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
+  return { k, blank, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
@@ -325,7 +326,7 @@ test("review B: a provider-only chip from a member WITH a sign-in runs on her ow
 });
 
 test("review C: a kernel whose owner cannot be read refuses a member with no sign-in of her own on a thread that names no account (fails closed)", async t => {
-  const w = await world(t, { blankOwner: true });
+  const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watch = await b.watch("carol", chat.id);
@@ -335,6 +336,7 @@ test("review C: a kernel whose owner cannot be read refuses a member with no sig
   const thread = kitThread(b, chat.id);
   const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
   await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.finished"), "bob's turn to end", 60_000);
+  w.blank.on = true;
   const before = (await events()).length;
   const sent = await b.reg.call("threads.send", { thread, text: "who owns this?", surface: "deck", chat: chat.id, asker: CAROL }, "module:stream", {});
   assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
