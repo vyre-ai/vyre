@@ -45,8 +45,7 @@ let STDIN = false;
 /** The words that ran this verb, for a prompt frame to run again with --stdin. */
 let AGAIN = /** @type {string[]} */ (["vault"]);
 /** The last reply from vyred, and whether --json has already printed a line for this command. */
-let last = /** @type {any} */ (null);
-let printed = false;
+let last = /** @type {any} */ (null), printed = false;
 export const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
 const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : undefined); printed = true; } };
