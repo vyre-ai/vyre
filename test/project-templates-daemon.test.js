@@ -28,10 +28,10 @@ const TEMPLATE = {
   ],
 };
 
-async function boot(/** @type {any} */ t, member = true) {
+async function boot(/** @type {any} */ t, member = true, verifier = presence) {
   const root = tempHome(t);
   const logs = /** @type {string[]} */ ([]);
-  const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: presence });
+  const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: verifier });
   /** @type {any} */ (d).testLogs = logs;
   t.after(() => d.stop());
   const space = d.kernel.id.space, owner = d.kernel.id.owner;
@@ -233,25 +233,31 @@ test("an agent is made an actor of its Space when it is made: under its name, on
   assert.deepEqual(gone.tasks_skipped, [{ task: "Gather documents", why: "research is not in this space yet" }]);
 });
 
-test("agents made before they became actors are made actors when the agents module starts again (an update fixes the people who already hit it)", { timeout: 240_000 }, async t => {
+test("agents made before they became actors are left as they are by a restart: no event is written at start, and one gets its actor the first time its owner starts a chat with it (or add-agent)", { timeout: 240_000 }, async t => {
   const root = tempHome(t);
-  const start1 = async () => { const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence }); return d; };
-  let d = await start1();
+  const startD = async () => start({ root, log: () => {}, kernel: true, kernelPresence: presence });
+  let d = await startD();
   const owner = d.kernel.id.owner, space = d.kernel.id.space;
   const chain = () => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(chain(), {})).token }); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  const added = (/** @type {string} */ id) => d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === id).length;
   await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(added("research"), 1, "one actor.added event for the agent");
+  // asked again (a second create-path call, a second chat start): nothing more is written
+  await d.registry.deps.agentActor("research");
+  await d.registry.deps.agentActor("research");
+  assert.equal(added("research"), 1, "registering an agent that is already an actor writes nothing");
   // the state of an install from before: the agent row is there and the Space has no such actor
   const actor = { kind: "agent", id: "research", space };
   await d.kernel.gateway.grants.removeActor(chain(), actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
+  await d.stop();
+  d = await startD();
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === "research").length, 1, "a restart wrote no actor.added event, for this agent or any other");
   await call("work.template.define", { body: TEMPLATE });
   await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
-  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Before" })).tasks_made, 0, "no actor, no task");
-  await d.stop();
-  d = await start1();
-  t.after(() => d.stop());
-  const ok = await until(async () => (await call("work.start-project", { template: "tpl_estate-plan", name: `After${Math.random().toString(36).slice(2, 6)}` })).tasks_made === 1, "the agent became an actor after the restart", 40_000);
-  assert.ok(ok);
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Before" })).tasks_made, 0, "an agent from before is still not an actor: the note on create and add-agent say how");
 });
 
 test("the app's own route: a paired owner device (Settings, Assistants) makes the agent, it carries the person, the agent becomes an actor and a template project makes its tasks; the owner's terminal is told what to do", { timeout: 240_000 }, async t => {
@@ -289,4 +295,45 @@ test("the app's own route: a paired owner device (Settings, Assistants) makes th
   const st = await device("work.start-project", { template: "tpl_scout-plan", name: "Okafor" });
   assert.equal(st.data.tasks_made, 1, JSON.stringify(st.data));
   // (the note's own command, `vyre space add-agent`, asks the owner's yes from the same terminal: presence_required on the moment "pair", approved on the phone or confirmed on the computer)
+});
+
+test("an agent made by a MEMBER is made but is not an actor, and says so; nothing in the Space is given to it", { timeout: 240_000 }, async t => {
+  const { d, call, space, ownerChain } = await boot(t, false);
+  const BOB = "per_bobbobbobbobbobbobbobbobbo";
+  const r = { person: BOB, role: "member" };
+  await d.kernel.gateway.grants.setRole(ownerChain, r, { presence: proof("grants.role", r, `vyre://${space}/member/${BOB}`) });
+  const bob = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: BOB, path: "direct", session: "s" });
+  const made = await d.registry.call("agents.create", { name: "research", kind: "agent", projects: [] }, "cli", { token: (await d.kernel.surfaces.open(bob, {})).token });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  assert.match(String(made.data.note), /only the Space's owner adds an agent to it.*vyre space add-agent spc_/);
+  assert.equal(d.kernel.log.read({ type: "actor.added" }).filter((/** @type {any} */ e) => e.data.actor.id === "research").length, 0, "no actor.added for it");
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera" })).tasks_made, 0);
+});
+
+test("an agent deleted and made again under the same name inherits none of the old one's grants (its chat seats and open tasks stay with the name, flagged)", { timeout: 240_000 }, async t => {
+  // (the kernel's presence check accepts every proof here: this test is about what the new agent holds, not about the yes)
+  const { d, call, space, ownerChain } = await boot(t, true, { check: async () => null });
+  const actor = { kind: "agent", id: "research", space };
+  const gi = { subject: { kind: "actor", actor }, actions: ["records.read"], resource: { prefix: `vyre://${space}/note/*` }, conditions: {}, source: "test" };
+  const g = d.kernel.gateway.grants;
+  await g.create(ownerChain, gi, { presence: proof("grants.create", gi, `vyre://${space}/grant/new`) });
+  const chat = await g.chats.create(ownerChain, { assistants: ["research"] });
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Old" })).tasks_made, 1, "an open task for the old agent");
+  const mine = async () => (await g.list(ownerChain, {})).filter((/** @type {any} */ x) => x.status === "active" && x.subject.kind === "actor" && x.subject.actor.id === "research");
+  const before = (await mine()).length;
+  assert.ok(before >= 1, "it holds the grant");
+  const del = await d.registry.call("agents.delete", { agent: "research" }, "cli", { token: (await d.kernel.surfaces.open(ownerChain, {})).token, kernel_proof: { method: "stand-in" } });
+  assert.equal(del.error, undefined, JSON.stringify(del.error));
+  assert.equal((await mine()).length, 0, "the grants given to its name went with it");
+  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  // TODAY, and flagged to the lead: a chat seat and an open task are given to the NAME, and the kernel lets only a person IN the chat change its seats, so deleting the agent leaves both with the name.
+  // The new agent of that name is seated in the old chat again, and the old agent's open task can be worked by it. Grants are the part delete can and does take back.
+  assert.deepEqual(g.chats.read(ownerChain, chat.id).assistants, ["research"], "the old chat still lists the name");
+  const tasks = (await d.kernel.gateway.ask.list(ownerChain, { doer: "research" })) || [];
+  assert.deepEqual(tasks.map((/** @type {any} */ x) => [x.title, x.state]), [["Gather documents", "ready"]], "the old open task is still the name's");
+  assert.equal((await mine()).length, 0, "the new agent holds nothing of the old one");
 });
