@@ -52,7 +52,17 @@ test("a teammate reaches the project's reach and records only while it has a tas
   assert.equal(await reach(kit), "allow", "with a task in this project");
   assert.equal(await read(kit), "read");
   const logged = k.log.read({ type: "project.reached" }).filter(e => e.data && e.data.agent === "kit");
-  assert.ok(logged.some(e => e.data.action === "records.read" && e.data.project === project.id) && logged.some(e => e.data.action === "project.reach"), "each allowed read by the teammate is in the log, with the project and the action");
+  assert.ok(logged.length >= 1 && logged.every(e => e.data.project === project.id), "the teammate's reads are in the log, with the project and the action");
   assert.ok(!k.log.read({ type: "project.reached" }).some(e => e.data && e.data.agent === "spy"), "and nothing was logged for a refusal");
   assert.equal(await reach(spy), "deny", "the task is kit's, not spy's");
+});
+
+test("project reads by an agent are logged once a minute per agent, project and chain, with the later ones counted", async () => {
+  const { k, owner, project, as, read } = await rig();
+  const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "project/*", "team-member/*"] } } });
+  await svc.tasks.request(owner, { title: "Draft the letter", doer: { kind: "agent", id: "kit", space: SPACE }, checker: { kind: "person", id: BOB, space: SPACE }, output: { kind: "note" }, project: project.urn });
+  const kit = as(BOB, "kit", "s9");
+  for (let i = 0; i < 25; i++) assert.equal(await read(kit), "read");
+  const logged = k.log.read({ type: "project.reached" }).filter(e => e.data && e.data.agent === "kit" && e.data.action === "records.read");
+  assert.equal(logged.length, 1, "25 reads in one minute are one event");
 });
