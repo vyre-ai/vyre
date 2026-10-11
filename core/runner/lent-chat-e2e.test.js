@@ -14,7 +14,7 @@ import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
-import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { rig, SPACE, BOB, CAROL } from "./testing/lent-rig.js";
 import { start } from "../daemon/index.js";
 import { lentRequest } from "../daemon/threadsock.js";
 import { asOwner, tempHome, present } from "../../test/helpers.js";
@@ -89,7 +89,8 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   // a chat turn as the phone makes it: the stream names the chat and the person who asked (only a turn with a person is placed on a computer)
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { method: "test" } });
-  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: CAROL, role: "member" }, { presence: { method: "test" } });
+  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB, CAROL] });
   const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: BOB }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
   const th = await asChat("threads.start", { cwd: work, prompt: "hello from the phone" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 100 })).events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the first turn", 60_000);
@@ -147,6 +148,20 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok((await r.home.view(th.id).transcript(1, 1_000_000)).length > resumed[0].lines, "the computer was given the turns the server added");
   assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
 
+
+  // Carol writes in Bob's chat: her turn runs on the server with Bob's last turn in its history, and Bob's next turn goes back to his computer by itself; twice
+  for (const round of [1, 2]) {
+    const n0 = await finished();
+    await d.registry.call("threads.send", { thread: th.id, text: `carol round ${round}`, surface: "deck", chat: chatRow.id, asker: CAROL }, "module:stream").then((/** @type {any} */ x) => assert.ok(!x.error, JSON.stringify(x)));
+    await until(async () => (await finished()) > n0, "carol's turn", 90_000);
+    assert.equal(where(), "server", "another person's turn ran on the server");
+    assert.match(await lastSaid(), new RegExp(`echo: carol round ${round}`));
+    const n1 = await finished();
+    await asChat("threads.send", { thread: th.id, text: `bob round ${round}` });
+    await until(async () => (await finished()) > n1, "bob's next turn", 90_000);
+    assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
+    assert.match(await lastSaid(), new RegExp(`echo: bob round ${round}`));
+  }
 
   // A message with no person behind it (an agent's, a Flow's, a notice) never reaches a process on a person's computer: the chat is taken back to the server and the message waits there.
   const before = (await ok("threads.get", { thread: th.id, limit: 600 })).events.length;
