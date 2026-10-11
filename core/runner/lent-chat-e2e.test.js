@@ -22,6 +22,8 @@ import { until, FAKE } from "../sessions/testing/boot.js";
 
 const SKIP = unavailable() || workspaceUnavailable() || "";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
+/** The walk's own words, printed only for a proof run (VYRE_PROOF=1): what a person sees at each step. */
+const say = (/** @type {string} */ m) => { if (process.env.VYRE_PROOF) console.log("[walk] " + m); };
 
 test("a new chat is placed on the person's computer, runs there, answers in the chat, and says where it runs", { skip: SKIP || false, timeout: 240_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
@@ -97,10 +99,12 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const events = (await ok("threads.get", { thread: th.id, limit: 100 })).events;
   const said = events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
   assert.match(said, /echo: hello from the phone/, "the answer came back into the chat");
+  say(`1. a new chat is started from the phone; it answers: ${JSON.stringify(said)}`);
 
   // it was placed on the computer when the chat was made, and ran there
   const row = r.home.book.find(th.id) || r.home.book.find((await ok("threads.get", { thread: th.id, limit: 1 })).thread.chat);
   assert.ok(row && row.where === "mac", "the home's book says the chat runs on the computer: " + JSON.stringify(row));
+  say(`2. where does it run? the book says: ${row.where} (device ${row.device}, epoch ${row.epoch}); the chat said: ${JSON.stringify(placing.map(p => p.state))}`);
   assert.deepEqual(placing.map(p => p.state).slice(0, 2), ["starting", "up"], "the chat said it was starting on the computer, then up: " + JSON.stringify(placing));
   assert.ok(!placing.some(p => p.state === "fallback"), "it did not fall back to the box");
   const here = await run("runner.here", {});
@@ -130,8 +134,10 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await asChat("threads.send", { thread: th.id, text: "now on the server" });
   await until(async () => (await finished()) > turnsBefore, "a turn on the server", 90_000);
   assert.match(await lastSaid(), /echo: now on the server/, "the server carried the chat on and answered");
+  say(`4. moved to the server (runner.move to server): the book says ${where()}; next turn answered on the server: ${JSON.stringify(await lastSaid())}`);
   assert.equal(where(), "server");
   // with its turns: the loader carried the computer's checkpointed turns onto the server before the chat's process started there, and the chat's transcript on the server holds them
+  say(`5. the server carried on from the computer's last whole turn: turn ${resumed[0] && resumed[0].turn}, ${resumed[0] && resumed[0].lines} lines carried (runner.resumed)`);
   assert.ok(resumed.length >= 1 && resumed[0].lines >= 1 && resumed[0].turn >= 1, "the server carried on from the computer's last whole turn: " + JSON.stringify(resumed));
   const onServer = fs.readdirSync(transcripts, { recursive: true, withFileTypes: true }).filter(e => e.isFile() && e.name.endsWith(".jsonl")).map(e => fs.readFileSync(path.join(e.parentPath || e.path, e.name), "utf8").split("\n").filter(Boolean).length);
   assert.ok(onServer.some(n => n > resumed[0].lines), "the server's transcript holds the computer's turns and the server's own: " + JSON.stringify(onServer));
@@ -144,6 +150,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await until(async () => (await finished()) > afterServer, "a turn back on the computer", 90_000);
   assert.match(await lastSaid(), /echo: back on the computer/, "the computer carried the chat on and answered");
   assert.equal(where(), "mac");
+  say(`6. moved back to the computer (runner.move to mac): the book says ${where()}; next turn answered there: ${JSON.stringify(await lastSaid())}`);
   // and back with its turns: the home's store holds the server's whole turns too, for the computer's seed
   assert.ok((await r.home.view(th.id).transcript(1, 1_000_000)).length > resumed[0].lines, "the computer was given the turns the server added");
   assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
