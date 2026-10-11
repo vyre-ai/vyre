@@ -12475,7 +12475,7 @@ Switch a thread's model, as /model does in Claude Code. A running thread switche
 
 ### `threads.models-fetch`
 
-Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.
+Each API-key account's model names from the inference door, as { provider, account, ok, models | error }. For the model registry (core/models); never returns a key.
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)

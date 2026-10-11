@@ -1068,7 +1068,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [70](tools.md#threads), 24 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
+- Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
