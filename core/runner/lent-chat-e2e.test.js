@@ -41,7 +41,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   // the home: link's lent world, whose tool requests go to the daemon's own session socket for the thread
   /** @type {any} */ let daemon = null;
   // the home carries a chat on from the computer with the daemon's own loader (runner.resume-lent), as the packaged home does
-  const resume = async (/** @type {any} */ i) => { const x = await daemon.registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread }, "module:vyred"); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
+  const resume = async (/** @type {any} */ i) => { const x = await daemon.registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread, chat: i.chat, person: i.person }, "module:vyred"); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
   const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, resume, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { doorCalls.push(`${thread} ${p}`); return lentRequest(thread, method, p, headers, body); },
     specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [REPO], labels: {}, network: "provider", credentialRoutes: [] }) });
 
@@ -55,10 +55,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   // only the computer's person is placed (BOB in the rig); the daemon's owner stands in for him
   // The book keeps the computer's person (BOB); the daemon sees the same row as its owner's, because the turn's person must be the row's person for a session to run on that computer (a session runs only on its own person's computer).
   const ownerId = String(d.kernel.id.owner);
-  const asOwner0 = (/** @type {any} */ row) => (row && row.person === BOB ? { ...row, person: ownerId } : row);
-  const book = new Proxy(r.home.book, { get: (b, prop) => (prop === "find" ? (/** @type {string} */ id, /** @type {string} */ person) => asOwner0(b.find(id, person === ownerId ? BOB : person)) : prop === "get" ? (/** @type {string} */ id) => asOwner0(b.get(id)) : /** @type {any} */ (b)[prop]) });
-  const home = new Proxy(r.home, { get: (target, prop) => (prop === "placeNew" ? (/** @type {any} */ i) => target.placeNew({ ...i, person: BOB }) : prop === "spawn" ? (/** @type {any} */ i) => target.spawn({ ...i, person: BOB }) : prop === "adopt" ? (/** @type {any} */ i) => target.adopt({ ...i, person: BOB }) : prop === "book" ? book : /** @type {any} */ (target)[prop]) });
-  deps.lentHome = () => home;
+  deps.lentHome = () => r.home;   // the rig's real home: its person is BOB, a real member of the daemon's Space, who asks every turn below
   deps.lentSpaces = () => [SPACE];
 
   // the computer: the runner module, in the sandbox, enrolled for the Space
@@ -81,6 +78,8 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await sleep(800);
 
   const call = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli");
+  // the person who asks to move the chat is the chat's own person (BOB, a member), on a device of theirs
+  const asBob = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: BOB, path: "relay", session: "ps_b" } });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input) => { const x = await call(tool, input); assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; };
   const placing = /** @type {any[]} */ ([]);
   /** @type {any[]} */ const resumed = [];
@@ -91,8 +90,9 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   // a chat turn as the phone makes it: the stream names the chat and the person who asked (only a turn with a person is placed on a computer)
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
-  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, {});
-  const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: ownerId }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { method: "test" } });
+  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
+  const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: BOB }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
   const th = await asChat("threads.start", { cwd: work, prompt: "hello from the phone" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 100 })).events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the first turn", 60_000);
   const events = (await ok("threads.get", { thread: th.id, limit: 100 })).events;
@@ -128,7 +128,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const lastSaid = async () => String((await ok("threads.get", { thread: th.id, limit: 400 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1));
   const chatId = String((await ok("threads.get", { thread: th.id, limit: 1 })).thread.chat);
   const turnsBefore = await finished();
-  await ok("runner.move", { thread: chatId, to: "server" });
+  { const m = await asBob("runner.move", { thread: chatId, to: "server" }); assert.ok(!m.error, "runner.move: " + JSON.stringify(m)); }
   await until(async () => where() === "server", "the chat is the server's", 60_000);
   await asChat("threads.send", { thread: th.id, text: "now on the server" });
   await until(async () => (await finished()) > turnsBefore, "a turn on the server", 90_000);
@@ -142,7 +142,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok(onServer.some(n => n > resumed[0].lines), "the server's transcript holds the computer's turns and the server's own: " + JSON.stringify(onServer));
   const ups = () => placing.filter(p => p.state === "up").length;
   const upsBefore = ups();
-  await ok("runner.move", { thread: chatId, to: "mac" });
+  { const m = await asBob("runner.move", { thread: chatId, to: "mac" }); assert.ok(!m.error, "runner.move: " + JSON.stringify(m)); }
   await until(async () => where() === "mac", "the chat is on the computer again", 60_000);
   const afterServer = await finished();
   await asChat("threads.send", { thread: th.id, text: "back on the computer" });
@@ -154,4 +154,13 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok((await r.home.view(th.id).transcript(1, 1_000_000)).length > resumed[0].lines, "the computer was given the turns the server added");
   assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
 
+
+  // A message with no person behind it (an agent's, a Flow's, a notice) never reaches a process on a person's computer: the chat is taken back to the server and the message waits there.
+  const before = (await ok("threads.get", { thread: th.id, limit: 600 })).events.length;
+  const sent = await call("threads.send", { thread: th.id, text: "a message with no person" });
+  assert.ok(!sent.error, JSON.stringify(sent));
+  await until(async () => r.home.book.get(th.id)?.where === "server", "the chat is taken back to the server for it", 30_000);
+  await sleep(500);
+  const after = (await ok("threads.get", { thread: th.id, limit: 600 })).events.slice(before);
+  assert.ok(!after.some((/** @type {any} */ e) => e.type === "thread.text" && /echo: a message with no person/.test(String(e.payload && e.payload.text))), "it did not run on the computer: " + JSON.stringify(after.map((/** @type {any} */ e) => e.type)));
 });

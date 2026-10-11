@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { rig, BOB, CAROL } from "./testing/lent-rig.js";
 
 const SESSION = "s_own_1";
-const refused = (/** @type {any} */ e) => ["not_found", "not_allowed", "fenced", "bad_input", "conflict"].includes(e && e.code);
+// only the refusals that mean "this is not yours": a malformed call or an unrelated conflict must not pass for one
+const refused = (/** @type {any} */ e) => ["not_found", "not_allowed"].includes(e && e.code);
 
 test("another member reaches nothing of a session that runs on a person's own computer, by any call the home offers", { timeout: 60_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
@@ -24,6 +25,15 @@ test("another member reaches nothing of a session that runs on a person's own co
   // the same calls are answered for Bob (so the refusals below are about whose session it is, not about a malformed call)
   await bob.pipe({ session: SESSION, up: [], ack: 0, wait_ms: 0 });
   await bob.preview({ session: SESSION, replies: [], wait_ms: 0 });
+  // the calls that carry the definition, the history, the files and the checkpoint answer for Bob (so the refusals below are about whose session it is)
+  const spec = await bob.spec({ session: SESSION });
+  assert.ok(spec && spec.epoch >= 1, "Bob gets his session's definition");
+  await bob.sync.appendTranscript(SESSION, [{ seq: 1, line: "{\"n\":1}" }]);
+  await bob.sync.putFile(SESSION, "files/a.txt", Buffer.from("bob's"));
+  assert.equal((await bob.sync.getTranscript(SESSION, 1, 10)).length, 1);
+  assert.equal(Buffer.from(await bob.sync.getFile(SESSION, "files/a.txt", 1)).toString(), "bob's");
+  await bob.sync.putCheckpoint(SESSION, { turn: 1, seq: 1, manifest: {}, state: {} }).catch(() => {});
+  assert.ok(await bob.whoami(), "Bob is known");
   // Carol, with her own computer, calls every lender entry for Bob's session
   const carol = r.as(CAROL, "dev_carol");
   await assert.rejects(carol.pipe({ session: SESSION, up: [], ack: 0, wait_ms: 0 }), refused, "pipe");
@@ -33,6 +43,12 @@ test("another member reaches nothing of a session that runs on a person's own co
   await assert.rejects(carol.release({ session: SESSION, reason: "you" }), refused, "release");
   await assert.rejects(carol.sync.getCheckpoint(SESSION), refused, "checkpoint");
   await assert.rejects(carol.sync.appendTranscript(SESSION, [{ seq: 1, line: "x" }]), refused, "transcript");
+  await assert.rejects(carol.spec({ session: SESSION }), refused, "the definition of Bob's session (lent.start)");
+  await assert.rejects(carol.sync.getTranscript(SESSION, 1, 10), refused, "Bob's history");
+  await assert.rejects(carol.sync.putFile(SESSION, "files/a.txt", Buffer.from("carol's")), refused, "a file into Bob's session");
+  await assert.rejects(carol.sync.getFile(SESSION, "files/a.txt", 1), refused, "Bob's file");
+  await assert.rejects(carol.sync.putCheckpoint(SESSION, { turn: 1, seq: 1, manifest: {}, state: {} }), refused, "a checkpoint of Bob's session");
+  { const before = JSON.stringify(r.home.book.get(SESSION)); await carol.beat({ sessions: [{ session: SESSION, epoch: 1 }], well: true }).catch(() => {}); assert.equal(JSON.stringify(r.home.book.get(SESSION)), before, "a beat of Carol's that names Bob's session changes nothing of his"); }
   // and the home's own entries, asked for Carol
   await assert.rejects(r.home.openPreview({ session: SESSION, port: 4311, person: CAROL }), refused, "preview bridge");
   assert.equal(r.home.placeNew({ session: SESSION, person: CAROL }).where, "box", "placing Bob's session for Carol places nothing");
