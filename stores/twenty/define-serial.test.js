@@ -72,3 +72,20 @@ test("a define leaves one log line naming its types, their fields and the second
   assert.equal(defineLine({ remove_types: ["x"] }, 400), "store define: no types (0 fields) took 0.4 s");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a new type's mirror columns are made by the define, so the first write to it makes no schema change (a member's first chat waited ~20 s for them)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const store = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0 });
+  const gql = store.client.gql.bind(store.client);
+  const made = /** @type {string[]} */ ([]);
+  let phase = "define";
+  store.client.gql = async (/** @type {string} */ api, /** @type {string} */ q, /** @type {any} */ v) => { if (/createOneField/.test(q) && /^vyre(Project|Owner|CreatedBy|Sensitivity)$/.test(v?.i?.field?.name || "")) made.push(`${phase}:${v.i.field.name}`); return gql(api, q, v); };
+  await store.define({ add_types: [type("mirrored")] });
+  phase = "write";
+  const id = (await import("../../kernel/core/ids.js")).mintUuid(Date.now());
+  await store.create("mirrored", id, { a: "x" }, { attrs: { project: "p1", owner: "per_x" } });
+  await store.get("mirrored", id);
+  assert.deepEqual(made.map(m => m.split(":")[0]), ["define", "define", "define", "define"], `all four columns in the define, none at the first write: ${made.join(", ")}`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
