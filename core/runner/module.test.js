@@ -11,6 +11,8 @@ import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { seams } from "./index.js";
 import { fakeSpace } from "./testing/fake-space.js";
+// these tests give the Space a program by its path and a folder to read: that is honoured on a development build with this switch, as the lender dev switch says
+process.env.VYRE_LENT_AGENT_DEV = "1";
 
 async function boot(t, ports) {
   const root = tempHome(t);
