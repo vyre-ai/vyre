@@ -93,7 +93,11 @@ test("plan: names, reserved words, filters, order and values", () => {
   assert.equal(planType({ name: "person", label: "P", fields: [] }).singular, "vyrePerson", "a name Twenty uses for a standard object is stored under a vyre prefix");
   assert.equal(planType({ name: "task", label: "T", fields: [] }).plural, "vyreTasks");
   assert.equal(planType({ name: "team-member", label: "T", fields: [] }).singular, "teamMember");
-  assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "position", kind: "number", label: "P" }] }), /collides/);
+  // a field named like a column Twenty keeps on every object is stored under a suffix and mapped back (the goal module's created_by)
+  const reserved = planType({ name: "goal", label: "G", fields: [{ name: "t", kind: "text", label: "T" }, { name: "position", kind: "number", label: "P" }, { name: "created_by", kind: "text", label: "By" }, { name: "id", kind: "text", label: "Id" }, { name: "updated_at", kind: "datetime", label: "U" }] });
+  assert.deepEqual(["position", "created_by", "id", "updated_at"].map(n => reserved.byVyre.get(n).twenty), ["positionField", "createdByField", "idField", "updatedAtField"]);
+  assert.equal(reserved.byTwenty.get("createdByField").vyre, "created_by", "and back");
+  assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "created_by", kind: "text", label: "A" }, { name: "created_by_field", kind: "text", label: "B" }] }), /same Twenty name/);
   assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "c", kind: "choice", label: "C", options: ["a b", "A-B"] }] }), /distinct/);
   assert.deepEqual(toFilter(p, { and: [{ field: "status", op: "eq", value: "open" }, { field: "age", op: "gt", value: 20 }] }), { and: [{ status: { eq: "OPEN" } }, { age: { gt: 20 } }] });
   assert.deepEqual(toFilter(p, { field: "fee", op: "gte", value: { amount: 2.5, currency: "USD" } }), { fee: { amountMicros: { gte: 2_500_000 } } });
@@ -267,9 +271,7 @@ test("IR-18 every record type Vyre defines for itself (Flows, Kits, the core typ
   walk(root);
   assert.ok(types.some(t => t.name === "def-watcher") && types.some(t => t.name === "def-flow"));
   const bad = [];
-  // Known and not fixed here: the goals module's `goal` has a created_by field that collides with Twenty's createdBy; a rename moves goal records, so it is the goals owner's (reported 8 Oct).
-  const KNOWN = new Set(["goal"]);
-  for (const t of types) { if (KNOWN.has(t.name)) continue; try { planType(t, { space: SUITE_SPACE }); } catch (e) { bad.push(`${t.name}: ${e.message}`); } }
+  for (const t of types) { try { planType(t, { space: SUITE_SPACE }); } catch (e) { bad.push(`${t.name}: ${e.message}`); } }
   assert.deepEqual(bad, [], "a type that cannot be planned is never defined, and the Flows and watchers that read it fail every minute");
   // A text field called name is the title even when another text field comes first.
   const p = planType({ name: "thing", label: "T", fields: [{ name: "flow_id", kind: "text", label: "Id" }, { name: "name", kind: "text", label: "Name" }] });
