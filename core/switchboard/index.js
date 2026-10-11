@@ -2161,10 +2161,10 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null, at?: number }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "" } = {}) {
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "", askedBy = undefined } = {}) {
     const st = this.live.get(id);
     // the last door: nothing reaches a process on a person's computer unless the turn it belongs to is that person's (fail closed: a process that does not say where it runs is judged by the home's book)
-    if (lentBlocks(this, id, st, this.turnAsker.get(id) || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
+    if (lentBlocks(this, id, st, (askedBy !== undefined ? askedBy : this.turnAsker.get(id)) || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
@@ -2465,11 +2465,11 @@ export class Switchboard {
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
     if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images, note, author });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note, askedBy: kernelTurn ? kernelTurn.asker : askedBy });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer", queued_at: w.at, step: st.steps || 0, ...(author ? { author } : {}) }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note, askedBy: kernelTurn ? kernelTurn.asker : askedBy });
     this.emit("thread.sent", { text: cut(withoutVyre(text), 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
