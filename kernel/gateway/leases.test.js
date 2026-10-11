@@ -191,10 +191,7 @@ test("leases.forward: authorized for the caller's chain against the route before
   // a connector form (a Flow's "Call a service")
   assert.equal((await L.forward(bob, { connector: "stripe", method: "GET", path: "/v1/balance" })).status, 200);
   assert.equal(forwarded.at(-1).connector, "stripe");
-  // a file the request reads or saves must be the caller's own drive right
-  await assert.rejects(() => L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf" } } }), { code: "not_found" }, "no drive.read");
-  await assert.rejects(() => L.forward(bob, { ...req, saveTo: "inbox/out.json" }), { code: "not_found" }, "no drive.write");
-  await grant(["drive.read", "drive.write"]);
+  // a file the request reads or saves must be the caller's own drive right: a member holds drive.read and drive.write by role
   assert.equal((await L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf" } }, saveTo: "inbox/out.json" })).status, 200);
 });
 
@@ -216,7 +213,7 @@ test("LF-1: leases.forward counts a grant's rate, budget and once through the sa
   const L2 = r2.k.gateway.leases;
   L2.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET"], paths: ["/v1/*"], drive: { read: ["clients/*"] } }] });
   await gmake(r2, ["service.read"], { once: true }, "service");
-  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "clients/a.pdf" } } }), { code: "not_found" }, "no drive.read grant");
+  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "other/a.pdf" } } }), { code: "not_found" }, "a file outside the route's Drive list");
   assert.equal((await L2.forward(r2.bob, req)).status, 200, "the once grant was not spent by the refused request");
   await assert.rejects(() => L2.forward(r2.bob, req), { code: "used_up" });
 });
@@ -240,7 +237,7 @@ test("LF-3: leases.bind keeps the route record whole (deny wins, size cap, conte
   assert.deepEqual(f.drive, { read: ["clients/*"], write: ["inbox/*"] });
   assert.equal(typeof f.files.read, "function", "the Drive door under the caller's chain");
   assert.equal((await f.files.read("clients/a.pdf")).size, 4);
-  await assert.rejects(() => f.files.read("elsewhere/x"), { code: "not_found" }, "the caller's own grant decides outside the route lists too");
+  assert.equal((await f.files.read("elsewhere/x")).size, 4, "outside the route lists the caller's own right decides, and a member's role covers the Drive");
   await f.files.write("inbox/out.json", (async function* () { yield Buffer.from("xy"); })(), { maxBytes: 10 });
   assert.equal(drive.wrote[0][0], "inbox/out.json");
 });

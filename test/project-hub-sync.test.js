@@ -35,7 +35,9 @@ async function boot(/** @type {any} */ t) {
   const meta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token });
   const rows = async (/** @type {string} */ type) => (await d.kernel.gateway.records.query(admin, type, { page: { limit: 100 } })).rows;
   const memberChain = async (/** @type {string} */ id) => { await d.kernel.gateway.grants.setRole(admin, { person: id, role: "member" }, { presence: { method: "stand-in" } }); return d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: id, path: "direct", session: "s" }); };
-  return { d, admin, meta, work, rows, memberChain };
+  // a temp member holds no Drive action (a member's role has them), so a folder move under their chain is refused
+  const tempChain = async (/** @type {string} */ id) => { await d.kernel.gateway.grants.setRole(admin, { person: id, role: "temp", scope: [`vyre://${d.kernel.id.space}/file/*`], expires: Date.now() + 3_600_000 }, { presence: { method: "stand-in" } }); return d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-t", person: id, path: "direct", session: "s" }); };
+  return { d, admin, meta, work, rows, memberChain, tempChain };
 }
 
 test("every chat is a record with its id, times and Drive folders, filed in its creator's Personal project when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
@@ -146,9 +148,9 @@ test("PH-3: a rename moves nothing, whoever makes it, and is only a title that r
 });
 
 test("MV-1: moving a folder checks every file under the caller's own chain and aborts the whole move if any is refused", { timeout: 120_000 }, async t => {
-  const { d, admin, memberChain } = await boot(t);
+  const { d, admin, tempChain } = await boot(t);
   await d.kernel.gateway.drive.put(admin, "Projects/A/one.txt", new TextEncoder().encode("1"));
-  const member = await memberChain("per_" + "n".repeat(26));
+  const member = await tempChain("per_" + "n".repeat(26));
   await assert.rejects(() => d.kernel.gateway.drive.moveFolder(member, "Projects/A", "Projects/B"), /no such record|not yours to move/i);
   await d.kernel.gateway.drive.get(admin, "Projects/A/one.txt");
   assert.equal((await d.kernel.gateway.drive.moveFolder(admin, "Projects/A", "Projects/B")).moved, 1);
