@@ -42,10 +42,18 @@ test("a member's chat tools go through the team door: only the five, and only fo
 
 test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
   const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
-  for (const t of ["work.project.create", "work.project.members", "work.start-project", "work.template.list", "work.template.golive", "flows.approve", "flows.run", "flows.list", "team.add"]) {
+  for (const t of ["work.project.create", "work.project.members", "work.start-project", "work.template.list", "work.template.golive", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add"]) {
     assert.ok(isTeamWork(t), `${t} is the team's work`);
     assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
   }
   for (const t of ["work.chat.list", "stream.send", "planner.add", "spaces.list", "sessions.accounts.list", "vault.list", "records.me"]) assert.ok(!isTeamWork(t), `${t} is not refused`);
   assert.match(NOT_FOR_MEMBERS_YET, /Ask the owner/, "it names a next step");
+});
+
+test("a member's Flows go through the door under the same name; the ones the door does not carry are refused in words", async () => {
+  const { memberWire, isTeamWork } = await import("./with-space.js");
+  for (const c of ["list", "get", "card", "approve", "start", "run", "runs", "propose", "compile-text", "from-chat"]) assert.equal(memberWire(`flows.${c}`), `flows.${c}`, c);
+  assert.equal(memberWire("flows.test.save"), "flows.test-save");
+  assert.equal(memberWire("flows.test.run"), "flows.test-run");
+  for (const c of ["pause", "resume", "rollback", "budget", "control", "settle", "advance", "kit.list", "connections"]) { assert.equal(memberWire(`flows.${c}`), null, c); assert.ok(isTeamWork(`flows.${c}`), `${c} is refused in words`); }
 });

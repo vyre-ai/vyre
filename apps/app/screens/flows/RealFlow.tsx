@@ -65,7 +65,7 @@ export function RealFlow({ id }: { id: string }) {
 
   const approve = async () => {
     setBusy(true);
-    try { await approveReal(id, meta.version, meta.hash); haptic.approve(); showToast("Approved. This version can run."); setN((x) => x + 1); }
+    try { const r = (await approveReal(id, meta.version, meta.hash)) as { notice?: string } | null; haptic.approve(); showToast(r && typeof r.notice === "string" && r.notice ? r.notice : "Approved. This version can run."); setN((x) => x + 1); }
     catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); }
     finally { setBusy(false); }
   };

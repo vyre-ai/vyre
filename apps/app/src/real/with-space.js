@@ -22,8 +22,13 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
   // A member's own AI sign-in (kernel/remote CALLS.accounts): the Settings screen's calls reach the team's server the same way.
   "sessions.accounts.list": "accounts.list", "sessions.accounts.signin": "accounts.signin", "sessions.accounts.remove": "accounts.remove", "sessions.accounts.bind": "accounts.default" });
 
+/** A member's Flows (core/flows member tools, group `flows` on the door): the registry tool of the same name, the same input. Not on the door, so refused in words: pause, resume, rollback, budget, control, settle, advance, kit.*, connections. */
+const FLOW_CALLS = Object.freeze(["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"]);
+const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(FLOW_CALLS.map((c) => [`flows.${c}`, `flows.${c}`])),
+  "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" });
+
 /** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
-export function memberChatWire(tool) { return Object.hasOwn(MEMBER_CHAT, tool) ? /** @type {any} */ (MEMBER_CHAT)[tool] : null; }
+export function memberChatWire(tool) { return Object.hasOwn(MEMBER_DOOR, tool) ? /** @type {any} */ (MEMBER_DOOR)[tool] : null; }
 export const memberWire = memberChatWire;
 
 /** The tools that do a Space's own work. While a team the person JOINED is showing, none of them may go to her own home as if it were the team: the ones with a member door call go through it (memberWire), the rest are refused in words. Her own things (planner, settings, accounts, her sidebar, her devices) are not in this list. Records, tasks, assistants and lessons are NOT here yet either: screens such as the chat composer read them today and only a door row for them (rc2-people) can replace those reads, so they wait for their rows instead of being refused. */
