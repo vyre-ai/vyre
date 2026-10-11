@@ -136,6 +136,8 @@ export function run(o) {
   return {
     // A getter: through the box's spawner the pid is known a moment after the call.
     get pid() { return child.pid; },
+    /** "lent" while the process runs on a person's own computer, "box" when it runs here (core/sessions/lent-spawn.js); the Switchboard keeps another person's turn off a lent one. */
+    get where() { return /** @type {any} */ (child).where; },
     write,
     get alive() { return !exited; },
     /**
