@@ -58,7 +58,10 @@ const MIGRATIONS = [`
 // Images a message carries (JSON), handed to the assistant's thread with the words.
 `ALTER TABLE stream_groups_outbox ADD COLUMN images TEXT;`,
 // The AI account the sender chose for this one message ("provider" or "provider:account"): it runs on THEIR account, not the thread's (0.3.3 G04).
-`ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`];
+`ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`,
+// The Space a chat belongs to when it is a TEAM Space's (0.3.3 J9): the chat's record and people are that Space's kernel's, so every kernel question about it (who is in it, may this viewer receive a reply, which
+// session answers) is asked there. A chat of the home's own Space has no row.
+`CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -108,6 +111,24 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const markers = createReadMarkers();
   for (const r of db.prepare("SELECT person, session, upto FROM stream_groups_marks").all()) markers.set(String(r.person), String(r.session), Number(r.upto));
   /** @type {Map<string, Group>} */ const groups = new Map();
+  /** The team Space a chat belongs to (none for the home's own). @type {Map<string, string>} */ const spaceOfChat = new Map();
+  // prepared now, while the module's store is the home's: a statement prepared inside a call routed to a team Space would run against that Space's own (empty) file
+  const spaceAdd = db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)");
+  for (const r of db.prepare("SELECT grp, space FROM stream_groups_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
+  /** Say which Space a chat belongs to, once: the first call that carries the Space (the member door's, through callInSpace) records it; a chat never changes Space. @param {string} grp @param {string} space */
+  const setSpace = (grp, space) => {
+    if (!/^spc_[a-z2-7]{12,26}$/.test(String(space))) return;
+    const had = spaceOfChat.get(grp);
+    if (had) { if (had !== space) throw fail("denied", "this chat belongs to another Space"); return; }
+    spaceAdd.run(grp, space);
+    spaceOfChat.set(grp, space);
+  };
+  /** The kernel's chat calls for the Space a chat belongs to: the team's own kernel for a team chat, else the home's. @param {string} grp */
+  const chatsOf = grp => {
+    const sp = spaceOfChat.get(grp);
+    if (!sp) return ctx.kernel.chats;
+    try { return ctx.kernel.for(sp).kernel.kernelFor({ name: "stream" }).chats; } catch { return null; }
+  };
   /** @type {Map<string, Member>} */ const byThread = new Map();
   /** @type {Set<Member>} */ const dirty = new Set();
   /** @type {any} */ let timer = null;
@@ -246,7 +267,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const h = await ks.forThread(thread).appendOpen({ kind: "text", ...(asker ? { asker } : {}) });
       return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
     },
-    mayReceive: (_grp, _person, r, chain) => { try { return ctx.kernel.chats.mayReceive(chain, r.kid) === true; } catch { return false; } },
+    mayReceive: (_grp, _person, r, chain) => { try { return chatsOf(_grp).mayReceive(chain, r.kid) === true; } catch { return false; } },
   };
   const kernelChats = ctx.kernel && ctx.kernel.chats;
   const port = replyPort || (ks && kernelChats && typeof kernelChats.mayReceive === "function" ? ksPort : null) || (standIn || !kernelChats ? mirrorPort : (typeof kernelChats.appendOpen === "function" && typeof kernelChats.mayReceive === "function" ? kernelPort : unavailablePort));
@@ -743,7 +764,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     // The turn begins at the kernel when its session opens (lib/kernel-session.js open, called for the asker by the Switchboard on this very send): the stream does not begin it a second time.
     const surface = row.surface ? String(row.surface) : "deck";
     // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
-    const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker) } : {};
+    const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker), ...(spaceOfChat.get(String(row.grp)) ? { space: spaceOfChat.get(String(row.grp)) } : {}) } : {};
     // A delivery after a restart runs in no call (a timer, the start): a module hop with no origin is refused for a tool a person's surface reaches, so the row's own surface (the class of the
     // call that wrote it) is the origin. The kernel still checks the asker is in the chat; this only says the words came from a person's surface.
     const run = (/** @type {() => Promise<any>} */ f) => (ctx.events && typeof ctx.events.withOrigin === "function" && !ctx.events.origin() ? ctx.events.withOrigin(surface, f) : f());
@@ -953,6 +974,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
      * appended), also after a restart. @param {string} grp @param {{ people: string[], assistants?: string[] }} chat @param {any} meta @param {string} person @param {any} chain
      */
     async mirror(grp, chat, meta, person, chain) {
+      if (meta && typeof meta.in_space === "string" && meta.in_space_chain) setSpace(grp, meta.in_space);
       if (meta && typeof meta === "object") { kernelPerson.set(meta, person); kcalls.set(meta, { chain, person }); }
       const g = adopt(grp, chat);
       // An assistant that is working for this person has no session token after a restart: open one now, so the replies waiting for it can be written.

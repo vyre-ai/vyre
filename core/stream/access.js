@@ -61,7 +61,8 @@ export function createAccess({ ctx, groups, logs }) {
     if (!k || !k.chats || typeof k.chats.read !== "function" || typeof k.chain !== "function" || !meta || typeof meta !== "object") return null;
     // The call's own chain: a session token's (an assistant acting for its person) or the person's own, built from the facts the daemon proved about the connection (no token on a Deck call).
     // A call with neither is the module's own service chain, which is no person: null, and the caller is refused as having no session of its own.
-    const chain = await k.chain(meta);
+    // A team member's call through the Space's member door carries their own chain in that Space (set by the registry's callInSpace alone); otherwise the call's own chain.
+    const chain = meta.in_space_chain && meta.in_space ? meta.in_space_chain : await k.chain(meta);
     const person = kernelPerson(chain);
     if (!person) return null;
     try { return { chat: await k.chats.read(chain, session), chain, person }; }

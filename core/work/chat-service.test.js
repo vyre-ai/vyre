@@ -32,7 +32,7 @@ async function world(t) {
 }
 
 test("chat is a group of the Space kernel's remote calls", () => {
-  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create"]);
+  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"]);
 });
 
 test("a member starts their own chat and sees it; another member does not see it", { timeout: 90_000 }, async t => {
@@ -82,12 +82,28 @@ test("nobody else gets anything: a non-member, an agent's or a delegated chain, 
 test("the boundary: work.chat.serve is the daemon's door alone, runs only in a Space under a member's chain, and the five calls are the whole list", { timeout: 90_000 }, async t => {
   const { d, svc } = await world(t);
   assert.deepEqual(Object.keys(svc).sort(), [...CALLS.chat].sort(), "the service answers exactly the wire's list");
-  for (const caller of ["cli", "mcp", "device:abcdefghijklmnop", "module:sneaky", "space:per_zed@spc_abcdefghijkl", "capsule"]) {
-    const r = await d.registry.call("work.chat.serve", { call: "list", input: {} }, caller, {});
-    assert.ok(r.error, `${caller} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+  for (const [tool, call] of [["work.chat.serve", "list"], ["stream.serve", "catchup"]]) {
+    for (const caller of ["cli", "mcp", "device:abcdefghijklmnop", "module:sneaky", "space:per_zed@spc_abcdefghijkl", "capsule"]) {
+      const r = await d.registry.call(tool, { call, input: {} }, caller, {});
+      assert.ok(r.error, `${tool} from ${caller} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+    }
+    const bare = await d.registry.call(tool, { call, input: {} }, "module:vyred", { door: true });
+    assert.ok(bare.error && /member door/.test(String(bare.error.message)), `${tool}: the daemon itself, outside a Space and without a member's chain, is refused: ${JSON.stringify(bare)}`);
   }
-  const bare = await d.registry.call("work.chat.serve", { call: "list", input: {} }, "module:vyred", { door: true });
-  assert.ok(bare.error && /member door/.test(String(bare.error.message)), `the daemon itself, outside a Space and without a member's chain, is refused: ${JSON.stringify(bare)}`);
   assert.equal(svc.keys, undefined, "a chat key call is not on the list");
   assert.equal(svc.rename, undefined);
+});
+
+test("a member says something in a shared chat and the other member reads it, as the member who said it; a person not in the chat cannot say or read anything there", { timeout: 90_000 }, async t => {
+  const { as, svc, chainOf } = await world(t);
+  const made = await as(ANA, "create", { title: "Huddle", people: [BEN] });
+  const said = await as(ANA, "send", { chat: made.chat, text: "hello from Ana" });
+  assert.ok(said, "the send answers");
+  const seen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat }));
+  assert.match(seen, /hello from Ana/, "Ben reads what Ana said");
+  assert.ok(!/hello from Ana/.test(JSON.stringify(await as(ANA, "catchup", { chat: (await as(BEN, "create", { title: "Ben's own" })).chat }).catch(() => "none"))), "Ben's own chat does not carry Ana's words");
+  const lone = await as(BEN, "create", { title: "Ben alone" });
+  await assert.rejects(as(ANA, "send", { chat: lone.chat, text: "let me in" }), /no such|not_found|not found/i, "Ana is not in Ben's own chat");
+  await assert.rejects(as(ANA, "catchup", { chat: lone.chat }), /no such|not_found|not found/i);
+  await assert.rejects(svc.send(chainOf(ZED), { chat: made.chat, text: "hi" }), /not found/i, "a person who is not a member");
 });

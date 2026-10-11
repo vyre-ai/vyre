@@ -208,19 +208,20 @@ export class Indexer {
    * For a transcript under an account folder: the Switchboard's word on whether a person started it
    * (null for any other folder, where the transcript's own reading stands). Fails closed: no origin
    * hook, an error, or no matching thread is false.
-   * @param {transcripts.Entry} entry @returns {Promise<boolean|null>}
+   * @param {transcripts.Entry} entry @returns {Promise<boolean|null|"team">}
    */
   async humanOf(entry) {
     // Outside an account folder the transcript's own reading stands, EXCEPT that the Switchboard's own record of a thread a person started in the app makes it human whatever driver carried it
     // (an Agent SDK session's transcript says it is programmatic; the person typed the turn).
     if (!this.underAccounts(entry.file)) {
-      try { const r = this.origin ? await this.origin(entry.id) : null; return r && r.known === true && r.human === true ? true : null; } catch { return null; }
+      try { const r = this.origin ? await this.origin(entry.id) : null; if (r && r.team) return "team"; return r && r.known === true && r.human === true ? true : null; } catch { return null; }
     }
     const hit = this.origins.get(entry.id);
     if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.human;
     let human = false;
     try {
       const r = this.origin ? await this.origin(entry.id) : null;
+      if (r && r.team) { this.origins.set(entry.id, { at: Date.now(), human: "team" }); return "team"; }
       human = Boolean(r && r.known === true && r.human === true);
     } catch { human = false; }
     this.origins.set(entry.id, { at: Date.now(), human });
@@ -230,9 +231,11 @@ export class Indexer {
   /**
    * @param {transcripts.Entry} entry
    * @param {Stats} s
-   * @param {boolean|null} [human] the Switchboard's answer for an account-folder transcript; null otherwise
+   * @param {boolean|null|"team"} [human] the Switchboard's answer for an account-folder transcript; null otherwise
    */
   one(entry, s, human = null) {
+    // A session that belongs to a TEAM Space's chat (the Switchboard's record says which Space) is that Space's: never filed into the home's own personal recall or memory.
+    if (human === "team") { s.skipped++; return; }
     const prev = /** @type {any} */ (this.q.get.get(entry.id));
     if (prev && this.linked && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
       // Same bytes somewhere else (an archived folder): note where it lives now, read nothing.
