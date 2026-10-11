@@ -152,7 +152,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       out = res.error ? outcomeOf({ error: res.error }) : outcomeOf({ reply: res.data });
     }
     db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(out.light, out.words, now(), id);
-    if (d.transport === "site") keepClass(id, out.light === "green" ? "ok" : out.cls || "");
+    keepClass(id, out.light === "green" ? "ok" : out.cls || "");
     emit("connectors.connection-checked", { id, light: out.light });
     return { id, light: out.light, words: out.words };
   }

@@ -60,7 +60,7 @@ if [ -n "${VYRE_BOX_URL:-}" ] && [ -z "${VYRE_RELEASES_API:-}" ]; then USE_API=0
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
 ROOT_UID=${VYRE_ROOT_UID:-0}
 CHAIN_TOP=${VYRE_CHAIN_TOP:-/}
-UPDATE_WAIT=${VYRE_UPDATE_WAIT:-60}
+UPDATE_WAIT=${VYRE_UPDATE_WAIT:-180}
 MIN_GAP=${VYRE_UPDATE_MIN_GAP:-600}
 SYSTEMD_DIR=${VYRE_SYSTEMD_DIR:-/etc/systemd/system}
 SYSTEMD_SEAM=${VYRE_SYSTEMD_DIR:+1}
@@ -335,14 +335,27 @@ unpack_src() {
   if [ -f "$tmp/dockerignore" ]; then cp "$tmp/dockerignore" "$SRCDIR.new/.dockerignore"; fi
 }
 
-# Wait for vyred to answer on its socket, up to a minute (UPDATE_WAIT seconds).
+# Wait for vyred to answer on its socket, up to three minutes (UPDATE_WAIT seconds); a first start with Records on a small server is the slow case.
 ready() {
   i=0
   while [ $i -lt "$UPDATE_WAIT" ]; do
-    compose exec -T vyre vyre status >/dev/null 2>&1 && return 0
+    # vyred answering is the whole question (`vyre status --ready`): the full status also asks search and memory, which wait for the index and the Records store on a first start.
+    compose exec -T vyre vyre status --ready >/dev/null 2>&1 && return 0
+    # an image from before `--ready` (a rollback to an older release) does not know the flag: after 30 s the plain status is asked too
+    if [ $i -ge 30 ]; then compose exec -T vyre vyre status >/dev/null 2>&1 && return 0; fi
+    # say what it is waiting on, every 15 s, so a slow first start does not look like a hang
+    if [ $((i % 15)) = 14 ]; then
+      st=$(compose ps --format '{{.State}}' vyre 2>/dev/null | head -n 1)
+      case "$st" in
+        running) what="Vyre's container is running; waiting for vyred inside it to answer (it starts its modules and, on a first start, the Records store)" ;;
+        "") what="the container has not appeared" ;;
+        *) what="the container is $st" ;;
+      esac
+      echo "vyre: still waiting after $((i + 1)) s of $UPDATE_WAIT: $what" >&2
+    fi
     i=$((i + 1)); sleep 1
   done
-  echo "vyre: Vyre did not start; see: vyre logs" >&2
+  echo "vyre: Vyre did not start within $UPDATE_WAIT s; see: vyre logs" >&2
   return 1
 }
 
@@ -612,7 +625,7 @@ modules_ok() {
   [ -f "$UPD_STATE/release/modules.json" ] || return 0
   names=$(sed -n 's/^  "\([^"]*\)": {$/\1/p' "$UPD_STATE/release/modules.json")
   i=0; bad=""
-  while [ $i -lt "${MODULES_WAIT:-30}" ]; do
+  while [ $i -lt "${MODULES_WAIT:-180}" ]; do
     out=$(compose exec -T vyre vyre modules 2>/dev/null || true)
     bad=""
     # Every listed module must be reported running or off (off by default is a choice, not a failure); one reported failed, or not reported at all, is a box with fewer modules than the list.
@@ -1352,7 +1365,7 @@ sp_attach_net() {
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
     hdock network connect --alias "$alias" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
     # Docker turns forwarding on in the container's namespace at each join: off again right here, for every join path (pub-up checks it once more before a server starts)
-    _pj=$(sp_pid 2>/dev/null) && timeout 20 nsenter -t "$_pj" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
+    if _pj=$(sp_pid 2>/dev/null); then timeout 20 nsenter -t "$_pj" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true; fi
   fi
 }
 # sp_fw_del NAME: only while no container of the project runs; removes exactly the rules carrying vyre:<name>, found by listing the chain, in the namespace of the pid current now.

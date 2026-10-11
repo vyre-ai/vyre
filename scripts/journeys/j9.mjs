@@ -18,7 +18,7 @@ export default {
   id: "J9", title: "Team day", owner: "release", world: "own", store: "records", optIn: true,
   /** @param {any} ctx @param {ReturnType<typeof stepper>} J */
   async steps(ctx, J) {
-    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: "records", devBuild: true });
+    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: "records", devBuild: true, recreate: false });
     if (!w.ready) { await J.step("the world is up", () => { throw new Error("the dev-build box world did not come up; see the lines above (owner: release)"); }); return; }
     const { mac, srv, ins } = w;
     mac.setYes(srv.yesFor(mac.identity.id, mac.presenceSigner));
@@ -50,9 +50,13 @@ export default {
           assert.equal(joined.joined.joined, true, `${who} joined`);
           people.push({ name: who, app, invite, joined });
         }
-        const list = await people[0].joined.call("grants.members.list", []);
-        const ids = (Array.isArray(list) ? list : list.members || []).map((/** @type {any} */ m) => m.person);
-        for (const p of people) assert.ok(ids.includes(p.app.identity.id), `${p.name} is listed as a member`);
+        // a member's door shows the member their own row (not the others): each reads theirs and finds the role. The owner's own list needs an identity the box does not hold; see the finding below.
+        for (const p of people) {
+          const list = await p.joined.call("grants.members.list", []);
+          const rows = Array.isArray(list) ? list : list.members || [];
+          const mine = rows.find((/** @type {any} */ m) => (m.person || m.id) === p.app.identity.id);
+          assert.ok(mine && mine.role === "member", `${p.name} is a member; their list holds ${JSON.stringify(rows).slice(0, 300)}`);
+        }
         return `${people.length + 1} people`;
       }, { needs: [T], owner: "trust" });
 
@@ -76,12 +80,12 @@ export default {
       const P = "a project starts from a template and its stages and tasks are made";
       /** @type {any} */ let project = null;
       await J.step(P, async () => {
-        const lib = await w.call("work.template.library", {});
+        const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
-        const inst = await w.call("work.template.install", { id: first.id });
+        const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
-        const started = await w.call("work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
+        const started = await whenStoreIsUp(w, "work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
         assert.ok(started.project, "a project was made");
         assert.ok((started.tasks_made || 0) > 0, `tasks were made (${JSON.stringify(started.tasks_skipped || [])})`);
         project = started;

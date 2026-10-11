@@ -125,16 +125,19 @@ export default {
       return row;
     };
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
+    /** A person's own choice is kept under their id; the owner's (and the home's, from before) are the Space's defaults. A member's choice never changes anyone else's session. */
+    const mineScope = (/** @type {string | null} */ person, /** @type {string} */ scope) => (person ? `person:${person}/${scope}` : scope);
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
      * else its purpose's (a surface's override, then config, then the default).
-     * @param {{ purpose?: string, project?: string|null, model?: string|null }} i
+     * @param {{ purpose?: string, project?: string|null, model?: string|null, person?: string|null }} i `person`: whose session it is; their own choices come before the Space's defaults
      */
     const modelFor = i => {
       if (i.model) return { model: i.model, from: "explicit" };
-      if (i.project) { const m = override(`project:${i.project}`); if (m) return { model: m, from: `project:${i.project}` }; }
+      const who = i.person && i.person !== accounts.owner() ? String(i.person) : null;
+      if (i.project) { const m = (who && override(mineScope(who, `project:${i.project}`))) || override(`project:${i.project}`); if (m) return { model: m, from: `project:${i.project}` }; }
       const purpose = PURPOSES.includes(String(i.purpose)) ? String(i.purpose) : "chat";
-      const m = override(`purpose:${purpose}`);
+      const m = (who && override(mineScope(who, `purpose:${purpose}`))) || override(`purpose:${purpose}`);
       return m ? { model: m, from: `purpose:${purpose}` } : { model: configModel(ctx.config, purpose), from: `config:${purpose}` };
     };
     const prompts = new Prompts(ctx.store.db);
@@ -208,19 +211,25 @@ export default {
 
     tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from, plus the model aliases to offer. An agent's own model wins.",
       { type: "object", properties: {} },
-      async () => ({ aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
-        projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
+      async (_i, meta) => {
+        const person = await personOf(meta), who = person && person !== accounts.owner() ? person : null;
+        const projects = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)]));
+        if (who) for (const r of /** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE ?").all(`person:${who}/project:%`))) projects[String(r.scope).slice(`person:${who}/project:`.length)] = String(r.model);
+        return { aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p, person })])), projects };
+      });
 
     tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
       { type: "object", required: ["scope"], properties: { scope: str, model: { type: ["string", "null"] } } },
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const caller = meta && meta.caller;
         const m = /^(purpose|project):([A-Za-z0-9._-]{1,64})$/.exec(String(i.scope || ""));
         if (!m || (m[1] === "purpose" && !PURPOSES.includes(m[2]))) throw Object.assign(new Error(`scope must be purpose:<${PURPOSES.join("|")}> or project:<slug>`), { code: "bad_input" });
-        if (i.model == null || i.model === "") { db.prepare("DELETE FROM sessions_models WHERE scope = ?").run(i.scope); }
+        const mine = await ownerOfAccount(meta), stored = mineScope(mine, String(i.scope));   // a member's choice is theirs alone; the owner's is the Space's default
+        if (i.model == null || i.model === "") { db.prepare("DELETE FROM sessions_models WHERE scope = ?").run(stored); }
         else {
           if (!MODEL.test(String(i.model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
           db.prepare("INSERT INTO sessions_models (scope, model, by, at) VALUES (?,?,?,?) ON CONFLICT(scope) DO UPDATE SET model = excluded.model, by = excluded.by, at = excluded.at")
-            .run(i.scope, String(i.model), String(caller || ""), Date.now());
+            .run(stored, String(i.model), String(caller || ""), Date.now());
         }
         ctx.events.emit("model.changed", { scope: i.scope, model: i.model || null });
         return { scope: i.scope, model: i.model || null };
@@ -228,7 +237,7 @@ export default {
 
     ctx.tool("sessions.models.resolve", {
       description: "The model a session starting now runs on, and where that comes from.", internal: true,
-      input: { type: "object", properties: { purpose: str, project: str, model: str } },
+      input: { type: "object", properties: { purpose: str, project: str, model: str, person: str } },
       run: async i => modelFor(i),
     });
 

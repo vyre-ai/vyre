@@ -1,6 +1,7 @@
 import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
+import { ComputersSection } from "./ComputersSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
@@ -71,6 +72,7 @@ export function SpacesScreen() {
           </Card>
         ))}
       </View>
+      {cur && canInvite && !MOCK ? <ComputersSection space={cur.id} spaceName={spaceName} /> : null}
       {cur && canInvite && !MOCK ? <ZoneSection space={cur.id} zone={(cur as { zone?: string | null }).zone ?? null} spaceName={spaceName} onSaved={() => void load()} /> : null}
       <Sec title={`Members of ${spaceName}`}>
         <Card flush>

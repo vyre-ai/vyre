@@ -293,7 +293,7 @@ shardTest("a paired phone's Space list, as the daemon makes the call for it: the
   const facts = callerFacts(label, { caller: label }, via, a.w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
   assert.ok(facts && facts.kind === "device" && facts.person === a.w.d.kernel.id.owner, `the daemon builds a person chain for the paired device: ${JSON.stringify(facts)}`);
   const listed = await a.w.d.registry.call("spaces.list", {}, label, { ...via, kernelFacts: facts });
-  assert.ok(!listed.error && listed.data.length > 0 && listed.data.some((/** @type {any} */ x) => x.id === a.w.d.kernel.space), `the paired phone lists the owner's Spaces: ${JSON.stringify(listed).slice(0, 300)}`);
+  assert.ok(!listed.error && listed.data.length > 0 && listed.data.some((/** @type {any} */ x) => x.id === a.w.d.kernel.id.space && x.role === "owner" && x.label === "personal"), `the paired phone lists the owner's Spaces: ${JSON.stringify(listed).slice(0, 300)}`);
   const bare = await a.w.d.registry.call("spaces.list", {}, label, via);
   assert.deepEqual(bare.error ? [] : bare.data, [], "the device label with no chain facts is nobody: the daemon always adds the facts for a paired device, so the app never makes this call");
 });

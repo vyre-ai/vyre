@@ -24,6 +24,7 @@ import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
+import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
@@ -114,12 +115,18 @@ let index = null;
 
 /** The listing being fetched, shared: a burst of calls before the first listing waits on one fetch, not one each (the daemon builds the whole catalogue for every fetch). @type {Promise<any[]> | null} */
 let loading = null;
+/** Answers that mean "not now", not "no". */
+const LATER = new Set(["timeout", "unreachable", "restarting", "busy"]);
 const loadTools = () => (loading ||= tools().finally(() => { loading = null; }));
 
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, ident());
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
   if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, ident()); }
+  // A vyred that is busy (many sessions starting at once measured it at 10 s and more) answers "not now", not "no": asked again, and never taken for "no tools": an empty list made the agent
+  // say the finder was not reachable for the rest of its session (live, 10 Oct, three providers at once).
+  for (let i = 0; i < 4 && r.error && LATER.has(r.error.code) && process.env.VYRE_SOCKET; i++) { await new Promise((ok) => setTimeout(ok, 750 * (i + 1))); r = await request("GET", "/v1/tools", undefined, { ...ident(), timeout: 30_000 }); }
+  if (r.error && LATER.has(r.error.code) && process.env.VYRE_SOCKET) throw new Error(`vyred is busy and did not list its tools: ${r.error.message}`);
   if (r.error) return [];
   askOnce();
   // The five memory tools go by their own names; their raw twins are not offered beside them.
@@ -266,7 +273,7 @@ async function handle(msg) {
       if (asked === "tools_run" && FEATURES.run) return toolsRun(params?.arguments || {}, params);
       if (asked === "results_read" && FEATURES.ref) return resultsRead(params?.arguments);
       if (asked === "tools_call") {
-        const want = String(params?.arguments?.tool || "");
+        const want = canonical(String(params?.arguments?.tool || ""));
         if (/^results[._]drop$/.test(want)) { const ok = store.drop(owner(), params?.arguments?.arguments?.handle); return reply(JSON.stringify({ dropped: ok }), { dropped: ok }); }
         const target = names.has(want) ? want : names.has(mcpName(want)) ? mcpName(want) : "";
         if (!target || target === "tools_call") return { content: [{ type: "text", text: `not_found: no tool "${want.slice(0, 80)}" that you may use. tools_find finds the one you need.` }], isError: true };

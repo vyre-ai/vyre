@@ -2,7 +2,7 @@
 export type Version = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string | null; kit?: string; note?: string; tags: string[]; body?: Body };
 export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[] };
 export type Stage = { name: string; owner?: string; moves_on_when?: string; tasks?: Task[] };
-export type Body = { name: string; description?: string; tags?: string[]; opens_on?: string; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
+export type Body = { name: string; description?: string; tags?: string[]; opens_on?: string; automations?: { when: string; flow: string; note?: string }[]; roles?: { role: string; agent?: string; lead?: boolean }[]; stages: Stage[] };
 export type Row = { template: string; name: string; live: number | null; latest: number; versions: number; owner: string | null; tags: string[] };
 
 export const STATE: Record<string, string> = { draft: "Draft", live: "Live", retired: "Retired" };

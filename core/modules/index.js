@@ -10,6 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
@@ -338,11 +339,11 @@ function checkCredentials(list) {
 }
 
 /**
- * A module hands something UP to the daemon by a fixed name: only the vault, only `credentialsPort`. The vault may provide again (a crash restart, a disable and enable) and the new port replaces the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
+ * A module hands something UP to the daemon by a fixed name: the vault's `credentialsPort` and the switchboard's `accountKey` (the names listed below). The vault may provide again (a crash restart, a disable and enable) and the new port replaces the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (module === "threads" && name === "accountKey") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -646,7 +647,7 @@ const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
   memory: ["spaces.storage."],
   work: ["spaces.storage.", "vault.uses.for"], // vault.uses.for: the timeline asks, as the person looking
-  publish: ["previews.folder"], // a files preview card publishes its own folder, as the person who pressed it
+  publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
@@ -1362,7 +1363,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "chatFor", "agentActor", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1502,7 +1503,9 @@ export class Registry {
   }
 
   async call(tool, input = {}, caller = "unknown", { proof = null, yes: yesProof = null, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
-    const def = this.tools.get(tool);
+    // A proposed `<area>.<object>.<verb>` name is an alias (lib/tool-names.js): it is resolved to the tool's own name here, before anything else looks at the call, so every gate and list judges the same tool.
+    let def = this.tools.get(tool);
+    if (!def) { const own = aliasOf(tool); if (own && this.tools.has(own)) { def = this.tools.get(own); tool = own; } }
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;

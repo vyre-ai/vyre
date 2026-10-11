@@ -48,3 +48,25 @@ test("a member's AI account is theirs: listed, bound and removed by them only; t
   assert.deepEqual(await mine(BOB), []);
   assert.deepEqual(await mine(owner), ["Owner login"]);
 });
+
+test("the model a person chooses is theirs: a member's choice changes no one else's session, and the owner's is the Space's default", { timeout: 180_000 }, async t => {
+  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner, BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
+  const chainOf = (/** @type {string} */ person) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" });
+  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(chainOf(person), {})).token });
+  const resolve = async (/** @type {any} */ q) => (await d.registry.call("sessions.models.resolve", { purpose: "chat", ...q }, "module:vyred")).data;
+  const dflt = (await resolve({})).model;
+  assert.ok(!(await as(BOB, "sessions.models.set", { scope: "purpose:chat", model: "haiku" })).error);
+  assert.equal((await resolve({ person: BOB })).model, "haiku", "Bob's session runs on Bob's choice");
+  assert.equal((await resolve({ person: EVE })).model, dflt, "Eve's is untouched");
+  assert.equal((await resolve({ person: owner })).model, dflt, "and so is the owner's");
+  assert.ok(!(await as(owner, "sessions.models.set", { scope: "purpose:chat", model: "opus" })).error);
+  assert.equal((await resolve({ person: EVE })).model, "opus", "the owner's choice is the Space's default for people who chose none");
+  assert.equal((await resolve({ person: BOB })).model, "haiku", "and Bob keeps his own");
+  assert.equal((await as(BOB, "sessions.models.get")).data.purposes.chat.model, "haiku", "what Bob reads is his");
+  assert.equal((await as(EVE, "sessions.models.get")).data.purposes.chat.model, "opus");
+  assert.ok(!(await as(BOB, "sessions.models.set", { scope: "purpose:chat", model: null })).error);
+  assert.equal((await resolve({ person: BOB })).model, "opus", "clearing his choice returns him to the Space's default");
+});
+
