@@ -135,6 +135,7 @@ if (role === "server") {
   s = await turn("recall back on the computer", () => as(ownerId, "threads.send", { thread: th.id, text: REAL ? "What were the word and the colour I told you? Reply exactly as: word=<word> colour=<colour>" : "recall" }));
   if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else { assert.match(s, /side=mac /); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "the computer's agent sees both facts after the round trip: " + s); }
 
+  { const row = home.book.get(th.id); say(`   the book after the take-back and a turn there: ${JSON.stringify({ where: row && row.where, device: row && row.device, epoch: row && row.epoch })}`); assert.ok(row && row.where === "mac" && row.device === DEVICE, "the server's book says the chat runs on the computer"); }
   say("4. a teammate writes in the same chat: her turn runs on the server, never on the owner's computer");
   const macTurnsBefore = fs.existsSync(path.join(BASE, "mac-turns")) ? fs.readFileSync(path.join(BASE, "mac-turns"), "utf8") : "";
   s = await turn("the teammate's turn", () => as(CAROL, "threads.send", { thread: th.id, text: REAL ? "I am a teammate. What word did the owner ask you to remember? Reply with only the word." : "recall" }));
@@ -143,6 +144,16 @@ if (role === "server") {
   if (REAL) assert.match(s, /pineapple/i); else { assert.match(s, /side=server /, "the teammate's turn ran in the server's process: " + s); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "and it kept the context of every earlier turn, from the computer and from the server: " + s); }
   say(`   the chat said: ${JSON.stringify((await events()).filter((e) => e.type === "thread.text" && e.payload.notice).map((e) => e.payload.text).slice(-3))}`);
   void macTurnsBefore;
+  say("5. the owner writes again: the chat stays on the server (a teammate's turn took it there and nothing offered it back), and the owner can bring it to the computer once more");
+  const ASK = REAL ? "What were the word and the colour I told you? Reply exactly as: word=<word> colour=<colour>" : "recall";
+  s = await turn("the owner's turn after the teammate's", () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
+  assert.equal(where(), "server", "still the server's: the owner brings it back, nothing moves it behind their back");
+  if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else assert.match(s, /side=server /);
+  await ok("runner.move", { thread: chatId, to: "mac" });
+  await until(async () => where() === "mac", "the chat is on the computer again", 120_000);
+  s = await turn("the owner's turn back on the computer", () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
+  assert.equal(where(), "mac");
+  if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else { assert.match(s, /side=mac /); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "after a teammate's turn and a second trip the computer's agent still sees every earlier turn: " + s); }
   fs.writeFileSync(path.join(BASE, "done"), "1");
   say("PASS: the walk is complete");
   await d.stop().catch(() => {});
