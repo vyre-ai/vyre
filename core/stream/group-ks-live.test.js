@@ -635,7 +635,10 @@ test("N3: a notice outside a turn follows the room's membership: a member who wa
   const thread = kitThread(b, chat.id);
   await until(async () => (await b.reg.call("threads.get", { thread, limit: 5 }, "cli")).data.thread.status === "idle", "the thread to be idle", 30_000);
   await w.C.change(w.chains.bob, chat.id, { remove_people: [ADA] });
-  await sleep(300);
+  // the stream learns of the removal at the next call a person makes into the room (its mirror of the kernel's list), as for every other frame
+  const opened = await b.as("bob")("stream.open", { chat: chat.id });
+  assert.ok(!opened.error, JSON.stringify(opened.error));
+  await until(() => watchBob.frames.some(f => f.type === "chat.participant-left"), "the stream to know ada left");
   assert.ok(!(await b.reg.call("threads.notice", { thread, text: "NOTICE-AFTER-ADA-LEFT" }, "module:stream")).error);
   await until(() => textOf(watchBob.frames).includes("NOTICE-AFTER-ADA-LEFT") && textOf(watchCarol.frames).includes("NOTICE-AFTER-ADA-LEFT"), "the people in the chat to get the notice");
   await sleep(500);
