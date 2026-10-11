@@ -57,6 +57,12 @@
         "reach": "modules"
       },
       {
+        "name": "runner.offer-back",
+        "effect": "write",
+        "summary": "put a chat back on its own person's computer after another person's turn took it to the server",
+        "reach": "modules"
+      },
+      {
         "name": "runner.resume-lent",
         "effect": "write",
         "summary": "carry on a chat from the last whole turn its computer acknowledged",

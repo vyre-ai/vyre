@@ -12,6 +12,7 @@ import fs from "node:fs";
 
 /** Tools reachable by an agent that are deliberately not covered, each with why. */
 const EXEMPT = {
+  "runner.folders.allow": "the person's own yes on their own computer: `path` is a folder of THAT computer, not a project of the Space, and the tool needs the person's approval (the one yes)",
   "agents.update": "an agent changes only what it says about itself; the tool guards that (core/agents)",
   "sessions.accounts.bind": "an agent binds an account only when the person asked (askedOnly); the asked gate is the check",
   "vault.grant": "presence-gated and person-only at the vault; reviewer-2 has the vault grant and revoke review",
