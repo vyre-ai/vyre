@@ -8,6 +8,7 @@
 import http from "node:http";
 import { newPrefixedId } from "../../lib/id.js";
 import { within } from "../../lib/within.js";
+import { SANDBOX_PORTS } from "./homesandbox.js";
 
 export const PREVIEW = Object.freeze({ MAX_BODY: 1024 * 1024, REQ_MS: 60_000, WAIT_MS: 20_000, WAIT_MAX_MS: 25_000, MAX_QUEUE: 64, MAX_PER_SESSION: 4, MAX_TUNNELS: 8, CHUNK: 32 * 1024, TUNNEL_QUEUE_BYTES: 2 * 1024 * 1024 });
 /** Headers that describe one hop, or that the home's front sets itself: never sent to the dev server as the browser's. */
@@ -80,7 +81,8 @@ export function createPreviews(o = {}) {
      * @returns {Promise<{ port: number }>}
      */
     async open(session, port, viewer) {
-      if (!Number.isInteger(port) || port < 1024 || port > 65535) throw err("bad_input", "a preview is of a port from 1024 to 65535");
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) throw err("bad_input", "a preview is of a port from 1024 to 65535: start the dev server on one of those, then open its preview");
+      if (SANDBOX_PORTS.includes(port)) throw err("bad_input", "that port belongs to the sandbox itself, not to a dev server: start the dev server on another port, then open its preview");
       const key = `${session}:${port}`, had = bridges.get(key);
       if (had) { if (viewer) had.viewer = viewer; return { port: had.listen }; }
       if ([...bridges.values()].filter(b => b.session === session).length >= PREVIEW.MAX_PER_SESSION) throw err("quota", "this chat already has the most previews it may have: close one");

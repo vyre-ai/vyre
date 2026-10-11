@@ -168,7 +168,7 @@ export function createLentHome(o) {
     try { await store.drain(session); } catch { /* the store answers for itself */ }
     // a continuation that hangs is given half a minute and told again at the next sweep
     try {
-      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
+      await withinOrThrow(Promise.resolve(o.resume({ space: o.space, session, thread: threads.get(session) || row.chat || null, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), RESUME_MS, () => new Error("the continuation did not answer"));
       // only what was owed at THIS take-over: a later one of the same session is owed its own
       if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); threads.delete(session); }
     } catch { /* told again at the next sweep */ }
@@ -399,7 +399,8 @@ export function createLentHome(o) {
       if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
       // A chat that came back from a computer (its row says server, and the server has carried it on) may go out again: it is adopted afresh, from the server's whole turns, as the person's own ask to run there.
       const had = book.get(session);
-      if (had && (had.person !== person || had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place");
+      if (had && had.person !== person) throw err("not_found", "not found");   // a chat that is another person's is not there for this one
+      if (had && (had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place: let it finish where it is, then move it");
       const device = pickLender(person, session, null, Boolean(had));
       if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
       const lines = Array.isArray(i.lines) ? i.lines : [];
