@@ -40,9 +40,11 @@ if (role === "run") {
   const mac = spawn(process.execPath, [fileURLToPath(import.meta.url), "mac"], { env, stdio: ["ignore", mfd, mfd] });
   fs.writeFileSync(path.join(proof, "pids.txt"), `server pid ${server.pid}\nmac pid ${mac.pid}\n`);
   const code = await new Promise((res) => server.on("exit", res));
+  // the computer ends its sessions and unlocks its encrypted workspace before it exits: wait for that, then remove the folders (a mount that lingers is retried, never a failure of the proof)
+  const macGone = new Promise((r) => { mac.once("exit", r); setTimeout(r, 20_000); });
   try { process.kill(mac.pid, "SIGTERM"); } catch { /* gone */ }
-  await sleep(500);
-  fs.rmSync(base, { recursive: true, force: true });
+  await macGone;
+  for (let i = 0; i < 5; i++) { try { fs.rmSync(base, { recursive: true, force: true }); break; } catch { await sleep(1500); } }
   console.log(code === 0 ? "PASS" : `FAIL (server exit ${code})`);
   process.exit(code === 0 ? 0 : 1);
 }
