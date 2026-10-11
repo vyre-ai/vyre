@@ -39,6 +39,7 @@ test("a model's documents tools in a team turn run in the team Space as the memb
   const lines = /** @type {string[]} */ (/** @type {any} */ (w).lines);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const ana = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${ANA.slice(4, 8)}`, person: ANA, path: "relay" });
+  console.log("FIRMKEYS", Object.keys(firm), Object.keys(firm.kernel || {}).join(","));
   await firm.kernel.drive.put(owner, "Templates/Team letter.docx", new Uint8Array(docx(["Dear {client}, welcome to the team."])));
   const made = await as(ANA, "create", { title: "Team documents", people: [BEN], agents: ["assistant"] });
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
