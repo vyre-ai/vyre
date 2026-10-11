@@ -18,6 +18,8 @@ export function chatToolsSource(call: Call) {
     effort: (thread: string, effort: string | null) => guard(async () => { await ask("threads.effort", { thread, ...(effort ? { effort } : {}) }); return { ok: true }; }),
     thinking: (thread: string, on: boolean) => guard(async () => appliedOr(await ask("threads.thinking", { thread, on }), "thinking", "Thinking switches on a running session.")),
     mode: (thread: string, mode: string) => guard(async () => appliedOr(await ask("threads.mode", { thread, mode }), "mode", "The mode applies to a running session.")),
+    /** Say when the AI answers in a shared chat: "every" message or only when "mention"ed. The chat shows the change to everyone as a line. */
+    replyMode: (chat: string, mode: "every" | "mention") => guard(async () => { await ask("stream.reply-mode", { chat, mode }); return { ok: true }; }),
     /** "Fork this chat": a copy from here, or from one message when `at` names it. Answers the new thread. */
     fork: chatToolsFork,
     /** "Fork and continue on the server / this Mac": the copy, then the copy moved (runner.move). Answers the new thread and what happened to it, in words. */

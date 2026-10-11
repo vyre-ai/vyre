@@ -3,7 +3,7 @@
 export type Kind =
   | "text-delta" | "text-done" | "tool-started" | "tool-progress" | "tool-finished" | "term-chunk"
   | "term-command" | "file-changed" | "ask" | "ask-answered" | "user-message" | "status"
-  | "participant-joined" | "participant-left" | "reaction" | "pin" | "mention" | "fanout" | "fanout-keep" | "text-cut";
+  | "participant-joined" | "participant-left" | "reaction" | "pin" | "mention" | "fanout" | "fanout-keep" | "text-cut" | "reply-mode";
 export type ControlKind = "reset" | "heartbeat";
 /** Delivered, never logged, cur 0. */
 export type EphemeralKind = "presence" | "read-marker";
@@ -37,6 +37,7 @@ export interface DataByKind {
   "read-marker": { upto: number };
   "fanout": { group: string; message: string; members: { who: Author; message: string }[] };
   "fanout-keep": { group: string; keep: string };
+  "reply-mode": { mode: "every" | "mention" };
   "text-cut": { message: string; note: string };
   "status": { state: State; turn?: string; stopping?: boolean };
   "reset": { reason: string; head?: number };
