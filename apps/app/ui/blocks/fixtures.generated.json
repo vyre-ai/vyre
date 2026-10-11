@@ -4117,6 +4117,20 @@
     }
    }
   },
+  "space-computers": {
+   "title": "Where sessions run",
+   "screens": {
+    "full": {
+     "component": "space-computers"
+    },
+    "compact": {
+     "component": "space-computers"
+    },
+    "glance": {
+     "component": "space-computers"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {
