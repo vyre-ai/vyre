@@ -152,13 +152,15 @@ export async function createKernel(cfg) {
     const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, mints: needs.mints, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
     // On a Basic device only the fixed personal types exist: a module's other types are not made (its tools answer the Cloud line when they reach for one).
     const wanted = Array.isArray(needs.types) ? (cfg.basic ? needs.types.filter((/** @type {any} */ t) => cfg.basic.allow.has(String(t && t.name))) : needs.types) : [];
-    const ready = Promise.all([installed, wanted.length ? defineExtending(store, wanted) : Promise.resolve()]);
+    // The module's types are defined once the store has them. A store still starting refuses ("unavailable"): that refusal is NOT kept, the next call defines them again (a first start takes minutes, and a kept refusal answered "still starting" for good).
+    /** @type {Promise<any> | null} */ let readyP = null;
+    const ready = () => { if (!readyP) { const p = readyP = Promise.all([installed, wanted.length ? defineExtending(store, wanted) : Promise.resolve()]); p.catch((/** @type {any} */ e) => { if (readyP === p && e && e.code === "unavailable") readyP = null; }); } return readyP; };
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
-    ready.catch(() => {});
+    ready().catch(() => {});
     // A Proxy over a COPY of the gateway's (frozen) records: a Proxy over a frozen target must answer with the target's own values, and these answers wait for `ready`. The handle is read only: nothing
     // may assign to it, delete from it or redefine a method on it, so no holder can replace what another caller gets.
     const records = new Proxy({ ...gateway.records }, {
-      get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]),
+      get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready(); return t[k](...a); } : t[k]),
       set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false,
     });
     /** @type {any} */ const handle = {
@@ -207,7 +209,7 @@ export async function createKernel(cfg) {
        * @param {any} chain the caller's chain (`chain(meta)`) @param {string} value
        */
       ...(needs.sealDetect === true && cfg.sealer && typeof cfg.sealer.detectValue === "function" ? { sealDetect: async (/** @type {any} */ chain, /** @type {string} */ value) => {
-        await ready;
+        await ready();
         const r = await cfg.sealer.detectValue({ chain, caller: { module: m.name, first_party: true }, value,
           canRead: async (/** @type {string} */ resource) => { try { return (await gateway.authorize({ chain, action: "records.read", resource })).effect === "allow"; } catch { return false; } } });
         try { log.append(gateway.serviceChain(m.name), { type: "seal.detect", sv: 1, subject: `vyre://${cfg.space}/module/${m.name}`, data: { module: m.name, count: r.event ? r.event.count : null }, vis: "owner", red: "internal" }); } catch { /* the answer stands; a log that cannot be written says so on the next write */ }
@@ -312,7 +314,7 @@ export async function createKernel(cfg) {
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
-      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
+      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready(); return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready(); return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready(); return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
@@ -326,7 +328,7 @@ export async function createKernel(cfg) {
           if (!(await enrolledHere(cfg.space, meta.kernelFacts))) return gateway.serviceChain(m.name);
           try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
         }
-        await ready;
+        await ready();
         return gateway.serviceChain(m.name);
       },
     };

@@ -132,3 +132,18 @@ test("records.define on a store that attaches late waits for it; past the wait i
   await assert.rejects(() => k2.gateway.records.define(owner2, { add_types: [T] }), e => !/could not be read/.test(/** @type {any} */ (e).message) && /starting Records.*so far/.test(/** @type {any} */ (e).message));
   clearInterval(keep);
 });
+
+test("a module that took its kernel handle while the store was away has working records once the store joins (J9: the failed type definition was kept for good)", async () => {
+  const keep = setInterval(() => {}, 50);
+  const d = createDeferredStore({ reason: () => "starting Records: preparing its record types (4 minutes so far)", waits: () => true, waitMs: 80 });
+  const k = await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: d });
+  d.bootDone();
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const T = { name: "dossier3", label: "Dossier", fields: [{ name: "name", kind: "text", label: "Name", required: true }] };
+  const handle = k.kernelFor({ name: "probe", needs: { kernel: { actions: [], types: [T] } } });
+  await assert.rejects(() => handle.records.query(owner, "dossier3", { page: { limit: 5 } }), e => /** @type {any} */ (e).code === "unavailable", "while the store is away the module's records answer unavailable");
+  await d.attach(createMemoryStore());
+  const rows = (await handle.records.query(owner, "dossier3", { page: { limit: 5 } })).rows;
+  assert.deepEqual(rows, [], "once the store joined, the same handle reads its type (the earlier refusal is not kept)");
+  clearInterval(keep);
+});
