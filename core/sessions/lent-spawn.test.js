@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -505,4 +505,25 @@ test("the offline notice names the person when the chat knows a name; the wait g
   assert.equal(await lentYield(sb, SESSION, st, CAROL), true);
   await new Promise(r => setTimeout(r, 50));
   assert.deepEqual(said, ["Continuing from the last saved turn: Bob's computer is offline."]);
+});
+
+test("answering an ask, changing the mode and stopping a turn of a session that runs on a person's computer are that person's alone: the owner of the home, another member, and a call with no person are refused; the person themself is let through", async () => {
+  const { Switchboard } = await import("../switchboard/index.js");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const reached = () => new Error("reached the process");
+  const base = () => ({ live: new Map([[SESSION, { turn: null, proc: { where: "lent", write() { throw reached(); }, interrupt() { throw reached(); }, setMode() { throw reached(); } } }]]), asks: new Map([["a1", { state: "open", thread: SESSION, kind: "permission", request_id: "r1", tool: "Bash" }]]), inputs: new Map(), deps: { lentRow: () => row }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ provider: "claude", project: null }), closeAsk() {}, questionAnswers() { return {}; } });
+  const refused = (/** @type {any} */ e) => e.code === "denied" && /only they can/.test(e.message) && /Ask them/.test(e.message);
+  const calls = {
+    answer: (/** @type {any} */ who) => Switchboard.prototype.answer.call(base(), "a1", "allow", "deck", "ok", undefined, undefined, null, who),
+    mode: (/** @type {any} */ who) => Switchboard.prototype.mode.call(base(), SESSION, "default", who),
+    interrupt: (/** @type {any} */ who) => Switchboard.prototype.interrupt.call(base(), SESSION, who),
+  };
+  for (const [name, call] of Object.entries(calls)) {
+    for (const who of [OWNER, CAROL, null, undefined]) await assert.rejects(Promise.resolve().then(() => call(who)), refused, `${name} as ${String(who)}`);
+    await assert.rejects(Promise.resolve().then(() => call(BOB)), /reached the process/, `${name}: the person themself reaches their session`);
+  }
+  assert.equal(personOfMeta({ person: { id: "p1" } }), "p1"); assert.equal(personOfMeta({ kernelFacts: { person: "p2" } }), "p2"); assert.equal(personOfMeta({}), null);
+  // on the server the usual rules stand
+  const server = { ...base(), live: new Map([[SESSION, { turn: null, proc: { where: "box", write() { throw reached(); }, interrupt() { throw reached(); } } }]]) };
+  await assert.rejects(Promise.resolve().then(() => Switchboard.prototype.interrupt.call(server, SESSION, CAROL)), /reached the process/, "on the box anyone who may interrupt, interrupts");
 });
