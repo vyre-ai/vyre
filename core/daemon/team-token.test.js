@@ -40,9 +40,11 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
   // the "mcp" caller class on the Drive's read tools is global: a HOME session token naming the team's Space reads none of its files, and a team member's token reads only what that member may
   const owner2 = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner2", person: OWNER, path: "direct", session: "s" });
   await firm.gateway.drive.put(owner2, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
-  const asModel = (/** @type {string} */ token) => ({ root: w.root, caller: "mcp", headers: { "x-vyre-kernel-session": token } });
-  const viaHome = await call("files.drive.space.list", { space: firm.space }, asModel(home));
+  // a model's call, as the thread socket makes it: the caller class mcp:thread:<id> carrying the thread's session token
+  const asModel = (/** @type {string} */ token) => ({ token });
+  const model = (/** @type {string} */ token, /** @type {any} */ input) => w.d.registry.call("files.drive.space.list", input, "mcp:thread:t-model", asModel(token));
+  const viaHome = await model(home, { space: firm.space });
   assert.ok(viaHome.error || !JSON.stringify(viaHome.data || {}).includes("retainer.txt"), `a home session token reads nothing of the team's Drive: ${JSON.stringify(viaHome).slice(0, 200)}`);
-  const viaTeam = await call("files.drive.space.list", {}, asModel(team));
+  const viaTeam = await model(team, { space: firm.space });
   assert.ok(!viaTeam.error && JSON.stringify(viaTeam.data).includes("retainer.txt"), `the member's own session reads it, in the team Space: ${JSON.stringify(viaTeam).slice(0, 200)}`);
 });
