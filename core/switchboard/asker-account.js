@@ -152,13 +152,13 @@ export async function revertSettled(sb, id, waitDrain = true) {
   const left = () => Math.max(0, limit - Date.now());
   const back = sb.reverting.get(id);
   if (back) {
-    const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), left()); timer.unref?.(); })]);
+    const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), left()); })]);
     clearTimeout(timer);
     if (!settled) return false;
   }
   // a queued hop being started (the drain lock) is a base that is about to change too: wait for it to have started
   if (!waitDrain) return true;   // (the queued hop's own start does not wait for itself)
-  while (sb.draining && sb.draining.has(id) && left() > 0) await new Promise(r => { const t = setTimeout(r, 20); t.unref?.(); });
+  while (sb.draining && sb.draining.has(id) && left() > 0) await new Promise(r => { setTimeout(r, 20); });
   return !(sb.draining && sb.draining.has(id));
 }
 
