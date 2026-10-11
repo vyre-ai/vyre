@@ -189,7 +189,7 @@ export async function createKernel(cfg) {
        * the calling PERSON's chain instead (`grants.members.list(chain)`: a manager and above sees everyone in full; any other non-temp member sees the person and role of the others and the full record only of themself).
        * @param {string} person @param {string} [space] this Space only
        */
-      ...(needs.membership === true && grantsStore ? { membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
+      ...(needs.membership === true && grantsStore ? { hasOtherMembers: async () => grantsStore.hasOtherMembers(ownerRef.id), membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
         if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
         // This Space, or another this home hosts (its own grants and its own log): the answer and the owner-visible note come from the Space asked about.
         const h = space === cfg.space ? null : (spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null);
