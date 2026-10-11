@@ -83,6 +83,8 @@ export default {
         const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
+        // the library template's first tasks are done by the assistant "research", which a new Space lacks (start-project would make the project with no tasks); every app walk makes it before the install
+        await whenStoreIsUp(w, "agents.create", { name: "research", kind: "agent", projects: [], instructions: "Finds and reads the documents." });
         const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
         // an installed template is a draft; the app's Templates screen has Go live as its own action and every app walk calls it (work.template.golive puts the draft version live)
