@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentControl, personOfMeta, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -1152,13 +1152,25 @@ export class Switchboard {
    * @param {string} id @param {any} rec @param {{ chat?: string, asker?: string } | null} turn
    */
   async renewKernelSession(id, rec, turn) {
-    if (!this.deps.kernelSession) return;
+    if (!this.deps.kernelSession) return true;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space); } else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     // the turn before may still be streaming its reply under its session: the session itself is released, not cut (lib/kernel-session ends it when that reply closes)
     if (old) await old.end().catch(() => {});
+    return Boolean(ks);   // false: no session could be opened for this turn (the asker left the chat, or the kernel could not)
+  }
+
+  /**
+   * Queued words whose asker could not be given a kernel session when their turn came: they are marked dropped and never written to the thread without a token, and the person is told what to do.
+   * @param {string} id @param {any[]} rows the rows of the turn @param {string|null} project
+   */
+  dropQueuedChatTurn(id, rows, project) {
+    const drop = this.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?");
+    for (const r of rows) drop.run(r.id);
+    this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
+    this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project);   // the turn announced as begun for these words ends here
   }
 
   /** @param {string} id */
@@ -1702,7 +1714,7 @@ export class Switchboard {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
-    const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : person);   // a switch stops the process: on a person's own computer only that person may
+    const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : reason === "limit" || reason === "back" ? lentHolder(this, id, st) : person);   // a switch stops the process: on a person's own computer only that person may
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
@@ -2271,7 +2283,7 @@ export class Switchboard {
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).catch(() => {}).finally(deliver); return; } }
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) deliver(); else this.dropQueuedChatTurn(id, taken, project); }); return; } }
     deliver();
   }
 
@@ -4370,7 +4382,7 @@ export default {
         // device: which of the person's devices answered, when the call says (a paired device over
         // the relay, the owner's tailnet node), not only the surface it claims.
         const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
-        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device, personOfMeta(meta));
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device, (personOfChain(kchainNow()) || personOfMeta(meta)));
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
@@ -4395,7 +4407,7 @@ export default {
 
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "interrupt sessions"); return sb.interrupt(i.thread, personOfMeta(meta)); });
+      async (i, meta) => { guard(meta.caller, "interrupt sessions"); return sb.interrupt(i.thread, (personOfChain(kchainNow()) || personOfMeta(meta))); });
 
     tool("threads.switch", "Continue a thread on another provider (and account) between turns, keeping its folder and files; the new provider gets a brief of what was said.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: { type: "string", description: "claude, codex or grok." }, account: { type: "string", description: "One granted to this project or agent; never a guess between two." }, model: str, text: { type: "string", description: "The next message to send there." } } },
@@ -4578,7 +4590,7 @@ export default {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
         // Whatever the reach list lets an assistant do for its person, "Doesn't ask" is the person's own choice and nothing else's (ADR 0030, Security): only a person's surface sets it.
         if (i.mode === BYPASS && !["cli", "local", "deck", "capsule"].includes(String(caller))) throw Object.assign(new Error("Doesn't ask is the person's own choice; an assistant never sets it"), { code: "denied" });
-        return sb.mode(i.thread, i.mode, personOfMeta(meta));
+        return sb.mode(i.thread, i.mode, (personOfChain(kchainNow()) || personOfMeta(meta)));
       },
       ["cli", "local", "deck", "capsule"]);
 
@@ -4635,7 +4647,7 @@ export default {
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
         const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
         const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
-        for (const r of busy) await sb.interrupt(r.thread, personOfMeta(meta));
+        for (const r of busy) await sb.interrupt(r.thread, (personOfChain(kchainNow()) || personOfMeta(meta)));
         return { stopped: busy.map(r => r.thread) };
       });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",

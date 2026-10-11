@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -547,4 +547,29 @@ test("another person's one-turn hop to her own account never stops a process on 
   // the switch itself refuses too, whoever asks it (fail closed)
   await assert.rejects(Switchboard.prototype.doSwitchProvider.call({ ...stub, must: () => ({ project: null, provider: "claude" }), deps: { ...stub.deps, providers: new Map() } }, SESSION, { provider: "claude", kernelTurn: { chat: "chat_bob", asker: CAROL }, person: CAROL }), (/** @type {any} */ e) => e.code === "denied");
   assert.ok(!log.includes("stopped the process"), "the owner's process was never stopped");
+});
+
+
+test("the lender's own terminal (a socket caller whose facts carry no person) is let through by the person its kernel chain names; an agent behind the call, or another member, is not", async () => {
+  const socketMeta = { kernelFacts: { kind: "socket", surface: "cli", uid: 501, pid: 1234 } };
+  assert.equal(personOfMeta(socketMeta), null, "the facts of a socket name nobody");
+  const chainOf = (/** @type {any[]} */ hops) => ({ hops });
+  const person = (/** @type {string} */ id) => ({ actor: { kind: "person", id } });
+  assert.equal(personOfChain(chainOf([person(BOB)])), BOB, "the chain names the person");
+  assert.equal(personOfChain(chainOf([person(BOB), { actor: { kind: "agent", id: "kit" } }])), null, "an agent acting for the person is not the person");
+  assert.equal(personOfChain(null), null);
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const sb = { deps: { lentRow: () => row }, chatOf: () => "chat_bob", nativeOf: () => SESSION };
+  const st = { turn: null, proc: { where: "lent" } };
+  const who = (/** @type {any} */ kc) => personOfChain(kc) || personOfMeta(socketMeta);
+  assert.doesNotThrow(() => lentControl(sb, SESSION, st, who(chainOf([person(BOB)]))), "the lender at his own terminal stops, answers and changes mode on his own computer's session");
+  assert.throws(() => lentControl(sb, SESSION, st, who(chainOf([person(CAROL)]))), (/** @type {any} */ e) => e.code === "denied", "another member still cannot");
+});
+
+test("the usage-limit fallback and the hop back are the holder's own act on a session on their computer: not refused as a stranger's, and a stranger's switch still is", async () => {
+  const { Switchboard } = await import("../switchboard/index.js");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const stub = { live: new Map([[SESSION, { turn: null, proc: { where: "lent", stop: async () => { throw new Error("reached the stop"); } } }]]), deps: { lentRow: () => row, providers: new Map() }, chatOf: () => "chat_bob", nativeOf: () => SESSION, must: () => ({ project: null, provider: "claude" }), record: () => ({ provider: "claude" }), canon: (/** @type {string} */ x) => x };
+  for (const reason of ["limit", "back"]) await assert.rejects(Switchboard.prototype.doSwitchProvider.call(stub, SESSION, { provider: "claude", reason }), (/** @type {any} */ e) => e.code !== "denied", `${reason}: not refused as a stranger's`);
+  await assert.rejects(Switchboard.prototype.doSwitchProvider.call(stub, SESSION, { provider: "claude", reason: "asked", person: CAROL }), (/** @type {any} */ e) => e.code === "denied", "another member's asked switch is refused");
 });

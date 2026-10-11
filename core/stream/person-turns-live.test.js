@@ -378,7 +378,8 @@ test("review C: a kernel whose owner cannot be read refuses a member with no sig
   w.blank.on = true;
   const before = (await events()).length;
   const sent = await b.reg.call("threads.send", { thread, text: "who owns this?", surface: "deck", chat: chat.id, asker: CAROL }, "module:stream", {});
-  assert.equal(sent.error && sent.error.code, "account_required", JSON.stringify(sent));
+  assert.equal(sent.error && sent.error.code, "unavailable", JSON.stringify(sent));   // the owner cannot be read: said as that (and it refuses the real owner too)
+  assert.match(String(sent.error && sent.error.message), /cannot tell just now who owns this Space/);
   await sleep(500);
   assert.ok(!sentIn((await events()).slice(before), /who owns this/), "nothing reached the thread, so nothing ran on the machine's own login");
   await b.stop();

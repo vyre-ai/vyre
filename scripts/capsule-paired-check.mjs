@@ -39,7 +39,33 @@ watchdog.unref();
 /** @type {(() => any)[]} */ const cleanups = [];
 const t = { name: "capsule-paired", fullName: "scripts/capsule-paired-check.mjs", after: fn => { cleanups.push(fn); } };
 let child = null;
+/** @type {{ code: number | null, signal: string | null, at: string } | null} */ let exitInfo = null;
+const startedAt = Date.now();
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-capsule-paired-"));
+
+
+/**
+ * Why did Lumen go quiet or exit? What macOS knows about the process, kept for the run's artifact (VYRE_CAPSULE_DIAG): the crash reports written since this check began (DiagnosticReports for Vyre or Lumen,
+ * .ips and .crash), the unified log of the process for the last ten minutes, and the process table. Never throws: a missing piece is said and the rest still comes.
+ */
+function collectDiagnostics() {
+  const dir = process.env.VYRE_CAPSULE_DIAG; if (!dir) return;
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { return; }
+  const note = (/** @type {string} */ m) => { console.log(m); try { fs.appendFileSync(path.join(dir, "notes.txt"), m + "\n"); } catch {} };
+  try {
+    const reports = path.join(os.homedir(), "Library", "Logs", "DiagnosticReports");
+    const mine = fs.existsSync(reports) ? fs.readdirSync(reports).filter(f => /(Vyre|Lumen)/i.test(f) && fs.statSync(path.join(reports, f)).mtimeMs >= startedAt - 60_000) : [];
+    for (const f of mine) fs.copyFileSync(path.join(reports, f), path.join(dir, f));
+    note(`crash reports since the check began: ${mine.join(", ") || "none"}`);
+  } catch (e) { note(`diagnostic reports unreadable: ${String(e && /** @type {any} */ (e).message)}`); }
+  const run = (/** @type {string} */ name, /** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {number} */ ms) => {
+    try { const out = execFileSync(cmd, args, { encoding: "utf8", timeout: ms, maxBuffer: 64 << 20 }); fs.writeFileSync(path.join(dir, name), out); note(`${name}: ${out.split("\n").length} lines`); return out; }
+    catch (e) { note(`${name} failed: ${String(e && /** @type {any} */ (e).message).slice(0, 200)}`); return ""; }
+  };
+  const lg = run("log-show.txt", "/usr/bin/log", ["show", "--last", "10m", "--style", "compact", "--predicate", 'process == "Vyre" OR process == "Lumen" OR processImagePath CONTAINS "Vyre.app"'], 90_000);
+  if (lg) console.log(lg.split("\n").slice(-60).join("\n"));
+  run("ps.txt", "/bin/ps", ["-axo", "pid,ppid,etime,state,command"], 15_000);
+}
 
 try {
   const world = await pair(t, { hold: 2000, heartbeat: 500, boxName: "kit-box", macHost: "test-mac" });
@@ -53,6 +79,9 @@ try {
 
   const sock = socketPath(world.macRoot);
   child = spawn(bin, [], { env: { ...process.env, VYRE_HOME: home, VYRE_SOCKET: sock, VYRE_CAPSULE_DRIVE: "1", VYRE_CAPSULE_TEST: "1" }, stdio: ["pipe", "pipe", "inherit"] });
+  // When Lumen goes, say how: the exit code or the signal, and when (a crash report or a quiet exit shows up in the diagnostics below).
+  child.on("exit", (code, signal) => { exitInfo = { code, signal, at: new Date().toISOString() }; console.log(`Lumen exited: code ${code}, signal ${signal}, at ${exitInfo.at}`); });
+  child.on("error", e => console.log(`Lumen process error: ${e && e.message}`));
   /** @type {((m: any) => void)[]} */ const waiting = [];
   readline.createInterface({ input: /** @type {any} */ (child.stdout) }).on("line", l => { let m; try { m = JSON.parse(l); } catch { return; } const w = waiting.shift(); if (w) w(m); });
   const send = (c, ms = 20_000) => new Promise((r, j) => { waiting.push(r); child.stdin?.write(JSON.stringify(c) + "\n"); setTimeout(() => j(new Error(`no answer to ${JSON.stringify(c)}`)), ms); });
@@ -129,6 +158,8 @@ try {
   await still("paired-away.png");
 } catch (e) {
   failures.push(String(e && e.message || e)); console.log(`FAIL ${e && e.message || e}`);
+  console.log(exitInfo ? `Lumen had already exited: code ${exitInfo.code}, signal ${exitInfo.signal}, at ${exitInfo.at}` : `Lumen has not exited (pid ${child && child.pid})`);
+  collectDiagnostics();
   // Lumen did not answer: where is it? A sample of the main thread says whether it is busy in a search, waiting on the box, or stuck, instead of only that it was silent.
   if (child && child.pid) { try { console.log(execFileSync("/usr/bin/sample", [String(child.pid), "3", "-mayDie"], { encoding: "utf8", timeout: 30_000 }).split("\n").slice(0, 90).join("\n")); } catch (se) { console.log(`sample failed: ${String(se && se.message || se).split("\n")[0]}`); } }
 } finally {
