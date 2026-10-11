@@ -67,3 +67,29 @@ test("accounts: default, remove and privacy are one call each; a refusal comes b
     { tool: "sessions.accounts.remove", input: { id: "a2" } },
   ]);
 });
+
+test("adding a key: the choices, the help under each, and a refusal that says what to do", { skip: !strip }, async () => {
+  const m = await import("./accounts-model.ts");
+  assert.deepEqual(m.KEY_CHOICES.map(([k]) => k), ["anthropic-compatible", "openrouter", "setup-token"]);
+  assert.match(m.keyHelp("setup-token"), /private to you on this server/);
+  assert.match(m.keyHelp("openrouter"), /openrouter\.ai/);
+  assert.match(m.keyRefusal("denied", ""), /Sign in, then try again/);
+  assert.match(m.keyRefusal("too_many", ""), /Remove one/);
+  assert.equal(m.keyRefusal("bad_input", "the service refused that key"), "the service refused that key");
+});
+
+test("adding a key sends an API key through the key shortcut, and a setup token through the person's own vault key, then removes the key if the account is refused", { skip: !strip }, async () => {
+  const { accountsSource } = await import("./accounts-source.ts");
+  const a = box({ "sessions.accounts.key": { data: { id: "k1" } } });
+  await accountsSource(a.call).addKey("openrouter", "  sk-or-fixture-0123456789  ", "work");
+  assert.deepEqual(a.seen.map((s) => s.tool), ["sessions.accounts.key"]);
+  assert.deepEqual(a.seen[0].input, { kind: "openrouter", key: "sk-or-fixture-0123456789", label: "work" });
+  const b = box({ "vault.member.put": { data: { id: "mk_1", item: "member:mk_1" } }, "sessions.accounts.add": { data: { id: "a9" } } });
+  await accountsSource(b.call).addKey("setup-token", "tok-fixture-0123456789");
+  assert.deepEqual(b.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add"]);
+  assert.equal(b.seen[1].input.vault_item, "member:mk_1");
+  assert.equal(b.seen[1].input.kind, "setup-token");
+  const c = box({ "vault.member.put": { data: { id: "mk_2", item: "member:mk_2" } }, "sessions.accounts.add": () => ({ error: { code: "denied", message: "no" } }) });
+  await assert.rejects(() => accountsSource(c.call).addKey("setup-token", "tok-fixture-0123456789"));
+  assert.deepEqual(c.seen.map((s) => s.tool), ["vault.member.put", "sessions.accounts.add", "vault.member.remove"], "a key whose account was refused is not left behind");
+});

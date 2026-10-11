@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
-import { ADDABLE, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
+import { ADDABLE, KEY_CHOICES, canMakeDefault, keyHelp, keyRefusal, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
 
 const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? e.message : f);
@@ -15,6 +15,16 @@ export function AccountsCard() {
   const [busy, setBusy] = useState("");
   const [confirming, setConfirming] = useState("");
   const [adding, setAdding] = useState(false);
+  const [keying, setKeying] = useState(false);
+  const [keyKind, setKeyKind] = useState(KEY_CHOICES[0][0]);
+  const [keyValue, setKeyValue] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const addKey = async () => {
+    setKeyBusy(true); setProblem("");
+    try { await accounts.addKey(keyKind, keyValue, label.trim()); setKeying(false); setKeyValue(""); setLabel(""); load(); }
+    catch (e) { setProblem(keyRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "")); }
+    finally { setKeyBusy(false); }
+  };
   const [provider, setProvider] = useState(ADDABLE[0]);
   const [label, setLabel] = useState("");
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -122,8 +132,21 @@ export function AccountsCard() {
             <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
           </View>
         </View>
+      ) : keying ? (
+        <View className="gap-s2">
+          <Segmented label="What you have" value={keyKind} onChange={setKeyKind} options={KEY_CHOICES} />
+          <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
+          <Field name="The key or token" kind="password" value={keyValue} onChangeText={setKeyValue} placeholder="Paste it here" help={keyHelp(keyKind)} />
+          <View className="flex-row flex-wrap gap-s2">
+            <Button size="sm" label="Add" loading={keyBusy} disabled={keyValue.trim().length < 12} onPress={() => void addKey()} />
+            <Button kind="ghost" size="sm" label="Cancel" onPress={() => { setKeying(false); setKeyValue(""); setProblem(""); }} />
+          </View>
+        </View>
       ) : (
-        <View className="self-start"><Button size="sm" label="Add an account" onPress={() => setAdding(true)} /></View>
+        <View className="flex-row flex-wrap gap-s2">
+          <Button size="sm" label="Add an account" onPress={() => setAdding(true)} />
+          <Button kind="ghost" size="sm" label="Add a key" onPress={() => setKeying(true)} />
+        </View>
       )}
     </Card>
   );

@@ -66,3 +66,18 @@ export function flowOf(d: any, provider: string, id = ""): Flow {
 }
 /** The box holds each status call open, so the follow loop goes on only while the flow is waiting; a pasted code (step "url"), done and failed all end it. */
 export const keepFollowing = (f: Flow): boolean => f.step !== "done" && f.step !== "failed" && f.step !== "url";
+
+
+/** The keys and tokens a person may add for their own use (any member on a team server, the owner on their own): the choices, what each is, and a refusal in words. */
+export const KEY_CHOICES: [string, string][] = [["anthropic-compatible", "Anthropic API key"], ["openrouter", "OpenRouter key"], ["setup-token", "Claude setup token"]];
+export const keyHelp = (kind: string): string =>
+  kind === "openrouter" ? "A key from openrouter.ai. It is checked once with a call that costs nothing, kept private to you on this server, and used only for your own chats."
+  : kind === "setup-token" ? "The token that claude setup-token prints. It is kept private to you on this server, never shown again, and used only for your own chats."
+  : "A key from console.anthropic.com. It is checked once with a call that costs nothing, kept private to you on this server, and used only for your own chats.";
+/** A refusal while adding a key, with what to do next. */
+export function keyRefusal(code: string | undefined, message: string): string {
+  if (code === "bad_input") return message || "That did not look like a working key. Check what you pasted and try again.";
+  if (code === "denied") return "Adding a key is for a person signed in as themselves. Sign in, then try again.";
+  if (code === "too_many") return "You already have the accounts this server allows. Remove one under Other AI accounts, then add this one.";
+  return message || "That key was not added. Try again, or ask the owner of this server.";
+}
