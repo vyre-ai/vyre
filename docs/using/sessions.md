@@ -48,6 +48,10 @@ On a server, each account runs as its own user, so one account's sign-in cannot 
 another's. An account that an agent started stays pending until you finish it on your own
 device.
 
+### Your own sign-in on a team's server
+
+When you join a team's server, you sign in your own AI there: Settings, Accounts, sign in with Claude, Codex or Grok. The provider shows you its page and a code, you approve it, and the sign-in lives in a folder that belongs to that account alone. Your turns in a shared chat run on it, and no one else's do: not the owner's, not another member's. The owner cannot list it, use it or read it. You can have one sign-in account on the server; to change it, remove it first. An API key is not offered to members yet, because a key sits in the server's Vault, which is the owner's. Members' own Vaults come in 0.3.4.
+
 ### What a vendor sees
 
 A sign-in session (Claude, Codex or Grok on your own subscription) talks to its own vendor with your own sign-in. Vyre keeps the session: the transcript, memory, tools and the Gate that holds a send for your yes are Vyre's, and what you type is checked for keys before the vendor hears it; what the model prints is checked for keys before it reaches the transcript. Vyre does not check a sealed customer value you typed into the chat against the session's record of what it has used: the vendor is your choice, and the Gate still holds anything that leaves your Space. A session on an API key (OpenRouter, an OpenAI-compatible address, or a Codex or Grok account that holds a key) goes through Vyre's model door instead. Vyre checks each piece of text as it arrives, so a key that a model prints split across two streamed pieces is caught only in the whole message that follows; the half-finished text on your screen while it streams can briefly show part of it.
