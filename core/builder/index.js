@@ -121,7 +121,7 @@ async function gitClone(url, branch, dir) {
       if (!err) return resolve(undefined);
       const t = String(errText);
       const why = /Remote branch .* not found/i.test(t) ? "that branch is not in the repo" : /not found|could not read|Authentication failed|terminal prompts disabled/i.test(t) ? "the repo is not there, or it is private (only public repos are cloned for now)" : "git could not clone it";
-      reject(refuse(`could not get the repo: ${why}`, "refused"));
+      reject(refuse(`could not get the repo: ${why}; check the owner and name, or publish a folder instead`, "refused"));
     });
   });
 }
