@@ -18,9 +18,11 @@ export function chatFolderFor(o) {
     // the path can still use it; the per-chat group made by the spawner is the real fix (BACKLOG 0.3.4).
     const name = hidden(String(o.root), o.grp);
     const space = o.space || "home";
-    const dirs = [[path.join(work, "chats"), 0o710], [path.join(work, "chats", space), 0o710], [path.join(work, "chats", space, name), 0o2770], [path.join(work, "chats", space, name, "work"), 0o2770]];
+    const dirs = [[path.join(work, "chats"), 0o2710], [path.join(work, "chats", space), 0o2710], [path.join(work, "chats", space, name), 0o2770], [path.join(work, "chats", space, name, "work"), 0o2770]];
     for (const [d, mode] of dirs) {
       fs.mkdirSync(d, { recursive: true });
+      // (setgid keeps the work folder's group on what is made inside: without it the sessions' group is shut out of the parents, as the first walk with the sandbox on showed)
+      try { fs.chownSync(d, -1, fs.statSync(work).gid); } catch { /* the group is already the work folder's, or not ours to set */ }
       try { fs.chmodSync(d, mode); } catch { /* not ours to change: it is open already, or the run says so */ }
     }
     return dirs[dirs.length - 1][0];
