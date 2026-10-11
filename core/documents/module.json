@@ -17,18 +17,21 @@
       {
         "name": "documents.template.list",
         "effect": "read",
-        "reach": "anyone"
+        "reach": "anyone",
+        "crossSpace": "drive.read"
       },
       {
         "name": "documents.template.get",
         "effect": "read",
-        "reach": "anyone"
+        "reach": "anyone",
+        "crossSpace": "drive.read"
       },
       {
         "name": "documents.generate",
         "effect": "write",
         "reach": "anyone",
-        "projectArg": "project"
+        "projectArg": "project",
+        "crossSpace": "drive.write"
       },
       {
         "name": "documents.signing.flow",
