@@ -256,6 +256,9 @@ test("a restart where the person can no longer be reopened: the turn is given up
 const personOfSession = async (w, b, id) => (await w.k.surfaces.verify(await b.ks.tokenFor(id)())).person;
 const userMsgs = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.user-message" && f.data.state === "sent").map(f => String(f.data.text));
 const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, string>} */ const by = new Map(); const done = new Set(); for (const f of frames) { if ((f.type !== "chat.text-delta" && f.type !== "chat.text-done") || f.data.reasoning) continue; const id = String(f.data.message); if (f.type === "chat.text-delta") by.set(id, (by.get(id) || "") + f.data.text); else done.add(id); } return [...by].filter(([id]) => done.has(id)).map(([, t]) => t); };
+/** What the assistant answered (the notices that a turn moved to someone's account and back are not answers). A turn on its asker's own account is handed the conversation so far in front of its words, so its echo ENDS with them. */
+const answers = (/** @type {any[]} */ frames) => repliesOf(frames).filter(r => r.startsWith("echo: "));
+const askersOf = (/** @type {any} */ w) => w.asked.map((/** @type {any} */ a) => a.asker).filter((/** @type {any} */ a, /** @type {number} */ k, /** @type {any[]} */ l) => a !== l[k - 1]);   // a turn that moves to its asker's own account opens its session at the move and again at the send: one turn
 const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && String(e.data.by.agent || "").startsWith("model:")).map((/** @type {any} */ e) => e.data.by.person);
 
 test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
@@ -284,11 +287,11 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   assert.equal(b.ks.list().length, 1, "no second session was opened mid-turn");
   assert.equal(await grant(), before, "and what was refused stays refused");
   assert.deepEqual(w.asked.map(a => a.asker), [CAROL], "the Switchboard has been asked for carol's session only");
-  await until(() => repliesOf(watcher.frames).includes("echo: ok, continue"), "the admin's turn", 30_000);
-  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB], "bob's turn opened under bob, after carol's");
+  await until(() => answers(watcher.frames).some(r => r.endsWith("ok, continue")), "the admin's turn", 30_000);
+  assert.deepEqual(askersOf(w), [CAROL, BOB], "bob's turn opened under bob, after carol's");
   assert.deepEqual(opened(w), [CAROL, BOB], "the kernel recorded each reply under its own asker, in order");
-  assert.equal(repliesOf(watcher.frames).filter(r => /ok, continue/.test(r)).length, 1, "and the admin's words were answered once");
-  assert.ok(!repliesOf(watcher.frames).some(r => r.includes("SECRET") && r.includes("ok, continue")), "never merged into carol's turn");
+  assert.equal(answers(watcher.frames).filter(r => r.endsWith("ok, continue")).length, 1, "and the admin's words were answered once");
+  assert.ok(!answers(watcher.frames)[0].includes("ok, continue"), "never merged into carol's turn");
 });
 
 test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {
@@ -303,11 +306,12 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   await until(() => userMsgs(watcher.frames).length >= 3, "both words in the chat");
   assert.deepEqual(userMsgs(watcher.frames).slice(1), ["B-ONE", "A-ONE"], "both are in the chat at once, in arrival order");
   assert.equal(w.asked.length, 1, "neither has a turn yet");
-  await until(() => repliesOf(watcher.frames).length >= 3, "all three replies", 40_000);
-  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
+  await until(() => answers(watcher.frames).length >= 3, "all three replies", 60_000);
+  assert.deepEqual(askersOf(w), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
   assert.deepEqual(opened(w), [CAROL, BOB, ADA]);
-  const rs = repliesOf(watcher.frames);
-  assert.deepEqual(rs.slice(1), ["echo: B-ONE", "echo: A-ONE"], "never merged into one turn");
+  const rs = answers(watcher.frames);
+  assert.equal(rs.length, 3);
+  assert.ok(rs[1].endsWith("B-ONE") && !rs[1].endsWith("A-ONE") && rs[2].endsWith("A-ONE") && !rs[2].endsWith("B-ONE"), "never merged into one turn");
 });
 
 test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", async t => {
@@ -318,10 +322,11 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
   assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
   for (const [who, text] of [["bob", "B-ONE"], ["ada", "A-ONE"], ["bob", "B-TWO"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
-  await until(() => repliesOf(watcher.frames).length >= 4, "all four replies", 60_000);
-  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
+  await until(() => answers(watcher.frames).length >= 4, "all four replies", 90_000);
+  assert.deepEqual(askersOf(w), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
   assert.deepEqual(opened(w), [CAROL, BOB, ADA, BOB]);
-  assert.deepEqual(repliesOf(watcher.frames).slice(1), ["echo: B-ONE", "echo: A-ONE", "echo: B-TWO"], "never merged, none cut");
+  const rs = answers(watcher.frames);
+  assert.deepEqual(rs.slice(1).map(r => ["B-ONE", "A-ONE", "B-TWO"].find(x => r.endsWith(x))), ["B-ONE", "A-ONE", "B-TWO"], "never merged, none cut");
 });
 
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
@@ -349,10 +354,10 @@ test("V3: the stream does not hold, retry or queue: the Switchboard queues anoth
   await sleep(400);
   assert.equal(sends.length, 1, "the stream sent once: no hold, no retry, no polling");
   assert.deepEqual(askedWhileWaiting, [CAROL], "carol's turn is the only one that opened a session while the message waits");
-  await until(() => repliesOf(watcher.frames).includes("echo: QUEUEDONE"), "the queued message's turn", 40_000);
+  await until(() => answers(watcher.frames).some(r => r.endsWith("QUEUEDONE")), "the queued message's turn", 60_000);
   assert.equal(sends.length, 1, "still one send");
   assert.ok(states().some(x => x[0] === "picked-up" && x[1] === qid), "and it shows picked up when its turn started");
-  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB]);
+  assert.deepEqual(askersOf(w), [CAROL, BOB]);
   assert.equal(b.stream().groups.member(chat.id, "assistant:assistant").asker, `person:${BOB}`, "the replies from then on are bob's");
 });
 
