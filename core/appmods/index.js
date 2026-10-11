@@ -13,6 +13,7 @@ import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
+import { MOUNT } from "./mount.js";
 import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
@@ -394,7 +395,12 @@ export default {
       return Buffer.from(/** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name)).key);
     };
     const domains = createDomains(db);
+    /** The running app that signs documents, or null. */
+    const signingAppName = () => { for (const m of catalog.values()) if (m.app && m.app.signing && (row(m.name) || {}).state === "running") return m.name; return null; };
+    /** The Space's own address a signer's pages are carried to under /sign/ (mount.js), or null while no app signs or the address is only this machine's. */
+    const signMount = () => { const n = signingAppName(), b = baseHost(); return n && !/^localhost(?::\d+)?$/.test(b) ? { host: b.replace(/^https?:\/\//, "").toLowerCase(), name: n } : null; };
     const hostProxy = createHostProxy({
+      sign: async () => signMount(),
       alias: host => domains.appOf(host),
       brand: brandCss,
       linkKey,
@@ -500,7 +506,8 @@ export default {
         if (days !== null && (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS)) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days, or does not expire`, "bad_input");
         const expires = days === null ? null : Date.now() + days * 86_400_000;
         let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
-        return { url: `${await signerOrigin(name)}${SIGNED}${token}`, expires };
+        const so = await signerOrigin(name);
+        return { url: `${so.origin}${so.mount}${SIGNED}${token}`, expires };
       },
     });
     ctx.tool("appmods.signed.revoke", {
@@ -597,7 +604,7 @@ export default {
         if (!res.ok) throw refuse(`${name} would not make the signing request (${res.status}); check that template ${body.template_id} exists`, "app_refused");
         const got = readRequest(await res.json().catch(() => null));
         if (!got) throw refuse(`${name} answered, but not with a signing request`, "app_refused");
-        return { ...got, url: `${await signerOrigin(name)}/sign/${got.submission}/${got.slug}` };
+        return { ...got, url: `${(await signerOrigin(name)).origin}/sign/${got.submission}/${got.slug}` };
       },
     });
     ctx.tool("appmods.signing.waiting", {
@@ -610,10 +617,11 @@ export default {
         const r = row(name); if (!r || r.state !== "running" || !r.origin || !(known(name).app || {}).signing) return { requests: [] };
         const res = await fetch(`${r.origin}/api/submissions?status=pending&limit=100`, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
         if (!res || !res.ok) throw refuse(`${name} would not say what is waiting (${res ? res.status : "no answer"})`, "app_refused");
-        const origin = await signerOrigin(name);
+        const origin = (await signerOrigin(name)).origin;
         return { requests: readWaiting(await res.json().catch(() => null)).map(q => ({ ...q, url: `${origin}/sign/${q.submission}/${q.slug}` })) };
       },
     });
+    ctx.tool("appmods.signing.mount", { description: "The Space's own address that carries a signer's pages under /sign/: { host } or null. For Vyre's own modules (the public gate).", input: obj({}), run: async () => signMount() ? { host: /** @type {{ host: string }} */ (signMount()).host } : { host: null } });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
       hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().filter((/** @type {any} */ r) => !(catalog.get(r.name) || { app: {} }).app.service).map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
         ...domains.list().filter(d => (row(d.app) || {}).state === "running").map(d => d.host)] }) });
@@ -625,9 +633,11 @@ export default {
         const r = /** @type {any} */ (await ctx.call("wink.public.hosts", {}).catch(() => null));
         const live = ((r && r.data && r.data.hosts) || []).filter((/** @type {any} */ h) => h.state === "live").map((/** @type {any} */ h) => String(h.host));
         const own = ownOrigin(domains.list(), name, live);
-        if (own) return own;
+        if (own) return { origin: own, mount: "" };
       }
-      return originFor(name, baseHost());
+      // the Space's own address, the signing pages under /sign/ of it; this machine's own address (localhost) keeps the app's host
+      const m = signMount();
+      return m ? { origin: `https://${m.host}`, mount: MOUNT } : { origin: originFor(name, baseHost()), mount: "" };
     };
 
     // Apps that were running when this daemon stopped come back with it.

@@ -10,6 +10,7 @@ import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
 import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS, SIGNED, checkLink, EXPIRED_HTML, filePaths } from "./signing.js";
+import { MOUNT, toApp, mountLocation, rewriteHtml, rewriteCss, rewriteJson, rewriteJs } from "./mount.js";
 
 export const ENTER = "/__vyre/enter";
 export const COOKIE = "vyre_app";
@@ -119,7 +120,7 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
+ * @param {{ sign?: () => Promise<null | { host: string, name: string }>, app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
  *   alias?: (host: string) => string | null,   the app an own domain (sign.firm.com) is for, or null
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number,
  *   wsMax?: number, wsTotalMax?: number, wsConnectMs?: number, wsHeadMs?: number, wsIdleMs?: number }} o
@@ -167,17 +168,38 @@ export function createHostProxy(o) {
     return m ? { ...m, here: originFor(m.name, m.base) } : null;
   }
 
-  async function serve(req, res, { url }) {
+  async function serve(req, res, { url: url0 }) {
+    let url = url0;
     const host = String(req.headers.host || "").toLowerCase();
-    const mh = appHost(host);
+    // The Space's own address carries the signing app's pages under /sign/ (core/appmods/mount.js): only a signer's routes, and only on the address the gate named for it.
+    /** @type {null | { name: string, base: string, here: string }} */ let mh = null;
+    let mounted = false;
+    if (o.sign && url.pathname.startsWith("/sign/")) {
+      const sh = await o.sign().catch(() => null);
+      if (sh && sh.host === host) { mh = { name: sh.name, base: host, here: `https://${host}${MOUNT}` }; mounted = true; }
+    }
+    if (!mh) mh = appHost(host);
     if (!mh) return false;
     const app = await o.app(mh.name);
     if (!app) return false;
     const plain = (/** @type {number} */ code, /** @type {string} */ text, /** @type {Record<string, string>} */ more = {}) => { res.writeHead(code, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...more }); res.end(text); return true; };
     const secure = Boolean(/** @type {any} */ (req.socket).encrypted) || String(req.headers["x-forwarded-proto"] || "") === "https" || !/^localhost(?::\d+)?$/.test(mh.base);
     const here = mh.here;
+    if (mounted) {
+      // under the mount the app's own paths; the pretty link /sign/<submission>/<slug> is the one other path, and it goes to the page under the mount
+      const inner = toApp(url.pathname);
+      if (inner === null) {
+        const sg = app.signing ? matcher(app.signing) : null;
+        const to = sg && ["GET", "HEAD"].includes(String(req.method)) ? sg.redirect(url.pathname) : null;
+        if (!to) return plain(404, "not found");
+        res.writeHead(302, { location: mountLocation(to), ...publicHeaders(false) });
+        res.end();
+        return true;
+      }
+      url = new URL(inner + url.search, "http://x");
+    }
     // The way in: a ticket Vyre made for this host, traded once for this host's cookie.
-    if (url.pathname === ENTER) {
+    if (!mounted && url.pathname === ENTER) {
       if (req.method !== "GET") return plain(404, "not found");
       const got = o.tickets.trade(url.searchParams.get("t") || "", host);
       if (!got) return plain(404, "not found");
@@ -188,11 +210,11 @@ export function createHostProxy(o) {
     const sid = /(?:^|;\s*)vyre_app=([A-Za-z0-9_-]+)/.exec(String(req.headers.cookie || ""));
     const method = String(req.method);
     const sign = app.signing ? matcher(app.signing) : null;
-    const ticketed = o.tickets.valid(sid ? sid[1] : undefined, mh.name, host);
+    const ticketed = mounted ? false : o.tickets.valid(sid ? sid[1] : undefined, mh.name, host);
     // A signer's way in: the pretty link goes to the page (no ticket, nothing of the app touched), and the stylesheet that dresses the pages is ours.
     if (sign && !ticketed && ["GET", "HEAD"].includes(method)) {
       const to = sign.redirect(url.pathname);
-      if (to) { res.writeHead(302, { location: to, ...publicHeaders(false) }); res.end(); return true; }
+      if (to) { res.writeHead(302, { location: mounted ? mountLocation(to) : to, ...publicHeaders(false) }); res.end(); return true; }
       if (url.pathname === BRAND_CSS) {
         const css = CREDIT_CSS + (o.brand ? await o.brand().catch(() => "") : "");
         res.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
@@ -262,7 +284,7 @@ export function createHostProxy(o) {
       const r = await once(false);
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
-      if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
+      if (typeof out.location === "string") out.location = mounted ? mountLocation(rewriteLocation(out.location, app.origins, here)) : rewriteLocation(out.location, app.origins, here);
       // an open server's cookies stay on its own host: a Domain attribute would reach the other apps' hosts and Vyre's own
       if (wide && out["set-cookie"]) out["set-cookie"] = [].concat(/** @type {any} */ (out["set-cookie"])).map(handOn);
       if (stranger) {
@@ -271,9 +293,24 @@ export function createHostProxy(o) {
         if (sc) out["set-cookie"] = (Array.isArray(sc) ? sc : [sc]).map(handOn);
         const isHtml = /^text\/html/i.test(String(r.headers["content-type"] || ""));
         Object.assign(out, publicHeaders(isHtml));
+        // Under the mount the app's text is put under it too: its script, its stylesheets and its JSON answers (a binary file is left as it is).
+        if (mounted && method !== "HEAD") {
+          const ct = String(r.headers["content-type"] || "");
+          const kind = /^text\/css/i.test(ct) ? "css" : /javascript/i.test(ct) ? "js" : /json/i.test(ct) ? "json" : null;
+          if (kind && (r.statusCode || 0) < 400) {
+            const text = (await readAll(r, 8 * 1024 * 1024)).toString("utf8");
+            const done = kind === "css" ? rewriteCss(text) : kind === "json" ? rewriteJson(text) : rewriteJs(text);
+            if (done === null) { log(`appmods: ${mh.name}: its script has a shape the mount does not know; the page is not served`); return plain(502, "The signing page cannot be shown here yet. Try again later."); }
+            const body = Buffer.from(done, "utf8");
+            out["content-length"] = String(body.length);
+            res.writeHead(r.statusCode || 200, out);
+            res.end(body);
+            return true;
+          }
+        }
         if (isHtml && (r.statusCode || 0) === 200 && method === "GET") {
           const page = (await readAll(r, 4 * 1024 * 1024)).toString("utf8");
-          const body = Buffer.from(dress(page, BRAND_CSS), "utf8");
+          const body = Buffer.from(mounted ? dress(rewriteHtml(page), MOUNT + BRAND_CSS) : dress(page, BRAND_CSS), "utf8");
           out["content-length"] = String(body.length);
           res.writeHead(200, out);
           res.end(body);

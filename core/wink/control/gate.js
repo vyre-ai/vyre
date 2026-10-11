@@ -238,6 +238,11 @@ export function createGate(o) {
       const sni = /** @type {any} */ (req.socket).servername;
       return String(sni || "").toLowerCase() === h ? h : "";
     }
+    // The Space's own address answers /sign/... for a signer (the signing app's pages under a mount, appmods/mount.js) and nothing else of it goes this way; it must be the SNI the visitor sent.
+    if (ing.appsSuffix && h === ing.appsSuffix.slice(1) && String(req.url || "").startsWith("/sign/")) {
+      const sni = /** @type {any} */ (req.socket).servername;
+      return /** @type {any} */ (req.socket).encrypted && String(sni || "").toLowerCase() !== h ? "" : h;
+    }
     if (!ing.appsSuffix || !h.endsWith(ing.appsSuffix)) return null;
     if (!APP_LABEL.test(h.slice(0, h.length - ing.appsSuffix.length))) return "";
     const sni = /** @type {any} */ (req.socket).servername;
@@ -253,7 +258,7 @@ export function createGate(o) {
     w.push(t); windows.set("a:" + k, w);
     /** @type {{ port: number, hosts: string[] } | null} */ let cur = null;
     try { cur = /** @type {any} */ (o.ingress).apps ? await /** @type {any} */ (o.ingress).apps() : null; } catch { cur = null; }
-    if (!host || !cur || !Number.isInteger(cur.port) || cur.port < 1 || !Array.isArray(cur.hosts) || !cur.hosts.includes(host)) { stats.notFound++; emit({ type: "notfound", addr: k }); refuse(sock, NOT_FOUND); return; }
+    if (!host || !cur || !Number.isInteger(cur.port) || cur.port < 1 || !Array.isArray(cur.hosts) || !(cur.hosts.includes(host) || (typeof /** @type {any} */ (cur).sign === "string" && /** @type {any} */ (cur).sign === host && String(req.url || "").startsWith("/sign/")))) { stats.notFound++; emit({ type: "notfound", addr: k }); refuse(sock, NOT_FOUND); return; }
     const declared = req.headers["content-length"];
     if (declared !== undefined && (!/^\d{1,12}$/.test(String(declared)) || Number(declared) > L.appsBodyBytes)) { refuse(sock, TOO_LARGE); return; }
     sock.setTimeout(L.appsIdleMs);

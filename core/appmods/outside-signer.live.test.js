@@ -162,14 +162,15 @@ test("an outside signer signs in a real browser through the public door: relay, 
   const asked = await d.registry.call("appmods.signing.request", { name: "documents", template_id: Number(tpl.template_id), email: "outside@example.com", signer: "Outside Signer" }, "module:documents");
   assert.ok(!asked.error, JSON.stringify(asked.error));
   const NAME = "harlow.vyre.run", APP_HOST = "documents.harlow.vyre.run";
-  assert.equal(new URL(asked.data.url).host, APP_HOST, "the link a signer is e-mailed is on the public host");
+  assert.equal(new URL(asked.data.url).host, NAME, "the link a signer is e-mailed is on the Space's own address");
+  assert.match(new URL(asked.data.url).pathname, /^\/sign\/\d+\/[A-Za-z0-9_-]+$/, "and is /sign/<submission>/<signer>");
 
   // the public door, in this process: a relay that routes by server name, the box's end, the box's gate with its own certificate in front of the apps' front
   const { cert, key } = selfSigned({ ips: ["127.0.0.1"], names: [NAME, APP_HOST] });
-  const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: { cert, key }, upstream: { port: 9 }, ingress: { hooks: () => null, share: () => null, appsSuffix: `.${NAME}`, apps: () => ({ port: bridgePort, hosts: [APP_HOST] }) } });
+  const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: { cert, key }, upstream: { port: 9 }, ingress: { hooks: () => null, share: () => null, appsSuffix: `.${NAME}`, apps: () => ({ port: bridgePort, hosts: [APP_HOST], sign: NAME }) } });
   const gateAt = await gate.listen(); t.after(() => gate.close());
   const rk = newRouteKey(), route = routeId(rk.pub);
-  const relay = createRelay({ tunnel: { resolve: async h => (h === APP_HOST ? { route } : null), limits: { ttlMs: 0 } } });
+  const relay = createRelay({ tunnel: { resolve: async h => (h === APP_HOST || h === NAME ? { route } : null), limits: { ttlMs: 0 } } });
   const relayBase = await relay.listen(); const { tls: relayTls } = await relay.listenTunnel(); t.after(() => relay.close());
   const end = createTunnelEnd({ name: NAME, port: () => gateAt.port });
   const rl = relayLink({ url: relayBase, route, routeKey: rk, boxKey: keyPair(), admit: async () => ({ v: 1 }), onchannel: () => {}, ontunnel: (s2, v) => end.accept(s2, v) });
@@ -180,7 +181,7 @@ test("an outside signer signs in a real browser through the public door: relay, 
   const CHROME = process.env.CHROME_BIN;
   assert.ok(CHROME && fs.existsSync(CHROME), "set CHROME_BIN to a Chrome for Testing");
   const prof = fs.mkdtempSync(path.join(root, "chrome-"));
-  const child = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain", "--password-store=basic", `--user-data-dir=${prof}`, "--no-first-run", "--disable-gpu", "--ignore-certificate-errors", `--host-resolver-rules=MAP ${APP_HOST} 127.0.0.1:${relayTls}`, ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
+  const child = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain", "--password-store=basic", `--user-data-dir=${prof}`, "--no-first-run", "--disable-gpu", "--ignore-certificate-errors", `--host-resolver-rules=MAP ${NAME} 127.0.0.1:${relayTls}`, ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
   t.after(() => { try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { /* gone */ } });
   let cport = 0;
   for (let i = 0; i < 400 && !cport; i++) { try { const n = Number(fs.readFileSync(path.join(prof, "DevToolsActivePort"), "utf8").split("\n")[0]); if (n && (await fetch(`http://127.0.0.1:${n}/json/version`)).ok) cport = n; } catch { /* not yet */ } if (!cport) await new Promise(r => setTimeout(r, 100)); }
@@ -205,7 +206,8 @@ test("an outside signer signs in a real browser through the public door: relay, 
   const first = String(await ev("document.body.innerText"));
   assert.match(first, /Vyre proof NDA/, "the page is the signer's, for this document");
   assert.match(first, /Signatures by DocuSeal, open source \(AGPL-3\.0\)/, "the open-source credit is present");
-  assert.equal(await ev("location.host"), APP_HOST, "and the browser never left the public name");
+  assert.equal(await ev("location.host"), NAME, "and the browser never left the Space's own address");
+  assert.ok(String(await ev("location.pathname")).startsWith("/sign/_/s/"), "on the signing pages under /sign/");
   assert.equal(await ev("[...document.querySelectorAll('a')].filter(a => /docuseal\\.com/.test(a.href) && getComputedStyle(a).display !== 'none').length"), 0, "the engine's own logo and \"powered by\" links are not shown: the page is the firm's, with the licence credit in the footer");
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "every request the page made was answered");
   // the signer types a signature and completes, as a person does
@@ -227,7 +229,10 @@ test("an outside signer signs in a real browser through the public door: relay, 
   assert.match(String(await ev("document.body.innerText")), /Document has been signed/);
   assert.equal(await ev("[...document.querySelectorAll('download-button')].every(e => getComputedStyle(e).display === 'none')"), true, "no Download button for a file the signer's link does not open (the signed copy comes by its own expiring link)");
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "and nothing the browser sent was refused");
-  assert.ok(sent.some(x => x.startsWith("POST ") && new URL(x.split(" ")[1]).pathname === new URL(asked.data.url).pathname.replace(/^\/sign\/\d+/, "/s")), `the browser's submit was posted: ${sent.join(" | ").slice(0, 300)}`);
+  // nothing the page asked for went anywhere but under the mount of the Space's address: not its root, not another host
+  const stray = [...resp.map(r => r.url), ...sent.map(x => x.split(" ")[1])].filter(u => { try { const x = new URL(u); return x.host !== NAME || !x.pathname.startsWith("/sign/_/"); } catch { return !u.startsWith("data:") && !u.startsWith("blob:"); } });
+  assert.deepEqual(stray, [], "every request of the signing walk went under /sign/_/ of the Space's own address");
+  assert.ok(sent.some(x => x.startsWith("POST ") && new URL(x.split(" ")[1]).pathname === "/sign/_" + new URL(asked.data.url).pathname.replace(/^\/sign\/\d+/, "/s")), `the browser's submit was posted: ${sent.join(" | ").slice(0, 300)}`);
   const subm = await api("GET", `/api/submissions/${asked.data.submission}`);
   assert.equal(subm.s, 200);
   assert.equal(subm.j.status, "completed", "the signing app recorded the signature: the browser's submit reached it");

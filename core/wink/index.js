@@ -772,7 +772,10 @@ export function createWink(inject = {}) {
           try {
             const f = /** @type {any} */ (await ctx.call("appmods.front", {})), h = /** @type {any} */ (await ctx.call("appmods.hosts", {}));
             const port = f && f.data && f.data.port, hosts = h && h.data && h.data.hosts;
-            return Number.isInteger(port) && Array.isArray(hosts) && hosts.length ? { port, hosts: hosts.map((/** @type {string} */ x) => String(x).toLowerCase().replace(/:\d+$/, "")) } : null;
+            // the Space's own address, for a signer's pages under /sign/ only (appmods/mount.js); null while no app signs
+            const sg = /** @type {any} */ (await ctx.call("appmods.signing.mount", {}).catch(() => null));
+            const sign = sg && sg.data && typeof sg.data.host === "string" ? sg.data.host.toLowerCase().replace(/:\d+$/, "") : null;
+            return Number.isInteger(port) && Array.isArray(hosts) && (hosts.length || sign) ? { port, hosts: hosts.map((/** @type {string} */ x) => String(x).toLowerCase().replace(/:\d+$/, "")), ...(sign ? { sign } : {}) } : null;
           } catch { return null; }
         },
       },
