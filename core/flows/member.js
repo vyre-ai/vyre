@@ -21,6 +21,8 @@ import { KernelError } from "../../kernel/core/errors.js";
  */
 /** Drafts one member may have waiting on one Flow. */
 const MAX_DRAFTS = 20;
+/** New Flows one member may have set up with none of them approved yet. */
+const MAX_NEW_FLOWS = 50;
 export const MEMBER_APPROVAL = "own-any";
 
 /** Each call of the wire's `flows` group and the Flows tool that serves it. kind: open (no Flow), read (a Flow's definition), write (a Flow's author), start, runs, run (one run), approve, propose. */
@@ -69,7 +71,16 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     case "open": return call();
     case "list": case "runs": return mark(await tools[spec.tool](chain, i));
     // The Flow runs that need a look. The stuck tasks of the whole Space are not Flows matters, so a member is shown none of them.
-    case "attention": { const a = await tools[spec.tool](chain, i); return { runs: a && Array.isArray(a.runs) ? a.runs : [] }; }
+    case "attention": {
+      const a = await tools[spec.tool](chain, i);
+      const rows = a && Array.isArray(a.runs) ? a.runs : [];
+      // a run's message can quote what a step read: for a run on someone else's authority only the kind of trouble is shown (as in hiding())
+      return { runs: await Promise.all(rows.map(async (/** @type {any} */ r) => {
+        const run = store.getRun ? await store.getRun(r.run).catch(() => null) : null;
+        const as = run && run.approver && run.approver.kind === "person" ? String(run.approver.id) : null;
+        return admin || as === me ? r : { ...r, message: `This needs a look (${r.kind || "stuck"}). The detail is for ${as || "the person who approved it"}, whose authority the run used; ask them.` };
+      })) };
+    }
     case "health": if (i.id) await there(need("id", "the Flow's id")); return call();
     case "read": {
       await there(need("id", "the Flow's id"));
@@ -87,6 +98,12 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
         const r = await rowOf(i.id);
         const mine = r ? r.versions.filter((/** @type {any} */ v) => v.by && v.by.kind === "person" && String(v.by.id) === me && (r.active === null || v.version > r.active)).length : 0;
         if (mine >= MAX_DRAFTS) throw new KernelError("too_many", `you already have ${MAX_DRAFTS} drafts of this Flow waiting. Ask the person it runs for to look at them (flows.propose), then try again.`);
+      }
+      if (!i.id && spec.kind === "define") {
+        // new Flows with nothing approved yet are capped too, so one member cannot fill the Space with them
+        let waiting = 0;
+        for (const row of await store.list()) if (row.active === null) { const r = await rowOf(row.id); const v1 = r && r.versions && r.versions[0]; if (v1 && v1.by && v1.by.kind === "person" && String(v1.by.id) === me) waiting++; }
+        if (waiting >= MAX_NEW_FLOWS) throw new KernelError("too_many", `you already have ${MAX_NEW_FLOWS} new Flows waiting for approval. Approve or remove some of them (flows.approve), then make another.`);
       }
       return call();
     }

@@ -14,6 +14,7 @@ import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
+import { mayWrite, isTrustedChain, projectTeamOf } from "./gateway/ownership.js";
 import { sealerPresence } from "./core/presence.js";
 import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
 import { expr as defaultExpr } from "./expr/index.js";
@@ -93,6 +94,8 @@ export async function createKernel(cfg) {
     // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
     // A task is a record of the Space's store (DESIGN-tasks-records): its words and fields live there, the kernel keeps what decides who may act.
     records: store,
+    // who may change a task (kernel/gateway/ownership.js): the same rule the records write path applies, for every route that writes a task
+    mayWriteTask: async (/** @type {any} */ chain, /** @type {any} */ t, /** @type {any} */ patch, /** @type {"create"|"update"|"remove"} */ op) => mayWrite(chain, "task", t ? { id: t.id, data: {} } : null, patch, { op, trusted: isTrustedChain(chain, (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null)), project: projectTeamOf(store, (/** @type {string} */ ty, /** @type {string} */ id) => `vyre://${cfg.space}/${ty}/${id}`), task: async () => (t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null } : null) }),
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
