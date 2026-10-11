@@ -49,3 +49,14 @@ test("runner: stop() never waits past grace plus the fallback beat, whatever the
   await proc.stop(50);
   assert.ok(Date.now() - t0 <= 2100, "stop(50) must settle at or before grace (50ms) + the 2000ms fallback beat");
 });
+
+test("runner: a session that runs on a person's own computer says so on its handle, so the Switchboard can keep another person's turn off it", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { PassThrough } = await import("node:stream");
+  const lent = /** @type {any} */ (new EventEmitter());
+  Object.assign(lent, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), pid: 0, kill: () => true, lent: { session: "s", epoch: 1 } });
+  const { proc } = start("cat", [], { lentSpawn: () => lent });
+  lent.emit("spawn");
+  assert.equal(/** @type {any} */ (proc).where, "lent");
+  lent.emit("exit", 0, null);
+});
