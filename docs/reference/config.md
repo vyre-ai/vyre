@@ -122,7 +122,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_LENT_AGENT_ARGS` | Not described yet. | `core/daemon/lent-service.js` |
-| `VYRE_LENT_AGENT_DEV` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_LENT_AGENT_DEV` | Not described yet. | `core/daemon/lent-service.js`, `core/runner/index.js` |
 | `VYRE_MANAGED_CONTEXT` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_MCP_FEATURES` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MCP_LISTING` | Not described yet. | `harness/mcp/server.js` |
