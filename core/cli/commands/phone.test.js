@@ -71,7 +71,7 @@ function capture(t) {
   return lines;
 }
 
-const until = async (fn, what, ms = 8000) => {
+const until = async (fn, what, ms = 20_000) => {   // (a command starting beside a dozen others on a loaded runner takes seconds to print its first line)
   const end = Date.now() + ms;
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 25)); }
 };
@@ -85,12 +85,23 @@ const keep = async (emit, fn, what) => {
   for (;;) { emit(); const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 200)); }
 };
 
+/**
+ * Wait for something the push module does on a subscribe: the command opens its event stream a moment after the lines the test waits on, and push.subscribed before that is not replayed (since=latest), so on a
+ * loaded runner the first subscribe can land before anyone listens. A person cannot subscribe in that gap, and the command re-reads every 60 s anyway; the test subscribes again (harmless) until it shows.
+ */
+const resubscribe = async (sub, fn, what) => {
+  for (let i = 0; i < 8; i++) { try { return await until(fn, what, 4000); } catch { await sub(); } }
+  return until(fn, what, 10_000);
+};
+
 /** A browser's push subscription: a real P-256 key, so push.test can encrypt to it and the phone can read it. */
 const phones = new Map();
 const subscription = endpoint => {
-  const e = crypto.createECDH("prime256v1");
-  e.generateKeys();
-  const auth = crypto.randomBytes(16);
+  // one phone has one key: subscribing again (a retry, or the same browser again) keeps it, so a notification sent before the second subscribe still reads
+  const have = phones.get(new URL(endpoint).pathname);
+  const e = have ? have.e : crypto.createECDH("prime256v1");
+  if (!have) e.generateKeys();
+  const auth = have ? have.auth : crypto.randomBytes(16);
   phones.set(new URL(endpoint).pathname, { e, auth });
   return { endpoint, keys: { p256dh: e.getPublicKey().toString("base64url"), auth: auth.toString("base64url") } };
 };
@@ -296,7 +307,7 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   const arrivals = () => svc.got.filter(p => p === "/push/pixel").length;
   const device = await subscribe();
   // push.subscribed from the push module moves the check, with no Enter.
-  await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter", 20_000);
+  await resubscribe(subscribe, () => svc.got.includes("/push/pixel"), "the test notification, without Enter");
   await shows(svc, root, "/push/pixel");
   // The command opens its event stream a moment after its code line, and an event before that is not
   // replayed, so on a slow runner the first subscribe can land before anyone listens: subscribe
@@ -543,7 +554,7 @@ test("phone add --view: a qr frame with the --json data, then a checks frame per
   // (harmless) until the frame says so, and wait on the condition, not on a fixed time.
   const sub = () => deck("push.subscribe", { subscription: subscription(`${svc.base}/push/view-phone`), label: "kit's Android" });
   await sub();
-  await until(() => svc.got.includes("/push/view-phone"), "the test notification", 20_000);
+  await resubscribe(sub, () => svc.got.includes("/push/view-phone"), "the test notification");
   let resent = 0;
   await until(async () => { if (frames().some(f => f.view.kind === "checks" && f.view.items[0].state === "ok")) return true; if (++resent % 20 === 0) await sub(); return false; }, "reached, in a frame", 30_000);
   await shows(svc, root, "/push/view-phone");
