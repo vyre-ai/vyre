@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import builder, { planOf, seam } from "./index.js";
-import { repoOf, cloneArgs } from "../../lib/publish/repo-source.js";
+import builder, { planOf, seam, takeToken } from "./index.js";
+import { repoOf, cloneArgs, cloneEnv } from "../../lib/publish/repo-source.js";
 
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-builder-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 async function tool(/** @type {import("node:test").TestContext} */ t) {
@@ -77,4 +77,45 @@ test("which repos may be named, and the clone's git arguments: https GitHub only
   const a = cloneArgs("https://github.com/o/n.git", "main", "/tmp/x");
   assert.deepEqual(a.slice(-3), ["--", "https://github.com/o/n.git", "/tmp/x"]);
   for (const want of ["core.hooksPath=/dev/null", "protocol.allow=never", "--depth", "--single-branch"]) assert.ok(a.includes(want), want);
+});
+
+test("a clone past the size limit is refused and removed", async t => {
+  /** @type {string} */ let where = "";
+  seam.clone = async (_u, _b, dir) => { where = dir; fs.mkdirSync(dir, { recursive: true }); const fd = fs.openSync(path.join(dir, "big.bin"), "w"); fs.ftruncateSync(fd, 301 * 1024 * 1024); fs.closeSync(fd); };
+  t.after(() => { seam.clone = null; });
+  const build = await tool(t);
+  await assert.rejects(() => build(dep({ source: { kind: "repo", ref: "northwind/huge" } })), /more than 300 MB/);
+  assert.ok(!fs.existsSync(where) && !fs.existsSync(path.dirname(where)), "nothing is left on the disk");
+});
+
+test("a private repo: the granted GitHub token is read for the clone only, rides in git's environment, and is not in an argument, a file or what the image build is given", async t => {
+  const TOKEN = "github_pat_" + "A1b2C3d4E5".repeat(4);
+  const dir = tmp(t);
+  const secretFile = path.join(dir, "GITHUB_TOKEN");
+  fs.writeFileSync(secretFile, TOKEN + "\n", { mode: 0o600 });
+  /** @type {any[]} */ const cloned = [];
+  seam.clone = async (url, branch, to, token) => { cloned.push({ url, token }); fs.mkdirSync(to, { recursive: true }); fs.writeFileSync(path.join(to, "index.html"), "<h1>private</h1>"); };
+  t.after(() => { seam.clone = null; });
+  const tools = new Map();
+  const mod = await builder.start({ tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
+  t.after(() => mod.stop());
+  const run = (/** @type {string[]} */ secretArgs) => tools.get("builder.build").run({ deployment: dep({ source: { kind: "repo", ref: "northwind/private" } }), secretArgs });
+  const r = await run(["--secret", `id=GITHUB_TOKEN,src=${secretFile}`]);
+  assert.deepEqual([cloned[0].url, cloned[0].token], ["https://github.com/northwind/private.git", TOKEN]);
+  assert.ok(!JSON.stringify(r).includes(TOKEN), "the token is in no file and no log of the build");
+  // without the grant, the clone is asked with no token
+  await run([]);
+  assert.equal(cloned[1].token, null);
+  // the token never goes on to the image build, and a token that is not one is refused before anything is cloned
+  assert.deepEqual(takeToken(["--secret", `id=GITHUB_TOKEN,src=${secretFile}`, "--secret", "id=OTHER,src=/x"]), { token: TOKEN, rest: ["--secret", "id=OTHER,src=/x"] });
+  fs.writeFileSync(secretFile, "not a token!");
+  await assert.rejects(() => run(["--secret", `id=GITHUB_TOKEN,src=${secretFile}`]), /not a GitHub token/);
+  assert.equal(cloned.length, 2, "nothing was cloned for it");
+  // git gets the token in its environment as one header for github.com, never in the arguments
+  const env = cloneEnv(TOKEN);
+  assert.equal(env.GIT_CONFIG_KEY_0, "http.https://github.com/.extraheader");
+  assert.equal(env.GIT_CONFIG_VALUE_0, `Authorization: Basic ${Buffer.from(`x-access-token:${TOKEN}`).toString("base64")}`);
+  assert.ok(!cloneArgs("https://github.com/o/n.git", null, "/tmp/x").join(" ").includes(TOKEN));
+  assert.equal(cloneEnv().GIT_CONFIG_COUNT, undefined, "no token, no header");
+  assert.throws(() => cloneEnv("short"), /not a GitHub token/);
 });

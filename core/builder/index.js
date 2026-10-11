@@ -6,14 +6,14 @@ import { readSite, digestOf } from "../../lib/publish/folder-build.js";
 import { checkDockerfile, buildImage } from "./container.js";
 import { askHelper, helperPresent } from "../../stores/twenty/helper.js";
 import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
-import { repoOf, cloneArgs, cloneEnv } from "../../lib/publish/repo-source.js";
+import { repoOf, cloneArgs, cloneEnv, tokenShape, TOKEN_ID, CLONE_MAX_BYTES } from "../../lib/publish/repo-source.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 /** Test seam: a stand-in for the image build (the real one needs Docker). */
-export const seam = /** @type {{ buildImage: null | typeof buildImage, helper: null | { present: () => boolean, ask: typeof askHelper }, clone: null | ((url: string, branch: string | null, dir: string) => Promise<void>) }} */ ({ buildImage: null, helper: null, clone: null });
+export const seam = /** @type {{ buildImage: null | typeof buildImage, helper: null | { present: () => boolean, ask: typeof askHelper }, clone: null | ((url: string, branch: string | null, dir: string, token: string | null) => Promise<void>) }} */ ({ buildImage: null, helper: null, clone: null });
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 export const SERVERS_OFF = "Publishing apps with their own server is turned off in this test release. A folder of ready files and a React page still publish.";
@@ -114,25 +114,57 @@ export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
   } finally { removeServerFolder(where); }
 }
 
-/** git clone, shallow, of one public https GitHub repo into `dir`: no hooks, no prompt, no other protocol, a time limit. @param {string} url @param {string | null} branch @param {string} dir */
-async function gitClone(url, branch, dir) {
+/** git clone, shallow, of one https GitHub repo into `dir`: no hooks, no prompt, no other protocol, a time limit; with a token only for a private repo. @param {string} url @param {string | null} branch @param {string} dir @param {string | null} token */
+async function gitClone(url, branch, dir, token) {
   await new Promise((resolve, reject) => {
-    execFile("git", cloneArgs(url, branch, dir), { env: cloneEnv(), timeout: 120_000, maxBuffer: 1 << 20 }, (err, _out, errText) => {
+    execFile("git", cloneArgs(url, branch, dir), { env: cloneEnv(token), timeout: 120_000, maxBuffer: 1 << 20 }, (err, _out, errText) => {
       if (!err) return resolve(undefined);
       const t = String(errText);
-      const why = /Remote branch .* not found/i.test(t) ? "that branch is not in the repo" : /not found|could not read|Authentication failed|terminal prompts disabled/i.test(t) ? "the repo is not there, or it is private (only public repos are cloned for now)" : "git could not clone it";
+      const closed = /not found|could not read|Authentication failed|terminal prompts disabled|403|401/i.test(t);
+      const why = /Remote branch .* not found/i.test(t) ? "that branch is not in the repo"
+        : closed && token ? "GitHub did not accept the token for that repo: check that it reaches the repo (repo scope, or Contents read)"
+        : closed ? `the repo is not there, or it is private: for a private repo, grant a GitHub token as the build secret ${TOKEN_ID} (publish.secret.grant with use build)`
+        : "git could not clone it";
       reject(refuse(`could not get the repo: ${why}; check the owner and name, or publish a folder instead`, "refused"));
     });
   });
 }
 
-/** The folder a deployment builds from: its own folder, or a fresh clone of its repo in a folder that `done` removes. @param {any} plan @returns {Promise<{ dir: string, done: () => void }>} */
-async function sourceDir(plan) {
+/**
+ * The GitHub token for a private repo, taken out of the build's secrets: the build secret named GITHUB_TOKEN is read for the clone and is never passed on to the image build.
+ * @param {string[]} secretArgs `--secret id=NAME,src=FILE` pairs @returns {{ token: string | null, rest: string[] }}
+ */
+export function takeToken(secretArgs) {
+  const rest = []; let token = null;
+  for (let k = 0; k < secretArgs.length; k++) {
+    const m = secretArgs[k] === "--secret" ? /^id=([^,]+),src=(.+)$/.exec(String(secretArgs[k + 1] || "")) : null;
+    if (m && m[1] === TOKEN_ID) {
+      let value = ""; try { value = fs.readFileSync(m[2], "utf8").trim(); } catch { /* unreadable: said below */ }
+      if (!tokenShape(value)) throw refuse(`the build secret ${TOKEN_ID} is not a GitHub token: grant the token itself (letters, digits, dashes and underscores) and publish again`, "refused");
+      token = value; k++; continue;
+    }
+    rest.push(secretArgs[k]);
+  }
+  return { token, rest };
+}
+
+/** Bytes under a folder (links are not followed). @param {string} dir @returns {number} */
+function dirBytes(dir) {
+  let n = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); n += e.isDirectory() ? dirBytes(p) : e.isFile() ? fs.statSync(p).size : 0; }
+  return n;
+}
+
+/** The folder a deployment builds from: its own folder, or a fresh clone of its repo in a folder that `done` removes. @param {any} plan @param {string | null} token @returns {Promise<{ dir: string, done: () => void }>} */
+async function sourceDir(plan, token) {
   if (!plan.repo) return { dir: plan.dir, done() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-repo-"));
   const done = () => fs.rmSync(dir, { recursive: true, force: true });
   const at = path.join(dir, path.basename(plan.repo.url, ".git"));
-  try { await (seam.clone || gitClone)(plan.repo.url, plan.repo.branch, at); } catch (e) { done(); throw e; }
+  try {
+    await (seam.clone || gitClone)(plan.repo.url, plan.repo.branch, at, token);
+    if (dirBytes(at) > CLONE_MAX_BYTES) throw refuse(`the repo is more than ${CLONE_MAX_BYTES / 1048576} MB; it was not built: publish a smaller repo, or a folder of what the site needs`, "refused");
+  } catch (e) { done(); throw e; }
   return { dir: at, done };
 }
 
@@ -147,10 +179,12 @@ export default {
       run: async (/** @type {any} */ i) => {
         const plan = planOf(i.deployment, { servers: Boolean(ctx.config && ctx.config.publish && ctx.config.publish.servers === true) });
         const { outputDir, dockerfile, synth } = plan;
-        const src = await sourceDir(plan);
+        // a private repo's token is a build secret the person granted: read for the clone, and not passed on to the image build
+        const { token, rest } = plan.repo ? takeToken(i.secretArgs || []) : { token: null, rest: i.secretArgs || [] };
+        const src = await sourceDir(plan, token);
         try {
           const dir = src.dir;
-          if (dockerfile) return await containerBuild(ctx, i.deployment, dir, i.secretArgs || [], synth);
+          if (dockerfile) return await containerBuild(ctx, i.deployment, dir, rest, synth);
           let site;
           try { site = readSite({ dir, outputDir }); } catch (/** @type {any} */ e) { throw refuse(e && e.message ? String(e.message) : "the folder could not be read", e && e.code ? String(e.code) : "failed"); }
           // a React page (index.jsx or App.tsx with no index.html) is published as the Preview pane shows it: the previews module makes the page, the compiled files and the libraries it uses
