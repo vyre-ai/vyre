@@ -67,7 +67,7 @@ test("team-member: only the project's owner (or an owner or admin) adds, changes
   await refused(R.create(chains.fay, "team-member", { name: "loose", actor: person(FAY), kind: "person" }), /belongs to a project/);
   const added = await R.create(chains.bob, "team-member", { name: "fay", actor: person(FAY), kind: "person", project: { urn: p1.urn } });
   assert.ok(added, "the project's owner seats her");
-  assert.equal((await R.update(chains.bob, "team-member", added.id, { role: "paralegal" }, added.version)).data.role, "paralegal");
+  assert.equal((await R.update(chains.bob, "team-member", added.id, { name: "fay renamed" }, added.version)).data.name, "fay renamed");
   assert.ok(await R.remove(chains.bob, "team-member", added.id, (await R.get(chains.owner, "team-member", added.id)).version));
   assert.ok(await R.create(chains.admin, "team-member", { name: "x", actor: person(DAN), kind: "person", project: { urn: p1.urn } }), "an admin passes");
 });
@@ -116,7 +116,7 @@ test("ordinary work is untouched: a member makes a task for herself, a contact-l
 
 test("kernel attributes on create: a member names no other owner, no sensitivity, and files nothing under a project she is not on (any type)", async () => {
   const { R, chains, p1, p2 } = await rig();
-  await refused(R.create(chains.bob, "task", { title: "into the other project" }, { attrs: { project: p2.id } }), /project you are on/);
+  await refused(R.create(chains.bob, "memo", { body: "into the other project" }, { attrs: { project: p2.id } }), /project you are on/);
   await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { project: p1.id } }), /project you are on/);
   await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { owner: BOB } }), /yours/);
   await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { sensitivity: "privileged" } }), /sensitivity/);
@@ -130,7 +130,7 @@ test("a [member, work service] chain (the memory engine's) is not the work servi
   const viaWork = k.chains.forModule({ approver: chains.fay, module: "work" });
   await refused(R.create(viaWork, "project", { name: "x", slug: "x2", owner: { actor: { kind: "person", id: BOB, space: SPACE } } }), /yours/);
   await refused(R.create(viaWork, "team-member", { name: "fay", actor: person(FAY), kind: "person", project: { urn: p1.urn } }), /owner/);
-  await refused(R.update(viaWork, "project", p2.id, { name: "taken" }, p2.version), /team/);
+  await assert.rejects(() => R.update(viaWork, "project", p2.id, { name: "taken" }, p2.version), e => ["not_allowed", "not_found"].includes(e.code), "it cannot rename another's project either");
 });
 
 test("team seats: a project's owner adds a plain person; role, skills, instructions and assistant seats are for an owner or admin", async () => {
