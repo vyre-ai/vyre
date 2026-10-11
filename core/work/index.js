@@ -23,6 +23,7 @@ import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createMemberProjects } from "./member-projects.js";
+import { createMemberFiles } from "./member-files.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
@@ -153,6 +154,8 @@ export default {
     // A team member starts her own projects on the team's server: the member door's `work` rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); this server's own Space only.
     const liveOf = async (/** @type {string} */ person) => { const k = kernelOf(); const rows = (await k.records.query(k.serviceChain("work"), "project", { page: { limit: 1000 } })).rows || []; return rows.filter((/** @type {any} */ r) => r.data && r.data.owner && r.data.owner.actor && r.data.owner.actor.id === person && r.data.status !== "archived" && r.data.status !== "moved").length; };
     const memberProjects = createMemberProjects({ liveOf, templates: templatesOf, hub: hubOf, reader: () => { const k = kernelOf(); const service = k.serviceChain("work"); return { service, read: service }; } });
+    const memberFiles = createMemberFiles({ kernel: kernelOf });
+    const memberOps = /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */ ({ ...memberProjects, ...memberFiles });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
       const k = kernelOf();
@@ -160,11 +163,11 @@ export default {
       if (!calls.includes(i.call)) throw fail("bad_input", `call is one of ${calls.join(", ")}`);
       const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
       if (!h || h.actor.kind !== "person") throw fail("not_found", "not found");
-      return /** @type {any} */ (memberProjects)[i.call](chain, i.input && typeof i.input === "object" ? i.input : {});
+      return memberOps[i.call](chain, i.input && typeof i.input === "object" ? i.input : {});
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
-    ctx.tool("work.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's project reads on the team's server (the installed templates she can start from), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["templates"]), run: serve(["templates"]) });
-    ctx.tool("work.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member starts her own project on the team's server (blank, or from an installed template), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create-project", "start-project"]), run: serve(["create-project", "start-project"]) });
+    ctx.tool("work.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's project reads on the team's server (the installed templates she can start from), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["templates", "files-list", "files-read"]), run: serve(["templates", "files-list", "files-read"]) });
+    ctx.tool("work.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member starts her own project on the team's server (blank, or from an installed template), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create-project", "start-project", "files-upload"]), run: serve(["create-project", "start-project", "files-upload"]) });
     // One persistent chat per person for their assistant and for @Engineer (core/work/persistent.js, R031-94)
     /** @type {any} */ let persistent = null;
     const persistentOf = () => persistent || (persistent = createPersistent({ db: ctx.store.db, kernel: kernelOf,

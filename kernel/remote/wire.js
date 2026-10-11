@@ -39,6 +39,8 @@ export const CALLS = Object.freeze({
   flows: ["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "test-save", "test-remove", "test-list", "test-run", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"],
   // A member starts her own projects on the team's server (0.3.3; core/work/member-projects.js): the installed templates, a blank project, a project from a template.
   work: ["templates", "project-create", "start-project"],
+  // A member's project files (0.3.3; core/work/member-files.js): list, read and upload in one project's files area.
+  files: ["list", "read", "upload"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
 });
 
