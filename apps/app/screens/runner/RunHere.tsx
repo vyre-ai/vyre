@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Row, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { runner } from "./runner";
+import { memberLine } from "../spaces/computers-model.js";
 import { DEFAULT_SETTINGS, hereLine, parseLimit, switchNote, type MacSettings } from "./runner-model.js";
 
 export type Here = { thread: string; title: string; state: "running" | "waiting" | "paused"; cpuPercent: number; memoryMb: number; line?: string; cpu?: string };
@@ -16,11 +17,13 @@ export function RunHere() {
   const [mem, setMem] = useState("");
   const [problem, setProblem] = useState("");
   const [shared, setShared] = useState<string[]>([]);
+  const [rules, setRules] = useState<{ title: string; allowed: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
     runner.settings().then((x: MacSettings | null) => { setS(x); if (x) { setCpu(String(x.cpuPercent)); setMem(String(x.memoryMb)); } }).catch(() => setS(null));
     runner.here().then((h: Here[]) => setHere(h)).catch(() => setHere([]));
     runner.sharedWith().then(setShared).catch(() => setShared([]));
+    runner.spaceRules().then(setRules).catch(() => setRules([]));
   }, []);
   useEffect(load, [load]);
   if (!s) return null;
@@ -40,13 +43,13 @@ export function RunHere() {
     if (bad) { setProblem(bad); return; }
     void save({ ...s, cpuPercent: Number(c.value), memoryMb: Number(m.value) }).then(() => showToast("Saved."));
   };
-  return <RunHereView s={s} here={here} shared={shared} busy={busy} onSwitch={flip} cpu={cpu} mem={mem} problem={problem} setCpu={setCpu} setMem={setMem} onSave={(n) => void save(n)} onSaveLimits={saveLimits}
+  return <RunHereView s={s} here={here} shared={shared} rules={rules} busy={busy} onSwitch={flip} cpu={cpu} mem={mem} problem={problem} setCpu={setCpu} setMem={setMem} onSave={(n) => void save(n)} onSaveLimits={saveLimits}
     onPause={() => runner.pauseAll().then(() => { showToast("Paused. They stay on this Mac until you resume."); load(); }).catch(() => showToast("That did not go through."))}
     onResume={() => runner.resumeAll().then(() => { showToast("Resumed."); load(); }).catch(() => showToast("That did not go through."))} />;
 }
 
 /** The section, from what it is given: the container above reads the box, the gallery gives it a sample. */
-export function RunHereView({ s, here, shared = [], busy = false, onSwitch, cpu, mem, problem, setCpu, setMem, onSave, onSaveLimits, onPause, onResume }: { s: MacSettings; here: Here[]; shared?: string[]; busy?: boolean; onSwitch?: (on: boolean) => void; cpu: string; mem: string; problem: string; setCpu: (v: string) => void; setMem: (v: string) => void;
+export function RunHereView({ s, here, shared = [], rules = [], busy = false, onSwitch, cpu, mem, problem, setCpu, setMem, onSave, onSaveLimits, onPause, onResume }: { s: MacSettings; here: Here[]; shared?: string[]; rules?: { title: string; allowed: boolean }[]; busy?: boolean; onSwitch?: (on: boolean) => void; cpu: string; mem: string; problem: string; setCpu: (v: string) => void; setMem: (v: string) => void;
   onSave: (n: MacSettings) => void; onSaveLimits: () => void; onPause: () => void; onResume: () => void }) {
   const phone = useUiTheme().phone;
   return (
@@ -57,6 +60,7 @@ export function RunHereView({ s, here, shared = [], busy = false, onSwitch, cpu,
             <View className="min-w-0 flex-1"><Text strong>Let sessions run on this Mac</Text><Text size="secondary" tone="label">{switchNote(s, shared)}</Text></View>
             <Switch on={s.enabled} disabled={busy} onChange={(enabled: boolean) => (onSwitch ? onSwitch(enabled) : onSave({ ...s, enabled }))} label="Let sessions run on this Mac" />
           </View>
+          {rules.map((r) => <Text key={r.title} size="secondary" tone="label">{memberLine(r.title, r.allowed)}</Text>)}
           {s.enabled ? (
             <>
               <View className="flex-row items-center gap-s3">

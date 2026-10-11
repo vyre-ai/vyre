@@ -337,7 +337,16 @@ export class TwentyStore {
 
   // ---- definitions -----------------------------------------------------------------------------
   /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
-  async define(diff, o = {}) {
+  #defineLine = Promise.resolve();
+  /** One define at a time on this store: Twenty rebuilds a table for each field it adds and two at once fail with a lock timeout (55P03), so every caller (modules, Kits, Flows, a person's records.define) waits its turn here. */
+  define(diff, o = {}) {
+    const run = () => this.#defineNow(diff, o);
+    const next = this.#defineLine.then(run, run);
+    this.#defineLine = next.catch(() => {});
+    return next;
+  }
+  /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
+  async #defineNow(diff, o = {}) {
     const changes = [];
     const audit = await this.#auditSwitch();
     const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));

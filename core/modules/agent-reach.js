@@ -492,6 +492,7 @@ export const OPEN = new Set([
   "stream.open",
   "stream.pin",
   "stream.react",
+  "stream.reply-mode",
   "stream.send",
   "system.rename",
   "team.duties.run-now",

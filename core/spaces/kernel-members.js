@@ -95,7 +95,7 @@ export function kernelMembers({ handle, now = Date.now }) {
 }
 
 /** A membership as the tools show it. @param {any} m */
-const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null });
+const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null, ...(m.partial ? { partial: true } : {}) });
 
 /** The words a person may be shown about a starting store: the progress sentence the store gives, and for anything else (a failure's own text, which can hold paths or errors) one fixed sentence. */
 const PROGRESS = /^(starting Records|the record store is still starting)/;
@@ -175,7 +175,7 @@ export async function kernelTeamSpaces(K, person) {
 export async function membersComputers(d) {
   const { i, meta, row, h, caller, self, role, kctxOf, answerChallenge, refuse } = d;
   const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
-  if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here.", "unavailable");
+  if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here: ask the owner of this server to update it.", "unavailable");
   const find = () => offers.find({ side: "space_allows", member: "*", device: null });
   if (i.allow === undefined) { if (!role) throw refuse("You are not a member of this space.", "not_a_member"); return { space: row.id, allowed: Boolean(await find()) }; }
   if (caller !== self) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");

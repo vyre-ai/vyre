@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ScrollView, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, Text, projectHeader, useProject, useTaskActions } from "@vyre/ui";
+import { Button, EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, Text, projectHeader, showToast, useProject, useTaskActions } from "@vyre/ui";
+import { templates } from "../templates/templates";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
 import { LABEL, WIDE, chatLabel, firstTab, panesAt, tabsFor, type PaneId } from "./panes";
@@ -13,6 +14,12 @@ export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useProject(String(id));
   const [picked, setTab] = useState<PaneId | null>(null);
+  const [makingTemplate, setMaking] = useState(false);
+  // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
+  const makeTemplate = async (slug: string) => {
+    setMaking(true);
+    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft template. Edit it, try it, then put it live.`); router.push(`/u/templates/${v.template}` as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
+  };
   const { width } = useWindowDimensions();
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(q.data?.world, go);
@@ -34,7 +41,7 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a template"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${shown.length > 1 ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />

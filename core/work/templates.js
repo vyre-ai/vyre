@@ -118,6 +118,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       }
       lines.push((s.tasks || []).length ? `  moves on when the ${(s.tasks || []).some((/** @type {any} */ t) => t.required !== false) ? "required " : ""}tasks are done${stages[n + 1] && stages[n + 1].enter_if ? ` and ${stages[n + 1].enter_if}` : ""}.` : n === stages.length - 1 ? "  the last stage: the project ends here." : "  no tasks: a person moves it on.");
     });
+    for (const a of body.automations || []) lines.push(`Automation: the Flow ${a.flow} runs ${a.when === "start" ? "when a project starts" : `when a project enters ${a.when}`}${a.note ? ` (${a.note})` : ""}. Nothing is run in test mode.`);
     const totals = `${counts.stages} stages, ${counts.tasks} tasks, ${counts.checks} checklist items, ${counts.roles} roles`;
     lines.push(totals);
     return { ok: true, template: rec.data.template, version: rec.data.version, lines, totals, counts };
@@ -151,16 +152,26 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       ...(entered && entered.skipped.length ? { tasks_skipped: entered.skipped } : {}) };
   }
 
+  /** The stages a free-flow project would have been given as a template: one working stage holding its tasks (title, and the note as the brief), then Done. @param {any} chain @param {any} proj @param {{ role: string }[]} roles */
+  async function freeFlowSnapshot(chain, proj, roles) {
+    const tasks = (await kernel().records.query(chain, "task", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 100 } })).rows
+      .filter((/** @type {any} */ r) => r.data && typeof r.data.title === "string" && r.data.title.trim())
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.data.created_at || a.id) < String(b.data.created_at || b.id) ? -1 : 1).slice(0, 30);
+    const doer = roles.length ? `role:${roles[0].role}` : "person:owner";
+    const text = (/** @type {any} */ v) => String(v == null ? "" : typeof v === "string" ? v : JSON.stringify(v)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+    return { name: proj.data.name, stages: [{ name: "Working", ...(tasks.length ? { tasks: tasks.map((/** @type {any} */ r) => ({ title: String(r.data.title).trim().slice(0, 200), doer, output: { kind: "note" }, ...(text(r.data.note) ? { brief: text(r.data.note) } : {}) })) } : {}) }, { name: "Done" }] };
+  }
+
   /** A draft template made from a project that ran one: the stages it was pinned to (their briefs kept as written) and the roles its team filled. */
   async function fromProject(chain, i) {
     const k = kernel();
     const projects = (await k.records.query(chain, "project", { filter: { field: "slug", op: "eq", value: String(i.project || "") }, page: { limit: 1 } })).rows;
     const proj = projects[0];
     if (!proj) throw fail("not_found", `no project ${i.project}`);
-    if (!proj.data.template_snapshot) throw fail("bad_state", "that project did not start from a template, so there are no stages to copy; a free-flow project is chats and files");
-    const snap = JSON.parse(String(proj.data.template_snapshot));
     const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 100 } })).rows;
     const roles = rows.filter((/** @type {any} */ r) => r.data.role && r.data.actor && r.data.actor.actor && r.data.actor.actor.kind === "agent").map((/** @type {any} */ r) => ({ role: String(r.data.role), agent: r.data.actor.actor.id, ...(proj.data.lead === r.data.actor.actor.id ? { lead: true } : {}) }));
+    // A free-flow project has no stages to copy (it is chats and files), but it has a team and the work it did: its tasks become the tasks of one working stage, its team the roles, and the person edits the draft in the studio.
+    const snap = proj.data.template_snapshot ? JSON.parse(String(proj.data.template_snapshot)) : await freeFlowSnapshot(chain, proj, roles);
     const body = { name: String(i.name || `${snap.name || proj.data.name} (copy)`), roles, tags: parseTags(proj.data.tags).filter((/** @type {string} */ t) => !t.startsWith("from-")), stages: snap.stages.map((/** @type {any} */ s, /** @type {number} */ n) => ({ name: s.name, ...(s.owner ? { owner: s.owner } : {}), ...(snap.stages[n + 1] && snap.stages[n + 1].enter_if ? { moves_on_when: snap.stages[n + 1].enter_if } : {}), ...(s.tasks ? { tasks: s.tasks } : {}) })) };
     return define(chain, { body, note: `saved from the project ${proj.data.slug}` });
   }
@@ -213,18 +224,45 @@ const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device
  * The tools, over a Templates made by createTemplates. Every one runs under the caller's own kernel chain (`chainOf`), which decides what it reaches.
  * @param {{ ctx: any, templates: ReturnType<typeof createTemplates>, chainOf: (extra: any) => any }} o
  */
-export function registerTemplateTools({ ctx, templates: t, chainOf }) {
+export function registerTemplateTools({ ctx, templates: t, chainOf: chainOfHome }) {
+  // run inside another Space (the registry's cross-Space door), the caller's chain THERE comes with the call (set only by the registry); otherwise the kernel says whose call this is
+  const chainOf = (/** @type {any} */ extra) => (extra && extra.in_space_chain ? extra.in_space_chain : chainOfHome(extra));
   const run = (/** @type {(chain: any, i: any) => Promise<any>} */ f) => async (/** @type {any} */ i, /** @type {any} */ extra) => f(await chainOf(extra), i || {});
+  /**
+   * A team project lives in the team Space, not in the Space the call happens to arrive in: these tools take an optional `space` (a hosted Space's id, spaces.list shows them). With one, the same tool runs INSIDE that
+   * Space (the registry's cross-Space door: the caller's own chain there, and that Space's authorize says whether they may), and everything it makes is that Space's. Without one, the home's own, as before.
+   */
+  const OWN_SPACE = /** @type {const} */ ({ type: "string", description: "the Space it is for (a hosted Space's id from spaces.list); omit for this home's own Space" });
+  // The public tool keeps the callers it always had. It reaches another Space through a modules-only twin (`<name>-in-space`) that runs the same act under the chain the registry carried: a person-reach tool is closed to
+  // module hops, and giving the public tools a `module` caller would widen who may call them.
+  const inSpace = (/** @type {string} */ name, /** @type {any} */ spec) => {
+    const twin = `${name}-in-space`;
+    ctx.tool(twin, { description: `${name}, run inside another Space by this module for the person (the registry's cross-Space door).`, internal: true, callers: ["module"], input: spec.input, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!(extra && extra.caller === "module:work" && extra.in_space_chain)) throw fail("denied", `${twin} is for the cross-Space door only`);
+      return spec.run(i, extra);
+    } });
+    ctx.tool(name, { ...spec, input: { ...spec.input, properties: { ...(spec.input && spec.input.properties), space: OWN_SPACE } }, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      const K = ctx.kernel, space = i && typeof i.space === "string" ? i.space : "";
+      if (!space || !K || space === K.space) return spec.run(i, extra);
+      let base = null; try { base = typeof K.for === "function" ? K.for(space) : null; } catch { base = null; }
+      if (typeof K.chainIn !== "function" || !base || base.hosted !== true) throw fail("not_found", "this home does not host that Space (spaces.list shows yours)");
+      let chain; try { chain = await K.chainIn(space, extra); } catch { throw fail("forbidden", "you are not a member of that Space"); }
+      const { space: _s, ...rest } = i;
+      const r = await K.for(space).call(twin, rest, chain);
+      if (r && r.error) throw fail(r.error.code || "failed", r.error.message || "that did not work");
+      return r ? r.data : null;
+    } });
+  };
   const body = { type: ["object", "string"], description: "the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }" };
-  ctx.tool("work.template.define", { description: "Write a project template as a new draft version: stages, tasks, doers, checklists, needed yeses and agent roles. Test it with work.template.test, then work.template.golive.", input: obj({ template: { type: "string", description: "template id; omit for a new template" }, body, note: { type: "string" } }, ["body"]), callers: CALLERS, run: run((c, i) => t.define(c, i)) });
-  ctx.tool("work.template.list", { description: "The project templates of this Space (id, name, which version is live, owner), or the versions of one (template).", input: obj({ template: { type: "string" } }), callers: CALLERS, run: run((c, i) => t.list(c, i)) });
-  ctx.tool("work.template.get", { description: "One version of a project template with its whole body (the live one by default).", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.get(c, i)) });
-  ctx.tool("work.template.golive", { description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });
-  ctx.tool("work.template.test", { description: "Dry-run a template version, changing nothing: shows each stage, task, doer, brief, checklist and who may move a stage early.", input: obj({ template: { type: "string" }, version: { type: "integer" }, sample: { type: "object", description: "sample project fields that fill the briefs, such as { name }" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.test(c, i)) });
-  ctx.tool("work.template.from-project", { description: "Make a draft template from a project that ran one, keeping its pinned stages, briefs and filled roles.", input: obj({ project: { type: "string", description: "the project's short name" }, name: { type: "string", description: "name for the new template" } }, ["project"]), callers: CALLERS, run: run((c, i) => t.fromProject(c, i)) });
-  ctx.tool("work.template.library", { description: "The project templates the Kits ship (id, name, stages, tasks). work.template.install makes one a draft in this Space.", input: obj({}), callers: CALLERS, run: async (_i, extra) => { await chainOf(extra); return { templates: t.library().map(({ body: _b, ...rest }) => rest) }; } });
-  ctx.tool("work.template.install", { description: "Add a library template (id from work.template.library) to this Space as a draft version.", input: obj({ id: { type: "string" } }, ["id"]), callers: CALLERS, run: run((c, i) => t.install(c, i)) });
-  ctx.tool("work.start-project", { description: "Start a project from a live template: creates the project, its teammates from the roles, the pinned stages, and the first stage's tasks with briefs.", input: obj({ template: { type: "string" }, name: { type: "string", description: "the new project's name" }, client: { type: "string", description: "the client's record address" }, repo: { type: "string" }, slug: { type: "string" }, version: { type: "integer", description: "template version to pin; the live one by default" } }, ["template", "name"]), callers: [...CALLERS, "module"], run: run((c, i) => t.start(c, i)) });
+  inSpace("work.template.define", { description: "Write a project template as a new draft version: stages, tasks, doers, checklists, needed yeses and agent roles. Test it with work.template.test, then work.template.golive.", input: obj({ template: { type: "string", description: "template id; omit for a new template" }, body, note: { type: "string" } }, ["body"]), callers: CALLERS, run: run((c, i) => t.define(c, i)) });
+  inSpace("work.template.list", { description: "The project templates of this Space (id, name, which version is live, owner), or the versions of one (template).", input: obj({ template: { type: "string" } }), callers: CALLERS, run: run((c, i) => t.list(c, i)) });
+  inSpace("work.template.get", { description: "One version of a project template with its whole body (the live one by default).", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.get(c, i)) });
+  inSpace("work.template.golive", { description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });
+  inSpace("work.template.test", { description: "Dry-run a template version, changing nothing: shows each stage, task, doer, brief, checklist and who may move a stage early.", input: obj({ template: { type: "string" }, version: { type: "integer" }, sample: { type: "object", description: "sample project fields that fill the briefs, such as { name }" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.test(c, i)) });
+  inSpace("work.template.from-project", { description: "Make a draft template from a project that ran one, keeping its pinned stages, briefs and filled roles.", input: obj({ project: { type: "string", description: "the project's short name" }, name: { type: "string", description: "name for the new template" } }, ["project"]), callers: CALLERS, run: run((c, i) => t.fromProject(c, i)) });
+  inSpace("work.template.library", { description: "The project templates the Kits ship (id, name, stages, tasks). work.template.install makes one a draft in this Space.", input: obj({}), callers: CALLERS, run: async (_i, extra) => { await chainOf(extra); return { templates: t.library().map(({ body: _b, ...rest }) => rest) }; } });
+  inSpace("work.template.install", { description: "Add a library template (id from work.template.library) to this Space as a draft version.", input: obj({ id: { type: "string" } }, ["id"]), callers: CALLERS, run: run((c, i) => t.install(c, i)) });
+  inSpace("work.start-project", { description: "Start a project from a live template: creates the project, its teammates from the roles, the pinned stages, and the first stage's tasks with briefs.", input: obj({ template: { type: "string" }, name: { type: "string", description: "the new project's name" }, client: { type: "string", description: "the client's record address" }, repo: { type: "string" }, slug: { type: "string" }, version: { type: "integer", description: "template version to pin; the live one by default" } }, ["template", "name"]), callers: [...CALLERS, "module"], run: run((c, i) => t.start(c, i)) });
   // the proposal kind "template" (flows-host.js)
   ctx.tool("work.template.change.draft", { description: "Check a draft version can be put live and say whose yes it needs. For the proposals path.", internal: true, callers: ["module"], input: obj({ template: { type: "string" }, version: { type: "integer" }, proposer: { type: "string" } }, ["template", "version", "proposer"]), run: async (/** @type {any} */ i) => { if (!ctx.kernel || typeof ctx.kernel.serviceChain !== "function") throw Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" }); return t.changeDraft(ctx.kernel.serviceChain("work"), i); } });
   ctx.tool("work.template.change.title", { description: "The title a stored template change really has, or null. For the proposals path.", internal: true, callers: ["module"], input: obj({ id: { type: "string" }, hash: { type: "string" } }, ["id", "hash"]), run: async (/** @type {any} */ i) => { if (!ctx.kernel || typeof ctx.kernel.serviceChain !== "function") throw Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" }); return t.changeTitle(i); } });

@@ -150,7 +150,7 @@ Exit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{
 Is it running, and what is it running.
 
 ```
-vyre status [--json]
+vyre status [--json] [--ready]
 ```
 
 ### vyre config

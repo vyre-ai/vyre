@@ -29,6 +29,9 @@ export const CALLS = Object.freeze({
   lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "preview", "wait", "http"],
   // The sidebar each member arranges (SPEC-0.3.0 part 9): a SERVICE the home registers (core/sidebar/service.js). A member reads the Space's default with their own list on top and changes their own list; only the Space's owner or admin role changes the default.
   sidebar: ["get", "edit", "team"],
+  // A member's own chats on the team's server (0.3.3 J9): a SERVICE the home registers (core/work/chat-service.js). The call runs the work module's chat tool in THIS Space, as the member's own chain: their pinned
+  // assistant, the chats they are in, starting one. A member never reaches a registry tool; the list of calls is fixed here.
+  chat: ["persistent", "pin", "list", "get", "create"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */

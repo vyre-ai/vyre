@@ -1159,7 +1159,7 @@ export default {
       const vyre = calls.filter(c => sig.isVyreTool(String(c.tool)));
       const tools = vyre.some(c => c.outcome === "failed") ? [] : vyre.map(c => ({ steps: String(c.shape || "").split("\n").filter(Boolean), at: Number(c.at) }));
       const steps = stepsOf({ commands, files: rows.map(f => ({ tool: String(f.tool), path: String(f.path), at: Number(f.at) })), tools });
-      skills.record({ session, seq: t.seq, project, steps });
+      skills.record({ session, seq: t.seq, project, agent: t.agent ?? null, steps });
       await sweep(project);
       housekeep();
       void jobs.pump();

@@ -13,7 +13,7 @@
 /**
  * @typedef {{ id: string, name?: string }} Participant  id is "person:<id>", "assistant:<id>" or "model:<id>"
  * @param {{ participants: readonly Participant[], defaultAssistant?: string|null, text?: string, mentions?: readonly string[],
- *   assigned?: string|readonly string[]|null, author: string, previous?: string|null, enc?: unknown }} a
+ *   assigned?: string|readonly string[]|null, author: string, previous?: string|null, enc?: unknown, mode?: string|null, repliedTo?: string|null }} a
  * @returns {string[]} the assistants (and models) that answer, in the order they were asked
  */
 export function whoAnswers(a) {
@@ -37,10 +37,14 @@ export function whoAnswers(a) {
   for (const id of mentioned) push(id);
   const assigned = a.assigned ? (Array.isArray(a.assigned) ? a.assigned : [a.assigned]) : [];
   for (const t of assigned) { const id = resolve(t); if (id) push(id); }
+  // A reply to an assistant's message wakes that assistant in "mention" mode.
+  if (a.mode === "mention" && a.repliedTo && isBot(a.repliedTo)) push(a.repliedTo);
   if (out.length) return out;
+  if (a.mode === "mention") return [];
   // Nobody asked: only the default assistant, only for a person, only outside a conversation between people.
   const dflt = a.defaultAssistant && resolve(a.defaultAssistant);
   if (!dflt || !isBot(dflt) || isBot(a.author) || dflt === a.author) return [];
+  if (a.mode === "every") return [dflt]; // every message runs on its sender's assistant, whoever it is for
   if (mentioned.some(id => id !== a.author && !isBot(id))) return []; // the message is for a person
   const others = parts.filter(p => p.id.startsWith("person:") && p.id !== a.author);
   const between = a.previous !== undefined && a.previous !== null

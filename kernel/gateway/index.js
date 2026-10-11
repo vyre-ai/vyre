@@ -44,11 +44,20 @@ export function createGateway(cfg) {
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const roomed = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   // A chat's folders are its participants' only, and a project's files its members' (kernel/core/folders.js).
+  /** @type {Map<string, { n: number }>} */ const reachSeen = new Map();
   const projectMembers = projectOracle({ space: cfg.space, chains: cfg.chains, records: () => records, tasks: cfg.tasks });
   const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
     sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records, logical: cfg.drive && cfg.drive.logical }),
+    // one event per agent, project and chain a minute (the first read's detail), then `project.reach-counted` with the later ones; a first read that cannot be logged is refused
+    noteReach: (/** @type {any} */ chain, /** @type {any} */ data, /** @type {string} */ resource) => {
+      const key = `${data.agent}|${data.project}|${chain.hops.map((/** @type {any} */ h) => h.actor.kind + h.actor.id).join(">")}`, w = reachSeen.get(key);
+      if (w) { w.n++; return; }
+      cfg.log.append(chain, { type: "project.reached", sv: 1, subject: resource, data }); const rec = { n: 0 }; reachSeen.set(key, rec);
+      setTimeout(() => { reachSeen.delete(key); if (rec.n) try { cfg.log.append(chain, { type: "project.reach-counted", sv: 1, subject: resource, data: { ...data, count: rec.n } }); } catch { /* the first read is in the log */ } }, 60_000).unref?.();
+    },
+    projectOf: (/** @type {string} */ u) => { const p = (attrs(u) || {}).project; return typeof p === "string" ? p : null; },
     projectHas: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.member(p, project),
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
@@ -277,7 +286,7 @@ export function createGateway(cfg) {
     /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
     serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
-    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
+    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i), listModels: (/** @type {any} */ i) => cfg.door.listModels(i) }) } : {}),
     records,
     migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
