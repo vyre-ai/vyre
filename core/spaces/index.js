@@ -1249,8 +1249,12 @@ export default {
       if (hit && Date.now() - hit.at < 60_000) return hit.person;
       let person = null;
       try {
-        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'person-name/%' LIMIT 200").all())) {
+        let checked = 0;
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'person-name/%' ORDER BY key").all())) {
           const id = String(r.key).slice("person-name/".length);
+          // only people who are members of a Space this home hosts are looked at: names of others cannot crowd a member out, and the directory is asked about members only (at most 200)
+          if (K && typeof K.membership === "function") { let isMember = false; for (const sp of (typeof K.spaces?.list === "function" ? K.spaces.list() : [K.space])) { const m = await K.membership(id, String(sp)).catch(() => null); if (m && m.member === true) { isMember = true; break; } } if (!isMember) continue; }
+          if (++checked > 200) break;
           let label = null; try { label = JSON.parse(r.value); } catch { continue; }
           if (typeof label !== "string" || !label) continue;
           try {
@@ -2377,8 +2381,6 @@ export default {
       try { r = await dir.resolve(label, { pin: /** @type {any} */ (await kv.get(`person-pin/${label}`)) || undefined }); } catch { return null; }
       if (!r.ok || r.kind !== "person" || r.id !== id || !Array.isArray(r.ops)) return null;
       await kv.put(`person-pin/${label}`, r.pin);
-      // The directory says this name is this person's: remember it. A member who joined through the kernel's invite is otherwise never named here (spaces.person.learn has no caller), and stateOfPerson, so the key-agreement read, finds no list for her.
-      await kv.put(`person-name/${id}`, label);
       // ONE clock for "young" (the sealing process uses the same): the signed time the entry was added to the list (the op's own), against this server's clock. Not when this server first saw it.
       const at = Date.now(), st = await C.verifyChain(r.ops, { now: at });
       return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };

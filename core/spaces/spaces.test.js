@@ -1539,7 +1539,7 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   void K.membership;
 });
 
-test("a member who joined through the kernel invite is found by the key-agreement read once the peer door has asked for her identity evidence (the join path never called spaces.person.learn)", async t => {
+test("a member who joined through the kernel invite is found by the key-agreement read once the door reports the join (evidence alone stores no name)", async t => {
   const { createKernel } = await import("../../kernel/index.js");
   const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
   const { payloadHash } = await import("../../kernel/seal/wire.js");
@@ -1565,16 +1565,21 @@ test("a member who joined through the kernel invite is found by the key-agreemen
   const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;
   const add = async (/** @type {{ id: string }} */ p) => { const r = { person: p.id, role: "member" }; await K.gateway.grants.setRole(ownerChain, r, { presence: sign("setRole", r) }); };
   await add(casey); await add(dana);
-  // joined through the kernel invite: nobody wrote person-name for them, only the join's identity evidence was asked (kernel/remote/server.js joinKey -> spaces.identity.evidence with the hello's name)
-  assert.equal(await sees(casey, dana), 0, "before the join asked for her evidence the server knows no name for her, so no points");
+  // a verified stranger: the door asked for identity evidence before any membership exists (kernel/remote/server.js joinKey), and that leaves NO name behind
+  assert.equal(await sees(casey, dana), 0, "before the join the server knows no name for her, so no points");
   const ev = await d.reg.call("spaces.identity.evidence", { person: dana.id, name: "dana" }, "module:vyred");
   assert.ok(ev && !ev.error && ev.data && Array.isArray(ev.data.ops), JSON.stringify(ev && ev.error));
-  assert.equal(await sees(casey, dana), 1, "after it, a member of the home Space reads her device point");
-  assert.equal(await sees(dana, casey), 0, "casey's evidence was never asked: no name, no points (the read is per target)");
-  // a name that is not the person's gets nothing remembered
-  const bad = await d.reg.call("spaces.identity.evidence", { person: casey.id, name: "dana" }, "module:vyred");
-  assert.ok(!bad.data, "a name that belongs to someone else gives no evidence");
-  assert.equal(await sees(dana, casey), 0, "and remembers nothing for casey");
+  assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM spaces_kv WHERE key LIKE 'person-name/%'").get().n, 0, "evidence for a person who has not joined stores no name");
+  assert.equal(await sees(casey, dana), 0, "and still no points");
+  // the join SUCCEEDED: the door tells the spaces module (kernel/remote/server.js personJoined -> spaces.person.learn as module:vyred); the directory must confirm the name for that id
+  const wrong = await d.reg.call("spaces.person.learn", { id: casey.id, name: "dana" }, "module:vyred");
+  assert.equal(wrong.data.known, false, "a hello naming someone else's name stores nothing");
+  assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM spaces_kv WHERE key LIKE 'person-name/%'").get().n, 0);
+  assert.equal(await sees(dana, casey), 0, "and a read for casey stays empty");
+  const ok = await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  assert.equal(ok.data.known, true);
+  assert.equal(await sees(casey, dana), 1, "after the join a member of the home Space reads her device point");
+  assert.equal(await sees(dana, casey), 0, "casey's join was not reported: no name, no points (the read is per target)");
   // a stale name is harmless: if the name kept for dana now resolves to someone else (released and taken), stateOfPerson re-resolves it, finds another id, and answers nothing
   const { DatabaseSync } = await import("node:sqlite");
   const row = d.db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`person-name/${dana.id}`);
