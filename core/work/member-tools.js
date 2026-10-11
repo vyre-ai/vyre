@@ -27,6 +27,10 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
   "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
+  // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive
+  "files.list": { tool: "work.serve", call: "files-list", keys: ["project"], types: [] },
+  "files.read": { tool: "work.serve", call: "files-read", keys: ["project", "name"], types: [] },
+  "files.upload": { tool: "work.serve-write", call: "files-upload", keys: ["project", "name", "data"], types: [] },
   "work.templates": { tool: "work.serve", call: "templates", keys: [], types: ["project-template"] },
   "work.project-create": { tool: "work.serve-write", call: "create-project", keys: ["name", "slug"], types: [] },
   "work.start-project": { tool: "work.serve-write", call: "start-project", keys: ["template", "name", "slug"], types: ["project-template"] },
