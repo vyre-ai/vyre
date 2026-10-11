@@ -1039,6 +1039,7 @@
  "core/cli/session.daemon.test.js": 1,
  "core/cli/session.floor.test.js": 2,
  "core/cli/session.test.js": 8,
+ "test/journey-space-computers.test.js": 1,
  "test/journey-space-names.test.js": 3,
  "test/journey-signin-again.test.js": 2,
  "core/previews/previews-project.test.js": 3,

@@ -13,6 +13,8 @@ import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
+import { ComputersView } from "../screens/spaces/ComputersSection";
+import { memberLine } from "../screens/spaces/computers-model.js";
 import { SignInView } from "../screens/now/SignInAgain";
 import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
@@ -158,6 +160,7 @@ function Sample({ name }: { name: string }) {
     const key = { id: "connectors:k", title: "The key for api.example.com stopped working", detail: "The service refused the key. Fix it in the Vault, then check it.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "k" } }] };
     return <View style={{ gap: 12 }}><SignInView card={site} busy={false} hint="Still waiting. Sign in on the site, then check again." onPress={() => {}} /><SignInView card={screen} busy={false} hint="" onPress={() => {}} /><SignInView card={key} busy hint="" onPress={() => {}} /></View>;
   }
+  if (name === "space-computers") return <View style={{ gap: 12 }}><ComputersView space="Northwind's Cloud" allowed={false} busy={false} problem="" onChange={() => {}} /><ComputersView space="Northwind's Cloud" allowed busy={false} problem="Only an owner or an admin of this Space can change that." onChange={() => {}} /><Card><Text tone="label">{memberLine("Northwind's Cloud", true)}</Text><Text tone="label">{memberLine("Harlow Legal's Cloud", false)}</Text></Card></View>;
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }

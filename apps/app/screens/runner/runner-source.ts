@@ -1,5 +1,6 @@
 // The runner's calls (session-transfer's contract, R031-95), over an injected `call` so a test uses a fake box. A box without the runner answers no_such_tool: every read says null then and the
 // screens show nothing, never an error. Nothing here carries a value or a key: placements, settings and what runs.
+import { allowedOf } from "../spaces/computers-model.js";
 import { DEFAULT_SETTINGS, lendPlan, pickHere, pickSettings, pickPlacement, switchRefusal, type MacSettings, type Placement } from "./runner-model.js";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
@@ -23,6 +24,13 @@ export function runnerSource(call: Call) {
     resumeAll: () => ask("runner.resume-all"),
     /** The spaces this computer is lent to now, by name. */
     async sharedWith(): Promise<string[]> { return lendPlan(await maybe<any>("spaces.devices.list")).lent.map((x: { title: string }) => x.title); },
+    /** For each Space this computer is in, whether the Space allows its members' sessions on their own computers (spaces.members.computers); a Space the box does not answer for is left out. */
+    async spaceRules(): Promise<{ title: string; allowed: boolean }[]> {
+      const plan = lendPlan(await maybe<any>("spaces.devices.list"));
+      const out: { title: string; allowed: boolean }[] = [];
+      for (const sp of [...plan.lent, ...plan.toLend]) { const a = allowedOf(await maybe<any>("spaces.members.computers", { space: sp.space })); if (a !== null) out.push({ title: sp.title, allowed: a }); }
+      return out;
+    },
     /** The one yes: lend this computer to the spaces it is in (the first lend for a space asks the person), and only then let sessions run here. A refusal leaves it off. */
     async turnOn(): Promise<{ settings: MacSettings; lentTo: string[] }> {
       const plan = lendPlan(await maybe<any>("spaces.devices.list"));
