@@ -4,6 +4,7 @@
 //   box     scripts/install-box.sh run from this checkout (signed with a throwaway key), in docker: a real box. Takes the owner's and a joiner's yes only from a hardware key, so it cannot walk invites.
 //   daemon  a real vyred (core/daemon start, the code the box runs) in this process with a development sealing process: the one that takes software keys, so invites and Join can be walked.
 // Nothing here replaces a Vyre part. The people's clicks are the app modules called directly, as scripts/lib/proof does.
+import { clearSpaceSlots, removeOwnStacks } from "../../lib/proof/box-clean.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -21,6 +22,7 @@ export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
  */
 export async function bringUp(o) {
   const { run } = o;
+  if (o.kind === "box") console.log(`journeys: ${clearSpaceSlots()}`);
   const dir = path.join(o.out, `world-${o.kind}`);
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const S = (/** @type {string} */ n) => `world (${o.kind}): ${n}`;
@@ -52,6 +54,7 @@ export async function bringUp(o) {
       if (srv) {
         try { fs.writeFileSync(path.join(dir, "server.log"), (srv.logs || []).join("\n") + "\n"); } catch { /* a courtesy */ }
         await srv.stop().catch(() => {});
+        if (o.kind === "box") removeOwnStacks();
       }
       await ins.stop();
     },
