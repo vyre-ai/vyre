@@ -75,6 +75,8 @@ export function createDeferredStore(o) {
      */
     async defer(f) {
       if (real) return f(real);
+      // after boot, a store that is not even starting (no room, no Docker) refuses at once, in its own words, as a define does: whoever asked is a module that waits for the store (core/modules/store-waiting.js)
+      if (!booting && !(o.waits && o.waits())) throw refuse();
       if (defs.length >= MAX_DEFS) throw unavailable("the store is not ready and too many changes are waiting");
       defs.push(f);
       return { applied: false, changes: [] };

@@ -132,3 +132,18 @@ test("records.define on a store that attaches late waits for it; past the wait i
   await assert.rejects(() => k2.gateway.records.define(owner2, { add_types: [T] }), e => !/could not be read/.test(/** @type {any} */ (e).message) && /starting Records.*so far/.test(/** @type {any} */ (e).message));
   clearInterval(keep);
 });
+
+test("defer: kept while the store is away and booting or starting, played in order before the store is let through; after boot a store that is not starting refuses at once", async () => {
+  const seen = /** @type {string[]} */ ([]);
+  const d = createDeferredStore({ reason: () => "Twenty cannot start here", waits: () => false });
+  assert.deepEqual(await d.defer(async () => seen.push("x")), { applied: false, changes: [] }, "while booting it is kept");
+  await d.defer(async () => seen.push("y"));
+  d.bootDone();
+  await assert.rejects(() => d.defer(async () => seen.push("z")), { code: "unavailable", name: "StoreError" });
+  await d.attach(createMemoryStore());
+  assert.deepEqual(seen, ["x", "y"], "in the order asked; the refused one never ran");
+  assert.equal(await d.defer(async () => "now"), "now", "attached: run at once");
+  const starting = createDeferredStore({ reason: () => "starting", waits: () => true });
+  starting.bootDone();
+  assert.deepEqual(await starting.defer(async () => {}), { applied: false, changes: [] }, "a store that is starting is not waited for");
+});
