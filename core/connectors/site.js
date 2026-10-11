@@ -307,7 +307,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.attention", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "Connections waiting on a person: a login out, a security check, no browser, or a refused key. { sites: [{ id, host, class, words, key? }] }.",
+    description: "Connections waiting on a person: login out, security check, no browser, refused key. { sites: [{ id, host, class, words, key? }] }.",
     input: obj({}, []),
     run: async () => ({ sites: [...siteRows().filter(({ r }) => r.light === "red").map(({ r, d }) => {
       /** @type {any} */ const form = (() => { try { return JSON.parse(r.form || "{}"); } catch { return {}; } })();
