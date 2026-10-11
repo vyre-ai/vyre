@@ -130,3 +130,26 @@ test("a member reads and writes the Space's Drive by role (the team works in one
   assert.equal(new TextDecoder().decode(await D.get(bob, "team/a.txt")), "two");
   await assert.rejects(() => D.restore(bob, "team/a.txt", 1), { code: "not_found" }, "restore is the admin's");
 });
+
+test("the owner narrows a member's Drive: one member's own grant loses drive.*, or a standing rule bars every member's writes; the member's other rights stay", async () => {
+  const drive = fakeDrive();
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), presence, drive });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const cat = k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: "per_cat", path: "direct" });
+  const g = k.gateway.grants, D = k.gateway.drive;
+  for (const p of [BOB, "per_cat"]) { const r = { person: p, role: "member" }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  await D.put(bob, "team/a.txt", new TextEncoder().encode("one"));
+  // a standing rule for the whole Space: members never write the Drive (they still read it)
+  const rule = { kind: "never", binds: ["members"], covers: { actions: ["drive.write"] }, label: "Members read the Drive and do not write it" };
+  await g.rules.set(owner, rule, { presence: proof("rules.set", { kind: "never", binds: ["members"], covers: { actions: ["drive.write"] }, label: rule.label }, `vyre://${SPACE}/rule/new`) });
+  await assert.rejects(() => D.put(cat, "team/b.txt", new Uint8Array([1])), "no member writes under the rule");
+  assert.equal(new TextDecoder().decode(await D.get(cat, "team/a.txt")), "one", "and every member still reads");
+  // one member's own grant narrowed: the role's grant is the member's, so the owner takes drive.read from that member alone
+  const mine = (await g.list(owner, { status: "active" })).find((/** @type {any} */ x) => x.source.startsWith("role:") && x.subject.actor && x.subject.actor.id === BOB);
+  assert.ok(mine && mine.actions.includes("drive.read"), "the member's role is a grant of theirs");
+  const patch = { actions: mine.actions.filter((/** @type {string} */ a) => !a.startsWith("drive.")) };
+  await g.narrow(owner, mine.id, patch, { presence: proof("grants.narrow", { id: mine.id, patch }, `vyre://${SPACE}/grant/${mine.id}`) });
+  await assert.rejects(() => D.get(bob, "team/a.txt"), { code: "not_found" }, "Bob reads no Drive now");
+  assert.equal(new TextDecoder().decode(await D.get(cat, "team/a.txt")), "one", "Cat still does");
+});
