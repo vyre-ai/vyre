@@ -1040,6 +1040,7 @@
  "apps/app/screens/chat-tools/fork-move.test.js": 2,
  "test/journey-space-names.test.js": 3,
  "test/journey-signin-again.test.js": 2,
+ "test/route-pictures.test.js": 1,
  "core/previews/previews-project.test.js": 3,
  "lib/types-extend.test.js": 3,
  "core/previews/thumb-stop.test.js": 1,

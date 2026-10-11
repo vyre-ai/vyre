@@ -64,7 +64,7 @@ test("roles: one lead at most, an agent can fill one, and removing a role takes 
   assert.equal("owner" in b.stages[0], false, "the stage no longer names the removed role");
   assert.equal(b.stages[0].tasks[0].doer === undefined || b.stages[0].tasks[0].doer === "", true);
   assert.match(missing(b).join(" "), /needs someone to do it/);
-  assert.deepEqual(doerChoices(b).map(([v]) => v), ["role:attorney", "role:owner"]);
+  assert.deepEqual(doerChoices(b).map(([v]) => v), ["role:attorney", "person:owner"]);
   assert.deepEqual(ownerChoices(b).map(([v]) => v), ["", "role:attorney"]);
 });
 

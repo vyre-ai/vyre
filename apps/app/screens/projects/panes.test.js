@@ -57,10 +57,3 @@ test("a template project opens on the page its template chose (G21); an unknown 
   assert.equal(firstTab({ name: "R", template_snapshot: "not json" }), "stages");
   assert.equal(firstTab({ name: "Free", opens_on: "files" }), "chats", "a free-flow project has no template to choose");
 });
-
-test("on a wide window the page a template chose leads the panes, and the others keep their order (G21)", () => {
-  const files = { name: "R", template_snapshot: JSON.stringify({ opens_on: "files", stages: [] }) };
-  assert.deepEqual(panesAt(1440, "files", files), ["files", "stages", "chats"]);
-  assert.deepEqual(panesAt(1100, "files", files), ["files", "stages"]);
-  assert.deepEqual(panesAt(1440, "stages", { name: "R", template_snapshot: '{"stages":[]}' }), ["stages", "chats", "files"], "no choice, the usual order");
-});

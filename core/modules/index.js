@@ -10,7 +10,6 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
-import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
@@ -1501,9 +1500,7 @@ export class Registry {
   }
 
   async call(tool, input = {}, caller = "unknown", { proof = null, yes: yesProof = null, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
-    // A proposed `<area>.<object>.<verb>` name is an alias (lib/tool-names.js): it is resolved to the tool's own name here, before anything else looks at the call, so every gate and list judges the same tool.
-    let def = this.tools.get(tool);
-    if (!def) { const own = aliasOf(tool); if (own && this.tools.has(own)) { def = this.tools.get(own); tool = own; } }
+    const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;

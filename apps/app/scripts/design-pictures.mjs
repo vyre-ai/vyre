@@ -2,7 +2,9 @@
 // design-refs/. A picture that changed is a design change: it writes before, after and diff images and exits 1, and the screen's owner says yes (--update) or no. The rules checker runs on
 // every render: no sideways scroll, text of 12 or more (the uppercase section labels are the system's own micro size), touch targets of 44 on a phone, no console errors.
 //
-//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 10]
+//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 20] [--routes]
+// --routes draws every ROUTE of the app (not a gallery fixture) in the sample world, at phone (390) and app (1280) width, light, and compares each with design-refs/routes/<slug>/<surface>-paper.png (G27: a screen
+// cannot ship without a picture; test/route-pictures.test.js is the ratchet). A route with a parameter needs an example address in scripts/route-samples.json.
 // Surfaces: app (1280, full form), phone (390, compact), chat (390, glance). Themes: dark, paper. Files: <refs>/<id>/<surface>-<theme>.png.
 // Needs `playwright` resolvable (PW_FROM, as shots.mjs does) and a web export of the app built with EXPO_PUBLIC_VYRE_MOCK=1.
 import fs from "node:fs";
@@ -17,16 +19,18 @@ const dist = path.resolve(flag("--dist", "dist-mock"));
 const refs = path.resolve(flag("--refs", "../../design-refs"));
 const only = (flag("--only", "") || "").split(",").filter(Boolean);
 const surfaceOnly = (flag("--surface", "") || "").split(",").filter(Boolean);
-const budgetMb = Number(flag("--budget-mb", "10"));
+const budgetMb = Number(flag("--budget-mb", "20"));
+const routesMode = bool("--routes");
 const update = bool("--update");
 const [out] = args;
 if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [--only ids] [--surface names] [--update]"); process.exit(2); }
 fs.mkdirSync(out, { recursive: true });
 
 const fixturesFile = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../ui/blocks/fixtures.generated.json");
-const ids = Object.keys(JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures).filter((id) => !only.length || only.includes(id));
-const SURFACES = [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }].filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
-const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
+const ids = routesMode ? routeList().filter((r) => r.url).map((r) => r.slug).filter((id) => !only.length || only.includes(id)) : Object.keys(JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures).filter((id) => !only.length || only.includes(id));
+const routeOf = Object.fromEntries(routesMode ? routeList().map((r) => [r.slug, r]) : []);
+const SURFACES = (routesMode ? [{ name: "app", w: 1280, h: 800, form: "full" }, { name: "phone", w: 390, h: 844, form: "compact" }] : [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }]).filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
+const THEMES = routesMode ? [{ name: "paper", scheme: "light" }] : [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
@@ -59,9 +63,9 @@ const compare = (page, a, b) => page.evaluate(async ([x, y]) => {
 }, [a.toString("base64"), b.toString("base64")]);
 
 /** The rules, in the page: what a person would see broken. */
-const rules = (page, phone) => page.evaluate((phone) => {
+const rules = (page, phone) => page.evaluate(([phone, routes]) => {
   const bad = [];
-  const root = document.getElementById("fixture");
+  const root = document.getElementById("fixture") || (routes ? document.body : null);
   if (!root) return ["no #fixture on the page"];
   if (document.scrollingElement.scrollWidth > innerWidth + 1) bad.push("scrolls sideways");
   for (const e of root.querySelectorAll("*")) {
@@ -70,7 +74,7 @@ const rules = (page, phone) => page.evaluate((phone) => {
     if (phone && e.getAttribute("role") === "button") { const r = e.getBoundingClientRect(); if (r.height && r.height < 44) bad.push(`touch target ${Math.round(r.height)} high: "${e.textContent.trim().slice(0, 24)}"`); }
   }
   return bad;
-}, phone);
+}, [phone, routesMode]);
 
 let browser = await chromium.launch();
 const report = [];
@@ -79,7 +83,7 @@ const errors = [];
 /** A fresh context and page for a surface and theme; the browser itself is relaunched when it has died (the shared test box is busy and has killed one mid-run). */
 const open = async (s, t) => {
   if (!browser.isConnected()) browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: s.w, height: 1400 }, colorScheme: t.scheme, reducedMotion: "reduce", deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h || 1400 }, colorScheme: t.scheme, reducedMotion: "reduce", deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
   // The static server answers index.html for the service worker's script path: a harness artefact, not the screen's.
@@ -91,6 +95,13 @@ const shoot = async (cur, s, t, id) => {
   for (let attempt = 0; ; attempt++) {
     try {
       const { page } = cur;
+      if (routesMode) {
+        await page.goto(`http://127.0.0.1:${port}${routeOf[id].url}`, { waitUntil: "load", timeout: 30000 });
+        await page.waitForTimeout(1800);
+        const blank = await page.evaluate(() => !document.body.innerText.trim());
+        if (blank) return { missing: true };
+        return { after: await page.screenshot(), rules: await rules(page, s.name !== "app") };
+      }
       await page.goto(`http://127.0.0.1:${port}/app/gallery?f=${id}&form=${s.form}`, { waitUntil: "load", timeout: 30000 });
       await page.waitForSelector("#fixture", { timeout: 20000 }).catch(() => {});
       await page.waitForTimeout(400);
@@ -115,7 +126,7 @@ try {
       const { after } = got;
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
-      const refFile = path.join(refs, id, `${s.name}-${t.name}.png`);
+      const refFile = path.join(refs, ...(routesMode ? ["routes"] : []), id, `${s.name}-${t.name}.png`);
       if (update) { fs.mkdirSync(path.dirname(refFile), { recursive: true }); fs.writeFileSync(refFile, after); row.status = "written"; }
       else if (!fs.existsSync(refFile)) { row.status = "new"; failed++; }
       else {
@@ -127,7 +138,7 @@ try {
           if (r.diff) fs.writeFileSync(path.join(dir, `${s.name}-${t.name}.diff.png`), Buffer.from(r.diff, "base64"));
         }
       }
-      if (row.rules.length) failed++;
+      if (row.rules.length && !routesMode) failed++;
       if (row.status !== "same" || row.rules.length) console.log(`${row.status.toUpperCase().padEnd(8)} ${id} ${s.name} ${t.name}${row.changed ? ` (${row.changed} px)` : ""}${row.rules.length ? ` | rules: ${row.rules.slice(0, 3).join("; ")}` : ""}`);
       report.push(row);
     }

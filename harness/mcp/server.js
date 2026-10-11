@@ -24,7 +24,6 @@ import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
-import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
@@ -273,7 +272,7 @@ async function handle(msg) {
       if (asked === "tools_run" && FEATURES.run) return toolsRun(params?.arguments || {}, params);
       if (asked === "results_read" && FEATURES.ref) return resultsRead(params?.arguments);
       if (asked === "tools_call") {
-        const want = canonical(String(params?.arguments?.tool || ""));
+        const want = String(params?.arguments?.tool || "");
         if (/^results[._]drop$/.test(want)) { const ok = store.drop(owner(), params?.arguments?.arguments?.handle); return reply(JSON.stringify({ dropped: ok }), { dropped: ok }); }
         const target = names.has(want) ? want : names.has(mcpName(want)) ? mcpName(want) : "";
         if (!target || target === "tools_call") return { content: [{ type: "text", text: `not_found: no tool "${want.slice(0, 80)}" that you may use. tools_find finds the one you need.` }], isError: true };

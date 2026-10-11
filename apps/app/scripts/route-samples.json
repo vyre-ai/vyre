@@ -1,0 +1,4 @@
+{
+ "_comment": "An example address for each route that has a parameter, so its picture can be drawn in the sample world. A route with no entry has no picture yet and is named in test/screens-pictures.json.",
+ "u/chats/[id].tsx": "/u/chats/c1"
+}

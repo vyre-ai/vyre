@@ -16,7 +16,6 @@
 //            change, since a rule written there would let later calls skip every question.
 // The Gate (M9) takes over outbound control properly; until then this is the backstop.
 
-import { proposedNameOf } from "../../lib/tool-names.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -186,7 +185,7 @@ function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
   if (w.some((x, i) => isVyre(x) && w[i + 1] === "box" && w[i + 2] === "add")) return ask1("This installs Vyre on a server with your SSH login and pairs it with this Mac.");
   // `vyre vault get|read --reveal` prints a value.
   if (w.some(isVyre) && w.includes("vault") && w.some(x => /^(get|read)$/.test(x)) && w.includes("--reveal")) return deny1("Vault values stay off every screen. " + APPROVALS);
-  const named = [...MODEL_NEVER, ...[...MODEL_NEVER].map(t => proposedNameOf(t)).filter(Boolean)].some(t => flat.includes(String(t)));
+  const named = [...MODEL_NEVER].some(t => flat.includes(t));
   if (named && (w.some(isVyre) || /\/v1\/tools\b/.test(flat) || SOCKET_CLIENT.test(flat))) return deny1(APPROVALS);
 
   // A vyre command, or a word the shell fills in, followed by a human-only noun and verb.

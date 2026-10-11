@@ -8,9 +8,12 @@ on:
     paths:
       - "apps/app/ui/**"
       - "apps/app/screens/**"
+      - "apps/app/app/**"
       - "apps/app/screens/shell/ViewHost.tsx"
       - "apps/app/app/gallery.tsx"
       - "apps/app/scripts/design-pictures.mjs"
+      - "apps/app/scripts/routes.mjs"
+      - "apps/app/scripts/route-samples.json"
       - "lib/views/**"
       - "design-refs/**"
       - ".github/workflows/design-pictures.yml"
@@ -54,6 +57,9 @@ jobs:
       - run: EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web
         working-directory: apps/app
       - run: PW_FROM="$RUNNER_TEMP/pw/" node scripts/design-pictures.mjs "$RUNNER_TEMP/pictures" --dist dist $([ "$UPDATE" = "true" ] && echo --update)
+        working-directory: apps/app
+      # G27: every route of the app, in the sample world, at phone and app width (test/route-pictures.test.js is the ratchet that says every screen has these)
+      - run: PW_FROM="$RUNNER_TEMP/pw/" node scripts/design-pictures.mjs "$RUNNER_TEMP/pictures/routes" --dist dist --routes $([ "$UPDATE" = "true" ] && echo --update)
         working-directory: apps/app
       - if: always()
         uses: actions/upload-artifact@v4
