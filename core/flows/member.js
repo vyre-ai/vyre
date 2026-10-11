@@ -131,7 +131,8 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
       const rows = await tools["flows.runs"](chain, i);
       if (admin || !Array.isArray(rows)) return rows;
       const out = [];
-      for (const r of rows) if (startedBy(r, me) || (await mine(r.flow))) out.push(r);
+      // (the listing leaves the trigger out; the run itself says who started it, in its trigger key)
+      for (const r of rows) if ((await mine(r.flow)) || startedBy(await store.getRun(r.id), me)) out.push({ ...r, started_by_me: startedBy(await store.getRun(r.id), me) });
       return out;
     }
     case "run": await runOk(need("run", "the run's id")); return call();

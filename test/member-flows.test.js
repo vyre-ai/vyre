@@ -42,7 +42,8 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const runId = started.id || started.run || (started.run && started.run.id);
   assert.ok(runId, JSON.stringify(started));
   const mineRuns = await svc.runs(bob, { id: od.id });
-  assert.ok(mineRuns.some((/** @type {any} */ r) => r.trigger && String(r.trigger.key).startsWith("mem:" + BOB + ":")), "she sees the run she started");
+  assert.ok(mineRuns.some((/** @type {any} */ r) => r.started_by_me === true), "she sees the run she started, marked as hers");
+  assert.equal((await host().flows.store.getRun(mineRuns[0].id)).trigger.key.startsWith("mem:" + BOB + ":"), true, "and the run itself says who started it");
 
   // she cannot change or approve the owner's Flow
   assert.match(await words(svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "mine now" }) })), /someone else's/, "a new version of the owner's Flow is refused in words");
