@@ -316,6 +316,18 @@ export default {
       catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
     });
 
+    // Before a chat moves to a computer its finished turns are saved here now (the seal after each turn may still be running when the person's next message arrives), so the computer is given every turn, another person's included.
+    ctx.tool("runner.seal-now", {
+      description: "Save a chat's finished turns on this server now. Internal: the daemon, before it moves a chat to a computer. Input: session. Answers { sealed }.", internal: true, callers: ["module"],
+      input: obj({ session: str }, ["session"]),
+      run: async ({ session }) => {
+        const o = ownServerOf(); if (!o) return { sealed: false };
+        const r = await o.resolve({ payload: { session } }); if (!r) return { sealed: false };
+        const { key, seal } = sealFor(o, r);
+        try { const done = await seal.seal({ state: r.state }); return { sealed: true, turn: done.turn }; } catch { seals.delete(key); return { sealed: false }; }
+      },
+    });
+
     ctx.tool("runner.recover", {
       description: "Put a session on this server back to its last whole turn before it is resumed after an unclean stop: the provider's transcript is rewritten to exactly the sealed lines (a torn last line and an unfinished turn are dropped). Answers the sealed turn and its state, or nothing when the session was never sealed. Call it only while no process of the session is running.",
       input: obj({ session: str }, ["session"]),
