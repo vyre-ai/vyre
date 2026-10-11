@@ -1501,8 +1501,7 @@ export class Registry {
   }
 
   async call(tool, input = {}, caller = "unknown", { proof = null, yes: yesProof = null, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
-    const def = this.tools.get(tool);
-    if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    const def = this.tools.get(tool); if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
