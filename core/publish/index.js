@@ -723,7 +723,7 @@ export default {
       run: async (i, meta) => {
         const w = await whoIs(i, meta);
         const d = await storeFor(w.space.id).get("deployments", String(i.deployment || ""));
-        if (!d || !d.job) throw refuse("no such job", "not_found");
+        if (!d || !d.job) throw refuse("no such job: publish.list shows them", "not_found");
         const rows = /** @type {any[]} */ (db.prepare("SELECT at, ok, code, seconds, message, output FROM publish_job_runs WHERE space = ? AND deployment = ? ORDER BY n DESC LIMIT ?").all(w.space.id, d.id, Math.min(20, Math.max(1, Number(i.limit) || 5))));
         return { runs: rows.map(r => ({ at: r.at, ok: Boolean(r.ok), code: r.code, seconds: r.seconds, message: r.message, output: r.output })) };
       },
