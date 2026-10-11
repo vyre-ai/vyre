@@ -260,6 +260,8 @@ const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, stri
 const answers = (/** @type {any[]} */ frames) => repliesOf(frames).filter(r => r.startsWith("echo: "));
 const askersOf = (/** @type {any} */ w) => w.asked.map((/** @type {any} */ a) => a.asker).filter((/** @type {any} */ a, /** @type {number} */ k, /** @type {any[]} */ l) => a !== l[k - 1]);   // a turn that moves to its asker's own account opens its session at the move and again at the send: one turn
 const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && String(e.data.by.agent || "").startsWith("model:")).map((/** @type {any} */ e) => e.data.by.person);
+/** The person each turn's replies were recorded under, in order: a turn that moves to its asker's account says so in a message or two of its own, under the same person. */
+const openedBy = (/** @type {any} */ w) => opened(w).filter((/** @type {any} */ p, /** @type {number} */ k, /** @type {any[]} */ l) => p !== l[k - 1]);
 
 test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
   const w = await world(t);
@@ -289,7 +291,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   assert.deepEqual(w.asked.map(a => a.asker), [CAROL], "the Switchboard has been asked for carol's session only");
   await until(() => answers(watcher.frames).some(r => r.endsWith("ok, continue")), "the admin's turn", 30_000);
   assert.deepEqual(askersOf(w), [CAROL, BOB], "bob's turn opened under bob, after carol's");
-  assert.deepEqual(opened(w), [CAROL, BOB], "the kernel recorded each reply under its own asker, in order");
+  assert.deepEqual(openedBy(w), [CAROL, BOB], "the kernel recorded each reply under its own asker, in order");
   assert.equal(answers(watcher.frames).filter(r => r.endsWith("ok, continue")).length, 1, "and the admin's words were answered once");
   assert.ok(!answers(watcher.frames)[0].includes("ok, continue"), "never merged into carol's turn");
 });
@@ -308,7 +310,7 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   assert.equal(w.asked.length, 1, "neither has a turn yet");
   await until(() => answers(watcher.frames).length >= 3, "all three replies", 60_000);
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
-  assert.deepEqual(opened(w), [CAROL, BOB, ADA]);
+  assert.deepEqual(openedBy(w), [CAROL, BOB, ADA]);
   const rs = answers(watcher.frames);
   assert.equal(rs.length, 3);
   assert.ok(rs[1].endsWith("B-ONE") && !rs[1].endsWith("A-ONE") && rs[2].endsWith("A-ONE") && !rs[2].endsWith("B-ONE"), "never merged into one turn");
@@ -324,7 +326,7 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
   for (const [who, text] of [["bob", "B-ONE"], ["ada", "A-ONE"], ["bob", "B-TWO"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => answers(watcher.frames).length >= 4, "all four replies", 90_000);
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
-  assert.deepEqual(opened(w), [CAROL, BOB, ADA, BOB]);
+  assert.deepEqual(openedBy(w), [CAROL, BOB, ADA, BOB]);
   const rs = answers(watcher.frames);
   assert.deepEqual(rs.slice(1).map(r => ["B-ONE", "A-ONE", "B-TWO"].find(x => r.endsWith(x))), ["B-ONE", "A-ONE", "B-TWO"], "never merged, none cut");
 });
@@ -386,7 +388,7 @@ test("V4: a restart with a message queued at the Switchboard: the queue is the S
   const inbox = () => { const db = open(w.paths.db); try { return db.prepare("SELECT text, kturn FROM threads_inbox WHERE thread = ? ORDER BY id").all(kit); } finally { db.close(); } };
   await until(() => inbox().some((/** @type {any} */ r) => r.text === "WAITING-B"), "the Switchboard's queue to hold it");
   assert.deepEqual(outbox(), [], "the stream's outbox row completed on the queued answer");
-  assert.deepEqual(JSON.parse(String(inbox().find((/** @type {any} */ r) => r.text === "WAITING-B").kturn)), { chat: chat.id, asker: BOB }, "the queued row carries its chat and asker");
+  assert.deepEqual(JSON.parse(String(inbox().find((/** @type {any} */ r) => r.text === "WAITING-B").kturn)), { chat: chat.id, asker: BOB, over: { provider: "claude", account: JSON.parse(String(inbox().find((/** @type {any} */ r) => r.text === "WAITING-B").kturn)).over.account, person: BOB } }, "the queued row carries its chat and asker, and the account of his own it will run on");
   await w.crash(b1);
   assert.ok(inbox().some((/** @type {any} */ r) => r.text === "WAITING-B"), "the restart lost nothing: the Switchboard's queue is durable");
 });
