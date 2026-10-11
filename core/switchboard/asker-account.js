@@ -7,14 +7,15 @@
 // a person's chip may name only an account that serves them (onceTarget resolves it with their person). A turn that arrives while another is running waits behind it (runQueuedOver) and shows as waiting.
 
 /**
- * @param {any} sb the Switchboard @param {string} id the thread @param {{ asker: string }} kernelTurn
+ * @param {any} sb the Switchboard @param {string} id the thread @param {{ asker: string }} kernelTurn @param {boolean} [memberOnly] the turn moves to another provider by the asker's chip: only whether they are in the chat is judged here (chipOver judges their sign-in for THAT provider)
  * @returns {Promise<{ provider: string, account: string, person: string | null } | null>} the one-turn target, or null when the thread's own account is theirs to use
  */
-export async function askerOver(sb, id, kernelTurn) {
+export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   const rec = sb.record(id);
   if (!rec || !kernelTurn || !kernelTurn.asker) return null;
   // Whether the asker is in the chat is the kernel's first word (a person who is not in it is refused as that, before anything about their sign-in is said).
   if (typeof sb.assertAsker === "function" && kernelTurn.chat) await sb.assertAsker(id, rec, kernelTurn);
+  if (memberOnly) return null;
   const provider = rec.provider || "claude", asker = kernelTurn.asker, scope = { project: rec.project, agent: rec.agent };
   const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };

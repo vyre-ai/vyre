@@ -216,6 +216,7 @@ async function bobsThread(t, opts = {}) {
   await until(() => /AMBER-92/.test(textOf(watchCarol.frames)), "bob's turn", 120_000);
   const thread = kitThread(b, chat.id);
   const events = async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  await until(async () => (await events()).some((/** @type {any} */ e) => e.type === "thread.finished"), "bob's turn to end", 60_000);
   return { w, b, chat, own, bobsAcct, thread, events, watchCarol };
 }
 

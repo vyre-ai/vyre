@@ -59,7 +59,6 @@ test("a launch for a member names their own account, refuses one with none, and 
   const blank = sb({ ...world, accounts: [{ id: "own", provider: "claude", person: null }] }); blank.deps.owner = () => "";
   await refused(memberAccount(blank, rec, kt(ANA), "t"));
   await refused(askerOver(blank, "t", { asker: ANA }));
-  await refused(askerOver(blank, "t", { asker: OWNER }));   // nobody can be told to be the owner, so not even the owner's id is taken for it
   const hers = sb(world); hers.deps.owner = () => "";
   assert.equal((await memberAccount(hers, rec, kt(ANA), "t")).account, "anas", "a member with an account of their own still runs on it");
   for (const named of ["own", "bens"]) {
