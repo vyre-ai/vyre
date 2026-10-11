@@ -953,6 +953,8 @@ export class Switchboard {
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
+      // who started it, from the call (the chat turn's asker): a transcript is placed in this thread only for this person (threads.transcript-target)
+      if (typeof o.person === "string" && o.person) kept.person = o.person;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
