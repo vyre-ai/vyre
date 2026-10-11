@@ -140,6 +140,8 @@ function withCodex(t, root) {
   t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG", "FAKE_ACP_RPC_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 }
 
+// 11 Oct 2026: this test failed in CI a few times (the Codex answer to carol never arrived: the stand-in was launched and got the prompt, the reply found no kernel session) and never on testbox5 (30 loaded repeats,
+// Node 22 and 24). The race is NOT found; the request and log lines printed when the wait times out are diagnostics to find it, not a fix.
 test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and her AI is handed the whole conversation, so it can answer from bob's turn", async t => {
   const w = await world(t);
   withCodex(t, w.work);
