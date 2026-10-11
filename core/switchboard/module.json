@@ -318,6 +318,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.say-as",
+        "reach": "modules"
+      },
+      {
         "name": "threads.halt",
         "reach": "modules"
       },

@@ -92,7 +92,7 @@ export function createTaskWakeHost(o) {
   }
 
   /**
-   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number, sweepAfterMs?: number, say?: (m: { project: string, slug: string, text: string }) => Promise<any> }} s
+   * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, ownerId: () => string, notify?: (n: { person: string, project: string, title: string, note: string }) => Promise<any>, grantWork: { make: (agent: string, task: string, until: number) => Promise<any>, end: (task: string) => Promise<any> }, subscribe: (cb: (e: any) => any) => any, nameOf?: (person: string) => string, clock?: () => number, resumeEveryMs?: number, sweepAfterMs?: number, say?: (m: { project: string, slug: string, agent: string, text: string }) => Promise<any> }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
@@ -161,8 +161,8 @@ export function createTaskWakeHost(o) {
       return leadBrief({ kind, project: r.name, roster: roster.map((/** @type {any} */ m) => ({ agent: m.agent, role: m.role })), tasks });
     }
 
-    /** Apply a lead's picks: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. The daemon moves it through the kernel as the owner's chain; the lead's own chain changes nothing. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
-    async function applyPicks(t, r, picks) {
+    /** Check a lead's picks and turn each into a recommendation for the person: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. Nothing is moved here. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
+    async function recommendPicks(t, r, picks) {
       const rec = ledger.get(t.id) || {}, map = Array.isArray(rec.map) ? rec.map : [], roster = await rosterOf(r.urn), out = [];
       for (const p of picks) {
         const entry = map.find((/** @type {any} */ m) => m.n === p.task), target = roster.find((/** @type {any} */ m) => m.role === p.to && m.agent.toLowerCase() !== r.agent.toLowerCase());
@@ -172,11 +172,8 @@ export function createTaskWakeHost(o) {
         if (!target) { out.push(`I did not move ${title}: no one else on the team holds the role ${p.to}.`); continue; }
         if (((ledger.get(cur.id) || {}).stuckTimes || 1) >= MAX_STUCK_TIMES) { out.push(`I did not move ${title}: it has been stuck twice. It needs you.`); continue; }
         if (!cur.doer || cur.doer.kind !== "agent") { out.push(`I did not move ${title}: a person has it.`); continue; }
-        try {
-          await s.gw.ask.unblock(s.ownerChain(), cur.id, { reassign_to: target.actor });
-          log(`task-wake ${s.space}: the lead ${r.agent} moved a stuck task to ${target.agent} (${p.to})`);
-          out.push(`I moved ${title} to ${target.agent}, who holds the role ${p.to}.`);
-        } catch (e) { out.push(`I could not move ${title} (${cut(/** @type {Error} */ (e).message, 100)}). It needs you.`); }
+        // The lead only RECOMMENDS: the daemon never acts as a person who is not there, and the lead has no authority of its own over another task yet. The person moves it in one tap.
+        out.push(`I recommend moving ${title} to ${target.agent}, who holds the role ${p.to}. Open the task and choose to give it to ${target.agent}.`);
       }
       return out;
     }
@@ -303,10 +300,10 @@ export function createTaskWakeHost(o) {
       let note = text;
       if (rec.lead && r) {
         const parsed = parseLead(text);
-        const lines = parsed.picks.length ? await applyPicks(t, r, parsed.picks) : [];
+        const lines = parsed.picks.length ? await recommendPicks(t, r, parsed.picks) : [];
         if (parsed.ignored) lines.push("I could not read my own list of moves, so I made none.");
         note = [parsed.message || "No message.", ...lines].join("\n");
-        try { if (s.say) await s.say({ project: r.urn, slug: r.slug, text: note }); } catch (e) { log(`task-wake ${s.space}: the lead's message was not posted (${/** @type {Error} */ (e).message})`); }
+        try { if (s.say) await s.say({ project: r.urn, slug: r.slug, agent: r.agent, text: note }); } catch (e) { log(`task-wake ${s.space}: the lead's message was not posted (${/** @type {Error} */ (e).message})`); }
       }
       try {
         await s.gw.ask.complete(doerChain(t), id, { note, sources: [`session:${thread}`] });

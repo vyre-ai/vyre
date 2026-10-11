@@ -412,6 +412,32 @@ export default {
         return made;
       },
     });
+    // The project lead's message (G08): one line in the project's chat, under the lead's name. Only the daemon's task wake asks, and only for the agent the project record names as its lead; it can say nothing
+    // anywhere else. A project with no chat gets no message here (posted: false) and the caller keeps the words as the task's result.
+    ctx.tool("work.project.say", {
+      description: "Post the project lead's plan or report in the project's chat under the lead's name, starting no turn: { posted, thread? }. For the daemon's task wake, for the project's flagged lead only.",
+      input: obj({ project: { type: "string" }, agent: { type: "string" }, text: { type: "string" } }, ["project", "agent", "text"]),
+      callers: ["module"],
+      run: async (input, extra) => {
+        if (String((extra && extra.caller) || "") !== "module:vyred") throw Object.assign(new Error("only the daemon's task wake posts a project lead's message; the lead's reply reaches the chat through it"), { code: "denied" });
+        const k = kernelOf(), svc = k.serviceChain("work");
+        const rec = await hubOf().projectOf(String(input.project || ""));
+        if (!rec || String(rec.data.lead || "").toLowerCase() !== String(input.agent || "").toLowerCase() || !rec.data.lead) throw Object.assign(new Error("only a project's flagged lead posts its message; the project record names the lead (projects.list shows the project)"), { code: "denied" });
+        const chats = (await k.records.query(svc, "chat-record", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 50 } }).catch(() => ({ rows: [] }))).rows || [];
+        chats.sort((a, b) => String(b.data.last_active || "") < String(a.data.last_active || "") ? -1 : 1);
+        for (const c of chats) {
+          if (!c.data || typeof c.data.chat !== "string") continue;
+          const r = await ctx.call("threads.of-chat", { chat: c.data.chat }).catch(() => null);
+          const list = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.threads || []) : [];
+          const t = list.find((/** @type {any} */ x) => x && (x.id || typeof x === "string"));
+          const id = t ? String(t.id || t) : "";
+          if (!id) continue;
+          const said = await ctx.call("threads.say-as", { thread: id, agent: String(input.agent), text: String(input.text) });
+          if (!said.error) return { posted: true, thread: id };
+        }
+        return { posted: false, reason: "no_chat" };
+      },
+    });
     ctx.tool("work.project.ref", {
       description: "The Project a reference names (its record id, its address or its short name): { id, urn, slug, name }. Nothing is made, and a Project the caller may not read is not found. A part that holds only a short name asks this for the id before it keys anything by it.",
       input: obj({ project: { type: "string" } }, ["project"]),

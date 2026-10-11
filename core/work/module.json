@@ -97,6 +97,11 @@
         "effect": "read"
       },
       {
+        "name": "work.project.say",
+        "summary": "post the project lead's plan or report in the project's chat under its name (the daemon's task wake only)",
+        "reach": "modules"
+      },
+      {
         "name": "work.project.ref",
         "summary": "the Project a record id, address or short name names: its id, address, short name and name",
         "reach": "anyone",

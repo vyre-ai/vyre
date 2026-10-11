@@ -305,6 +305,12 @@ test("with its grant an agent works that task and no other: not a second task in
   const ask = d.kernel.gateway.ask;
   await assert.rejects(() => ask.start(agent, b), "not a second task of the same project");
   await assert.rejects(() => ask.start(agent, c), "not a task of another project");
+  // the grant is for one address: task ids are fixed-length (the kernel mints them), and an address that merely begins with this task's id is not this task
+  assert.equal(a.length, b.length, "ids are fixed-length");
+  const at = (/** @type {string} */ res) => d.kernel.gateway.authorize({ chain: agent, action: "tasks.work", resource: res });
+  assert.equal((await at(`vyre://${space}/task/${a}`)).effect, "allow", "the task itself");
+  assert.notEqual((await at(`vyre://${space}/task/${a}0`)).effect, "allow", "an id that extends it is another task");
+  assert.notEqual((await at(`vyre://${space}/task/${a.slice(0, -1)}`)).effect, "allow", "and a shorter one is not this task either");
   await ask.start(agent, a);   // the one it was given
   await handle.mint.end({ source: `task-wake:${a}`, reason: "test" });
   await assert.rejects(() => ask.complete(agent, a, { note: "done", sources: ["s"] }), "and not this one once the grant has ended");
@@ -340,15 +346,15 @@ test("the project lead's plan names the team and the tasks without ids, and its 
   assert.doesNotMatch(said[0].text, /tsk_/);
 });
 
-test("the lead moves a stuck task to a teammate whose role fits, once; anything else is flagged to the person", async () => {
+test("the lead recommends moving a stuck task to a teammate whose role fits, once; anything else is flagged to the person; nothing is moved", async () => {
   const mk = () => ({ id: "tsk_rep", state: "ready", title: "Report on P One", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" });
   const r = rig({ lead: "kit", task: mk(), others: [stuckTask("tsk_9"), stuckTask("tsk_8", { doer: { kind: "person", id: "per_x" } })] });
   r.ready(); await r.h.idle();
   await r.finish('Two things are stuck.\nREASSIGN: {"picks":[{"task":1,"to":"design"},{"task":2,"to":"design"},{"task":1,"to":"nobody"}]}');
-  assert.ok(r.calls.includes("unblock tsk_9 agt_dana"), "the stuck task went to the teammate holding the role");
+  assert.ok(!r.calls.some(c => c.startsWith("unblock")), "nothing is moved: the lead only recommends");
   assert.ok(!r.calls.some(c => c.startsWith("unblock tsk_8")), "a task a person has is not moved");
   const note = r.calls.at(-1);
-  assert.match(note, /I moved "Draft tsk_9" to dana/);
+  assert.match(note, /I recommend moving "Draft tsk_9" to dana/);
   assert.match(note, /a person has it/);
   assert.match(note, /no one else on the team holds the role nobody/);
 });
@@ -388,4 +394,27 @@ test("the report is a duty: asked for once a day per project with a lead, not at
   const off = rig({ root: `${root}-off`, now: () => now, projects, report: 0 });
   await off.h.reports(); now += 48 * 3600_000; await off.h.reports(); await off.h.idle();
   assert.deepEqual(off.calls.filter(c => c.startsWith("request")), [], "off means off");
+});
+
+test("the project lead's message is the daemon's alone, for the project's flagged lead alone, and says no when the project has no chat", { timeout: 120_000 }, async t => {
+  const { d, root, project } = await boot(t);
+  const kcall = kernelCaller(d, root);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: [project.slug] })).error);
+  const owner = d.kernel.id.owner;
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const ref = (await kcall("work.project.ref", { project: project.slug })).data;
+  const say = (/** @type {string} */ caller, /** @type {any} */ input) => d.registry.call("work.project.say", { project: project.slug, text: "Plan: Dana drafts first.", ...input }, caller);
+  const person = await say("cli", { agent: "kit" });
+  assert.equal(person.error && person.error.code, "no_such_tool", "it is not a person's tool or an agent's: they cannot even see it");
+  const noLead = await say("module:vyred", { agent: "kit" });
+  assert.equal(noLead.error && noLead.error.code, "denied", "a project with no flagged lead gets nothing");
+  const rec = await d.kernel.gateway.records.get(admin, "project", ref.id);
+  await d.kernel.gateway.records.update(admin, "project", ref.id, { lead: "kit" }, rec.version);
+  const other = await say("module:vyred", { agent: "someone" });
+  assert.equal(other.error && other.error.code, "denied", "an agent that is not the lead posts nothing");
+  const none = await say("module:vyred", { agent: "kit" });
+  assert.ok(!none.error, JSON.stringify(none));
+  assert.equal(none.data.posted, false, "no chat: the words stay as the task's result");
+  const sayAs = await d.registry.call("threads.say-as", { thread: "nope", agent: "kit", text: "x" }, "module:vyred");
+  assert.equal(sayAs.error && sayAs.error.code, "denied", "and the thread line can only be written by the work module");
 });

@@ -4668,6 +4668,18 @@ export default {
       input: { type: "object", properties: { agent: str, since: { type: "integer" } } },
       run: async i => sb.usage(i),
     });
+    // A project lead's message in a chat (G08): a line under the lead's own name, shown like a teammate's. It is written to the thread and nothing more: no turn starts, whatever the chat's reply mode.
+    ctx.tool("threads.say-as", {
+      description: "Put one line in a thread as a named agent without starting any turn. For the daemon's project lead messages.", internal: true,
+      input: { type: "object", required: ["thread", "agent", "text"], properties: { thread: str, agent: str, text: str } },
+      callers: ["module"],
+      run: async (i, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:work") throw Object.assign(new Error("only the work module posts a project lead's message; the project's lead reply reaches its chat through the daemon (projects.list shows the projects)"), { code: "denied" });
+        const rec = sb.must(i.thread);
+        sb.emit("thread.text", { message: String(i.agent).slice(0, 60), text: String(i.text).slice(0, 4000), done: true, notice: true, as_agent: String(i.agent).slice(0, 60) }, i.thread, rec.project);
+        return { thread: i.thread, said: true };
+      },
+    });
     ctx.tool("threads.notice", {
       description: "Say something in a thread as Vyre.", internal: true,
       input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str } },
