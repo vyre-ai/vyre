@@ -4,6 +4,7 @@ import { Avatar, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Loa
 import { ROLE, dutyLine, errWords, fillLine, plural, rosterOnly, rowLine, stateWord, type Pane, type Teammate } from "./model";
 import { teammates } from "./teammates";
 import { useTeam } from "./useTeam";
+import { AgentWork } from "./AgentWork";
 
 /** One teammate, opened: what it is doing, its last result, notes, and its setup (who fills it, charter, duties). Every value is drawn as text. */
 function TeammatePane({ t, project, done }: { t: Teammate; project: string; done: () => void }) {
@@ -138,6 +139,7 @@ export function TeamTab({ project }: { project: string }) {
         </Card>
       ) : null}
       <AddTeammate project={project} done={reload} />
+      <AgentWork project={project} rows={rows} />
     </View>
   );
 }

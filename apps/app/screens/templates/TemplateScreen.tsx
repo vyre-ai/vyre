@@ -6,6 +6,7 @@ import { Frame, Sec } from "../places/Frame";
 import { errWords, projectIdOf, type Body, roleLines, startName, startWords, stateWord, treeOf, type Version } from "./model";
 import { templates } from "./templates";
 import { TemplateEditor } from "./TemplateEditor";
+import { startLine } from "../teammates/agent-work-model";
 
 /**
  * /u/templates/:id, the template studio: the tree of stages and tasks, Test mode (every brief and doer on a sample, nothing created or sent), Go live (the owner or an admin), the versions, and the
@@ -60,6 +61,7 @@ export default function TemplateScreen() {
       {cur && cur.state === "live" ? (
         <Sec title="Start a project"><View className="gap-s3">
           <Text tone="muted">Makes the project with its team and these stages, and puts the first stage's tasks in Now. Projects already running keep their own version.</Text>
+          <Text size="caption" tone="label">{startLine(null)}</Text>
           <Field name="Project name" value={projectName} onChangeText={setProjectName} placeholder="Rivera Family Trust" />
           <View className="self-start"><Button kind="primary" size="sm" label={busy === "start" ? "Starting" : "Start project"} loading={busy === "start"} disabled={!projectName.trim()} onPress={() => void start()} /></View>
         </View></Sec>
