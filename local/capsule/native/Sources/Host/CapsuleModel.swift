@@ -931,8 +931,8 @@ public final class CapsuleModel: ObservableObject {
         // the instructions.
         let append = ([context].compactMap { $0 } + attachments.map(\.body)).filter { !$0.isEmpty }.joined(separator: "\n\n")
         pending = true
-        // A question on the default fast model goes into the pinned assistant chat (the same chat the app shows); a box without it, or a model chosen on purpose, keeps the thread-of-its-own ask below.
-        if !computerUse, model == models.quick, vyred.has("work.chat.persistent"), vyred.has("stream.send"), let out = await askPinned(words, append: append) { return out }
+        // A question on the default fast model goes into the pinned assistant chat (the same chat the app shows) when THIS computer's own Vyre has it; a Mac that reaches a server's assistant through its link, a box without it, or a model chosen on purpose keeps the thread-of-its-own ask below.
+        if !computerUse, model == models.quick, vyred.toolNames.contains("work.chat.persistent"), vyred.toolNames.contains("stream.send"), let out = await askPinned(words, append: append) { return out }
         reply = nil
         replySub?.cancel()
         // Follow before starting, so the first words are not missed.
