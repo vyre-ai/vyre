@@ -85,6 +85,11 @@ test("an agent's launch for a person who is not the owner is refused with the ne
   await agentLaunchGuard(sb(), i, ANA, undefined);
   await agentLaunchGuard(sb(), { ...i, account: "anas" }, ANA, OWNER);
   await agentLaunchGuard(sb(), {}, ANA, OWNER);
+  // an agent with a credential picked for it runs on that for a member (its vault token or key is in the launch); one with nothing picked is refused
+  await agentLaunchGuard(sb(), { ...i, env: { CLAUDE_CODE_OAUTH_TOKEN: "x" } }, ANA, OWNER);
+  await agentLaunchGuard(sb(), { ...i, env: { ANTHROPIC_API_KEY: "x" } }, ANA, OWNER);
+  await agentLaunchGuard(sb(), { ...i, fallback: { env: { ANTHROPIC_API_KEY: "x" } } }, ANA, OWNER);
+  await refusedAgent(agentLaunchGuard(sb(), { ...i, env: {} }, ANA, OWNER));
   await refusedAgent(agentLaunchGuard(sb(), i, ANA, ""));
   await refusedAgent(agentLaunchGuard(sb(), i, OWNER, ""));
   const canon = (/** @type {string} */ p) => (p === "per_owner_alias" ? OWNER : p);
