@@ -6,7 +6,7 @@ export { shapeDiff } from "./operator-cards.fixtures.js";
 export const CHAT = "chat_01a12319-bf9c-4ec9-ab1b-9dd9f04df6dc";
 export const SESSION = "s_contract_1";
 
-export const REASONS = ["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off", "offline", "lease-expired", "crash", "version-skew", "you"];
+export const REASONS = ["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off", "offline", "lease-expired", "crash", "version-skew", "another-person", "you"];
 export const STATES = ["here", "moving", "server", "locked", "updating", "paused"];
 
 export const runnerFixtures = {

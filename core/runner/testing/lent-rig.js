@@ -36,7 +36,7 @@ export async function rig(t, o = {}) {
   const keyOf = o.keyIsDevice ? "dev_laptop" : "KEY_LAPTOP";
   const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const sealer = fakeSealer();
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => (o.secret ? o.secret : { secret: "v" }) });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });
   const g = k.gateway.grants;
@@ -44,7 +44,7 @@ export async function rig(t, o = {}) {
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
   const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.httpFirstMs ? { httpFirstMs: o.httpFirstMs } : {}), ...(o.callMaxMs ? { callMaxMs: o.callMaxMs } : {}), ...(o.emit ? { emit: o.emit } : {}), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap, ...(o.now ? { now: o.now } : {}), ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.emit ? { emit: o.emit } : {}),
+  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.httpFirstMs ? { httpFirstMs: o.httpFirstMs } : {}), ...(o.callMaxMs ? { callMaxMs: o.callMaxMs } : {}), ...(o.emit ? { emit: o.emit } : {}), chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap, ...(o.now ? { now: o.now } : {}), ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.emit ? { emit: o.emit } : {}),
     specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };

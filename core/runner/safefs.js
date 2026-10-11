@@ -90,3 +90,15 @@ export function writeInside(root, rel, data) {
   try { fs.writeFileSync(tmp, data, { mode: 0o600, flag: "wx" }); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }   // a full disk leaves no half file
   try { fs.renameSync(tmp, dest); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
 }
+
+/**
+ * Is this path in a work folder one that is never carried back from another computer? One structural rule, not a list that grows: any path with a segment that starts with a dot (.claude, .cursor, .github,
+ * .husky, .vscode, rc files, whatever tool comes next), and the agent instruction files by name at any depth (CLAUDE.md, AGENTS.md, GEMINI.md, GROK.md and their local forms). Everything else the chat changed
+ * comes back. A file an agent wrote there would otherwise run here with this session's authority on the next turn (trust rows 17, 29, 45). One rule for restore and for resume-lent.
+ * @param {string} rel
+ */
+export function plantable(rel) {
+  const p = String(rel).split(/[\\/]+/).filter(Boolean).map(x => x.toLowerCase());
+  if (p.some(x => x.startsWith("."))) return true;
+  return /^(claude|claude\.local|agents|gemini|grok|copilot-instructions)\.md$/.test(p[p.length - 1] || "");
+}

@@ -89,6 +89,11 @@
         "reach": "modules"
       },
       {
+        "name": "previews.viewer-ok",
+        "effect": "read",
+        "reach": "modules"
+      },
+      {
         "name": "previews.resolve",
         "effect": "read",
         "reach": "modules"

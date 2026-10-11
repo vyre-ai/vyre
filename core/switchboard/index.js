@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -52,7 +52,7 @@ import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
-import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
+import { findSession, sessionInfo, openElsewhere, registerTranscriptTools } from "./adopt.js";
 import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
@@ -877,7 +877,7 @@ export class Switchboard {
       rec = this.must(o.resume);
       id = rec.id; box.id = id; await checkResidency(this.deps, rec.provider || "claude");   // the person's vendor policy (residency.js): every provider, every sign-in
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
-      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
+      if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt, { askedBy: (o.kernelTurn && o.kernelTurn.asker) || null }); return this.launched(id); }
       // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
       // exactly the last sealed turn before `claude --resume` reads it. Only a crashed thread, and only while no process of it runs (checked above); no runner, an unsealed session or any refusal changes nothing.
       const stopReason = /** @type {any} */ (this.db.prepare("SELECT stopped_reason FROM threads_runs WHERE id = ?").get(id))?.stopped_reason;
@@ -952,7 +952,7 @@ export class Switchboard {
       // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
-      if (w.branch) kept.branch = w.branch;
+      if (w.branch) kept.branch = w.branch;   if (o.kernelTurn && o.kernelTurn.asker) kept.person = String(o.kernelTurn.asker);   // who started it, from the verified chat turn (never a caller's word): a transcript is placed in this thread only for this person (threads.transcript-target)
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -1024,8 +1024,8 @@ export class Switchboard {
       const note = heard.length ? tagNote(heard) : "";
       await slow();
       at("first prompt send");
-      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
-      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(withoutVyre(String(o.prompt)), 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), ...(o.kernelTurn && o.kernelTurn.asker ? { askedBy: o.kernelTurn.asker } : {}), cancelled: () => box.cancelled });
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), askedBy: (o.kernelTurn && o.kernelTurn.asker) || null }); this.emit("thread.sent", { text: cut(withoutVyre(String(o.prompt)), 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -1717,7 +1717,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.person = person; else delete kept.person;
+    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.switchPerson = person; else delete kept.switchPerson;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2122,7 +2122,7 @@ export class Switchboard {
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
     this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
-    if (st.lastPrompt) this.write(id, st.lastPrompt);
+    if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 
   onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
@@ -2159,8 +2159,8 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null, at?: number }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "" } = {}) {
-    const st = this.live.get(id);
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "", askedBy = undefined } = {}) {
+    const st = this.live.get(id); if (lentBlocks(this, id, st, askedBy || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
@@ -2239,7 +2239,7 @@ export class Switchboard {
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
     // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
-    const lead = all[0].kturn || null;
+    const lead = all[0].kturn || null; const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })(); { if (lentBlocks(this, id, st, kt0 && kt0.asker ? kt0.asker : null)) { void lentYield(this, id, st, kt0 && kt0.asker ? kt0.asker : null).catch(() => {}); return; } }
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
     let kt0 = null; if (lead) { try { kt0 = JSON.parse(lead); } catch { /* no turn facts */ } }
@@ -2267,7 +2267,7 @@ export class Switchboard {
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
-    const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null, ...(note ? { note } : {}) });
+    const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
     if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).catch(() => {}).finally(deliver); return; } }
     deliver();
@@ -2279,12 +2279,12 @@ export class Switchboard {
    */
   restoreSteers(id) {
     const rows = /** @type {any[]} */ (this.db.prepare("SELECT uuid, text, images, at FROM threads_steers WHERE thread = ? ORDER BY at").all(id));
-    if (!rows.length || !this.live.has(id)) return false;
+    if (!rows.length || !this.live.has(id) || lentBlocks(this, id, this.live.get(id), null)) return false;   // words with no person never go into a process on a computer: they stay saved
     this.db.prepare("DELETE FROM threads_steers WHERE thread = ?").run(id);
     const rec = this.record(id);
     for (const r of rows) this.emit("thread.sent", { text: cut(r.text, 2000), surface: null, uuid: r.uuid, via: "restored", queued_at: Number(r.at) }, id, rec ? rec.project : null);
     const images = rows.flatMap(r => imagesFrom(r.images) || []);
-    this.write(id, rows.map(r => r.text).join("\n\n"), { uuid: rows[0].uuid, images: images.length ? images : null });
+    this.write(id, rows.map(r => r.text).join("\n\n"), { uuid: rows[0].uuid, askedBy: null, images: images.length ? images : null });
     // The turn they run as takes them all in: surfaces move each from queued to picked-up.
     for (const r of rows) this.emit("thread.steered", { uuid: r.uuid, step: 0, text: cut(r.text, 2000), queued_at: Number(r.at), restored: true }, id, rec ? rec.project : null);
     return true;
@@ -2423,7 +2423,7 @@ export class Switchboard {
     return run;
   }
 
-  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, askedBy = null, cancelled = undefined } = {}) {
     // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
     const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); }; { const r0 = this.record(id); if (r0) await checkResidency(this.deps, r0.provider || "claude"); }   // a running chat is held to the vendor policy at each turn too
     given();
@@ -2450,10 +2450,10 @@ export class Switchboard {
       }
       // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
-      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
-      if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);   if (!(st && st.turn)) await lentReturn(this, id, st, kernelTurn.asker);
+      if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) { const q = this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); lentDrain(this, id, st); return q; } await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
-    if (!this.live.has(id)) {
+    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); const q = this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); lentDrain(this, id, stL); return q; } } if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
       if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author });
@@ -2480,11 +2480,11 @@ export class Switchboard {
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
     if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images, note, author });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note, askedBy: kernelTurn ? kernelTurn.asker : askedBy });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer", queued_at: w.at, step: st.steps || 0, ...(author ? { author } : {}) }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note, askedBy: kernelTurn ? kernelTurn.asker : askedBy });
     this.emit("thread.sent", { text: cut(withoutVyre(text), 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
@@ -2528,7 +2528,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).switchPerson || null };
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
@@ -2721,9 +2721,9 @@ export class Switchboard {
       } else await this.launch({ resume: id });
     }
     const st = this.live.get(id);
-    const rec = this.must(id);
+    const rec = this.must(id);   if (lentBlocks(this, id, st, null)) { void lentYield(this, id, st, null).catch(() => {}); return this.queue(id, text, from, null, { owned: true, kind, request }); }
     if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind, request });
-    const w = this.write(id, text);
+    const w = this.write(id, text, { askedBy: null });
     this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind, ...(request ? { request } : {}) }, id, rec.project);
     return { sent: true, thread: id, uuid: w.uuid, turn: w.turn };
   }
@@ -2829,12 +2829,12 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request, note FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request, note, kturn FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));   const rowAsker = (() => { try { return row && row.kturn ? JSON.parse(this.canonTurn(row.kturn)).asker || null : null; } catch { return null; } })();   if (row && lentBlocks(this, id, st, rowAsker)) return { sent: false, note: "This chat runs on someone's own computer, so this message waits for the server to take the chat back. It is sent when the chat is on the server." };
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
-    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images), ...(row.note ? { note: row.note } : {}) });
+    const w = this.write(id, row.text, { uuid, askedBy: rowAsker, steer: Boolean(st.turn), images: imagesFrom(row.images), ...(row.note ? { note: row.note } : {}) });
     this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now", ...(row.request ? { request: row.request } : {}) }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
@@ -3219,7 +3219,7 @@ export class Switchboard {
     // The spend ledger attributes a thread's cost to its recorded purpose (core/spend): a module that asked on behalf of
     // something ("watcher:digest") has this one answer charged there. The spare is never reused after it, so nothing else sees it.
     if (ledger) this.db.prepare("UPDATE threads_runs SET purpose = ? WHERE id = ?").run(ledger, id);
-    this.write(id, String(prompt));
+    this.write(id, String(prompt), { askedBy: null });
     // The next question's session starts now, while this one answers.
     if (!this.closing) {
       const next = this.spare(purpose, system, model)
@@ -3837,7 +3837,7 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentSteady: (/** @type {any} */ q) => lentSteadyFor(ctx.kernel, q), lentOfferBack: async (/** @type {any} */ q) => { if (!lentOfferedFor(ctx.kernel, q)) return { moved: false }; const x = /** @type {any} */ (await ctx.call("runner.offer-back", { thread: q.thread, person: q.person })); return x && x.data ? x.data : { moved: false }; }, lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
@@ -4045,7 +4045,7 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, slot: _slot, ...restAll } = i;
+        const { mentions, pasted, starter: _claimed, slot: _slot, person: _person, ...restAll } = i;
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
@@ -4818,7 +4818,7 @@ export default {
         if (!t) return null;
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
-    });
+    }); registerTranscriptTools(ctx, sb, str);
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },

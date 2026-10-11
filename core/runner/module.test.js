@@ -29,9 +29,9 @@ async function boot(t, ports) {
 test("runner module: loads with its tools and says plainly that it is not connected yet", async t => {
   const s = await boot(t);
   const tools = s.d.registry.modules.get("runner").manifest.does.tools.map(x => x.name);
-  assert.deepEqual(tools.sort(), ["runner.here", "runner.lock", "runner.move", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.recover", "runner.resume-all", "runner.revoke", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"]);
+  assert.deepEqual(tools.sort(), ["runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.move", "runner.offer-back", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.recover", "runner.resume-all", "runner.resume-lent", "runner.revoke", "runner.seal-now", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"]);
   const visible = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("runner."));
-  assert.deepEqual(visible.sort(), ["runner.here", "runner.lock", "runner.move", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"], "start and stop are the person's; revoke is no tool at all");
+  assert.deepEqual(visible.sort(), ["runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.move", "runner.pause-all", "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop", "runner.why-not"], "start and stop are the person's; revoke is no tool at all");
   const st = await s.call("runner.status");
   assert.equal(st.data.ready, false);
   assert.match(st.data.why, /not connected|installed|blocks|missing|no device identity/);
@@ -75,4 +75,21 @@ test("runner module: an assistant's claim on the CLI is refused for start, stop,
     const own = await call(tool, input, { root: s.d.paths.root, caller: "cli" });
     assert.ok(!/not the person/.test(JSON.stringify(own)), `${tool} is not refused for the person's own CLI`);
   }
+});
+
+test("runner module: the two internal tools that move a chat answer only the one module that owns the call; a person, an assistant and another module are refused", async t => {
+  const s = await boot(t);
+  const as = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller) => s.d.registry.call(tool, input, caller);
+  for (const caller of ["cli", "mcp", "module:agents", "module:stream", "module:threads"]) {
+    const x = await as("runner.seal-now", { session: "s1" }, caller);
+    assert.ok(x.error, `seal-now as ${caller}: ${JSON.stringify(x)}`);   // not even the Switchboard: only the daemon
+  }
+  const daemon = await s.d.registry.call("runner.seal-now", { session: "s1" }, "module:vyred", { door: true });
+  assert.ok(!daemon.error, JSON.stringify(daemon));
+  for (const caller of ["cli", "mcp", "module:agents", "module:stream"]) {
+    const x = await as("runner.offer-back", { thread: "t1", person: "per_a" }, caller);
+    assert.ok(x.error, `offer-back as ${caller}: ${JSON.stringify(x)}`);
+  }
+  const sb = await as("runner.offer-back", { thread: "t1", person: "per_a" }, "module:threads");
+  assert.ok(!sb.error && sb.data && sb.data.moved === false, "the chat engine may ask: " + JSON.stringify(sb));
 });

@@ -404,7 +404,7 @@ export default {
         // A preview (core/previews) is one more origin behind the same front, ticket and cookie: asked of that module by name, never by import.
         if (PREVIEW_NAME.test(String(name))) {
           const p = await ctx.call("previews.resolve", { name: String(name) }).catch(() => null);
-          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, allowEmbed: true, ...(typeof p.data.viewerKey === "string" ? { viewerKey: p.data.viewerKey } : {}), credentials: async () => ({}) } : null;
+          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, allowEmbed: true, ...(typeof p.data.viewerKey === "string" ? { viewerKey: p.data.viewerKey, viewerScope: String(name) } : {}), credentials: async () => ({}) } : null;
         }
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;

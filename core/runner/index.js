@@ -7,6 +7,9 @@ import { createRunner, reconcile } from "./runner.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
+import { createFolders } from "./folders.js";
+import { createResumeLent } from "./resume-lent.js";
+import { startPreviewPump } from "./preview-pump.js";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -24,6 +27,9 @@ import { HEARTBEAT_MS } from "./placement-book.js";
 import { BEAT_MAX } from "./lent-home.js";
 import { createMover, sleepReason } from "./mover.js";
 import { devSwitch } from "../../kernel/devbuild.js";
+
+/** The caller name the daemon itself calls with. */
+const DAEMON = "module:vyred";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
@@ -116,6 +122,8 @@ export default {
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
     const runners = new Map();
+    /** The folders of this computer the person approved for chats (folders.js): the home only ever hears their ids and labels. */
+    const folders = createFolders(path.join(ctx.paths.root, "runner", "folders.json"), seam.home ? { home: seam.home } : {});
     /** The pump of each chat process on this computer (lent spawn), until the home has heard it end. @type {Map<string, { done: Promise<void> }>} */ const pumps = new Map();
     const emit = (space, e) => {
       try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {}
@@ -135,7 +143,7 @@ export default {
       if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available; pair this computer with the space's home first"), { code: "unavailable" });
       let r = runners.get(space);
       if (!r) {
-        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
+        r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync, seedFile: async (/** @type {string} */ work, /** @type {string} */ cwd, /** @type {string} */ session) => { try { const x = /** @type {any} */ (await ctx.call("threads.work-transcript", { work, cwd, session })); return x && x.data && x.data.file ? String(x.data.file) : null; } catch { return null; } },
           grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), ...(seam.now ? { now: seam.now } : {}), ...(seam.state ? { state: seam.state } : {}), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
@@ -180,19 +188,26 @@ export default {
       let h;
       try {
         const run = resolveAgent(spec);
+        // a chat given one of this computer's folders works in it and goes nowhere: the id is the home's, the path is only ever this computer's
+        const folder = spec.folder ? folders.resolve(String(spec.folder)) : null;
         // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
         const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules(), ...(harnessThere() ? { plugin: path.join(VYRE_ROOT, "harness") } : {}) } : undefined;
-        h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
+        h = await r.start({ session, resume: Boolean(resume), ...(folder ? { folder } : {}), ...(spec.preview === true && spec.pipe === true ? { preview: true } : {}), ...(spec.seed ? { seed: spec.seed } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
         // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
         if (!(e && /** @type {any} */ (e).code === "conflict") && !r.info().some((/** @type {any} */ x) => x.session === session)) {
-          Promise.resolve(resume ? p.requestServer?.(space, session, "crash") : p.stop?.(session)).catch(() => {});
+          Promise.resolve(resume && !spec.folder ? p.requestServer?.(space, session, "crash") : p.stop?.(session)).catch(() => {});
         }
         throw e;
       }
       // A chat's process (lent spawn, contracts/lent-spawn.md): its bytes ride `lent.pipe` between the SDK on the home and this sandbox. The pump ends itself once the home has heard the process end.
       if (spec.pipe === true && typeof p.pipe === "function" && h.child) { const pump = startPump({ child: h.child, session, pipe: i => p.pipe(i), isFrozen: () => r.frozenNow, onFenced: () => { r.fence(session).catch(() => {}); }, onKill: () => { r.stop(session).catch(() => {}); } }); pumps.set(session, pump); pump.done.finally(() => { if (pumps.get(session) === pump) pumps.delete(session); }); }
+      // a dev server the chat starts may be previewed from the home (lent.preview): the pump runs while the program does
+      if (spec.pipe === true && spec.preview === true && typeof p.preview === "function" && h.child) {
+        const pv = startPreviewPump({ session, poll: i => p.preview(i), run: job => r.previewRequest(session, job), tunnel: (job, io) => r.previewTunnel(session, job, io), onFenced: () => { r.fence(session).catch(() => {}); } });
+        h.child.once("close", () => pv.stop());
+      }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
     };
     ctx.tool("runner.start", {
@@ -225,6 +240,29 @@ export default {
     /** What the place tools need from this module (place-tools.js); `moveThread` is added by them. @type {any} */
     const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, platform: seam.platform || process.platform, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
     registerPlaceTools(ctx, placeDeps);
+    // The server carries a chat on from a person's computer (resume-lent.js): the home hands this tool the lender's view of the session; where the chat's transcript belongs comes from the Switchboard,
+    // the server's own store from the host. The daemon's `resume` calls it; nothing else may.
+    const resumeLent = createResumeLent({
+      target: async (thread, person) => { const x = /** @type {any} */ (await ctx.call("threads.transcript-target", { thread, person })); if (x && x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x && x.data ? x.data : null; },
+      port: space => { try { return hostOf()?.ownServer?.port(space) || null; } catch { return null; } },
+      place: async (tg, bytes) => { const h = hostOf()?.ownServer; if (!h || typeof h.place !== "function") throw Object.assign(new Error("this server cannot place a transcript in an account's home: ask the owner of this server to update it"), { code: "unavailable" }); await h.place(Number(tg.account), tg.file, bytes); },
+      say: (type, payload) => { try { ctx.events.emit(type, payload); } catch { /* a notice */ } },
+    });
+    ctx.tool("runner.resume-lent", { description: "Carry on a chat from the last whole turn its computer acknowledged. Internal: the daemon, when a lent session goes to the server.", internal: true, callers: ["module"],
+      input: obj({ space: str, session: str, thread: str }, ["space", "session"]),
+      run: async (i, meta) => {
+        if (!meta || meta.caller !== DAEMON) throw Object.assign(new Error("only the daemon carries a chat on"), { code: "denied" });
+        const view = hostOf()?.lentView?.(String(i.space), String(i.session));
+        if (!view) throw Object.assign(new Error("that session is not held here (runner.places shows where your chats run)"), { code: "not_found" });
+        return resumeLent({ ...i, view });
+      } });
+    // The folders of this computer a chat may be given. Adding one is the person's yes on this computer (a folder widens what a model can reach); the home hears ids and labels, never a path.
+    ctx.tool("runner.folders", { description: "The folders of this computer you have approved for chats, each { id, label, path }.", input: obj(),
+      run: async (_i, meta) => { await placeDeps.person(meta, "this computer's folders"); return { folders: folders.list() }; } });
+    ctx.tool("runner.folders.allow", { description: "Approve a folder of this computer for chats: a chat given it works in it, here, and never leaves this computer. Input: path (absolute), label (optional). Needs your yes.", input: obj({ path: str, label: str }, ["path"]),
+      run: async (i, meta) => { await placeDeps.person(meta, "this computer's folders"); const f = folders.add(i.path, i.label); return { id: f.id, label: f.label, path: f.path }; } });
+    ctx.tool("runner.folders.remove", { description: "Take a folder of this computer away from chats. Nothing in it is touched; a chat working in it stops. Input: id.", input: obj({ id: str }, ["id"]),
+      run: async (i, meta) => { await placeDeps.person(meta, "this computer's folders"); return folders.remove(String(i.id)); } });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
         await person(ctx, meta, "stopping a session here"); await (await forSpace(space)).stop(session); return { stopped: true }; } });
@@ -283,6 +321,19 @@ export default {
       const { key, seal } = sealFor(o, r);
       try { const done = await seal.seal({ state: r.state }); emit(r.space, { type: "sealed", session: r.session, ...done }); }
       catch (err) { seals.delete(key); emit(r.space, { type: "seal-failed", session: r.session, code: err.code || "error", message: String(err.message || err).slice(0, 200) }); }
+    });
+
+    // Before a chat moves to a computer its finished turns are saved here now (the seal after each turn may still be running when the person's next message arrives), so the computer is given every turn, another person's included.
+    ctx.tool("runner.seal-now", {
+      description: "Save a chat's finished turns on this server now. Internal: the daemon, before it moves a chat to a computer. Input: session. Answers { sealed }.", internal: true, callers: ["module"],
+      input: obj({ session: str }, ["session"]),
+      run: async ({ session }, meta) => {
+        if (!meta || meta.caller !== DAEMON) throw Object.assign(new Error("only the daemon saves a chat's turns before it moves: move the chat from its screen"), { code: "denied" });
+        const o = ownServerOf(); if (!o) return { sealed: false };
+        const r = await o.resolve({ payload: { session } }); if (!r) return { sealed: false };
+        const { key, seal } = sealFor(o, r);
+        try { const done = await seal.seal({ state: r.state }); return { sealed: true, turn: done.turn }; } catch { seals.delete(key); return { sealed: false }; }
+      },
     });
 
     ctx.tool("runner.recover", {
@@ -378,7 +429,11 @@ export default {
     const moveTick = (/** @type {any[]} */ rows = snapshot()) => {
       if (!rows.length) { mover.reset(); return; }   // nothing runs here: nothing to ask the machine about
       // a settings module that has never answered gives no switch to honour: nothing moves for want of one
-      for (const d of mover.tick({ settings: { ...limits, enabled: enabledNow() }, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
+      // A chat working in a folder of this computer never goes to the server (its files are only here): whatever would move it freezes it, and it runs again when the condition clears. A cap passed is not a reason to stop it.
+      const decisions = mover.tick({ settings: { ...limits, enabled: enabledNow() }, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows });
+      const held = new Set(decisions.filter(d => rows.find(y => y.session === d.session)?.bound && d.reason !== "cpu-cap" && d.reason !== "mem-cap").map(d => rows.find(y => y.session === d.session)?.space));
+      for (const [sp, r] of runners) r.holdBound(held.has(sp));
+      for (const d of decisions.filter(d => !rows.find(y => y.session === d.session)?.bound)) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
     };
     // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts. What is not handed over waits, frozen, until this computer has been heard by its home again
     // (a woken computer must not run ahead of a server that may have taken its sessions); when it wakes, it checks in at once.
@@ -396,7 +451,7 @@ export default {
       const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
       /** @type {{ fenced: string[], directives: any[] }} */ const got = { fenced: [], directives: [] };
       for (let at = 0; at === 0 || at < mine.length; at += per) {
-        const ans = await p.beat({ sessions: mine.slice(at, at + per), well });
+        const ans = await p.beat({ sessions: mine.slice(at, at + per), well, folders: folders.visible() });
         if (ans && Array.isArray(ans.fenced)) got.fenced.push(...ans.fenced);
         if (ans && Array.isArray(ans.directives)) got.directives.push(...ans.directives);
       }

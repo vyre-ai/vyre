@@ -47,6 +47,20 @@ export function findSession(folders, id) {
 }
 
 /**
+ * Where a session's transcript is (the file that exists, wherever it sits) or will be (a new one under the first projects folder, in the folder named for `cwd`).
+ * @param {string[]} folders @param {string} cwd @param {string} id @returns {{ file: string, root: string } | null}
+ */
+export function transcriptPlace(folders, cwd, id) {
+  const known = findSession(folders, id);
+  if (known) return { file: known.file, root: path.dirname(path.dirname(known.file)) };
+  if (!SESSION_ID.test(id) || !folders[0] || !cwd) return null;
+  return { file: path.join(folders[0], String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`), root: folders[0] };
+}
+
+/** Where the provider keeps a session's transcript INSIDE a runner's workspace (the agent's home is `<work>/home`), for the folder `cwd` the session sees. @param {string} work @param {string} cwd @param {string} id */
+export const workTranscript = (work, cwd, id) => path.join(work, "home", ".claude", "projects", String(cwd).replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
+
+/**
  * The folder a session ran in and its name, from the start of its transcript (the first lines
  * carry cwd; the folder name cannot be decoded). Reads at most 512 KB.
  * @param {string} file
@@ -113,4 +127,68 @@ export function openElsewhere(o) {
   const ours = o.ourLast != null && o.mtime <= o.ourLast + OUR_SLACK_MS;
   if (age < ACTIVE_MS && !ours) return `its transcript was written ${Math.max(0, Math.round(age / 1000))}s ago`;
   return null;
+}
+
+/**
+ * The two tools the runner uses to carry a chat between this server and a computer of the person's (threads.transcript-target, threads.work-transcript). Here so core/switchboard/index.js does not grow.
+ * @param {any} ctx @param {any} sb the switchboard @param {{ type: string }} str the string schema
+ */
+export function registerTranscriptTools(ctx, sb, str) {
+  // A chat or a session id as the person gives it, to the thread this server runs it as (the chat's latest run) and the chat it is in: the runner moves chats by the id the person has.
+  const resolve = (/** @type {string} */ id) => {
+    const direct = sb.threadOfNative(id) || id;
+    if (sb.record(direct)) return { thread: direct, chat: sb.chatOf(direct) };
+    const r = /** @type {any} */ (sb.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at DESC LIMIT 1").get(id));
+    return r ? { thread: String(r.id), chat: id } : null;
+  };
+  // Where the transcript of a chat belongs on THIS server, whether or not the file exists yet: the loader that carries a chat on from a computer of the person's (core/runner/resume-lent.js) writes it there.
+  // Only a Claude thread this Switchboard has. On the packaged box the file belongs to the thread's account (its own uid and HOME): the answer then names the account, and only the spawner may place the file.
+  ctx.tool("threads.transcript-target", {
+    description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of or a provider that keeps no such file. On the packaged box it also names the account (uid) whose HOME holds the file.", internal: true, callers: ["module"],
+    input: { type: "object", required: ["thread", "person"], properties: { thread: str, person: str } },
+    run: async i => {
+      const id = String(i.thread);
+      const rec = sb.record(sb.threadOfNative(id) || id);
+      if (!rec || (rec.provider || "claude") !== "claude") return null;
+      const thread = String(rec.id || id), native = sb.nativeOf(thread);
+      // a transcript is placed only in the chat of the person it is for: the thread's own person (who started it) must be the one asked for, which the home takes from its book, never from what a computer sent
+      { let owner = null; try { const o = /** @type {any} */ (sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(thread)); owner = o && o.opts ? JSON.parse(String(o.opts)).person : null; } catch { owner = null; }
+        if (!owner || !i.person || sb.canon(owner) !== sb.canon(String(i.person))) throw Object.assign(new Error("that chat is not this person's, so nothing is placed in it: ask the chat's owner to move it"), { code: "not_allowed" }); }
+      let folders = sb.deps.transcripts || [], account;
+      if (process.env.VYRE_SUPERVISOR === "docker") {
+        const acct = await sb.accountFor({ provider: "claude", account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
+        const home = acct && acct.uid != null && sb.deps.accountHome ? sb.deps.accountHome(acct) : null;
+        if (!home) return null;
+        folders = [path.join(home, ".claude", "projects")]; account = Number(acct.uid);
+      }
+      const at = transcriptPlace(folders, String(rec.cwd || ""), native);
+      return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}), ...(account !== undefined ? { account } : {}) } : null;
+    },
+  });
+  // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).
+  ctx.tool("threads.work-transcript", {
+    description: "The file where the provider keeps a session's transcript inside a runner's workspace, for the folder the session will see as its own. Input: work, cwd, session.", internal: true, callers: ["module"],
+    input: { type: "object", required: ["work", "cwd", "session"], properties: { work: str, cwd: str, session: str } },
+    run: async i => { if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(i.session)) || !path.isAbsolute(String(i.work))) return null; return { file: workTranscript(String(i.work), String(i.cwd), String(i.session)) }; },
+  });
+  // A chat that moves to a computer ends its process here first, quietly (the same close as an idle one): its next turn then starts where the home's book now places it, from the transcript the computer was seeded with.
+  ctx.tool("threads.chat-thread", {
+    description: "The thread a chat or session id runs as on this server, and its chat. Internal: the runner module, to move a chat to a computer. Input: thread.", internal: true, callers: ["module"],
+    input: { type: "object", required: ["thread"], properties: { thread: str } },
+    run: async i => resolve(String(i.thread)),
+  });
+  ctx.tool("threads.leave-box", {
+    description: "End a chat's process on this server so its next turn starts on the computer it moved to. Refused while the chat is working. Input: thread.", internal: true, callers: ["module"],
+    input: { type: "object", required: ["thread"], properties: { thread: str } },
+    run: async i => {
+      const id = (resolve(String(i.thread)) || { thread: String(i.thread) }).thread;
+      const st = sb.live.get(id);
+      if (!st) return { left: true, was: "dormant", thread: id };
+      // the person's own move: a turn that is running, or a question waiting for an answer, holds it; a terminal or a watcher on the chat does not
+      const row = /** @type {any} */ (sb.db.prepare("SELECT status FROM threads_runs WHERE id = ?").get(id));
+      if (st.stopping || st.switching || (row && row.status !== "idle") || sb.asks.open(id).length) throw Object.assign(new Error("This chat is working: let it finish its turn, then move it."), { code: "busy" });
+      await sb.close(id, st, "idle");
+      return { left: true, was: "live", thread: id };
+    },
+  });
 }

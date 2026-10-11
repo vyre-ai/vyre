@@ -90,6 +90,37 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
+  ctx.tool("runner.folders.available", {
+    description: "The folders of your computers a chat can be given, each { id, label, device, computer }: only computers that are ready now. A chat given one works in it on that computer and stays there. Input: space (optional).",
+    input: obj({ space: str }),
+    run: async (i, meta) => {
+      const { person } = await who(meta, i.space);
+      const p = placements(), nameOf = await names();
+      const spaces = i.space ? [i.space] : p.spaces();
+      return { folders: spaces.flatMap((/** @type {string} */ sp) => (typeof p.foldersOf === "function" ? p.foldersOf(sp, person) : []).map((/** @type {any} */ f) => ({ id: f.id, label: f.label, device: f.device, computer: nameOf(f.device), space: sp }))) };
+    },
+  });
+
+  ctx.tool("runner.preview", {
+    description: "Preview the dev server a chat started on its computer: the chat's program runs on one of your computers, and this gives the server there a preview card here. Input: thread, port (1024 to 65535), title (optional), space (optional). Answers { preview } with the card's id.",
+    input: obj({ thread: str, port: { type: "integer" }, title: str, space: str }, ["thread", "port"]),
+    run: async (i, meta) => {
+      const thread = threadOf(i);
+      const { person } = await who(meta, i.space);
+      const p = placements();
+      if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server: ask the owner of this server to update it", "unavailable");
+      const space = i.space || (p.spaces().find((/** @type {string} */ sp) => p.find(sp, thread, person)) || p.spaces()[0]);
+      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      /** the preview this bridge is for, known once previews.open answers: a header the front made for another preview is not this one's (trust row 44) */
+      /** @type {{ id: string | null }} */ const mine = { id: null };
+      let bridge; try { bridge = await p.openPreview(space, { thread, port: Number(i.port), person, viewer: async (/** @type {string} */ header) => { if (!mine.id) return false; const r = /** @type {any} */ (await ctx.call("previews.viewer-ok", { header, preview: mine.id })); return Boolean(r && r.data && r.data.ok === true); } }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot be previewed now"), /** @type {any} */ (e).code === "bad_input" ? "bad_input" : /** @type {any} */ (e).code === "quota" ? "quota" : "not_found"); }
+      const r = /** @type {any} */ (await ctx.call("previews.open", { title: String(i.title || "Preview").slice(0, 80), port: bridge.port, thread }));
+      if (r && r.error) throw refuse(String(r.error.message || "the preview could not be opened"), "unavailable");
+      mine.id = r && r.data && typeof r.data.id === "string" ? r.data.id : null;
+      return { preview: r && r.data && (r.data.id || r.data.preview || r.data) };
+    },
+  });
+
   ctx.tool("runner.why-not", {
     description: "Why a chat's session is not running on a computer: one reason code, or null when it runs where it was meant to. Input: thread.",
     input: obj({ thread: str, space: str }, ["thread"]),
@@ -106,11 +137,25 @@ export function registerPlaceTools(ctx, d) {
   d.moveThread = async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const thread = threadOf(i);
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
-    const { person } = await who(meta, i.space);
+    const { person, chain } = await who(meta, i.space);
     const hit = find(thread, i.space, person);
-    if (!hit) {
+    // a chat that began on the server, or one that came back to it from a computer, goes out (a session offered back after its computer got well is the computer's to start again, not a move out) to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
+    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server" && hit.row.offer !== "mac"));
+    if (!hit || goingOut) {
       if (i.to === "server") return answer(null);
-      throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
+      const p0 = placements();
+      if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
+      const space = i.space || p0.spaces()[0];
+      if (!space) throw refuse("no computer of yours is set up to run this Space's chats yet: turn on Run on this computer on the Mac, then move the chat", "unavailable");
+      const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
+      const at = named && named.data;
+      if (!at) throw refuse("this chat has not run on this server yet, so there is nothing to carry to a computer: send it a message, then move it", "unavailable");
+      if (!(await mineChat(chain, String(at.chat || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      // the chat's process on this server ends first (refused while it is working), so its next turn starts on the computer
+      { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) throw refuse(String(left.error.message || "that chat is busy: let it finish, then move it"), "conflict"); }
+      try { await p0.adopt(space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
+      const placed = find(String(at.thread), space, person);
+      return answer(placed ? placed.row : null);
     }
     if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
     const p = placements();
@@ -118,6 +163,28 @@ export function registerPlaceTools(ctx, d) {
     const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
+
+  // After another person's turn took the chat to the server (reason another-person), the chat's own person gets it back on their own computer by default: their next turn asks here, and the chat goes out again with
+  // the server's whole turns. Only for the row's own person (the Switchboard names the verified asker of the turn), and only for that reason: a chat the person handed over themself stays where they put it.
+  ctx.tool("runner.offer-back", {
+    description: "Put a chat back on its own person's computer after another person's turn took it to the server. Internal: the Switchboard, on that person's next turn. Input: thread, person. Answers { moved }.",
+    internal: true, callers: ["module"],
+    input: obj({ thread: str, person: str }, ["thread", "person"]),
+    run: async (i, meta) => {
+      if (!meta || meta.caller !== "module:threads") throw refuse("only the chat engine puts a chat back on its person's computer, when that person sends their next message: send a message in the chat", "denied");
+      const thread = threadOf(i), person = String(i.person);
+      const hit = find(thread, undefined, person);
+      if (!hit || hit.row.person !== person || hit.row.where !== "server" || hit.row.reason !== "another-person") return { moved: false };
+      const p0 = placements();
+      if (typeof p0.adopt !== "function") return { moved: false };
+      const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
+      const at = named && named.data;
+      if (!at) return { moved: false };
+      { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) return { moved: false, why: "busy" }; }
+      try { await p0.adopt(hit.space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { return { moved: false, why: String(/** @type {any} */ (e).message || "not ready") }; }
+      return { moved: true };
+    },
+  });
 
   ctx.tool("runner.settings", {
     description: "This computer's limits for running a space's sessions: enabled, pluggedInOnly, cpuPercent, memoryMb.",

@@ -9,7 +9,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
-import { spawnAsAgent, wipeAccount, shareTranscript } from "./client.js";
+import { spawnAsAgent, wipeAccount, shareTranscript, placeTranscript } from "./client.js";
+import { PLACE_SCRIPT } from "./server.js";
+import { spawnSync } from "node:child_process";
+import net from "node:net";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 async function setup(t) {
@@ -167,4 +170,128 @@ test("spawner share: only one .jsonl under the account's own .claude/projects is
   await assert.rejects(shareTranscript(2000, path.join(acct, "2000", ".claude", "projects", "..", "..", "x.jsonl"), { socket }), /only a \.jsonl/);
   await assert.rejects(shareTranscript(2999, good, { socket }), /account must be a uid/);
   assert.equal(shared.length, 1, "nothing else was shared");
+});
+
+test("spawner place: one plain transcript of the account itself, whole, checked against its hash; another account, a path out of the projects folder, a wrong hash or size, and a bad shape are refused", async t => {
+  const placed = /** @type {any[]} */ ([]);
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true }); fs.mkdirSync(path.join(acct, "2001"), { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, place: (home, who, file, bytes) => placed.push([who.uid, file, bytes.toString()]) } });
+  t.after(() => srv.close());
+  const good = path.join(acct, "2000", ".claude", "projects", "-work-acme", "s1.jsonl");
+  assert.equal(await placeTranscript(2000, good, Buffer.from('{"a":1}\n{"b":2}\n'), { socket }), true);
+  assert.deepEqual(placed, [[2000, good, '{"a":1}\n{"b":2}\n']]);
+  await assert.rejects(placeTranscript(2001, good, Buffer.from("x"), { socket }), /only <HOME>\/\.claude\/projects/);   // another account's file
+  for (const bad of [path.join(acct, "2000", ".claude", "settings.json"), path.join(acct, "2000", ".claude", "projects", "p", "s.txt"), path.join(acct, "2000", ".claude", "projects", "..", "x", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", "a", "b", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", ".", "s.jsonl")]) await assert.rejects(placeTranscript(2000, bad, Buffer.from("x"), { socket }), /only <HOME>/, bad);
+  await assert.rejects(placeTranscript(2999, good, Buffer.from("x"), { socket }), /account must be a uid/);
+  // the hash and the size are the request's own
+  const c = await new Promise(res => { const s = net.connect(socket, () => res(s)); });
+  /** @type {any} */ const ans = await new Promise(res => { let o = ""; c.on("data", d => { o += d; }); c.on("end", () => res(JSON.parse(o.split("\n")[0]))); c.write(JSON.stringify({ op: "place", account: 2000, path: good, size: 3, sha256: "0".repeat(64) }) + "\n" + "abc"); });
+  assert.match(ans.error, /does not match its sha256/);
+  const big = await new Promise(res => { const s = net.connect(socket, () => res(s)); });
+  /** @type {any} */ const ans2 = await new Promise(res => { let o = ""; big.on("data", d => { o += d; }); big.on("end", () => res(JSON.parse(o.split("\n")[0]))); big.write(JSON.stringify({ op: "place", account: 2000, path: good, size: 64 * 1024 * 1024 + 1, sha256: "0".repeat(64) }) + "\n"); });
+  assert.match(ans2.error, /1 byte to 64 MiB/);
+  assert.equal(placed.length, 1, "nothing else was placed");
+});
+
+test("spawner place, the real script (run as the current user): 0600, whole, the account's own folder only; a link anywhere, another owner's folder or a non-file target is refused", { skip: process.platform !== "linux" }, t => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-place-"))); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const uid = String(process.getuid());
+  const run = (/** @type {string} */ file, /** @type {string} */ body, /** @type {string} */ owner = uid) => spawnSync("/bin/sh", ["-c", PLACE_SCRIPT, "sh", file, owner], { input: body });
+  const f = path.join(dir, "projects", "-work-a", "s1.jsonl");
+  assert.equal(run(f, "one\ntwo\n").status, 0);
+  assert.equal(fs.readFileSync(f, "utf8"), "one\ntwo\n");
+  assert.equal((fs.statSync(f).mode & 0o777).toString(8), "600", "0600");
+  assert.deepEqual(fs.readdirSync(path.dirname(f)), ["s1.jsonl"], "no temp file is left");
+  assert.equal(run(f, "three\n").status, 0); assert.equal(fs.readFileSync(f, "utf8"), "three\n", "replaced whole");
+  // a link as the file, as the folder, or in the way
+  const other = path.join(dir, "elsewhere"); fs.mkdirSync(other);
+  fs.symlinkSync(path.join(other, "target.jsonl"), path.join(dir, "projects", "-work-a", "link.jsonl"));
+  assert.equal(run(path.join(dir, "projects", "-work-a", "link.jsonl"), "x").status, 11);
+  fs.symlinkSync(other, path.join(dir, "projects", "-work-b"));
+  assert.equal(run(path.join(dir, "projects", "-work-b", "s.jsonl"), "x").status, 11);
+  assert.deepEqual(fs.readdirSync(other), [], "nothing was written through a link");
+  fs.symlinkSync(other, path.join(dir, "up")); assert.notEqual(run(path.join(dir, "up", "-work-c", "s.jsonl"), "x").status, 0, "a linked parent");
+  assert.deepEqual(fs.readdirSync(other), [], "or through a linked parent");
+  // another account's folder, and a directory where the file should be
+  assert.equal(run(f, "x", String(process.getuid() + 1)).status, 13);
+  fs.mkdirSync(path.join(dir, "projects", "-work-a", "d.jsonl")); assert.equal(run(path.join(dir, "projects", "-work-a", "d.jsonl"), "x").status, 14);
+});
+
+test("the daemon's own-server host places a transcript through the spawner and makes it readable for the seal (the packaged box carries a chat on from a computer)", async t => {
+  const { createOwnServerHost } = await import("../daemon/ownserver-host.js");
+  /** @type {any[]} */ const log = [];
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat,
+    place: (home, who, file, bytes) => { log.push(["place", who.uid, file, bytes.toString()]); }, share: (home, who, file) => { log.push(["share", who.uid, file]); } } });
+  t.after(() => srv.close());
+  const host = createOwnServerHost({ kernel: { id: { space: "spc_aaaaaaaaaaaa", owner: "per_o" }, chains: {}, gateway: {} }, registry: {}, root: dir, spawnerSocket: socket });
+  const file = path.join(acct, "2000", ".claude", "projects", "-srv-acme", "s1.jsonl");
+  await host.place(2000, file, Buffer.from("one\ntwo\n"));
+  assert.deepEqual(log, [["place", 2000, file, "one\ntwo\n"], ["share", 2000, file]], "placed, then shared for the seal, in that order");
+  await assert.rejects(host.place(2001, file, Buffer.from("x")), /only <HOME>/);
+});
+
+/** A spawner with accounts 2000 and 2001 whose `place` is the test's own (it may be slow). */
+async function placing(t, place) {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"), work = path.join(dir, "work"); for (const u of ["2000", "2001"]) fs.mkdirSync(path.join(acct, u), { recursive: true }); fs.mkdirSync(work, { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] }, wrap: (argv) => argv, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, share: () => {}, place } });
+  t.after(() => srv.close());
+  const file = (/** @type {string} */ u, n = "s1") => path.join(acct, u, ".claude", "projects", "p", `${n}.jsonl`);
+  return { socket, acct, work, file };
+}
+
+test("spawner place (trust rows 23-25): a slow write does not hold the spawner still, an account with a running session is refused, only two at a time, and a client that goes away frees its place", async t => {
+  /** @type {(() => void)[]} */ const release = [];
+  const w = await placing(t, () => new Promise(res => { release.push(() => res(undefined)); }));
+  // 23: while a place is being written, another connection is answered at once (the spawner relays every live session)
+  const slow = placeTranscript(2000, w.file("2000"), Buffer.from("a"), { socket: w.socket });
+  await new Promise(r => setTimeout(r, 150));
+  const t0 = Date.now();
+  assert.equal(await shareTranscript(2001, w.file("2001"), { socket: w.socket }), true);
+  assert.ok(Date.now() - t0 < 100, `an other call was answered while a place was being written (${Date.now() - t0} ms)`);
+  let done = false; slow.then(() => { done = true; });
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(done, false, "and the place is not reported done until it is written");
+  // 25: two at a time
+  const second = placeTranscript(2001, w.file("2001"), Buffer.from("b"), { socket: w.socket });
+  await new Promise(r => setTimeout(r, 150));
+  await assert.rejects(placeTranscript(2000, w.file("2000", "s2"), Buffer.from("c"), { socket: w.socket }), /placing other transcripts/);
+  for (const r of release.splice(0)) r();
+  assert.equal(await slow, true); assert.equal(await second, true);
+  // 25: a client that leaves mid-body frees its place
+  for (let k = 0; k < 3; k++) {
+    const c = await new Promise(res => { const s = net.connect(w.socket, () => res(s)); });
+    c.write(JSON.stringify({ op: "place", account: 2000, path: w.file("2000", `g${k}`), size: 1000, sha256: "0".repeat(64) }) + "\n" + "partial"); await new Promise(r => setTimeout(r, 80)); c.destroy();
+  }
+  await new Promise(r => setTimeout(r, 100));
+  const again = placeTranscript(2000, w.file("2000", "after"), Buffer.from("z"), { socket: w.socket }); await new Promise(r => setTimeout(r, 100)); for (const r of release.splice(0)) r();
+  assert.equal(await again, true, "the abandoned ones left nothing counted");
+  // 24: a running session of that account: refused; of another account or none: placed
+  const live = await spawnAsAgent(["/bin/sh", "-c", "sleep 3"], { socket: w.socket, cwd: w.work, account: 2000, shared: true });
+  await assert.rejects(placeTranscript(2000, w.file("2000", "busy"), Buffer.from("x"), { socket: w.socket }), /still has a session running/);
+  const other = placeTranscript(2001, w.file("2001", "fine"), Buffer.from("x"), { socket: w.socket }); await new Promise(r => setTimeout(r, 100)); for (const r of release.splice(0)) r();
+  assert.equal(await other, true, "another account is not held up by it");
+  live.kill(); await exited(live);
+});
+
+test("spawner place, the real setpriv call (root on Linux only): the file belongs to the account, 0600, written whole", { skip: process.platform !== "linux" || process.getuid?.() !== 0 || !fs.existsSync("/usr/bin/setpriv") }, async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"), home = path.join(acct, "2000"); fs.mkdirSync(home, { recursive: true }); fs.chownSync(home, 2000, 2000); fs.chmodSync(home, 0o700); fs.chmodSync(acct, 0o755); fs.chmodSync(dir, 0o755);
+  const stat = (/** @type {string} */ d) => fs.statSync(d);
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [] }, accounts: { min: 2000, max: 2063, home: acct, shared: [], stat } });
+  t.after(() => srv.close());
+  const file = path.join(home, ".claude", "projects", "p", "s1.jsonl");
+  assert.equal(await placeTranscript(2000, file, Buffer.from("one\ntwo\n"), { socket }), true);
+  const st = fs.statSync(file);
+  assert.deepEqual([st.uid, st.mode & 0o777, fs.readFileSync(file, "utf8")], [2000, 0o600, "one\ntwo\n"]);
 });

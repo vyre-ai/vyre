@@ -21,6 +21,9 @@ import { launch, sshCommand, fakePasswd } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
 import { programDirs } from "../../lib/agent-sandbox.js";
 import { SHIM, PROXYCMD } from "./sandbox.js";
+
+/** Loopback ports the sandbox itself listens on (its credentialed egress shim): a preview can never be pointed at one. */
+export const SANDBOX_PORTS = [18443];
 export { startHomeProxy } from "./homeproxy.js";
 
 const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
@@ -185,7 +188,7 @@ function planDarwin(o) {
 function planLinux(o) {
   const h = real(o.home);
   const cfg = seedConfig(o);
-  const sock = "/run/vyre-session.sock", inner = 18443;
+  const sock = "/run/vyre-session.sock", inner = SANDBOX_PORTS[0];
   const sc = seccompFilter(); if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
   // With the egress proxy the session starts under Vyre's own shim, run by THIS process's node (process.execPath): that program's folder is bound read-only too, or a node that lives under a
   // person's folder (an npm or nvm install, /home/<user>/node24/bin) is "No such file" inside the sandbox. (Under /usr it is already there.)

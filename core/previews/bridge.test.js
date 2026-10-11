@@ -9,13 +9,20 @@ import { viewerHeader } from "../appmods/proxy.js";
 
 test("a viewer is who the front signed; a forged, altered or stale header is nobody", () => {
   const key = "k".repeat(64);
-  const h = viewerHeader(key, { w: "per_a", r: "member" });
-  assert.deepEqual({ w: readViewer(key, h)?.w, r: readViewer(key, h)?.r }, { w: "per_a", r: "member" });
-  assert.equal(readViewer("other".repeat(13), h), null, "another key");
+  const h = viewerHeader(key, { w: "per_a", r: "member" }, Date.now(), "pv-aaaaaaaa");
+  const read = (/** @type {string} */ x, k = key) => readViewer(k, x, undefined, "pv-aaaaaaaa");
+  assert.deepEqual({ w: read(h)?.w, r: read(h)?.r }, { w: "per_a", r: "member" });
+  assert.equal(read(h, "other".repeat(13)), null, "another key");
+  assert.equal(readViewer(key, h), null, "a caller that names no preview accepts nothing");
+  assert.equal(readViewer(key, h, undefined, ""), null, "and neither does an empty name");
   const [body, mac] = h.split(".");
-  assert.equal(readViewer(key, Buffer.from(JSON.stringify({ w: "per_owner", r: "owner", t: Date.now() })).toString("base64url") + "." + mac), null, "an altered body");
-  assert.equal(readViewer(key, viewerHeader(key, { w: "per_a", r: "" }, Date.now() - 10 * 3_600_000)), null, "a stale one");
-  assert.equal(readViewer(key, ""), null);
+  assert.equal(read(Buffer.from(JSON.stringify({ w: "per_owner", r: "owner", t: Date.now() })).toString("base64url") + "." + mac), null, "an altered body");
+  assert.equal(read(viewerHeader(key, { w: "per_a", r: "" }, Date.now() - 10 * 3_600_000, "pv-aaaaaaaa")), null, "a stale one");
+  assert.equal(read(""), null);
+  const scoped = viewerHeader(key, { w: "per_a", r: "member" }, Date.now(), "pv-aaaaaaaa");
+  assert.equal(readViewer(key, scoped, undefined, "pv-aaaaaaaa")?.w, "per_a");
+  assert.equal(readViewer(key, scoped, undefined, "pv-bbbbbbbb"), null, "made for another preview");
+  assert.equal(read(viewerHeader(key, { w: "per_a", r: "member" })), null, "made for none, asked for one");
   void body;
 });
 
