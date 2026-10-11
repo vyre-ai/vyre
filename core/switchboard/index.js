@@ -2260,6 +2260,7 @@ export class Switchboard {
 
   /** The leading rows of one asker go out as one turn. @param {string} id @param {string|null} lead @param {any[]} rows @param {string|null} project */
   drainRun(id, lead, rows, project) {
+    const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();   // this turn's asker, for the words' askedBy
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
