@@ -79,7 +79,7 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
       const r = await rowOf(String(i.id)); const v = r && r.versions.find((/** @type {any} */ x) => x.version === out.version);
       return { ...out, runs_as: await setterUp(String(i.id)), by: v && v.by && v.by.kind === "person" ? String(v.by.id) : null };
     }
-    case "describe": if (i.run) { await runOf(String(i.run)); return call(); } await there(need("id", "the Flow's id")); return call();
+    case "describe": if (i.run) return call(await hiding(await runOf(String(i.run)))); await there(need("id", "the Flow's id")); return call();
     // Setting up and improving: any member writes a new version, a patch or a test of any Flow of the Space as a DRAFT. Which version runs, and on whose authority, is decided only at approval (below).
     case "define": case "write": case "simulate": {
       // Drafts she has made of one Flow and nobody has approved are capped, so one member cannot fill the Flow with versions (the vault caps pending requests the same way).
@@ -96,13 +96,19 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
       // the starter is written into the run (its trigger key), so "the runs I started" is a fact of the run, not of a list somewhere
       return tools["flows.start"](chain, { ...i, key: `mem:${me}:${typeof i.key === "string" && i.key ? i.key.slice(0, 60) : Math.random().toString(36).slice(2, 12)}` });
     }
-    case "run": await runOf(need("run", "the run's id")); return call();
+    case "run": return call(await hiding(await runOf(need("run", "the run's id"))));
     case "cancelrun": { const run = await runOf(need("run", "the run's id")); if (!admin && !startedBy(run, me) && (await setterUp(run.flow)) !== me) throw no("you cannot stop that run: it is not yours. Ask whoever set the Flow up, or an owner or admin."); return call(); }
     case "propose": return proposeVersion();
     case "approve": return approve();
     default: throw new KernelError("bad_input", "that is not a Flows call a member can make");
   }
 
+  /** A run is shown whole to its owner, an admin and the person whose authority it ran on; to anyone else its steps' data is hidden (kernel/flows/redact.js), because a run reads what its approver may read. Started by her is not enough. @param {any} run */
+  async function hiding(run) {
+    const as = run.approver && run.approver.kind === "person" ? String(run.approver.id) : null;
+    if (admin || as === me) return i;
+    return { ...i, hide_for: as || "the person who approved it" };
+  }
   /** Rows of runs she started carry a flag the app can show. @param {any} rows */
   async function mark(rows) {
     if (!Array.isArray(rows) || spec.kind !== "runs") return rows;

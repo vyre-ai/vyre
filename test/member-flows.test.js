@@ -39,12 +39,25 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const listed = await svc.list(bob, {});
   assert.ok(listed.some((/** @type {any} */ r) => r.id === od.id), "an approved Flow of the owner's is on her list");
   assert.ok((await svc.get(bob, { id: od.id })).flow, "and she may read it");
+  await d.kernel.gateway.records.create(chainOf(owner), "contact", { name: "Dana Reyes private" });
   const started = await svc.start(bob, { id: od.id });
   const runId = started.id || started.run || (started.run && started.run.id);
   assert.ok(runId, JSON.stringify(started));
   const mineRuns = await svc.runs(bob, { id: od.id });
   assert.ok(mineRuns.some((/** @type {any} */ r) => r.started_by_me === true), "she sees the run she started, marked as hers");
   assert.equal((await host().flows.store.getRun(mineRuns[0].id)).trigger.key.startsWith("mem:" + BOB + ":"), true, "and the run itself says who started it");
+
+  // the owner's run read a contact on the OWNER's authority: the owner sees what it read, she sees the run and not that data
+  const oRun = mineRuns[0].id;
+  const ownerSees = await until(async () => { const r = await host().flows.tools["flows.run"](chainOf(owner), { run: oRun }); return JSON.stringify(r).includes("Dana Reyes private") ? r : null; }, "the owner's run to show what it read");
+  assert.ok(ownerSees, "the owner sees the step's output");
+  for (const [what, got] of [["run", await svc.run(bob, { run: oRun })], ["timeline", await svc.timeline(bob, { run: oRun })], ["step", await svc.timeline(bob, { run: oRun, step: "f" })], ["describe", await svc.describe(bob, { run: oRun })]]) {
+    assert.ok(!JSON.stringify(got).includes("Dana Reyes"), `${what}: the data the owner's run read is not shown to her`);
+  }
+  const hiddenRun = await svc.run(bob, { run: oRun });
+  assert.equal(hiddenRun.run.state, ownerSees.run.state, "she still sees the run's state");
+  assert.match(String(hiddenRun.run.hidden_for), /authority/, "and is told in words whose authority it ran on");
+  assert.ok(String(hiddenRun.run.hidden_for).includes(owner), "naming the person");
 
   // Flows belong to the Space: she may write a new version of the owner's Flow (a draft), but her yes never replaces the version that runs on the owner's authority
   const v2 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob" }) });
@@ -84,6 +97,7 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const bs = await svc.start(bob, { id: bd.id });
   const brun = await until(async () => { const r = (await svc.runs(bob, { id: bd.id })).find((/** @type {any} */ x) => x.state !== "running" && x.state !== "queued"); return r || null; }, "her Flow's run to finish");
   const full = await svc.run(bob, { run: brun.id });
+  assert.ok(!full.run.hidden_for && JSON.stringify(full).includes("Dana Reyes private"), "her own run is shown whole, data included");
   assert.equal(full.run.approver.id, BOB, "it ran as HER: she is its approver, so its authority is her role's, never the owner's");
 
   // any trigger: an unattended Flow of hers is hers to approve, and she is told in words what it will do and on whose allowance
