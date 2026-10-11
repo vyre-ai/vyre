@@ -22,7 +22,7 @@ const out = path.resolve(take("--out", path.join(os.tmpdir(), `journeys-${proces
 const forced = take("--world");
 if (forced && !["box", "daemon"].includes(forced)) { console.error("journeys: --world is box or daemon"); process.exit(64); }
 
-const files = fs.readdirSync(HERE).filter(f => /^j\d+\.mjs$/.test(f)).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
+const files = fs.readdirSync(HERE).filter(f => /^j\d+h?\.mjs$/.test(f)).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 /** @type {any[]} */ const journeys = [];
 for (const f of files) journeys.push((await import(path.join(HERE, f))).default);
 // (a journey with `optIn` is run when named, not by "all": J9 fails by name on the pieces still to be built, and the release gates must not wait on them until they land)
