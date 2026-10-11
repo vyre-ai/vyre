@@ -113,7 +113,7 @@ export default {
         return `${first.name}: ${started.tasks_made} tasks`;
       }, { needs: [T], owner: "projects-flows" });
       await J.step("the project's timeline begins with where it started from", async () => {
-        const tl = await w.call("work.timeline", { project: project.project });
+        const tl = await w.call("work.timeline", { project: project.slug });
         assert.match(JSON.stringify(tl), /Started from/i);
       }, { needs: [P], owner: "projects-flows" });
       await J.step("a Flow from the template is installed, healthy, and has run", async () => {
@@ -133,6 +133,9 @@ export default {
           const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
           const cid = `chat_${crypto.randomUUID()}`;
           const ring = createRing(cid, holdersOf([{ device: `dev_${p.name.toLowerCase()}`, agree: dev.getPublicKey().toString("base64url") }]));
+          const t00 = Date.now();
+          await p.joined.call("grants.members.list", []);   // a trivial call first: what a member's call costs before any chat work
+          firstChatMs.push(`${p.name} trivial call ${((Date.now() - t00) / 1000).toFixed(1)} s`);
           const t0 = Date.now();
           const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes`, id: cid, ring: ring.doc }]);
           firstChatMs.push(`${p.name} ${((Date.now() - t0) / 1000).toFixed(1)} s`);
