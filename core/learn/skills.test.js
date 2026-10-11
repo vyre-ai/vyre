@@ -291,3 +291,16 @@ test("record: one transaction, at most 40 rows a turn, nothing without a session
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM learn_procs").get().n, 40);
   assert.equal(skills.prune({ days: 0 }), 40);
 });
+
+test("a procedure one agent repeated is proposed with that agent; the same procedure by two agents is no one's", t => {
+  const { skills } = setup(t);
+  const steps = shipSteps();
+  for (const session of ["a1", "a2", "a3"]) { skills.record({ session, seq: 1, agent: "kit", steps }); skills.mark({ session, seq: 1, clean: true }); }
+  const c = skills.candidates();
+  assert.equal(c.length, 1);
+  assert.equal(c[0].agent, "kit");
+  assert.equal(skills.propose(c[0]).source.agent, "kit", "the proposal remembers who repeated it");
+  const other = setup(t).skills;
+  for (const [session, agent] of [["b1", "kit"], ["b2", "juno"], ["b3", "kit"]]) { other.record({ session, seq: 1, agent, steps }); other.mark({ session, seq: 1, clean: true }); }
+  assert.equal(other.candidates()[0].agent, undefined, "two agents: not one agent's lesson");
+});
