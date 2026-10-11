@@ -35,6 +35,11 @@ const SEARCH_KEEP_MS = 10_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
 
 /** The four mirrored attributes of an attribute set, as one comparable string. @param {any} a */
+/** Twenty keeps an empty text as no value, so a record read back lacks a field that was written as "". The answer to the write says what was written (the gateway compares it with what it asked for); a later read says what Twenty holds. @param {any} rec @param {Record<string, any>} wrote */
+const answerEmpties = (rec, wrote) => {
+  const lost = Object.keys(wrote || {}).filter((k) => wrote[k] === "" && rec.data[k] === undefined);
+  return lost.length ? { ...rec, data: { ...rec.data, ...Object.fromEntries(lost.map((k) => [k, ""])) } } : rec;
+};
 const attrSig = (a) => JSON.stringify(Object.keys(ATTR_COLUMNS).map((k) => (a && typeof a[k] === "string" && a[k] ? a[k] : null)));
 
 export class StoreError extends Error {
@@ -731,7 +736,7 @@ export class TwentyStore {
       if (Object.keys(mirror).length) this.mirrored.set(`vyre://${this.space}/${type}/${id}`, attrSig(attrs));
       const rec = this.#snap(p, row);
       this.#note({ type, id, kind: "created", version: 1, at: rec.updated_at, after: rec.data, source: "gateway" });
-      return rec;
+      return answerEmpties(rec, data);
     });
   }
 
@@ -754,7 +759,7 @@ export class TwentyStore {
       if (this.#junctionFields(p).some((f) => Object.prototype.hasOwnProperty.call(patch, f.vyre))) { await this.#syncMany(p, id, patch); next = await this.#hydrate(p, next); }
       const rec = this.#snap(p, next);
       this.#note({ type, id, kind: "updated", version: rec.version, at: rec.updated_at, before: cur.data, after: rec.data, source: "gateway" });
-      return rec;
+      return answerEmpties(rec, patch);
     });
   }
 
