@@ -10,6 +10,7 @@ import { Page } from "../places/Frame";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
+import { showingJoined } from "../../src/real/team-join";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -60,6 +61,8 @@ export function RealAi() {
   const [ps, setPs] = useState<Provider[] | null>(null);
   const [us, setUs] = useState<Usage[]>([]);
   const [err, setErr] = useState("");
+  const [member, setMember] = useState(false);
+  useEffect(() => { void showingJoined().then(setMember).catch(() => setMember(false)); }, []);
   const load = useCallback(() => { setErr(""); providers().then(setPs).catch((e) => setErr(say(e, "AI accounts did not answer."))); agentsUsage().then(setUs).catch(() => setUs([])); }, []);
   useEffect(load, [load]);
   const rows = ps ? providerRows(ps) : [];
@@ -67,7 +70,7 @@ export function RealAi() {
   return (
     <Page title="AI accounts" back="/u/settings">
       <Banner>Nobody's work runs on someone else's account. Your chats use your accounts and count against your budget.</Banner>
-      <ConnectClaude onConnected={load} />
+      {member ? null : <ConnectClaude onConnected={load} />}
       <AccountsCard />
       {err ? <Card flush><ErrorState title="AI accounts did not load" reason={err} retry={load} /></Card> : null}
       {ps === null && !err ? <LoadingState rows={3} /> : null}

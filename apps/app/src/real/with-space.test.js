@@ -33,9 +33,41 @@ test("a member's chat tools go through the team door: only the five, and only fo
   assert.equal(memberChatWire("stream.keep"), null, "keeping one answer of a fan-out is not a member call yet");
   assert.equal(memberChatWire("sessions.accounts.signin"), "accounts.signin");
   assert.equal(memberChatWire("sessions.accounts.key"), null, "a key is not a member's call: it needs a Vault of their own");
-  assert.equal(memberChatWire("records.list"), null);
+  assert.equal(memberChatWire("records.define"), null, "a call that needs her presence or an admin is not a member call");
   assert.equal(chatSpace({ space: B }, A), B);
   assert.equal(chatSpace({}, A), A);
   assert.equal(chatSpace({}, "all"), null);
   assert.equal(chatSpace(undefined, undefined), null);
+});
+
+test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
+  const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
+  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add"]) {
+    assert.ok(isTeamWork(t), `${t} is the team's work`);
+    assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
+  }
+  for (const t of ["work.chat.list", "stream.send", "planner.add", "spaces.list", "sessions.accounts.list", "vault.list", "records.me"]) assert.ok(!isTeamWork(t), `${t} is not refused`);
+  assert.match(NOT_FOR_MEMBERS_YET, /Ask the owner/, "it names a next step");
+});
+
+test("a member's Flows go through the door under the same name; the ones the door does not carry are refused in words", async () => {
+  const { memberWire, isTeamWork } = await import("./with-space.js");
+  for (const c of ["list", "get", "card", "approve", "start", "run", "runs", "propose", "compile-text", "from-chat"]) assert.equal(memberWire(`flows.${c}`), `flows.${c}`, c);
+  assert.equal(memberWire("flows.test.save"), "flows.test-save");
+  assert.equal(memberWire("flows.test.run"), "flows.test-run");
+  for (const c of ["pause", "resume", "rollback", "budget", "control", "settle", "advance", "kit.list", "connections"]) { assert.equal(memberWire(`flows.${c}`), null, c); assert.ok(isTeamWork(`flows.${c}`), `${c} is refused in words`); }
+});
+
+test("a member starts her own projects through the door: a blank project, one from an installed template, and the live templates she can pick", async () => {
+  const { memberWire, isTeamWork } = await import("./with-space.js");
+  assert.equal(memberWire("work.project.create"), "work.project-create");
+  assert.equal(memberWire("work.start-project"), "work.start-project");
+  assert.equal(memberWire("work.template.list"), "work.templates");
+  for (const t of ["work.template.install", "work.template.define", "work.template.golive", "work.template.library"]) { assert.equal(memberWire(t), null, t); assert.ok(isTeamWork(t), `${t} is the owner's, refused in words`); }
+});
+
+test("a member's daily Records and tasks go through the door under the same name; presence and admin calls stay on her own home", async () => {
+  const { memberWire, isTeamWork } = await import("./with-space.js");
+  for (const t of ["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"]) assert.equal(memberWire(t), t, t);
+  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.add"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
 });

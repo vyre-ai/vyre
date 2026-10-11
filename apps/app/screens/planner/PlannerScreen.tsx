@@ -28,7 +28,7 @@ export function PlannerScreen() {
     planner.open().then(setItems).catch(() => setItems([]));
   }, []);
   useEffect(load, [load]);
-  useEffect(() => { planner.ringing().then(setRings).catch(() => {}); }, []);
+  useEffect(() => { planner.ringing().then(setRings).catch((e) => setRingErr(say(e))); }, []);
   useEffect(() => listen((e) => {
     if (CHANGES.includes(e.type)) load();
     if (e.type === "planner.fired") { const r = ringingOf(e.payload); if (r) setRings((l) => (l.some((x) => x.firing === r.firing) ? l : [...l, r])); }

@@ -23,7 +23,7 @@ export async function listReal(): Promise<RealFlow[]> {
 }
 
 export const graphReal = (id: string) => ask<Graph>("flows.graph", { id });
-export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown; flow?: { label?: string; name?: string } }>("flows.get", { id });
+export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown; by?: unknown; flow?: { label?: string; name?: string } }>("flows.get", { id });
 export const healthReal = (id: string) => ask<{ level: string; line: string }>("flows.health", { id });
 export const runsReal = (id: string) => ask<RunRow[]>("flows.runs", { id, limit: 20 });
 /** A run in plain words and its lines (flows.describe by run): what it did, where it stands, what is next. */
@@ -32,4 +32,6 @@ export const runReal = (run: string) => ask<{ run: any; painted: { nodes: any[];
 export const cardReal = (id: string, version: number) => ask<Card>("flows.card", { id, version });
 /** A person's own approval of one version, by its hash. The box asks for the person's proof; the app's session answers it (a real Face ID or fingerprint prompt). */
 export const approveReal = (id: string, version: number, hash: string) => ask("flows.approve", { id, version, hash });
+/** A member's version of a Flow someone else set up: a proposal for the person whose authority it runs on, or an owner or admin, to approve (the member door's flows.propose { id, version, note }: a card in front of the person the Flow runs for, who approves it in Flows with their own yes). */
+export const proposeReal = (id: string, version: number) => ask("flows.propose", { id, version });
 export const setPausedReal = (id: string, paused: boolean) => ask(paused ? "flows.pause" : "flows.resume", { id });
