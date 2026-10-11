@@ -12,6 +12,7 @@ import { tempHome } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
+const per_x = () => "per_" + "x".repeat(26);
 const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26), DAVE = "per_" + "d".repeat(26);
 const CONTACT = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "status", kind: "text", label: "Status" }] };
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 50)); } };
@@ -98,6 +99,8 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const brun = await until(async () => { const r = (await svc.runs(bob, { id: bd.id })).find((/** @type {any} */ x) => x.state !== "running" && x.state !== "queued"); return r || null; }, "her Flow's run to finish");
   const full = await svc.run(bob, { run: brun.id });
   assert.ok(!full.run.hidden_for && JSON.stringify(full).includes("Dana Reyes private"), "her own run is shown whole, data included");
+  // hide_for is the door's own word: a member cannot send it (it is in no row's keys), so it changes nothing
+  assert.ok(JSON.stringify(await svc.run(bob, { run: brun.id, hide_for: per_x() })).includes("Dana Reyes private"), "a hide_for sent by a member is dropped at the door");
   assert.equal(full.run.approver.id, BOB, "it ran as HER: she is its approver, so its authority is her role's, never the owner's");
 
   // any trigger: an unattended Flow of hers is hers to approve, and she is told in words what it will do and on whose allowance
