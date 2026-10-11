@@ -264,7 +264,7 @@ export default {
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
       via: JSON.parse(String(r.via)), text: String(r.text), refs: JSON.parse(String(r.refs)), priority: String(r.priority),
       state: String(r.state), result: r.result == null ? null : String(r.result), result_refs: JSON.parse(String(r.result_refs)),
-      attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
+      attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), asker: r.asker == null ? null : String(r.asker), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
       finished: r.finished_at == null ? null : Number(r.finished_at) });
 
     const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
