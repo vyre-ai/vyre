@@ -585,9 +585,11 @@ test("CH-8b: a group session's tasks, listings and events are the room's view to
   // a task carol cannot read comes back absent in the group session, present in the one-to-one
   assert.ok(await k.gateway.ask.get(harnessS, t.id), "one-to-one: the asker's view");
   assert.equal(await k.gateway.ask.get(harnessG, t.id), null, "group: carol cannot read it");
-  // listings: the asker is an owner who sees everyone; in a room with carol only the asker themself is listed
+  // listings: the asker is an owner who sees everyone in full; carol, like any member, sees who is in and in what role, so the room lists everyone but only the asker's own row carries terms
   assert.ok((await k.gateway.grants.members.list(harnessS)).length >= 3);
-  assert.equal((await k.gateway.grants.members.list(harnessG)).length, 1);
+  const roomMembers = await k.gateway.grants.members.list(harnessG);
+  assert.equal(roomMembers.length, 4);
+  assert.ok(roomMembers.filter(m => m.person !== "per_owner").every(m => m.partial === true && Object.keys(m).sort().join() === "partial,person,role,space"), "the room sees the others as who is in and their role, nothing else");
   assert.ok((await k.gateway.grants.list(harnessS)).length > (await k.gateway.grants.list(harnessG)).length);
   // events: the record's creation is in the one-to-one session's log view and, carol reading contacts, also in the room's; a task event she cannot read is not
   const evS = await k.gateway.events.read(harnessS, {}), evG = await k.gateway.events.read(harnessG, {});

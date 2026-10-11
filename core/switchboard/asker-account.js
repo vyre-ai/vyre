@@ -39,7 +39,9 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
   const r = rows[0];
   if (!mark(now, r.id).changes) return true;
   const rec = sb.record(id);
-  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, uuid: r.uuid || undefined, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
+  // the turn begins here as a queued one does anywhere else: the stream moves the replies (and the notice that the turn moved provider) to ITS asker, not the turn that just ended
+  sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
+  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
   return true;
 }
 

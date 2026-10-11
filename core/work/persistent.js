@@ -11,7 +11,8 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message, /** @ty
 
 /** @param {{ db: any, kernel: () => any, agentOf: (chain: any, chat: string) => Promise<string[]> }} o */
 export function createPersistent({ db, kernel, agentOf }) {
-  // The module's store follows the Space a call runs in (a team Space has a file of its own), so the table is made on every use of the file the call is for, not once at start.
+  // `db` is the module store's routing handle: it follows the Space the running call is for, and every other hosted Space has its own file the module's migrations were replayed into, which this table is not in. So the table is made
+  // wherever the call lands (IF NOT EXISTS, a no-op once it is there), not once for the first Space asked.
   const ensure = () => db.exec("CREATE TABLE IF NOT EXISTS work_persistent (person TEXT NOT NULL, kind TEXT NOT NULL, chat TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (person, kind))");
   ensure();
   const personOf = (/** @type {any} */ chain) => { const h = chain && chain.hops && chain.hops.length === 1 ? chain.hops[0] : null; if (!h || h.actor.kind !== "person") throw fail("not_allowed", "a persistent chat is a person's own: it is asked for by that person, directly"); return h.actor; };
@@ -42,6 +43,7 @@ export function createPersistent({ db, kernel, agentOf }) {
       const mine = new Set((await kernel().chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
       if (!mine.has(chat)) throw fail("not_found", "no such chat of yours");
       if (kind === "engineer" && !(await agentOf(chain, chat)).includes("engineer")) throw fail("bad_input", "the Engineer's chat is a chat with the engineer agent");
+      ensure();
       db.prepare("INSERT INTO work_persistent (person, kind, chat, at) VALUES (?,?,?,?)").run(person.id, kind, chat, Date.now());
       return { kind, chat, existing: false };
     },

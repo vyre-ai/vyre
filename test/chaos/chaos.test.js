@@ -377,9 +377,11 @@ test("R2: the browser caller answers unreachable, timeout and restarting instead
   p.heal(); p.drop();
   // A running write holds vyred's stop open; a call that arrives meanwhile is told it is restarting.
   const running = web.caller(p.url)("chaos.slow", { ms: 600, n: 3 }, "key-00000015");
-  await sleep(100);
+  // Wait for the write to be running, then for the stop to be draining, instead of sleeping: on a busy runner the write may not have arrived after 100 ms (the stop then closes the door at once: unreachable),
+  // or the stop may not have begun to drain after 50 ms.
+  await until(() => w.d.events.since(0, { type: "chaos.started", limit: 100 }).some((/** @type {any} */ e) => e.payload.n === 3), "the slow write to be running");
   const stopping = w.d.stop();
-  await sleep(50);
+  await until(async () => (await web.caller(p.url)("chaos.read", {}, "")).error?.code === "restarting", "the stop to start draining");
   assert.equal((await web.caller(p.url)("chaos.add", { n: 4 }, "key-00000016")).error?.code, "restarting");
   assert.deepEqual((await running).data, { n: 3 });
   await stopping;
