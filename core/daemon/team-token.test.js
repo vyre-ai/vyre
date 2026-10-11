@@ -39,7 +39,7 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
 
   // the "mcp" caller class on the Drive's read tools is global: a HOME session token naming the team's Space reads none of its files, and a team member's token reads only what that member may
   const owner2 = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner2", person: OWNER, path: "direct", session: "s" });
-  await firm.kernel.drive.put(owner2, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
+  await firm.gateway.drive.put(owner2, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
   const asModel = (/** @type {string} */ token) => ({ root: w.root, caller: "mcp", headers: { "x-vyre-kernel-session": token } });
   const viaHome = await call("files.drive.space.list", { space: firm.space }, asModel(home));
   assert.ok(viaHome.error || !JSON.stringify(viaHome.data || {}).includes("retainer.txt"), `a home session token reads nothing of the team's Drive: ${JSON.stringify(viaHome).slice(0, 200)}`);

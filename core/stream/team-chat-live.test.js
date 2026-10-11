@@ -113,7 +113,7 @@ test("a member's model cannot read a Space memory fact the member cannot: Ben's 
   const { firm, as, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const secret = await as(ANA, "create", { title: "Ana only", people: [], agents: [] });
-  const filed = await firm.kernel.memory.file(owner, { text: "Ana's private note: the Okafor settlement figure", source: `chat:${secret.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+  const filed = await firm.gateway.memory.file(owner, { text: "Ana's private note: the Okafor settlement figure", source: `chat:${secret.chat}`, kind: "fact" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
   assert.ok(!filed.error, `a fact filed from Ana's own chat: ${JSON.stringify(filed).slice(0, 200)}`);
   const ask = async (/** @type {string} */ who, /** @type {string} */ title) => {
     const c = await as(who, "create", { title, people: [], agents: ["assistant"] });
