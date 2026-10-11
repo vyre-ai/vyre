@@ -127,8 +127,8 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   await assert.rejects(checkLaunch(none, tm, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, a picked credential");
   assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked: as before");
   // an agentless launch: tool-less passes for anyone; WITH tools it is the machine's own sign-in, the owner's
-  assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), null, "tool-less");
-  assert.equal(await checkLaunch(none, { lean: true }, chain(ANA), OWNER), null, "lean");
+  assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), ANA, "tool-less");
+  assert.equal(await checkLaunch(none, { lean: true }, chain(ANA), OWNER), ANA, "lean");
   await assert.rejects(checkLaunch(none, {}, chain(ANA), OWNER), /runs on the machine's own sign-in, which is the owner's/, "agentless with tools, a member");
   await assert.rejects(checkLaunch(none, { for_person: ANA }, null, OWNER), /runs on the machine's own sign-in/, "agentless with tools, for a member");
   assert.equal(await checkLaunch(none, {}, chain(OWNER), OWNER), OWNER, "agentless with tools, the owner");
