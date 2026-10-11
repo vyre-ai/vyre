@@ -1045,5 +1045,6 @@
  "lib/types-extend.test.js": 3,
  "core/previews/thumb-stop.test.js": 1,
  "core/switchboard/screenshots.test.js": 2,
- "core/models/live-picker.test.js": 1
+ "core/models/live-picker.test.js": 1,
+ "kernel/gateway/project-reach.test.js": 1
 }

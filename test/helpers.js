@@ -223,3 +223,24 @@ export function kernelCaller(d, root, caller = "cli") {
   const meta = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: d.kernel.id.owner, path: "relay", session: "ps_1" } };
   return (tool, input = {}) => d.registry.call(tool, input, caller, meta);
 }
+
+/**
+ * Put an agent on a project's team with a ready task there, as a Flow or a template does (G22: an agent reaches a project and its records only as a teammate with a task). A real daemon with the kernel on.
+ * @param {any} d the started daemon @param {string} root its home @param {string} agent the agent's name @param {string} project the project's short name
+ */
+export async function putOnTask(d, root, agent, project) {
+  const kcall = kernelCaller(d, root);
+  const ref = await kcall("work.project.ref", { project });
+  if (ref.error) throw new Error(`putOnTask: ${ref.error.message}`);
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  // the kernel knows an agent by its uid (agents.uid), not its name
+  const u = await d.registry.call("agents.uid", { name: agent }, "module:projects");
+  if (u.error || !u.data || !u.data.uid) throw new Error(`putOnTask: no agent ${agent}`);
+  const uid = String(u.data.uid);
+  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-put-on-task", person: owner, path: "direct", session: "s" });
+  try { await d.kernel.gateway.grants.addActor(chain, { kind: "agent", id: uid, space }, { presence: { method: "stand-in" } }); } catch (e) { if (!/exist|conflict|duplicate/i.test(String(e && (e.code || e.message)))) throw e; }   // the kernel knows the agent as an actor of the Space (already: nothing changes)
+  await kcall("projects.access.grant", { project, agent });   // the agent holds reach on the project (already: nothing changes); G22 adds the team row and the task below
+  await d.kernel.gateway.records.create(chain, "team-member", { name: agent, actor: { actor: { kind: "agent", id: uid, space } }, kind: "assistant", project: { urn: ref.data.urn } });
+  const t = await kcall("tasks.request", { task: { title: `Work for ${project}`, output: { kind: "note" }, doer: uid, checker: owner, project: ref.data.urn } });
+  if (t.error) throw new Error(`putOnTask: ${t.error.message}`);
+}
