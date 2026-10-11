@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1777,7 +1777,7 @@ export class Switchboard {
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
     if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}) }); if (kernelTurn) said();
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
@@ -4804,7 +4804,7 @@ export default {
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
-      run: async i => sb.launch(i),
+      run: async (i, m) => { await agentLaunchGuard(sb, i, personOfChain(ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null), kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
     ctx.tool("threads.usage", {

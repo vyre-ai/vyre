@@ -545,16 +545,21 @@ test("HOP: a thread bob started takes carol's one turn on her own account (her t
   const seen = new Set();
   const poll = setInterval(() => { try { seen.add(run().account); } catch { /* the row is being rewritten */ } }, 20);
   t.after(() => clearInterval(poll));
+  /** @type {string[]} */ const skillsFor = [];
+  const realCall = b.reg.call.bind(b.reg);
+  b.reg.call = async (/** @type {any} */ ...a) => { if (a[0] === "skills.materialise") skillsFor.push(String(a[1] && a[1].person)); return realCall(...a); };
   const sent = await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && sent.error.message);
   const carolTurn = await answered(w, watcher, LONG, 90_000);   // the hop did not fail with account_removed
   assert.equal(carolTurn.who, CAROL, "carol's turn was written under carol's session");
   clearInterval(poll);
   assert.ok(seen.has(acct("carol")), `the turn ran on carol's own account: ${JSON.stringify([...seen])}`);
+  assert.equal(skillsFor[0], CAROL, `carol's hop was given carol's skills: ${JSON.stringify(skillsFor)}`);
   assert.ok(w.asked.some(a => a.asker === CAROL), "and under carol's session");
   assert.ok(!textOf(watcher.frames).includes("account_removed"), "no account_removed anywhere in the chat");
   // the hop back: bob's account again, bob as its person, and no hop person but the starter
   await until(() => run().account === bobsAccount, "the thread to go back to bob's account", 30_000);
+  assert.equal(skillsFor[skillsFor.length - 1], BOB, `and the hop back was given bob's skills, not nobody's: ${JSON.stringify(skillsFor)}`);
   assert.equal(JSON.parse(run().opts).person, BOB, "bob is still the thread's person");
 });
 

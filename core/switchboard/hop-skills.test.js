@@ -12,6 +12,7 @@ test("libraryPerson: the hop's asker, the running turn's asker, nobody for a cha
   assert.equal(libraryPerson(sb, { id: "t" }, { person: "per_bob", kernelTurn: { chat: "c", asker: "per_carol" } }), "per_carol", "carol's hop asks for carol's skills");
   assert.equal(libraryPerson(sb, { id: "t" }, { person: "per_bob", kernelTurn: { chat: "c", asker: "per_bob" } }), "per_bob", "bob's own turn asks for bob's");
   assert.equal(libraryPerson(sb, { id: "t" }, { person: "per_bob" }), NOBODY, "a chat-started thread launched with no verified person (the hop back) asks for nobody's");
+  assert.equal(libraryPerson(sb, { id: "t" }, { person: "per_bob", skillsPerson: "per_bob" }), "per_bob", "the hop back relaunches on bob's own account with bob's skills");
   sb.turnAsker.set("t", "per_ada");
   assert.equal(libraryPerson(sb, { id: "t" }, { person: "per_bob" }), "per_ada", "a respawn takes the running turn's asker");
   sb.turnAsker.clear();
