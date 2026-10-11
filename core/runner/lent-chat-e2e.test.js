@@ -39,7 +39,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   // the home: link's lent world, whose tool requests go to the daemon's own session socket for the thread
   /** @type {any} */ let daemon = null;
   // the home carries a chat on from the computer with the daemon's own loader (runner.resume-lent), as the packaged home does
-  const resume = async (/** @type {any} */ i) => { const x = await daemon.registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread }, "module:vyred"); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
+  const resume = async (/** @type {any} */ i) => { const x = await daemon.registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread, chat: i.chat, person: i.person }, "module:vyred"); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
   const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, resume, http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { doorCalls.push(`${thread} ${p}`); return lentRequest(thread, method, p, headers, body); },
     specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [REPO], labels: {}, network: "provider", credentialRoutes: [] }) });
 
