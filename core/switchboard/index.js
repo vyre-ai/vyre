@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -1717,7 +1717,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.person = person; else delete kept.person;
+    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.switchPerson = person; else delete kept.switchPerson;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2505,7 +2505,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).switchPerson || null };
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
@@ -3814,7 +3814,7 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentOfferBack: async (/** @type {any} */ q) => { if (!lentOfferedFor(ctx.kernel, q)) return { moved: false }; const x = /** @type {any} */ (await ctx.call("runner.offer-back", { thread: q.thread, person: q.person })); return x && x.data ? x.data : { moved: false }; }, lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentRow: (/** @type {any} */ q) => lentRowFor(ctx.kernel, q), lentSteady: (/** @type {any} */ q) => lentSteadyFor(ctx.kernel, q), lentOfferBack: async (/** @type {any} */ q) => { if (!lentOfferedFor(ctx.kernel, q)) return { moved: false }; const x = /** @type {any} */ (await ctx.call("runner.offer-back", { thread: q.thread, person: q.person })); return x && x.data ? x.data : { moved: false }; }, lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
