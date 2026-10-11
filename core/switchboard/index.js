@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentBlocks, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -2434,10 +2434,10 @@ export class Switchboard {
       // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
-      if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); await this.renewKernelSession(id, this.record(id), kernelTurn); }
+      if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) { const q = this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); lentDrain(this, id, st); return q; } await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
     // The door every message into a live process passes: a process on a person's own computer takes that person's turns only. A message with no chat turn behind it (an agent's, a Flow's, a notice) has no person, so it never reaches one.
-    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); } }
+    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); const q = this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); lentDrain(this, id, stL); return q; } }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);

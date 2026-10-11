@@ -153,7 +153,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const sent = await call("threads.send", { thread: th.id, text: "a message with no person" });
   assert.ok(!sent.error, JSON.stringify(sent));
   await until(async () => r.home.book.get(th.id)?.where === "server", "the chat is taken back to the server for it", 30_000);
-  await sleep(500);
-  const after = (await ok("threads.get", { thread: th.id, limit: 600 })).events.slice(before);
-  assert.ok(!after.some((/** @type {any} */ e) => e.type === "thread.text" && /echo: a message with no person/.test(String(e.payload && e.payload.text))), "it did not run on the computer: " + JSON.stringify(after.map((/** @type {any} */ e) => e.type)));
+  // and once the server has the chat, the waiting message is its next turn: it runs there
+  await until(async () => (await ok("threads.get", { thread: th.id, limit: 600 })).events.slice(before).some((/** @type {any} */ e) => e.type === "thread.text" && /echo: a message with no person/.test(String(e.payload && e.payload.text))), "the waiting message runs on the server", 60_000);
+  assert.equal(r.home.book.get(th.id)?.where, "server", "it ran on the server, not on the computer");
 });
