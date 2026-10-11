@@ -4131,6 +4131,20 @@
     }
    }
   },
+  "assistant-access": {
+   "title": "What my assistant may do",
+   "screens": {
+    "full": {
+     "component": "assistant-access"
+    },
+    "compact": {
+     "component": "assistant-access"
+    },
+    "glance": {
+     "component": "assistant-access"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {

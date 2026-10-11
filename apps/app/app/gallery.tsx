@@ -15,6 +15,7 @@ import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
 import { ComputersView } from "../screens/spaces/ComputersSection";
 import { memberLine } from "../screens/spaces/computers-model.js";
+import { AccessView } from "../screens/assistants/AssistantAccess";
 import { SignInView } from "../screens/now/SignInAgain";
 import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
@@ -161,6 +162,7 @@ function Sample({ name }: { name: string }) {
     return <View style={{ gap: 12 }}><SignInView card={site} busy={false} hint="Still waiting. Sign in on the site, then check again." onPress={() => {}} /><SignInView card={screen} busy={false} hint="" onPress={() => {}} /><SignInView card={key} busy hint="" onPress={() => {}} /></View>;
   }
   if (name === "space-computers") return <View style={{ gap: 12 }}><ComputersView space="Northwind's Cloud" allowed={false} busy={false} problem="" onChange={() => {}} /><ComputersView space="Northwind's Cloud" allowed busy={false} problem="Only an owner or an admin of this Space can change that." onChange={() => {}} /><Card><Text tone="label">{memberLine("Northwind's Cloud", true)}</Text><Text tone="label">{memberLine("Harlow Legal's Cloud", false)}</Text></Card></View>;
+  if (name === "assistant-access") return <AccessView s={{ assistant: "assistant", tools: [{ name: "records.delete", at: 1 }, { name: "mail.*", at: 2 }], screens: [{ id: "vault", label: "Vault", off: true }, { id: "mail", label: "Mail and messages", off: false }, { id: "records", label: "Records and contacts", off: false }, { id: "files", label: "Files and Drive", off: false }, { id: "publish", label: "Publishing", off: true }] }} busy={false} problem="" typed="" setTyped={() => {}} onSwitch={() => {}} onTurnOffTool={() => {}} onTurnOnTool={() => {}} />;
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }

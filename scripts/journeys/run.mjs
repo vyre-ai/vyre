@@ -29,10 +29,6 @@ for (const f of files) journeys.push((await import(path.join(HERE, f))).default)
 const chosen = want === "all" ? journeys.filter(j => !j.optIn) : journeys.filter(j => j.id.toLowerCase() === want.toLowerCase());
 if (!chosen.length) { console.error(`journeys: no journey named ${want} (have ${journeys.map(j => j.id).join(", ")})`); process.exit(64); }
 
-// (a journey with `early` runs before the heavy ones: J1 leaves a Twenty stack running for the rest of the run and every later team Space adds another, so on a 2-core runner a light journey that came after them
-// starved and timed out at its own limit; it needs nothing from them)
-if (want === "all") chosen.sort((a, b) => Number(Boolean(b.early)) - Number(Boolean(a.early)));
-
 const run = createRun({ out });
 /** @type {Map<string, any>} */ const worlds = new Map();
 let code = 1;

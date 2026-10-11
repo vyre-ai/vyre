@@ -1047,5 +1047,7 @@
  "core/stream/person-turns-live.test.js": 5,
  "core/stream/reply-mode.test.js": 2,
  "core/models/live-picker.test.js": 1,
- "test/journey-space-computers.test.js": 1
+ "test/journey-space-computers.test.js": 1,
+ "test/journey-assistant-access.test.js": 6,
+ "apps/app/screens/assistants/access-model.test.js": 2
 }
