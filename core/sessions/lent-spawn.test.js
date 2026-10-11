@@ -466,6 +466,8 @@ test("a message that has waited for the chat to come back is told why", async ()
   assert.equal(await lentYield(sb, SESSION, st, CAROL), true);
   await new Promise(r => setTimeout(r, 120));
   assert.ok(said.length === 1 && /waiting for the chat to come back/.test(said[0]), "told once: " + said.join("|"));
+});
+
 test("on the real home: the owner writes while another person's hand-over is waiting for the computer: the ask is withdrawn, the computer's release is refused, and the owner's turn is never frozen by it", { timeout: 60_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
   const r = await rig(t);
@@ -484,13 +486,12 @@ test("on the real home: the owner writes while another person's hand-over is wai
   assert.equal(rel.moved, false, "a computer that was already on its way is told no: " + JSON.stringify(rel));
   assert.equal(r.home.book.get(SESSION)?.where, "mac", "the chat stayed on the computer");
 });
-});
 
 
 test("the offline notice names the person when the chat knows a name; the wait goes on past its limit while the owner has a turn running", async () => {
   /** @type {string[]} */ const said = [];
   let busy = true, where = "mac", asks = 0;
-  const row = () => ({ session: SESSION, chat: "chat_bob", person: BOB, where, ask: asks && where === "mac" ? { do: "release" } : null, reason: where === "server" ? "offline" : null });
+  const row = () => ({ session: SESSION, chat: "chat_bob", person: BOB, where, state: "here", ask: asks && where === "mac" ? { do: "release" } : null, reason: where === "server" ? "offline" : null });
   const kernel = { runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => row(), askRelease: () => { asks++; }, takeBack: async () => { where = "server"; return { changed: true }; } } }) };
   const r1 = await Promise.race([takeBackFor(kernel, { thread: SESSION, chat: "chat_bob", native: SESSION, asker: CAROL, waitMs: 150, busy: () => busy }), new Promise(r => setTimeout(() => r("still waiting"), 500))]);
   assert.equal(r1, "still waiting", "a turn is running: the wait goes on past its limit, nothing is forced");
