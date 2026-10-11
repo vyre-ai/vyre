@@ -27,6 +27,7 @@ import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
+import { canonical } from "../../lib/tool-names.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
@@ -586,6 +587,8 @@ async function startLocked(opts, root, p, release) {
     };
     // A built-in agent (the Engineer) is listed in a chat before any run of it has made it an actor of the Space: the work module asks the daemon to register it, through the kernel's own registration
     // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
+    // A provider's model names for one API-key account, from the inference door (the switchboard's threads.models-fetch asks): the owner's chain, names only, never the key.
+    registry.deps.listModels = async (/** @type {{ provider: string, account: any }} */ q) => /** @type {any} */ (kernel.gateway).model.listModels({ chain: await personChainFor(kernel.id.owner), provider: q.provider, account: q.account });
     registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
@@ -694,10 +697,10 @@ async function startLocked(opts, root, p, release) {
         canResume: () => typeof loaderOf() === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
-          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
-          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          // the account is the asker's own: the home's own account for the owner, a member's own sign-in for a member, never another person's (sessions.accounts.resolve filters by person)
+          if (!i || typeof i.person !== "string" || !i.person) return null;
           try {
-            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude", person: String(i.person) }, "module:vyred")); const a = r && r.data;
             if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
             if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
             if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
@@ -713,7 +716,7 @@ async function startLocked(opts, root, p, release) {
       registry.deps.lentRows = (/** @type {string} */ space) => { registry.deps.lentHome(space); return lent.rows(space); };
       registry.deps.lentSpaces = () => lent.spaces();
       registry.deps.lentStop = () => lent.stop();
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const h = /** @type {any} */ (registry.modules.get("sidebar") && registry.modules.get("sidebar").handle); return h && typeof h.peerService === "function" ? { sidebar: h.peerService({ space, kernel: k, registry }) } : {}; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"); return { ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -1215,7 +1218,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
-  if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
+  if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length))))) {
     return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
   }
   // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
@@ -1414,7 +1417,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
-    const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
+    const name = canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length)));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
     const input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
@@ -1428,7 +1431,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
-    const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
+    const inner = name === "link.call" && input && typeof input.tool === "string" ? canonical(input.tool) : null;
     const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"]) || Boolean(req.headers["x-vyre-yes"]) || Boolean(req.headers["x-vyre-approval"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));

@@ -380,7 +380,8 @@ test("grants reads: members.list, members.get, invites.get and grants.list show 
   await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
   assert.deepEqual((await g.members.list(owner())).map(m => m.person).sort(), [ALICE, BOB, OWNER].sort(), "the owner sees everyone");
   assert.equal((await g.members.list(personChain(ALICE))).length, 3, "a manager sees everyone");
-  assert.deepEqual((await g.members.list(personChain(BOB))).map(m => m.person), [BOB], "a member sees only themselves");
+  assert.deepEqual((await g.members.list(personChain(BOB))).map(m => [m.person, m.role]).sort(), [[ALICE, "manager"], [BOB, "member"], [OWNER, "owner"]].sort(), "a member sees who is in and in what role");
+  assert.ok((await g.members.list(personChain(BOB))).filter(m => m.person !== BOB).every(m => m.partial === true && m.scope === undefined && m.expires === undefined), "and nothing else of the others");
   assert.equal((await g.members.get(personChain(BOB), BOB)).role, "member");
   await assert.rejects(() => g.members.get(personChain(BOB), ALICE), { code: "not_found" });
   await assert.rejects(() => g.members.get(owner(), "per_nobody"), { code: "not_found" }, "indistinguishable from a person you may not see");

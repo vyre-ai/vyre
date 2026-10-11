@@ -47,6 +47,8 @@ export async function startInstallerServer(o) {
   child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });
   const exit = await new Promise(res => child.on("close", res));
   fs.writeFileSync(logFile, all.replace(/VYRE-?CODE=\S+/g, "VYRE_CODE=<hidden>"));
+  // A failed install leaves its stack (and its Space volumes) behind, and the next case in the same run would start on top of it and fail for a reason of its own: take it down first.
+  if (exit !== 0 && !o.noCodeProbe) { try { sh(`cd ${dir} && docker compose -p vyre logs --no-color --tail 200 vyre > ${JSON.stringify(path.join(o.dir, "vyred-failed-install.log"))} 2>&1; docker compose -p vyre down -v --remove-orphans >/dev/null 2>&1`); } catch { /* best effort */ } }
   if (exit !== 0 && !o.noCodeProbe) throw new Error(`the installer exited ${exit}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
   if (o.noCodeProbe) {
     // the line run with no code from the app: what it printed, and whether it started a pairing of its own (a QR, a long code or a typed code)

@@ -5,18 +5,20 @@ import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { callT } from "../../src/real/call-tool";
+import { errorNote } from "../../src/real/error-note.js";
 import { backupLine, whenLine, type SpaceBackup } from "./backups-model.js";
 
 export default function BackupsScreen() {
   const [rows, setRows] = useState<SpaceBackup[] | null>(null);
   const [err, setErr] = useState("");
+  const [errNote, setErrNote] = useState<{ code: string; recourse: string } | null>(null);
   const [open, setOpen] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const load = useCallback(() => {
-    setErr("");
-    void callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {}).then((r) => { if (r.error) setErr(r.error.message || "Backups could not be read."); else setRows(r.data?.spaces ?? []); });
+    setErr(""); setErrNote(null);
+    void callT<{ spaces?: SpaceBackup[] }>("spaces.bundle.status", {}).then((r) => { if (r.error) { const n = errorNote(r.error, "Backups could not be read."); setErr(n.reason); setErrNote({ code: n.code, recourse: n.recourse }); } else setRows(r.data?.spaces ?? []); });
   }, []);
   useEffect(load, [load]);
   const turnOn = async (space: string) => {
@@ -28,7 +30,7 @@ export default function BackupsScreen() {
   };
   return (
     <Page title="Backups" sub="Each Space is backed up under its owner's recovery code." back="/u/settings">
-      {err ? <Card flush><ErrorState title="Backups did not load" reason={err} retry={load} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Backups did not load" reason={err} retry={load} recourse={errNote?.recourse} code={errNote?.code} /></Card> : null}
       {!rows && !err ? <LoadingState rows={3} /> : null}
       {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A box that holds Spaces lists each one here." /></Card> : null}
       {rows && rows.some((r) => !r.enrolled) ? <Banner tone="warn">{rows.filter((r) => !r.enrolled).map((r) => r.note || backupLine(r)).join(" ")}</Banner> : null}

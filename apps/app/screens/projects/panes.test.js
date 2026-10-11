@@ -48,3 +48,19 @@ test("a timeline groups newest-first entries under one heading per day, and an e
   assert.equal(entryAction({ type: "flow-run", id: "rec" }), null, "an older box that names no run has nothing to open");
   for (const type of ["stage", "project-start", "file-share"]) assert.equal(entryAction({ type, id: "x" }), null, type);
 });
+
+test("a template project opens on the page its template chose (G21); an unknown or unreadable choice is ignored", () => {
+  const files = { name: "R", template_snapshot: JSON.stringify({ opens_on: "files", stages: [] }) };
+  assert.equal(firstTab(files), "files");
+  assert.deepEqual(tabsFor(files).map(([p]) => p), ["files", "stages", "chats", "memory", "timeline", "team"]);
+  assert.equal(firstTab({ name: "R", template_snapshot: JSON.stringify({ opens_on: "dashboard", stages: [] }) }), "stages");
+  assert.equal(firstTab({ name: "R", template_snapshot: "not json" }), "stages");
+  assert.equal(firstTab({ name: "Free", opens_on: "files" }), "chats", "a free-flow project has no template to choose");
+});
+
+test("on a wide window the page a template chose leads the panes, and the others keep their order (G21)", () => {
+  const files = { name: "R", template_snapshot: JSON.stringify({ opens_on: "files", stages: [] }) };
+  assert.deepEqual(panesAt(1440, "files", files), ["files", "stages", "chats"]);
+  assert.deepEqual(panesAt(1100, "files", files), ["files", "stages"]);
+  assert.deepEqual(panesAt(1440, "stages", { name: "R", template_snapshot: '{"stages":[]}' }), ["stages", "chats", "files"], "no choice, the usual order");
+});

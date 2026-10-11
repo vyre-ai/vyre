@@ -20,3 +20,8 @@ test("toLibrary drafts through skills.draft.learned, and a failure or an absent 
   assert.equal(await toLibrary(async () => { throw new Error("no such tool"); }, SK, m => logs.push(m)), false);
   assert.equal(logs.length, 2);
 });
+
+test("a lesson one agent repeated every time is drafted for that agent, not the owner", () => {
+  assert.deepEqual(libraryInput({ ...SK, source: { kind: "template", agent: "kit" } }), { name: "ship-it", body: SK.body, agent: "kit" });
+  assert.deepEqual(libraryInput({ ...SK, source: { kind: "template" } }), { name: "ship-it", body: SK.body }, "no single agent: as before");
+});

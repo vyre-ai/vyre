@@ -52,13 +52,13 @@ test("on a server the person's own Space reads My Cloud", async t => {
   assert.equal(spaceName(home), "My Cloud", JSON.stringify(home));
 });
 
-test("a team Space on a server reads <its name>'s Cloud", async t => {
+test("a team Space on a server reads <its name as the person typed it>'s Cloud", async t => {
   const { as } = await world(t, { machine: "server" });
   assert.ok(!(await as("spaces.identity.create", { name: "sam" })).error);
-  const made = await as("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  const made = await as("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
   assert.ok(!made.error, JSON.stringify(made.error));
   const rows = (await as("spaces.list")).data;
   const team = rows.find((/** @type {any} */ r) => r.label !== "personal");
   assert.ok(team, JSON.stringify(rows));
-  assert.equal(spaceName(team), "northwind's Cloud", JSON.stringify(team));
+  assert.equal(spaceName(team), "Northwind Bakery's Cloud", JSON.stringify(team));
 });

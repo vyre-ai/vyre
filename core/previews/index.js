@@ -151,7 +151,9 @@ export default {
         if (await shoot({ chrome, url, out: thumbFile(id) })) { db.prepare("UPDATE previews_items SET thumb = ? WHERE id = ?").run(now(), id); card(row(id)); }
       } catch (e) { ctx.log.warn(`previews: no picture for ${id}: ${/** @type {Error} */ (e).message}`); } finally { shooting.delete(id); }
     };
-    const soon = (/** @type {string} */ id, ms = 1500) => { const t = setTimeout(() => { void takeThumb(id); }, ms); if (typeof t.unref === "function") t.unref(); };
+    /** The thumbnail timers still waiting: stop() clears them, so none fires after the database is closed (a late one used to reject unhandled). @type {Set<any>} */
+    const thumbTimers = new Set();
+    const soon = (/** @type {string} */ id, ms = 1500) => { const t = setTimeout(() => { thumbTimers.delete(t); takeThumb(id).catch(() => {}); }, ms); thumbTimers.add(t); if (typeof t.unref === "function") t.unref(); };
 
     // ---- who ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** The person behind a call and their role in this Space: { id, role }, or null for anyone who is not a person. @param {any} meta */
@@ -165,8 +167,27 @@ export default {
       const mem = await ctx.kernel.grants.members.get(chain, hop.actor.id).catch(() => null);
       return { id: String(hop.actor.id), role: mem ? String(mem.role || "member") : null };
     };
+    /** The person a model or module call acts for: the first hop of its kernel chain when that is a person (no chain, no one). Used only to narrow what a model lists and opens, never to widen it. @param {any} meta */
+    const actingFor = async (/** @type {any} */ meta) => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return null;
+      const chain = await ctx.kernel.chain(meta).catch(() => null);
+      const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+      if (!hop || !hop.actor || hop.actor.kind !== "person") return null;
+      if (hop.actor.id === ctx.kernel.owner) return { id: String(hop.actor.id), role: "owner" };
+      const mem = await ctx.kernel.grants.members.get(chain, hop.actor.id).catch(() => null);
+      return { id: String(hop.actor.id), role: mem ? String(mem.role || "member") : null };
+    };
+    /** Who a project's people are, for a preview shared with its project; asked of the work module once per call. @param {any} r @param {Map<string, any>} [memo] */
+    const projectOf_ = async (/** @type {any} */ r, /** @type {Map<string, any>} */ memo = new Map()) => {
+      if (r.access !== "project") return null;
+      const key = String(r.project || "");
+      if (!memo.has(key)) memo.set(key, key ? await ctx.call("work.project.people", { project: key }).then((/** @type {any} */ x) => (x && !x.error ? x.data : null)).catch(() => null) : null);
+      return memo.get(key);
+    };
+    /** May this person open or manage this preview? @param {any} r @param {any} who @param {Map<string, any>} [memo] */
+    const may = async (/** @type {any} */ r, /** @type {any} */ who, /** @type {Map<string, any>} */ memo) => { const pj = await projectOf_(r, memo); return mayOpen(r, who, pj) || mayManage(r, who, pj); };
     const needPerson = async (/** @type {any} */ meta) => { const w = await whoIs(meta); if (!w) throw refuse("only a person at their own surface does this", "denied"); return w; };
-    const manage = async (/** @type {any} */ id, /** @type {any} */ meta) => { const w = await needPerson(meta); const r = mustRow(id); if (!mayManage(r, w)) throw refuse("only its maker, or an owner or admin of this Space, does this", "denied"); return { r, w }; };
+    const manage = async (/** @type {any} */ id, /** @type {any} */ meta) => { const w = await needPerson(meta); const r = mustRow(id); if (!mayManage(r, w, await projectOf_(r))) throw refuse("only its maker, or an owner or admin of this Space, does this", "denied"); return { r, w }; };
 
     // ---- ports -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** A port the agent names must be one of its own servers, never one of Vyre's (the front, the daemon) or a system port. */
@@ -268,10 +289,12 @@ export default {
       input: obj({ thread: str, project: str }),
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const who = await whoIs(meta);
+        const who = await whoIs(meta), acting = who || await actingFor(meta), memo = new Map();
         const rows = db.prepare("SELECT * FROM previews_items ORDER BY created DESC").all().filter((/** @type {any} */ r) => (!i.thread || r.thread === i.thread) && (!i.project || r.project === i.project));
-        // A person sees what they may open; a model (or module) sees the previews of the chat it is in, by title and state only.
-        return { previews: rows.filter((/** @type {any} */ r) => (who ? mayOpen(r, who) || mayManage(r, who) : true)).map((/** @type {any} */ r) => view(r, Boolean(who))) };
+        // A person sees what they may open; a model sees what the person it acts for may open, by title and state only (a module with no person on the call sees them all).
+        const seen = [];
+        for (const r of rows) if (!acting || await may(r, acting, memo)) seen.push(r);
+        return { previews: seen.map((/** @type {any} */ r) => view(r, Boolean(who))) };
       },
     });
 
@@ -279,8 +302,8 @@ export default {
       description: "One preview: { preview }.", input: obj({ id: str }, ["id"]),
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const who = await whoIs(meta); const r = mustRow(i.id);
-        if (who && !mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        const who = await whoIs(meta), acting = who || await actingFor(meta); const r = mustRow(i.id);
+        if (acting && !(await may(r, acting))) throw refuse("no such preview: give the id of one you may open", "not_found");
         return { preview: view(r, Boolean(who)) };
       },
     });
@@ -292,7 +315,7 @@ export default {
         if (!meta || meta.caller !== "module:publish") throw refuse("only Publish asks for a preview's folder", "denied");
         const who = await whoIs(meta, true), r = mustRow(i.id);
         if (!who) throw refuse("only a person at their own surface does this", "denied");
-        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        if (!(await may(r, who))) throw refuse("no such preview: give the id of one you may open", "not_found");
         if (r.source !== "files" || !r.root) throw refuse("that preview is a running server, not a folder of files: publish a folder of ready files instead", "bad_input");
         if (r.file) throw refuse("that preview is one file, not a folder: publish the folder it sits in by naming it", "bad_input");
         return { root: String(r.root) };
@@ -304,7 +327,7 @@ export default {
       input: obj({ id: str, origin: str, embed: { type: "boolean" } }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        if (!(await may(r, who))) throw refuse("no such preview: give the id of one you may open", "not_found");
         if (r.state === "stopped" || r.state === "crashed") throw refuse(r.state === "stopped" ? "it is stopped: restart it first" : "it is not running: restart it, or look at its log", "unavailable");
         const t = await ctx.call("appmods.ticket", { name: nameOf_(r.id), who: who.id, role: who.role || "", ...(i.embed === true ? { embed: true } : {}), ...(i.origin ? { origin: i.origin } : {}) });
         if (t.error) throw refuse(t.error.message || "the front door did not answer", t.error.code || "unavailable");
@@ -370,7 +393,7 @@ export default {
       description: "The last lines of a preview's output (what its server printed), for the person looking at why it does not work.", input: obj({ id: str, lines: { type: "integer" } }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const w = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, w) && !mayManage(r, w)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        if (!(await may(r, w))) throw refuse("no such preview: give the id of one you may open", "not_found");
         return { log: sup.tail(r.id, Math.min(Number(i.lines) || 200, 1000)), supervised: r.mode === "supervised" };
       },
     });
@@ -380,18 +403,26 @@ export default {
       input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
+        if (!(await may(r, who))) throw refuse("no such preview: give the id of one you may open", "not_found");
         try { return { image: fs.readFileSync(thumbFile(r.id)).toString("base64"), at: r.thumb || 0 }; } catch { /* no screenshot: the drawn poster, if there is one */ }
         try { return { image: null, svg: fs.readFileSync(posterFile(r.id), "utf8"), at: r.thumb || 0 }; } catch { return { image: null }; }
       },
     });
 
     ctx.tool("previews.share", {
-      description: "Who may open a preview: me (only you), project (the people of its project) or team (everyone in the Space). Taking access away signs out whoever had it open. Anyone-with-the-link waits for the public ingress.",
+      description: "Who may open a preview: me (only you), project (the people of its project) or team (everyone in the Space). Taking access away signs out whoever had it open. Public (anyone with the link) goes through Publish and waits for your one yes.",
       input: obj({ id: str, access: { type: "string", enum: [...ACCESS, "public"] } }, ["id", "access"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (i.access === "public") throw refuse("sharing with anyone who has the link is not available yet: it needs the public door, which comes with Publish", "unavailable");
         const { r } = await manage(i.id, meta);
+        if (i.access === "public") {
+          // Anyone with the link is Publish's: the folder is built, previewed and held for the person's one yes (publish.decide); nothing is public until they give it, and this preview's own access does not change.
+          if (r.source !== "files" || !r.root || r.file) throw refuse("only a folder of files can be made public here; a running server is published from its project (publish.go)", "bad_input");
+          const name = String(r.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || `preview-${r.id.slice(0, 8)}`;
+          const out = await ctx.call("publish.quick", { name, preview: r.id, ...(r.project ? { project: r.project } : {}) }, { relay: true });
+          if (out.error) throw refuse(out.error.message || "Publish would not take it", out.error.code || "unavailable");
+          return { held: true, ...out.data, preview: view(row(r.id)) };
+        }
+        if (i.access === "project" && !r.project) throw refuse("this preview belongs to no project, so it cannot be shared with one: share it with the team, or move it into a project first", "bad_input");
         db.prepare("UPDATE previews_items SET access = ?, updated = ? WHERE id = ?").run(i.access, now(), r.id);
         if (ACCESS.indexOf(i.access) < ACCESS.indexOf(r.access)) await ctx.call("appmods.drop", { name: nameOf_(r.id) }).catch(() => {});
         emit("preview.state", { id: r.id, state: r.state, title: r.title, thread: r.thread || null, project: r.project || null, access: i.access });
@@ -586,6 +617,6 @@ export default {
       }
     }
 
-    return { async stop() { bridge.closeAll(); staticSrv.close(); /** @type {any} */ (staticSrv).closeAllConnections?.(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
+    return { async stop() { for (const t of thumbTimers) clearTimeout(t); thumbTimers.clear(); bridge.closeAll(); staticSrv.close(); /** @type {any} */ (staticSrv).closeAllConnections?.(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
   },
 };

@@ -18,7 +18,7 @@ export default {
   id: "J9", title: "Team day", owner: "release", world: "own", store: "records", optIn: true,
   /** @param {any} ctx @param {ReturnType<typeof stepper>} J */
   async steps(ctx, J) {
-    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: "records", devBuild: true });
+    const w = await bringUp({ run: ctx.run, out: path.join(ctx.out, "j9"), kind: "box", store: "records", devBuild: true, recreate: false });
     if (!w.ready) { await J.step("the world is up", () => { throw new Error("the dev-build box world did not come up; see the lines above (owner: release)"); }); return; }
     const { mac, srv, ins } = w;
     mac.setYes(srv.yesFor(mac.identity.id, mac.presenceSigner));
@@ -50,9 +50,13 @@ export default {
           assert.equal(joined.joined.joined, true, `${who} joined`);
           people.push({ name: who, app, invite, joined });
         }
-        const list = await people[0].joined.call("grants.members.list", []);
-        const ids = (Array.isArray(list) ? list : list.members || []).map((/** @type {any} */ m) => m.person);
-        for (const p of people) assert.ok(ids.includes(p.app.identity.id), `${p.name} is listed as a member`);
+        // a member's door shows the member their own row (not the others): each reads theirs and finds the role. The owner's own list needs an identity the box does not hold; see the finding below.
+        for (const p of people) {
+          const list = await p.joined.call("grants.members.list", []);
+          const rows = Array.isArray(list) ? list : list.members || [];
+          const mine = rows.find((/** @type {any} */ m) => (m.person || m.id) === p.app.identity.id);
+          assert.ok(mine && mine.role === "member", `${p.name} is a member; their list holds ${JSON.stringify(rows).slice(0, 300)}`);
+        }
         return `${people.length + 1} people`;
       }, { needs: [T], owner: "trust" });
 
@@ -76,12 +80,12 @@ export default {
       const P = "a project starts from a template and its stages and tasks are made";
       /** @type {any} */ let project = null;
       await J.step(P, async () => {
-        const lib = await w.call("work.template.library", {});
+        const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
-        const inst = await w.call("work.template.install", { id: first.id });
+        const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
-        const started = await w.call("work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
+        const started = await whenStoreIsUp(w, "work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
         assert.ok(started.project, "a project was made");
         assert.ok((started.tasks_made || 0) > 0, `tasks were made (${JSON.stringify(started.tasks_skipped || [])})`);
         project = started;
@@ -101,7 +105,20 @@ export default {
       }, { needs: [P], owner: "projects-flows" });
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
-      await J.step("each member has their own session on the server and sees their own Chats", missing("a member session door: a member who joined through the member door has no session to ask work.chat.persistent with", "chat"), { needs: [SIGN], owner: "chat" });
+      await J.step("each member has their own session on the server and sees their own Chats", async () => {
+        const made = [];
+        for (const p of people) {
+          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
+          assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
+          made.push(c.chat);
+        }
+        for (const [n, p] of people.entries()) {
+          const list = (await p.joined.call("chat.list", [{}])).chats || [];
+          assert.ok(list.some((/** @type {any} */ x) => x.chat === made[n] && x.open === true), `${p.name} sees their own chat`);
+          assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
+        }
+        return `${people.length} members, each in their own chat`;
+      }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });

@@ -1392,7 +1392,7 @@ export default {
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
     /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */
     const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
-    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
+    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "My Home" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
       if ((!st0 || !st0.exists || who !== st0.id) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
@@ -1918,8 +1918,8 @@ export default {
     const out = (/** @type {any} */ r) => JSON.parse(JSON.stringify(r));
     const ownerGrant = (/** @type {any} */ i) => Boolean(i && i.role === "owner");
     tool("spaces.members.list", "Everyone in a space with their role, scope and end date, and any warnings (such as a single owner).", obj({ space: str }, ["space"]), async (i, meta) => {
-      const row = spaceOf(i.space);
-      await gate(row.id, undefined, meta);
+      const asId = String(i.space || "").trim().toLowerCase(), row = !spaces.get(asId) && SPACE_ID_RE.test(asId) && kernelHandle(asId) ? { id: asId } : spaceOf(i.space);   // a team Space a box hosts has no row here: the kernel's own Space is named by its id
+      const who = K && kernelHandle(row.id) ? await listCaller(K, meta) : null; if (who) { await notRemoved(row.id, meta); if (!(await membershipOf(row.id, who, meta))) throw refuse("You are not a member of this space.", "not_a_member"); } else await gate(row.id, undefined, meta);   // the list is for the person on the call (a box has no identity of its own), any member
       const m = await members(row.id, meta);
       const rows = [];
       for (const r of await m.list()) rows.push({ ...r, role_label: m.roleLabel(r.role), name: await nameOf(String(r.person)) });

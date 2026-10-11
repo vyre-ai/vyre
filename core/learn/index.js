@@ -40,7 +40,7 @@ import os from "node:os";
 import path from "node:path";
 import { distill, fromEdit, invalid, atStop, atTool, weakens, sentBack, held, reply, loosens, fileOf, commandPattern, LEVELS, MAX_BLOCKS, CODE, TESTS } from "./checks.js";
 import { writeSnapshot, drain, SNAPSHOT } from "./offline.js";
-import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
+import { SKILL_MIGRATIONS, PROCS_AGENT_MIGRATION, createSkills, stepsOf } from "./skills.js";
 import { toLibrary } from "./to-library.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
@@ -104,6 +104,7 @@ const MIGRATIONS = [
   `ALTER TABLE learn_turns ADD COLUMN stopped INTEGER NOT NULL DEFAULT 1;`,
   // PreToolUse and a revert look writes up by path.
   `CREATE INDEX learn_writes_path ON learn_writes (path, done);`,
+  PROCS_AGENT_MIGRATION,
 ];
 
 export { MAX_BLOCKS };
@@ -1159,7 +1160,7 @@ export default {
       const vyre = calls.filter(c => sig.isVyreTool(String(c.tool)));
       const tools = vyre.some(c => c.outcome === "failed") ? [] : vyre.map(c => ({ steps: String(c.shape || "").split("\n").filter(Boolean), at: Number(c.at) }));
       const steps = stepsOf({ commands, files: rows.map(f => ({ tool: String(f.tool), path: String(f.path), at: Number(f.at) })), tools });
-      skills.record({ session, seq: t.seq, project, steps });
+      skills.record({ session, seq: t.seq, project, agent: t.agent ?? null, steps });
       await sweep(project);
       housekeep();
       void jobs.pump();

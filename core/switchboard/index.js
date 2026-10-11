@@ -31,7 +31,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from ".
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { prepareSandbox } from "../../lib/agent-sandbox.js";
+import { prepareSandbox, sessionCliEnv } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
@@ -40,6 +40,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.j
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, takeBackFor } from "../../lib/lent-placement.js";
+import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
@@ -56,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -296,7 +297,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account", "zone"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account", "zone", "person"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -782,7 +783,7 @@ export class Switchboard {
         }
         if (!data || !mime) continue;
         const privacy = await this.privacyOf(rec);
-        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(privacy ? { privacy } : {}) });
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(m.title ? { title: String(m.title).slice(0, 120) } : {}), ...(privacy ? { privacy } : {}) });
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {
@@ -817,7 +818,7 @@ export class Switchboard {
    * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
    * guess between two paid accounts). Null when the provider has only this machine's own login.
    * `resuming`: the thread this is for, whose account must still exist.
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} q @param {string|null} [resuming]
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} q `person`: whose turn it is, so only that person's own accounts (and the home's own for the owner) can be chosen @param {string|null} [resuming]
    */
   async accountFor(q, resuming = null) {
     const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
@@ -907,15 +908,15 @@ export class Switchboard {
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
       // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
       if (!o.model && provider === "claude") {
-        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
+        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project, person: o.person }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
       // Which of the person's accounts on this provider (an explicit one, the teammate's, the
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
-      o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker) });
+      o = { ...o, provider, purpose, account: acct ? acct.id : undefined, person: o.person || (o.kernelTurn && o.kernelTurn.asker) || undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
@@ -962,7 +963,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null;
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -1334,7 +1335,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(o.person ? { person: String(o.person) } : {}) });   // the turn's person: their personal skills, not the owner's
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
@@ -1373,7 +1374,7 @@ export class Switchboard {
     // The session's own socket (option A): its plugin, hooks and any vyre it runs talk to vyred on
     // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
     const sock = this.socks.get(id);
-    if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
+    if (sock) { env.VYRE_SOCKET = sock.path; if (this.confinedBy.get(id) === "uid") Object.assign(env, sessionCliEnv(env)); } else delete env.VYRE_SOCKET;
     // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
     // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
     if (sock) delete env.VYRE_HOME;
@@ -1410,7 +1411,7 @@ export class Switchboard {
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
     const foreign = o.provider && o.provider !== "claude";
-    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
+    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null, sessionCli: this.confinedBy.has(id) });
     const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
@@ -1542,11 +1543,11 @@ export class Switchboard {
     // rules at PreToolUse for calls that never reach a question.
     if (t.ask && t.ask.kind === "permission") {
       let v = null;
-      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
-      if (v && v.decision === "deny") {
+      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined, sessionCli: this.confinedBy.has(id) }); } catch {}
+      if (v && v.decision === "allow" && t.ask.tool === "Bash") { st.proc.write(answerLine(t.ask.request_id, "allow", t.ask.input)); t.ask = null; }   // the session's own vyre; the registry still holds a send
+      else if (v && v.decision === "deny") {
         st.proc.write(answerLine(t.ask.request_id, "deny", t.ask.input, `Vyre's security floor refused this: ${v.reason || "not allowed"}`));
-        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project);
-        t.ask = null;
+        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project); t.ask = null;
       }
     }
     if (t.ask && t.ask.kind === "permission") {
@@ -1696,13 +1697,13 @@ export class Switchboard {
     return p;
   }
 
-  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null, person = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
     const { seed, had } = await this.transferSeed(id, rec, provider);
@@ -1716,15 +1717,14 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account;
+    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.person = person; else delete kept.person;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
-    this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project);
-    this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project);
-    // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back.
+    const said = () => { this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said();
+    // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}) });
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
@@ -2238,6 +2238,7 @@ export class Switchboard {
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
+    if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
@@ -2470,7 +2471,7 @@ export class Switchboard {
     if (!this.record(id)) await this.adopt(id);
     const rec = this.must(id);
     const provider = String(over.provider || ""), account = over.account ? String(over.account) : null;
-    const cur = rec.provider || "claude";
+    const cur = rec.provider || "claude"; await servesChip(this, over);
     if (provider === cur && (!account || account === rec.account)) return null;
     const name = providerName(provider);
     const no = (msg, code = "account_unavailable") => Object.assign(new Error(`${msg} Nothing was sent, and the turn did not move to another provider.`), { code });
@@ -2479,7 +2480,7 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw no(`There is no ${name} here.`);
     const st = this.live.get(id);
     if (this.once.has(id) || (st && st.turn && ["working", "waiting"].includes(String(rec.status)))) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent }).catch(e => {
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(over.person ? { person: over.person } : {}) }).catch(e => {
       throw no(e.code === "not_found" ? `${name}${account ? ` (${account})` : ""} is not set up here.` : `${name} cannot be used here: ${e.message}.`);
     });
     if (!acct && provider !== "claude") throw no(`${name} is signed out here. Sign in under AI accounts, then ask again.`);
@@ -2504,11 +2505,11 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = { provider: cur, account: rec.account || null, model: rec.model || null };
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
-      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once" });
+      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
       if (!r.sent) throw no(String(r.note || "The turn did not start."), "busy");
@@ -2534,7 +2535,7 @@ export class Switchboard {
     this.carry.set(id, note);
     // The one-turn switch that started this turn may still be finishing (a fast turn can end before its own switch has let go): wait for it, bounded, so the return is never taken for a second switch and dropped.
     for (let n = 0; n < 100 && this.switches.has(id); n++) await new Promise(r => setTimeout(r, 20));
-    await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, reason: "back" });
+    await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" });
     const now = this.live.get(id);
     if (now) this.turnEnded(id, now, rec ? rec.project : null);
   }
@@ -2717,14 +2718,14 @@ export class Switchboard {
   /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
   canonTurn(k) {
     if (!k) return k || null;
-    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker) }) : k; } catch { return k; }
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker), ...(o.over ? { over: o.over } : {}) }) : k; } catch { return k; }
   }
 
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker }) : null);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker, ...(kernelTurn.over ? { over: kernelTurn.over } : {}) }) : null);
     const queued = Number(r.lastInsertRowid);
     const live = this.live.get(id);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
@@ -3792,6 +3793,7 @@ export default {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return dir;
     };
+    ctx.provide("accountKey", keyOfAccount(accountEnv)); // one API-key account's key, for the inference door's model list (one request, never returned)
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
@@ -4245,8 +4247,8 @@ export default {
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
-        const over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null } : null;
-        if (over && !personTurn(caller)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
+        const kt = kernelTurnOf(i, caller, firstParty); let over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null, ...(kt ? { person: kt.asker } : {}) } : null; if (!over && kt && !(i.images && i.images.length)) over = await askerOver(sb, i.thread, kt); if (over && kt && !sb.sentBefore(uuid) && busyTurn(sb, i.thread)) return sb.queue(i.thread, i.text, surfaceOf(i, caller), undefined, { uuid, kernelTurn: { ...kt, over } });
+        if (over && !personTurn(caller) && !kernelTurnOf(i, caller, firstParty)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
@@ -4754,25 +4756,9 @@ export default {
     // R031-84: each API-key account's own model list, for the model registry (core/models). The key is taken the way a launch takes it, used for one request to the provider's own list and never
     // returned; the answer is the provider's JSON. Internal: only a module may ask.
     ctx.tool("threads.models-fetch", {
-      description: "Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
+      description: "Each API-key account's model names from the inference door, as { provider, account, ok, models | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
       input: { type: "object", properties: {} },
-      run: async () => {
-        const { fetchModels, MODEL_LISTING_PROVIDERS } = await import("../../lib/model-endpoints.js");
-        const { httpFetch } = await import("../../lib/http.js");
-        /** @type {any[]} */ const out = [];
-        for (const provider of MODEL_LISTING_PROVIDERS) {
-          const l = /** @type {any} */ (await ctx.call("sessions.accounts.list", { provider }).catch(() => null));
-          const rows = l && !l.error && Array.isArray(l.data) ? l.data : [];
-          for (const a of rows.filter((/** @type {any} */ x) => x && x.kind === "api-key")) {
-            try {
-              const c = await accountEnv(a);
-              const key = Object.values(c.env || {}).find((v) => typeof v === "string" && v);
-              out.push(key ? await fetchModels(a, String(key), { fetch: httpFetch, hostSafe }) : { provider, account: String(a.id), ok: false, error: "no key" });
-            } catch (e) { out.push({ provider, account: String(a.id), ok: false, error: e instanceof Error ? e.message.slice(0, 100) : "no key" }); }
-          }
-        }
-        return out;
-      },
+      run: async () => modelNames(ctx, MODEL_LISTING_PROVIDERS),
     });
     ctx.tool("threads.interrupt-in", {
       description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
