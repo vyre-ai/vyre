@@ -155,7 +155,8 @@ test("team seats: a project's owner adds a plain person; role, skills, instructi
 test("project fields: a team member changes only the plain ones; the owner everything but the file, memory and credential fields and the owner; owner/admin all", async () => {
   const { R, chains, p1 } = await rig();
   const cur = async () => (await R.get(chains.owner, "project", p1.id)).version;
-  assert.ok(await R.update(chains.eve, "project", p1.id, { repo: "git@x:y" }, await cur()), "team member: repo");
+  assert.ok(await R.update(chains.eve, "project", p1.id, { due: "2030-01-01" }, await cur()), "team member: due");
+  await refused(R.update(chains.eve, "project", p1.id, { repo: "git@evil:y" }, await cur()), /Ask the project's owner/);
   await refused(R.update(chains.eve, "project", p1.id, { drive_path: "/etc" }, await cur()), /files, memory or credentials/);
   await refused(R.update(chains.eve, "project", p1.id, { lead: "kit" }, await cur()), /Ask the project's owner/);
   assert.ok(await R.update(chains.bob, "project", p1.id, { lead: "kit", template: "t1" }, await cur()), "owner: lead and template fields");
@@ -165,4 +166,42 @@ test("project fields: a team member changes only the plain ones; the owner every
   await refused(R.create(chains.fay, "project", { name: "n", slug: "n9", memory_scope: "project:one" }), /owner or admin/);
   assert.ok(await R.create(chains.fay, "project", { name: "n", slug: "n9", memory_scope: "project:n9" }), "a new project gets its own memory scope");
   assert.ok(await R.update(chains.admin, "project", p1.id, { drive_path: "Projects/one" }, await cur()), "an admin may");
+});
+
+// Every call of the tasks service is classified here. A call added later that is not in this table fails the test, so it cannot reach a member without someone deciding which rule guards it.
+const TASK_CALLS = {
+  // judged by the ownership rule (kernel/gateway/ownership.js): doer, giver, or the project's owner or team
+  ownership: ["request", "edit", "skip", "reopen", "unblock"],
+  // moved only by the actor the task names (the doer works it, the checker decides it; isDoer / checkersOf in kernel/tasks/tasks.js): a stranger is refused by that rule
+  actor: ["start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix"],
+  // reads, or kernel-internal bookkeeping with no person to speak of
+  // the boot-time move of task words onto records: it takes no chain, runs as the tasks module's own chain and writes nothing a caller names
+  internal: ["migrate"],
+  read: ["get", "list", "needsYou", "card", "facts", "approvalFor", "kitApproval", "approvedAct", "useApproval", "approved", "scrubTexts"],
+};
+
+test("every call of the tasks service is classified: a new write that no rule covers fails here", async () => {
+  const { T } = await rig();
+  const known = new Set(Object.values(TASK_CALLS).flat());
+  const unclassified = Object.keys(T).filter(n => typeof T[n] === "function" && !n.startsWith("_") && !known.has(n));
+  assert.deepEqual(unclassified, [], "classify these in TASK_CALLS (ownership, actor or read)");
+});
+
+test("the actor-gated task calls refuse a stranger; unblock cannot hand a task to the stranger or take it for herself", async () => {
+  const { T, chains, p1, p2, ask } = await rig();
+  const t = await ask(chains.bob, EVE, p1.urn);
+  const stranger = chains.fay;
+  const refusedAny = (p) => assert.rejects(p, e => ["not_allowed", "denied", "forbidden", "not_found", "chain_not_person", "bad_state", "needs_presence", "presence_required"].includes(e.code), "refused");
+  await refusedAny(T.start(stranger, t.id));
+  await refusedAny(T.complete(stranger, t.id, { note: "x", sources: ["https://x"] }));
+  await T.start(chains.eve, t.id);
+  await refusedAny(T.stuck(stranger, t.id, { reason: "not mine" }));
+  await refusedAny(T.revise(stranger, t.id, "no"));
+  await refusedAny(T.decide(stranger, t.id, { outcome: "approved" }));
+  // the doer says it is stuck; a stranger cannot unblock it, nor take it; its project's owner can hand it to someone on the project, not to a stranger
+  await T.stuck(chains.eve, t.id, { reason: "waiting on a file" });
+  await refusedAny(T.unblock(stranger, t.id, {}));
+  await refusedAny(T.unblock(stranger, t.id, { reassign_to: { kind: "person", id: FAY, space: SPACE } }));
+  await assert.rejects(() => T.unblock(chains.bob, t.id, { reassign_to: { kind: "person", id: FAY, space: SPACE } }), e => e.code === "not_allowed" && /someone on its project/.test(e.message), "the owner cannot hand it to someone off the project");
+  void p2;
 });

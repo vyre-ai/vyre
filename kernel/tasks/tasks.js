@@ -558,6 +558,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (same(person, t.doer)) throw new KernelError("not_allowed", "a doer cannot unblock its own task");
       rule(t, "ready", "responsible_person_or_person_with_presence");
+      await ownsWrite(chain, t, o.reassign_to ? { reassign_to: o.reassign_to } : {});
       const responsible = cfg.responsible ? cfg.responsible(person, t.doer) : false;
       if (!responsible) {
         const why = o.proof ? await cfg.presence.check({ chain, op: "task.unblock", fields: { task: id, reassign_to: o.reassign_to || null }, proof: o.proof }) : "no_proof";
