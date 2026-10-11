@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
-import { addableFor, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
+import { addableFor, serverCannotWords, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
 import { showingJoined } from "../../src/real/team-join";
 
-const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? e.message : f);
+const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
 
 export function AccountsCard() {
   const [rows, setRows] = useState<Account[] | null>(null);
