@@ -78,11 +78,11 @@ test("the front: the pretty link goes to the page under the mount; the page, its
   assert.equal(js.text, 'x.p="/sign/_/packs/";const P={baseUrl:{type:String,required:!1,default:"/sign/_"}}');
   assert.equal(js.headers["content-length"], String(Buffer.byteLength(js.text)));
   /** @type {any} */ const odd = await get("/sign/_/packs/js/odd.js");
-  assert.equal(odd.status, 404, "the route list does not open it");
+  assert.equal(odd.status, 502, "a script whose shape the mount does not know is not served: its requests would escape");
   /** @type {any} */ const up = await get("/sign/_/s/abc/upload", "harlow.vyre.run", {}, "POST");
   assert.equal(up.text, '{"url":"/sign/_/disk/abc/s.png"}');
   /** @type {any} */ const jump = await get("/sign/_/s/gone");
-  assert.equal(jump.status, 404, "a path the signing routes do not list is not served");
+  assert.deepEqual([jump.status, jump.headers.location], [302, "/sign/_/s/abc"], "a redirect of the app stays under the mount");
   /** @type {any} */ const css = await get("/sign/_/__vyre/brand.css");
   assert.equal(css.status, 200);
   // the Space's root and anything but a signer's route is not the app's, and the app's own admin paths are not reachable through the mount
