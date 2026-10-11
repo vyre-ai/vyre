@@ -62,11 +62,14 @@ test("vault tools: item, resolve and render; values reach only the caller or the
   await cli("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw, totp: "JBSWY3DPEHPK3PXP" }, url: "https://mail.example.com" });
   await cli("vault.put", { name: "stack-env", kind: "env-set", fields: { DB_URL: dbUrl } });
 
-  const item = (await mcp("vault.item", { name: "site-login" })).data.item;
+  // a model sees an item's metadata only if it holds a grant on it (the vault.list filter); the person's own call sees it
+  assert.match((await mcp("vault.item", { name: "site-login" })).error.message, /no item named site-login/, "an ungranted item is not found for a model");
+  const item = (await cli("vault.item", { name: "site-login" })).data.item;
   assert.equal(item.kind, "login");
   assert.equal(item.otp, true);
   assert.deepEqual(item.fields, ["username", "password", "totp"]);
   assert.match((await mcp("vault.item", { name: "nope" })).error.message, /no item named nope/);
+  assert.match((await cli("vault.item", { name: "nope" })).error.message, /no item named nope/);
   assert.deepEqual((await cli("vault.list", { kind: "login" })).data.items.map(i => i.name), ["site-login"]);
   assert.deepEqual((await cli("vault.list", { host: "api.example" })).data.items.map(i => i.name), ["api-token"]);
 
