@@ -127,3 +127,16 @@ test("a type that already exists without mirror columns still gets them at its f
   assert.deepEqual(lazy.slice().sort(), ["vyreCreatedBy", "vyreOwner", "vyreProject", "vyreSensitivity"], "the first write makes them, as before");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("a Records call slower than the limit leaves a log line naming the call (a slow first action names its cause)", async () => {
+  fake.reset();
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ds-"));
+  const lines = /** @type {string[]} */ ([]);
+  const store = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {}, slowMs: 0 }), space: "spc_cccccccccccc", dir, webhookSecret: crypto.randomBytes(16).toString("hex"), graceMs: 0, log: l => lines.push(l) });
+  await store.define({ add_types: [type("slowish")] });
+  assert.ok(lines.some(l => /^slow Records call: (metadata|graphql) \w+ took \d+\.\d s$/.test(l)), lines.join(" | "));
+  const quiet = createTwentyStore({ client: new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {}, slowMs: 60_000 }), space: "spc_cccccccccccc", dir: fs.mkdtempSync(path.join(SCRATCH, "ds-")), webhookSecret: "x", graceMs: 0, log: l => lines.push(`quiet:${l}`) });
+  await quiet.define({ add_types: [type("quick")] });
+  assert.ok(!lines.some(l => l.startsWith("quiet:slow Records call")), "a fast call says nothing");
+  fs.rmSync(dir, { recursive: true, force: true });
+});

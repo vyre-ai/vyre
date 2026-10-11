@@ -10,7 +10,7 @@ export class StoreError extends Error {
 
 /**
  * @typedef {{ url: string, key: () => string, fetch?: typeof fetch, retries?: number, hostHeader?: string,
- *   sleep?: (ms: number) => Promise<void> }} ClientOptions
+ *   sleep?: (ms: number) => Promise<void>, slowMs?: number }} ClientOptions
  */
 export class TwentyClient {
   /** @param {ClientOptions} o */
@@ -21,6 +21,9 @@ export class TwentyClient {
     this.retries = o.retries ?? 4;
     this.hostHeader = o.hostHeader;
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    /** A call slower than this is told to `onSlow` (the store sets it to its log line): a slow first action names the call that was slow. */
+    this.slowMs = o.slowMs ?? 3000;
+    /** @type {((line: string) => void) | null} */ this.onSlow = null;
   }
 
   /**
@@ -30,6 +33,13 @@ export class TwentyClient {
    * @returns {Promise<any>} data
    */
   async gql(path, query, variables) {
+    const t0 = Date.now();
+    try { return await this.#gql(path, query, variables); }
+    finally { const ms = Date.now() - t0; if (this.onSlow && ms >= this.slowMs) { const op = /(?:query|mutation)\s+(\w+)/.exec(String(query)); this.onSlow(`slow Records call: ${path} ${op ? op[1] : "?"} took ${(ms / 1000).toFixed(1)} s`); } }
+  }
+
+  /** @param {"graphql" | "metadata"} path @param {string} query @param {Record<string, any>} [variables] */
+  async #gql(path, query, variables) {
     for (let attempt = 0; ; attempt++) {
       let res;
       try {

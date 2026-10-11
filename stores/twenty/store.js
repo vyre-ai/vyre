@@ -80,6 +80,7 @@ export class TwentyStore {
     this.meta = new (class AttrMap extends Map { /** @param {string} u @param {any} a */ set(u, a) { super.set(u, a); store.mirrorAttrs(u, a); return this; } })();
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
+    if (o.client && typeof o.client === "object" && !o.client.onSlow) o.client.onSlow = (/** @type {string} */ line) => this.say(line);
     /** @type {any[]} */ this.log = [];
     this.logFile = o.dir ? path.join(o.dir, "changes.jsonl") : null;
     /** @type {Set<string>} */ this.self = new Set();
