@@ -44,11 +44,22 @@ export function busyTurn(sb, id) {
 export function runQueuedOver(sb, id, rows, kt, mark, now) {
   if (!kt || !kt.over) return false;
   const r = rows[0];
-  if (!mark(now, r.id).changes) return true;
+  if (!mark(now, r.id).changes) { sb.drainDone(id, true); return true; }
   const rec = sb.record(id);
-  // the turn begins here as a queued one does anywhere else: the stream moves the replies (and the notice that the turn moved provider) to ITS asker, not the turn that just ended
-  sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
-  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
+  // One hop at a time: the previous hop back is finished first, the target is checked BEFORE the stream is told a turn began (a hop that cannot start says so in words and began nothing), and the drain
+  // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
+  void (async () => {
+    try {
+      await revertSettled(sb, id);
+      await sb.onceTarget(id, kt.over);
+      sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
+      await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
+      sb.drainDone(id, false);
+    } catch (/** @type {any} */ e) {
+      sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
+      sb.drainDone(id, true);
+    }
+  })();
   return true;
 }
 
@@ -117,4 +128,33 @@ export async function chipOver(sb, id, provider, account, kt, own) {
  */
 export function movesAccount(rec, to, acct) {
   return (rec.provider || "claude") === to && (rec.account || null) !== (acct ? acct.id : null);
+}
+
+/**
+ * A hop back in flight (turnEnded records it in sb.reverting) must finish before the next person's turn is judged: the thread's provider and account are the hop's until it has. True when settled, or when
+ * nothing was reverting; false when it is still going after the wait (sb.revertWaitMs, 10 s), and nothing may be judged on the wrong base then.
+ * @param {any} sb @param {string} id @returns {Promise<boolean>}
+ */
+export async function revertSettled(sb, id) {
+  const back = sb.reverting.get(id);
+  if (!back) return true;
+  /** @type {any} */ let timer;
+  const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), typeof sb.revertWaitMs === "number" ? sb.revertWaitMs : 10_000); timer.unref?.(); })]);
+  clearTimeout(timer);
+  return Boolean(settled);
+}
+
+/** What nobody's personal skills means to the skills library: a person id that owns nothing, so a launch with no verified person gets the shared (space, project, agent) skills only. */
+export const NOBODY = "-";
+
+/**
+ * Whose personal skills a launch is given (skills.materialise `person`): the verified asker of the turn it is launched for, else the running turn's asker (a respawn); a thread that a verified chat turn
+ * started (its stored `person`) and is launched with NO verified person (the hop back, a plain resume) gets nobody's, never the starter's or, by the library's default, the owner's. A thread no chat turn
+ * started (an ordinary one: the owner's own) is unchanged: the library's default.
+ * @param {any} sb @param {any} rec @param {any} o the launch options @returns {string}
+ */
+export function libraryPerson(sb, rec, o) {
+  const verified = (o.kernelTurn && o.kernelTurn.asker) || (rec && sb.turnAsker.get(rec.id)) || null;
+  if (verified) return String(verified);
+  return o.person ? NOBODY : /** @type {any} */ (undefined);
 }

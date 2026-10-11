@@ -59,6 +59,7 @@ async function world(t) {
   t.after(() => { for (const [k2, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k2]; else process.env[k2] = v; } });
   const personChainFor = async (/** @type {string} */ person) => k.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
   /** @type {any[]} */ const gaveUp = [];
+  /** The asker of the session each stamped tool call used, in order. @type {{ asker: string | null, sid: string }[]} */ const stamped = [];
   /** What the Switchboard asked the daemon to open: the thread, the chat and the asker. @type {any[]} */ const asked = [];
   /** What the stream asked of the seam, in order, per thread: beginTurn must come before the first appendOpen. @type {string[]} */ const seamCalls = [];
   /** Askers the kernel cannot open a session for just now (a test sets it): the probe still passes for them, the session does not open. @type {Set<string>} */ const failOpen = new Set();
@@ -97,7 +98,9 @@ async function world(t) {
       // as the daemon does (core/daemon/index.js kernelSession): a run with no agent in a chat is a model slot, and its token's agent hop is the slot id
       const agent = q.agent || (chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:") ? q.rec.slot : undefined);
       const s = await ks.open({ chain: person, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
-      return { token: ks.tokenFor(s.id), end: () => ks.end(s.id) };
+      const tf = ks.tokenFor(s.id);
+      // every time the thread socket asks for the token to stamp on a tool call, whose session it asked
+      return { token: () => { stamped.push({ asker: q.asker || null, sid: s.id }); return tf(); }, end: () => ks.end(s.id) };
     };
     await reg.start(discover([CORE]).filter(f => f.manifest && (["stream", "threads", "sessions"].includes(f.manifest.name))), { role: "box" });
     for (const m of ["sessions", "threads", "stream"]) assert.equal(reg.modules.get(m)?.state, "running", reg.modules.get(m)?.error);
@@ -125,7 +128,7 @@ async function world(t) {
   }
   /** A daemon that dies mid-turn: what kill -9 leaves is the durable turn store as it was (a graceful stop ends each session, which forgets its turn, so put them back). */
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
-  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, failOpen, work, seamCalls, paths: p, C: g.chats };
+  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, stamped, failOpen, work, seamCalls, paths: p, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
@@ -403,8 +406,8 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
 // TODO (found by putting this test on everyone's own account, 11 Oct; every run): with three different queued askers (bob, ada, bob) the SECOND one's turn runs in the thread (the echo of A-ONE is there) but the
 // chat never gets a reply for it: the stream writes ada's text under bob's message (the kernel opened ada's reply under no model slot, bob's under three) and the chat ends with status "failed, couldn't resume".
 // Until 6b23d3b6a the same test failed earlier, with "This session is open somewhere else: claude process N has it open" (the previous hop's process not in `ours()`). Two queued askers pass (V2). The assertions
-// below are the claim this test always made, now per message: remove the todo when the stream follows three queued askers.
-test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { todo: "the second of three queued askers has its turn run but its reply is written under the previous asker's message and the chat ends 'couldn't resume'" }, async t => {
+// below are the claim this test always made, now per message.
+test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
@@ -416,6 +419,20 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
   assert.deepEqual([c1.who, b1.who, a1.who, b2.who], [CAROL, BOB, ADA, BOB], "each message was answered under its own asker");
   assert.ok(c1.at < b1.at && b1.at < a1.at && a1.at < b2.at, "in arrival order, none cut, none merged");
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
+});
+
+test("V2t: the queued variant with a tool call in every turn: each tool call is stamped with the session of the person whose turn it is, per message", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  for (const [who, text] of [["bob", "vyre threads.list {\"limit\":1}"], ["ada", "vyre threads.list {\"limit\":2}"], ["bob", "vyre threads.list {\"limit\":3}"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const order = () => w.stamped.map(x => x.asker).filter((x, i, a) => x !== a[i - 1]);
+  await until(() => order().length >= 3, "a tool call in each of the three queued turns", 150_000);
+  await sleep(1500);
+  assert.deepEqual(order(), [BOB, ADA, BOB], "the tool calls were stamped with bob's, then ada's, then bob's own session, never another person's");
 });
 
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
@@ -479,4 +496,63 @@ test("V4: a restart with a message queued at the Switchboard: the queue is the S
   { const { over, ...kt } = JSON.parse(String(inbox().find((/** @type {any} */ r) => r.text === "WAITING-B").kturn)); assert.deepEqual(kt, { chat: chat.id, asker: BOB }, "the queued row carries its chat and asker"); assert.equal(over && over.person, BOB, "and the account it will run on is his own, chosen when it was asked"); }
   await w.crash(b1);
   assert.ok(inbox().some((/** @type {any} */ r) => r.text === "WAITING-B"), "the restart lost nothing: the Switchboard's queue is durable");
+});
+
+test("HOP: a thread bob started takes carol's one turn on her own account (her turn answers, on her account, under her session), and after the hop back it is on bob's account with bob as its person", { timeout: 200_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  const acct = (/** @type {string} */ who) => db.prepare("SELECT id FROM sessions_accounts WHERE label = ?").get(`${who}'s Claude`).id;
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  const bobFirst = await answered(w, watcher, "B-FIRST", 60_000);
+  assert.equal(bobFirst.who, BOB, "bob's turn was written under bob's session");
+  const thread = kitThread(b, chat.id);
+  const run = () => db.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(thread);
+  const bobsAccount = run().account, starter = JSON.parse(run().opts).person;
+  assert.equal(starter, BOB, "bob started the thread");
+  const seen = new Set();
+  const poll = setInterval(() => { try { seen.add(run().account); } catch { /* the row is being rewritten */ } }, 20);
+  t.after(() => clearInterval(poll));
+  const sent = await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!sent.error, sent.error && sent.error.message);
+  const carolTurn = await answered(w, watcher, LONG, 90_000);   // the hop did not fail with account_removed
+  assert.equal(carolTurn.who, CAROL, "carol's turn was written under carol's session");
+  clearInterval(poll);
+  assert.ok(seen.has(acct("carol")), `the turn ran on carol's own account: ${JSON.stringify([...seen])}`);
+  assert.ok(w.asked.some(a => a.asker === CAROL), "and under carol's session");
+  assert.ok(!textOf(watcher.frames).includes("account_removed"), "no account_removed anywhere in the chat");
+  // the hop back: bob's account again, bob as its person, and no hop person but the starter
+  await until(() => run().account === bobsAccount && [undefined, BOB].includes(JSON.parse(run().opts).switchPerson), "the thread to go back to bob's account, with no hop person but bob's", 30_000);
+  assert.equal(JSON.parse(run().opts).person, BOB, "bob is still the thread's person");
+});
+
+test("SEQ: bob, carol, bob, carol, ada take turns in one chat, each on their own account; no turn is refused, and each is answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const order = [["bob", "B-ONE"], ["carol", "C-ONE"], ["bob", "B-TWO"], ["carol", "C-TWO"], ["ada", "A-ONE"]];
+  const failures = [];
+  for (const [who, words] of order) {
+    const sent = await b.as(who)("stream.send", { chat: chat.id, text: words, to: ["assistant:assistant"], cwd: w.work });
+    if (sent.error) { failures.push(`${who} ${words}: ${sent.error.code} ${sent.error.message}`); continue; }
+    const got = await answered(w, watcher, words, 45_000).then((/** @type {any} */ x) => x, () => null);
+    const person = { bob: BOB, carol: CAROL, ada: ADA }[/** @type {"bob"|"carol"|"ada"} */ (who)];
+    if (got && got.who !== person) failures.push(`${who} ${words}: written under ${got.who}, not ${person}`);
+    if (!got) failures.push(`${who} ${words}: not answered; notices: ${JSON.stringify(watcher.frames.filter(f => f.data && f.data.notice).map(f => String(f.data.text).slice(0, 120)).slice(-3))}`);
+  }
+  assert.deepEqual(failures, [], "every turn in the sequence was accepted and answered");
+  // the same five turns, each with a tool call: the call is stamped with the session of the person whose turn it is, per message
+  for (const [who, words] of order) {
+    const from = w.stamped.length;
+    const sent = await b.as(who)("stream.send", { chat: chat.id, text: `vyre threads.list {"limit":${1 + order.findIndex(o => o[1] === words)}}`, to: ["assistant:assistant"], cwd: w.work });
+    assert.ok(!sent.error, `${who} ${words}: ${sent.error && sent.error.message}`);
+    await until(() => w.stamped.length > from, `${who}'s tool call`, 60_000);
+    await sleep(300);
+    const person = { bob: BOB, carol: CAROL, ada: ADA }[/** @type {"bob"|"carol"|"ada"} */ (who)];
+    assert.deepEqual([...new Set(w.stamped.slice(from).map(x => x.asker))], [person], `${who}'s tool call was stamped with ${who}'s session and nobody else's`);
+    await sleep(1500);   // the turn ends and the thread is back before the next person speaks, as in the sequence above
+  }
 });
