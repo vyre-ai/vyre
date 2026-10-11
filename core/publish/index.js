@@ -707,7 +707,7 @@ export default {
 
     ctx.tool("publish.job.run", {
       callers: PEOPLE,
-      description: "Run a live job now: { deployment }. It waits at least 5 minutes after the last run and never overlaps a run in progress. Returns { ok, message, code, seconds, output }.",
+      description: "Run a live job now: { deployment }. Waits 5 minutes after the last run; never overlaps. Returns { ok, message, code, seconds, output }.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -718,7 +718,7 @@ export default {
     });
     ctx.tool("publish.job.runs", {
       callers: WITH_MODELS,
-      description: "The last runs of a job: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }, newest first. The output is what the job printed, with secret shapes cut out.",
+      description: "The last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }, secrets cut out.",
       input: obj({ deployment: str, limit: { type: "integer", minimum: 1, maximum: 20 } }, ["deployment"]),
       run: async (i, meta) => {
         const w = await whoIs(i, meta);
