@@ -952,9 +952,7 @@ export class Switchboard {
       // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
       if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
-      if (w.branch) kept.branch = w.branch;
-      // who started it, from the call (the chat turn's asker): a transcript is placed in this thread only for this person (threads.transcript-target)
-      if (typeof o.person === "string" && o.person) kept.person = o.person;
+      if (w.branch) kept.branch = w.branch;   if (typeof o.person === "string" && o.person) kept.person = o.person;   // who started it, from the call: a transcript is placed in this thread only for this person (threads.transcript-target)
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -2162,9 +2160,7 @@ export class Switchboard {
    * @returns {{ uuid: string, turn: string|null, at?: number }}
    */
   write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "", askedBy = undefined } = {}) {
-    const st = this.live.get(id);
-    // the last door: nothing reaches a process on a person's computer unless the turn it belongs to is that person's (fail closed: a process that does not say where it runs is judged by the home's book)
-    if (lentBlocks(this, id, st, (askedBy !== undefined ? askedBy : this.turnAsker.get(id)) || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
+    const st = this.live.get(id); if (lentBlocks(this, id, st, (askedBy !== undefined ? askedBy : this.turnAsker.get(id)) || null)) throw Object.assign(new Error("This chat runs on someone's own computer, so this message waits for the server to take the chat back. Nothing was lost: it is sent when the chat is on the server."), { code: "held" });
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
@@ -2238,9 +2234,7 @@ export class Switchboard {
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
     // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
-    const lead = all[0].kturn || null;
-    // a chat on a person's computer is handed only that person's queued turns: anyone else's wait for the server to have the chat (the take-back starts now)
-    { const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })(); if (lentBlocks(this, id, st, kt0 && kt0.asker ? kt0.asker : null)) { void lentYield(this, id, st, kt0 && kt0.asker ? kt0.asker : null).catch(() => {}); return; } }
+    const lead = all[0].kturn || null; { const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })(); if (lentBlocks(this, id, st, kt0 && kt0.asker ? kt0.asker : null)) { void lentYield(this, id, st, kt0 && kt0.asker ? kt0.asker : null).catch(() => {}); return; } }
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
@@ -2438,9 +2432,7 @@ export class Switchboard {
       if (!(st && st.turn)) await lentReturn(this, id, st, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
-    // The door every message into a live process passes: a process on a person's own computer takes that person's turns only. A message with no chat turn behind it (an agent's, a Flow's, a notice) has no person, so it never reaches one.
-    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); } }
-    if (!this.live.has(id)) {
+    if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); } } if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
       if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author });
