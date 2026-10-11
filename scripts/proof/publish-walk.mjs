@@ -190,6 +190,73 @@ try {
     assert(!gone || gone.status === 404 || gone.error, `the host stops answering: ${JSON.stringify(gone).slice(0, 120)}`);
     return "retired";
   });
+  // ---- a scheduled job: set up with one yes, run by the root helper, kept clean, refused twice within five minutes, retired ----
+  const JOBDF = `FROM node:22-alpine
+RUN mkdir /data && chown node /data
+WORKDIR /app
+COPY job.js .
+USER node
+CMD ["node", "job.js"]
+`;
+  const JOBJS = `const fs = require("fs");
+const n = Number(fs.existsSync("/data/n") ? fs.readFileSync("/data/n", "utf8") : 0) + 1;
+fs.writeFileSync("/data/n", String(n));
+let root = "root-read-only"; try { fs.writeFileSync("/etc/x", "1"); root = "root-writable"; } catch {}
+let net = "no-network"; require("dns").lookup("example.com", err => { if (!err) net = "network"; console.log(JSON.stringify({ job: true, run: n, root, net, key: process.env.JOB_KEY ? "has-key" : "no-key" })); console.log("leaked " + (process.env.JOB_KEY || "")); setTimeout(() => process.exit(0), 100); });
+`;
+  /** @type {any} */ let job = null;
+  await J.step("a job: the folder, the draft with its schedule, a secret granted for running", async () => {
+    const put = (/** @type {string} */ f, /** @type {string} */ body) => { const r = sh(`printf %s ${JSON.stringify(Buffer.from(body).toString("base64"))} | docker exec -i -u vyre vyre-vyre-1 sh -c 'mkdir -p /home/vyre/nightly && base64 -d > /home/vyre/nightly/${f}'`); if (r.status !== 0) throw new Error(r.stderr); };
+    put("Dockerfile", JOBDF); put("job.js", JOBJS);
+    const r = await call("publish.create", { name: "nightly", source: { kind: "folder", ref: "/home/vyre/nightly" }, build: { image: "dockerfile" }, job: { every_minutes: 60, timeout_s: 120 } });
+    job = r.deployment;
+    assert(job.job && job.job.every_minutes === 60, JSON.stringify(job));
+    await pw.call("vault.put", { name: "job-key", kind: "secret", description: "walk", value: "job-secret-value-123" });
+    const g = await call("publish.secret.grant", { deployment: job.id, ref: "vault://job-key", name: "JOB_KEY", use: ["runtime"] });
+    if (!g.held) throw new Error(JSON.stringify(g).slice(0, 200));
+    await decide(g);
+    return job.id;
+  });
+  await J.step("a job: preview builds it, going live is one yes whose plan names the job and says it has no network", async () => {
+    const pv = await call("publish.preview", { deployment: job.id });
+    if (!pv.deployment || pv.deployment.stage !== "Preview") throw new Error(JSON.stringify(pv).slice(0, 300));
+    const a = await call("publish.approve", { deployment: job.id });
+    if (a.held) await decide(a);
+    const held = await call("publish.publish", { deployment: job.id });
+    assert(held.held, JSON.stringify(held).slice(0, 300));
+    assert(held.plan.job && held.plan.job.network === "none" && held.plan.job.every_minutes === 60 && !held.plan.server, JSON.stringify(held.plan).slice(0, 300));
+    const live = await decide(held);
+    assert(live.deployment && live.deployment.stage === "Production" && live.deployment.url === null, JSON.stringify(live).slice(0, 300));
+    return "Production, no address";
+  });
+  await J.step("a job: it is set up and nothing serves or runs yet", async () => {
+    assert(sh("docker ps -q --filter label=com.docker.compose.project=vyre-app-nightly").stdout.trim() === "", "not running");
+    assert(!((op("appmods.hosts") || { hosts: [] }).hosts || []).some((/** @type {string} */ h) => h.startsWith("nightly.")), "no host");
+    return "set up";
+  });
+  await J.step("a job runs once by the helper: read-only root, no network, its data kept, its secret cut out of what it printed", async () => {
+    const r = await call("publish.job.run", { deployment: job.id });
+    assert(r.ok === true && r.code === 0, JSON.stringify(r).slice(0, 300));
+    const line = String(r.output).split("\n").find((/** @type {string} */ l) => l.startsWith("{")) || "{}";
+    const j = JSON.parse(line);
+    assert(j.job === true && j.run === 1 && j.root === "root-read-only" && j.net === "no-network" && j.key === "has-key", line);
+    assert(!String(r.output).includes("job-secret-value-123"), "the secret is not in what it printed");
+    assert(/leaked \[secret\]/.test(String(r.output)), String(r.output).slice(0, 200));
+    assert(sh("docker ps -aq --filter label=com.docker.compose.project=vyre-app-nightly").stdout.trim() === "", "the container is gone");
+    return "ran once";
+  });
+  await J.step("a job: a second run within five minutes is refused, and its history shows the run", async () => {
+    const again = await call("publish.job.run", { deployment: job.id }).then(() => null, (/** @type {any} */ e) => e);
+    assert(again && /less than 5 minutes|too_soon/.test(String(again.message || again.code || again)), String(again && again.message));
+    const runs = (await call("publish.job.runs", { deployment: job.id })).runs;
+    assert(runs.length === 1 && runs[0].ok === true, JSON.stringify(runs).slice(0, 300));
+    return "refused, 1 run kept";
+  });
+  await J.step("a job: retire takes it down and keeps its data", async () => {
+    await call("publish.retire", { deployment: job.id });
+    assert(sh("docker volume ls -q --filter name=vyre-app-nightly_data").stdout.includes("data"), "the data stays");
+    return "retired";
+  });
   code = run.finish();
 } catch (e) {
   console.error(String(/** @type {Error} */ (e).stack || e));
