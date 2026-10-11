@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, movesAccount, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1679,7 +1679,6 @@ export class Switchboard {
    * files, same event log. The new provider gets a fresh native session and the seed (rollover.js)
    * with the next message; one that ran this thread before gets its own session back, and the seed
    * carries what was said while it was away. Says so in the transcript. A limit's fallback is this, triggered by the limit instead of a person.
-   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: "asked"|"limit", text?: string|null }} o
    */
   /**
    * Switch a thread's provider. One switch per thread at a time: a second while one runs (two
@@ -1708,7 +1707,7 @@ export class Switchboard {
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
-    const { seed, had } = await this.transferSeed(id, rec, provider);
+    const { seed, had } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
     if (st) {
       st.switching = true;
       const proc = st.proc;
@@ -1726,6 +1725,7 @@ export class Switchboard {
     const said = () => { this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said();
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
+    if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
     await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
@@ -1921,8 +1921,8 @@ export class Switchboard {
    * @param {string} id @param {any} rec @param {string} provider the one taking over
    * @returns {Promise<{ seed: string, had: boolean }>}
    */
-  async transferSeed(id, rec, provider) {
-    const had = Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
+  async transferSeed(id, rec, provider, fresh = false) {
+    const had = !fresh && Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
     const left = had ? this.deps.ofThread(id, { types: ["thread.provider"] }).filter(e => e.payload.from === provider).at(-1) : null;
     const seed = await this.seedFor({ chain: this.nativeChain(id), rec, thread: id, roll: 1, kind: had ? "back" : "switch", since: left ? left.at : 0 });
     return { seed: seed.text, had };
@@ -2508,7 +2508,7 @@ export class Switchboard {
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
     const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
-    const { seed } = await this.transferSeed(id, rec, provider);
+    const { seed } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
