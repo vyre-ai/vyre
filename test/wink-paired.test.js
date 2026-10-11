@@ -535,7 +535,8 @@ shardTest("a box-less device pairs a fresh server, is recorded as the owner's de
   const human = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id } });
   assert.equal(human.error && human.error.code, "presence_required", `vault.reveal with a paired session and no fresh proof is stopped by the presence floor: ${JSON.stringify(human.error || human.data).slice(0, 120)}`);
   // the same device with a fresh presence proof passes the floor (the gate, not a missing tool: what it answers is the vault's own, no such item)
-  const proved = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id }, ...PROOF });
+  // (the facts are what the daemon's callerFacts builds for the owner's paired device on the listener; a rig that calls the registry directly supplies them, as a People session alone is not proof of the owner)
+  const proved = await w.d.registry.call("vault.reveal", { name: "northwind-mail" }, label, { person: { id: started.body.data.id }, kernelFacts: { kind: "device", device_key_id: done.device, person: w.d.kernel && w.d.kernel.id.owner, path: "relay", session: String(started.body.data.id) }, ...PROOF });
   assert.ok(!proved.error || !["presence_required", "denied", "person_session_required", "no_such_tool"].includes(proved.error.code), `with a fresh proof it gets past the floor: ${JSON.stringify(proved.error || proved.data).slice(0, 120)}`);
 });
 

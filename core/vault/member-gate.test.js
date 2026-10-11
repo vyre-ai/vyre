@@ -43,7 +43,9 @@ test("fails closed for a call that claims a person: an unreadable chain, or fact
   assert.equal((await service.call("vault.test", { caller: "local", kernelFacts: { kind: "device" } })).error.code, "denied", "facts that did not hold give a service chain with no person: refused");
   assert.equal((await service.call("vault.test", { caller: "cli", token: "gone" })).error.code, "denied", "a token that maps to no person is refused");
   assert.equal((await service.call("vault.test", { caller: "cli", firstParty: true })).data, "ran", "a call that claims no person (the owner's terminal, the daemon) is unchanged");
-  for (const c of ["local", "capsule", "mcp", "harness", "deck", "mobile", "mcp:thread:t1", "mcp:agent:kit", "harness:thread:t1", "harness:agent:kit", "cli:agent:kit"]) assert.equal((await service.call("vault.test", { caller: c, firstParty: true })).data, "ran", `${c} on the owner's socket or listeners, claiming no one`);
+  for (const c of ["cli", "local", "capsule", "mcp", "harness"]) assert.equal((await service.call("vault.test", { caller: c, firstParty: true })).data, "ran", `${c} on the owner's own socket, claiming no one`);
+  // a label that names a listener or a thread/agent binding is not the owner's socket: with no claim it is refused
+  for (const c of ["deck", "mobile", "mcp:thread:t1", "mcp:agent:kit", "harness:thread:t1", "harness:agent:kit", "cli:agent:kit"]) assert.equal((await service.call("vault.test", { caller: c, firstParty: true })).error?.code, "denied", `${c} claiming no one`);
   // a REMOTE caller that claims no one is refused whatever session it shows: a People session proves a device signed in, not whose it is
   for (const c of ["device:abcdef", "web:aaaaaaaaaaaaaaaa", "setup:aaaaaaaaaaaaaaaa", "tailnet", "tailnet-guest:x", "space:bob@spc_x"]) {
     assert.equal((await service.call("vault.test", { caller: c })).error?.code, "denied", `${c} with no token, facts or session`);
@@ -76,4 +78,27 @@ test("the allow-list is by exact name: a name on it passes a member, every other
   try { assert.equal((await r.call("vault.member.put", { caller: "cli", token: "t" })).data, "ran"); assert.equal((await r.call("vault.test", { caller: "cli", token: "t" })).error.code, "denied", "and a sibling still is not"); }
   finally { MEMBER_ALLOWED.delete("vault.member.put"); }
   assert.ok(GATED.has("vault.test") && GATED.has("vault.member.put"));
+});
+
+test("nobody to keep out: with no member but the owner the gate passes, asked every call; once a second person is a member the full rule applies", async () => {
+  let others = false;
+  const k = { ...kernelOf(() => ({ hops: [hop("person", BOB)] })), hasOtherMembers: async () => others };
+  const r = rig(k);
+  const member = { caller: "device:abcdef", token: "t" };
+  assert.equal((await r.call("vault.test", member)).data, "ran", "before anyone joins");
+  others = true;
+  assert.equal((await r.call("vault.test", member)).error?.code, "denied", "the same call, judged after a member joins");
+  others = false;
+  assert.equal((await r.call("vault.test", member)).data, "ran", "asked every call, nothing remembered");
+  const broken = rig({ ...kernelOf(() => ({ hops: [hop("person", BOB)] })), hasOtherMembers: async () => { throw new Error("no"); } });
+  assert.equal((await broken.call("vault.test", member)).error?.code, "denied", "a kernel that cannot say refuses");
+});
+
+test("a kernel that ran at start and is gone at a call refuses; only a home that ran none is left open", async () => {
+  const live = { current: /** @type {any} */ (kernelOf(() => ({ hops: [hop("person", OWNER)] }))) };
+  const reg = /** @type {Map<string, any>} */ (new Map());
+  const ctx = gateTools({ get kernel() { return live.current; }, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
+  ctx.tool("vault.test", { run: async () => "ran" });
+  live.current = undefined;
+  await assert.rejects(() => reg.get("vault.test").run({}, { caller: "cli", token: "t" }), { code: "denied" });
 });

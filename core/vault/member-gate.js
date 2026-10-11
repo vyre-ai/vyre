@@ -1,9 +1,18 @@
 // @ts-check
-// core/vault/member-gate.js: the vault is the Space owner's. One place, before any vault tool runs: a call whose kernel chain has a person who is not the Space's owner (a member directly, or the person
-// behind that member's assistant or a named agent of theirs) is refused, whatever the tool and whatever presence says. A module's call, an outside agent's pass call and a call that claims no person at all (the owner's terminal, the daemon itself) are unchanged; a call that claims a person (a session token or the daemon's connection facts) must show a readable chain whose every person hop is the owner, or it is refused. The owner is read from the kernel, never from the input.
+// core/vault/member-gate.js: the vault is the Space owner's. One place, before any vault tool runs: a call made for a person who is not the Space's owner (a member directly, or the person behind that
+// member's assistant or a named agent of theirs) is refused, whatever the tool and whatever presence says. The owner is read from the kernel, never from the input.
 //
-// Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module), a tool added later is refused for members unless its name is added to MEMBER_ALLOWED, and a
-// test lists every registered vault tool and fails for one that is not wrapped.
+// THE RULE (team lead's, final):
+//  1. Nobody to keep out: when the Space's kernel has no member but the owner (asked of the kernel on every call, nothing cached; every non-owner person with any role counts, and doubt or an error answers "others exist"), the gate passes. A single-person install is untouched.
+//  2. A CLAIM is a session token or the daemon's proven kernelFacts. A claim must prove: the chain readable, at least one person hop, every person hop the owner. Otherwise refused.
+//     (The unclaimed pass for those labels rests on the main socket being reachable only by the daemon's own Linux user: chmod 0600, core/daemon/index.js. A session under another user cannot open it.)
+//  3. A call that claims nothing passes only for the owner's local socket labels (cli, local, capsule, mcp, harness: a socket only the owner's Linux user can open) and for module:/ext: callers. Every other
+//     unclaimed caller (device:*, web:*, setup:*, tailnet*, space:*, deck, mobile, mcp:thread:*, mcp:agent:*, harness:thread:*, harness:agent:*, cli:agent:*) is refused.
+//  4. A People session (meta.person) is NOT proof of the owner: it proves a device signed in, and a member enrols a device of their own. The owner's own remote surfaces get in by positive proof: callerFacts
+//     (core/daemon/index.js) builds kernelFacts for a device whose row names the owner, and that claim proves. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module's
+//     call made for a member carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
+//  5. Fail closed: every tool the vault registers goes through here (ctx.tool is wrapped for the whole module); a tool added later is refused for members unless its name is in MEMBER_ALLOWED; and a
+//     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
 /**
  * The vault tool names a non-owner person may call. Empty: a member reaches nothing of the owner's vault. A name is added here deliberately, one at a time (a member's own key tools do that when they land).
@@ -16,45 +25,43 @@ export const GATED = new Set();
 
 export const MEMBER_REFUSAL = "this is the owner's vault: ask the owner to share the item with you, or add your own key in your account settings";
 
+/** The labels of the owner's own 0600 unix socket (core/daemon/index.js: a socket only the owner's Linux user can open), exactly: a thread- or agent-bound label is not one of them. */
+const SOCKET_LABELS = new Set(["cli", "local", "capsule", "mcp", "harness"]);
+
 /** Every person hop of a call's chain, from the kernel. Throws when the chain cannot be read. @param {any} k @param {any} meta @returns {Promise<string[]>} */
 async function ids(k, meta) {
   const c = await k.chain(meta || {});
   return (c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id));
 }
 
-/** The caller classes a listener creates for a connection that is not on the owner's own socket (core/modules/index.js callerKind classes web and setup; device: from the relay and peer door; tailnet nodes; another Space's peer). */
-const REMOTE = /^(?:device:|web:|setup:|space:|tailnet)/;
-
-/** The callers that provably have no person behind them, by the registry's own caller kind: a module's call, and an outside agent holding a pass the owner made (vault.mcp.*). */
+/** The callers that carry no person by their own kind: a module's call, and an outside agent holding a pass the owner made (vault.mcp.*). */
 const NO_PERSON = (/** @type {string} */ caller) => caller.startsWith("module:") || /^ext:/.test(caller);
 
 /**
- * The module's ctx with every tool wrapped by the owner check. The wrapped run is named in GATED, so a test can tell a gated tool from one that slipped past.
+ * The module's ctx with every tool wrapped by the owner check.
  * @param {any} ctx
  */
 export function gateTools(ctx) {
+  // A daemon fact, fixed when the module starts: the kernel is wired before any module starts (core/daemon/index.js sets registry.deps.kernelFor, then starts the registry). A home that ran no kernel then has
+  // no members; one that did and loses its handle later refuses, it does not open.
+  const kernelRuns = Boolean(ctx.kernel);
+  const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
   const check = async (/** @type {string} */ name, /** @type {any} */ meta) => {
     if (MEMBER_ALLOWED.has(name)) return;
     const k = ctx.kernel;
-    if (!k || typeof k.chain !== "function") return;   // a home with no kernel has no members to keep out
+    if (!k || typeof k.chain !== "function") { if (kernelRuns) throw refuse(); return; }
+    // 1. nobody to keep out: asked every call, never remembered across a join. Unknown (the handle cannot say, or it throws) means there may be someone, so the rule applies.
+    if (typeof k.hasOtherMembers === "function") {
+      let others = true;
+      try { others = (await k.hasOtherMembers()) === true; } catch { others = true; }
+      if (!others) return;
+    }
     const caller = String((meta && meta.caller) || "");
-    // A call CLAIMS a person when it carries a session token or the daemon's proven facts about a person's connection. Every member reaches the server that way (their assistant's or agent's thread socket
-    // stamps the session's token on every call and refuses the call when it has none; a member's paired device is denied at the peer door before the registry when it has no facts: core/daemon/peer-door.js),
-    // and a claim that does not prove to be the owner at every hop is refused below. A module hop inherits the running turn's token (core/modules/index.js runInTurn), so a module call made for a member
-    // carries the member's claim and is refused like the member's own; a module's call with no claim (its own work) passes.
     const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (!claims) {
-      if (NO_PERSON(caller)) return;
-      // A REMOTE caller (a device, a browser, a setup page, a tailnet node, another Space's peer) that claims no one is refused, whatever session it shows. A People session proves a DEVICE signed in, not
-      // WHICH PERSON holds it: a member enrols a device key of their own and signs in with it exactly as the owner does. What shows a remote caller is the owner's is the daemon's facts about its device
-      // (core/daemon/index.js callerFacts: the device row names the owner), which arrive as kernelFacts and are checked above; without them nothing shows who it is.
-      if (REMOTE.test(caller)) throw Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
-      // Every other unclaimed label reaches vyred only on the owner's own 0600 unix socket or through the owner's own listeners (their terminal, the Capsule, deck and mobile as the owner's listeners set
-      // them, their local Claude and a thread or agent label on that socket): a member's session never arrives unclaimed (it carries its token), so there is no one else to keep out here.
-      return;
+      if (NO_PERSON(caller) || SOCKET_LABELS.has(caller)) return;
+      throw refuse();
     }
-    // A claimed person must be proven, and be the owner at every hop: a chain that cannot be read, or whose facts did not hold (a service chain with no person), is refused.
-    const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
     let persons;
     try { persons = await ids(k, meta); } catch { throw refuse(); }
     if (!persons.length || !k.owner || persons.some(p => p !== String(k.owner))) throw refuse();

@@ -69,6 +69,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 // The credentials port (the session launcher's way to a provider sign-in token). Not a tool: a frozen function the vault hands to the registry ONCE, at its own start, through
 // `ctx.provide` (the registry refuses a second provider, and any module but the vault). The daemon and the launcher modules receive it from the registry's own dependencies, so no
 // module and no daemon import reaches into the vault for it, and nothing that imports this file can take it.
+// NOT behind the member gate (it is a function, not a tool): safe because the session launcher picks the account by the person the turn is for (switchboard, per-person accounts), so a member's turn is never handed the owner's token.
 /** @param {any} vault */
 const credentialsPort = vault => Object.freeze({
   /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
