@@ -248,7 +248,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const sock = "$(ls /home/vyre/.vyre/vyred.sock 2>/dev/null || echo /home/vyre/.vyre/vyred.sock)";
     const net = (/** @type {string} */ p) => `node -e 'require("net").connect(${JSON.stringify(p)}).on("connect",()=>{console.log("CONNECTED");process.exit(0)}).on("error",e=>{console.log("ERR "+e.code);process.exit(2)})'`;
     const s1 = await R("member", net("/home/vyre/.vyre/vyred.sock"));
-    assert.match(s1, /ERR (EACCES|EPERM|ENOENT)/, `the member cannot open the daemon's main socket: ${s1}`);
+    assert.match(s1, /ERR (EACCES|EPERM|ENOENT)|stay out of reach/, `the member cannot open the daemon's main socket (the session floor says so, or the socket refuses): ${s1}`);
     assert.doesNotMatch(s1, /CONNECTED/);
     const s2 = await R("member", "vyre vault list 2>&1");
     assert.match(s2, /owner's vault/, `vault list is refused in words: ${s2}`);
