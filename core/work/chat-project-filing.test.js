@@ -35,13 +35,13 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   const body = (/** @type {string} */ project, /** @type {number} */ n) => { const id = `chat_00000000-0000-4000-8000-00000000000${n}`; return { id, ring: createRing(id, holdersOf([{ device: "dev_a", agree }])).doc, title: `chat ${n}`, ...(project ? { project } : {}) }; };
   const words = async (/** @type {Promise<any>} */ p) => { try { await p; return ""; } catch (e) { return `${/** @type {any} */ (e).code}: ${/** @type {any} */ (e).message}`; } };
 
-  const projects0 = await count("project"), chats0 = await count("chat");
+  const projects0 = await count("project"), chats0 = await count("chat-record");
   // the owner's project, which she is not on: refused, and nothing was made
   assert.match(await words(chat.create(chainOf(ANA), body("owners-matter", 1))), /not_allowed.*not on the project owners-matter.*Ask the project's owner/s, "a member cannot file a chat under the owner's project");
   // a name that matches no project: no project made for her
   assert.match(await words(chat.create(chainOf(ANA), body("made-up-matter", 2))), /not_found.*Start the project first/s, "an unknown name makes no project");
   assert.equal(await count("project"), projects0, "no project row was made");
-  assert.equal(await count("chat"), chats0, "and no chat row");
+  assert.equal(await count("chat-record"), chats0, "and no chat row");
   // her own project, no project, and (once the owner puts her on its team) the owner's project
   assert.ok((await chat.create(chainOf(ANA), body("anas-matter", 3))).chat, "her own project");
   assert.ok((await chat.create(chainOf(ANA), body("", 4))).chat, "no project: her chat as before");
