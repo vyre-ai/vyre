@@ -112,7 +112,7 @@ export default {
           const f = hostOf(input || {});
           // the Space's own Flows records are made when its store joins (minutes on a first start): wait for them a while, then say so in words rather than fail on a raw store error
           if (typeof f.waitTypes === "function" && !(await f.waitTypes())) throw refuse("Flows is still starting: the records it keeps are being made. Try again in a minute; vyre modules shows when the records are up.", "unavailable");
-          { const te = typeof f.typesError === "function" ? f.typesError() : null; if (te) throw refuse(`Flows could not set up its records: ${String(te.message || te).replace(/\s+/g, " ").slice(0, 160)}. vyre modules shows the state.`, "unavailable"); }
+          { const te = typeof f.typesError === "function" ? f.typesError() : null; if (te) throw refuse(`Flows could not set up its records: ${String(te.message || te).replace(/\s+/g, " ").slice(0, 160)}. Try again in a minute; if it stays, ask an admin to look at vyre modules.`, "unavailable"); }
           // The approvals queue lists what needs attention as itself, with no person's chain on the call (it holds the person's queue); no other module may.
           // The vault lends a Connection to a task's doer only after flows says which approved Kit version names it; it holds no person's chain for that, and no other module may ask.
           if (name === "flows.kit.credentials" && !(meta && meta.caller === "module:vault")) throw refuse("only the vault asks which Connections a task's Kit names", "denied");
