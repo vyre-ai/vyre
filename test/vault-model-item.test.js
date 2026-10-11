@@ -49,7 +49,13 @@ for (const mode of ["stub-presence", "real-presence"]) {
     let last;
     for (let i = 0; i < 7; i++) last = await d.registry.call("vault.grant", { name: `owner-secret`, module: `mod${i}` }, "mcp:agent:kit", agent("kit"));
     assert.ok(last.error, "the seventh request from one caller is refused");
-    assert.match(last.error.message, /5 grant requests waiting.*vault\.pending/);
-    assert.equal(((await d.registry.call("vault.pending", {}, "cli", await ownerTok())).data.grants || []).length, 5, "five wait for the owner");
+    assert.match(last.error.message, /owner has not answered.*5 are waiting.*vault\.pending/);
+    const waiting = (await d.registry.call("vault.pending", {}, "cli", await ownerTok())).data.grants || [];
+    assert.equal(waiting.length, 5, "five wait for the owner");
+    // the card the owner sees says who asked, in words
+    const { fromVault } = await import("../core/approvals/items.js");
+    const card = fromVault({ grants: waiting })[0];
+    assert.match(card.title, /^Let mod\d use "owner-secret"$/);
+    assert.match(card.detail, /asked by the agent kit, not by you/);
   });
 }

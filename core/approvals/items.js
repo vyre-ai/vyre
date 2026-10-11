@@ -59,6 +59,16 @@ export const fromHeld = rows => rows.map(h => {
 });
 
 const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 4).map(x => clean(x && typeof x === "object" ? x.name : x, 60)).filter(Boolean).join(", ");
+/** Who asked, in plain words, so an owner cannot approve a request thinking they made it themself: the assistant, a named agent, a Claude session, a module, or the raw label when it is none of those. @param {unknown} by */
+export const askedBy = by => {
+  const b = String(by || "");
+  if (!b) return "";
+  const who = /^(?:mcp|harness):agent:assistant$/.test(b) ? "your assistant" : (m => (m ? `the agent ${clean(m[1], 30)}` : ""))(/^(?:mcp|harness):agent:(.+)$/.exec(b))
+    || (m => (m ? `a Claude session (${String(m[1]).slice(0, 8)})` : ""))(/^(?:mcp|harness):thread:(.+)$/.exec(b)) || (/^(?:mcp|harness)$/.test(b) ? "a Claude session" : "")
+    || (m => (m ? `the ${clean(m[1], 30)} module` : ""))(/^module:(.+)$/.exec(b)) || clean(b, 40);
+  return `asked by ${who}, not by you`;
+};
+
 /** vault.pending: what an agent asked the vault for and a person has not settled (grants, passes, agent logins, people to trust, passes to accept). Names only, never a value. */
 export const fromVault = (/** @type {any} */ p) => {
   const row = (/** @type {string} */ id, /** @type {string} */ title, /** @type {string} */ detail, /** @type {any} */ when) =>
@@ -66,9 +76,9 @@ export const fromVault = (/** @type {any} */ p) => {
       answer: { tool: "vault.approve", input: { id }, fill: [] } });
   const list = (/** @type {any} */ x) => (Array.isArray(x) ? x.filter(y => y && typeof y === "object" && y.id) : []);
   return [
-    ...list(p && p.grants).map(g => row(g.id, `Let ${clean(g.module, 40)}${g.watcher ? `/${clean(g.watcher, 40)}` : ""} use "${clean(g.name, 60)}"`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
-    ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
-    ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, clean(s.by, 40) && `asked by ${clean(s.by, 40)}`].filter(Boolean).join(", "), s.created)),
+    ...list(p && p.grants).map(g => row(g.id, `Let ${clean(g.module, 40)}${g.watcher ? `/${clean(g.watcher, 40)}` : ""} use "${clean(g.name, 60)}"`, askedBy(g.by), g.at)),
+    ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, askedBy(g.by), g.at)),
+    ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, askedBy(s.by)].filter(Boolean).join(", "), s.created)),
     ...list(p && p.people).map(x => row(x.id, `Trust the card for ${clean(x.name, 60)}`, x.fingerprint ? `fingerprint ${clean(x.fingerprint, 40)}` : "", x.at)),
     // the Vault MCP's reveal ask: the pass's agent asked to see one item once. Two answers: Allow once (a yes: vault.mcp.reveal.allow is a vault moment) and Decline.
     ...list(p && p.mcpReveals).map(x => ({ id: `vault:${x.id}`, kind: "access", title: clean(`Let ${clean(x.pass, 40)}'s agent see "${clean(x.item, 60)}" once?`) || "An agent asks to see a vault item", ...opt("detail", clean(x.why, DETAIL_MAX)), at: at(x.at), source: "vault",

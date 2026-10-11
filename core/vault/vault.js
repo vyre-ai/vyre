@@ -1399,7 +1399,7 @@ export class Vault {
       if (this.releases.views().some(v => v.item === name && v.module === module && v.watcher === watcher && v.project === project)) return { grant: this.grantOut({ id: "", item: name, module, watcher, project, status: "active" }) };
       const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grant_requests WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
       // A model files a few requests at most: each shows on the owner's approvals list, and a flood of them is a way to get one approved unread.
-      if (!old && Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM vault_grant_requests WHERE by=?").get(String(caller))).n) >= 5) throw new Error("this caller already has 5 grant requests waiting: the owner approves or denies those first (vault.pending lists them)");
+      if (!old && Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM vault_grant_requests WHERE by=?").get(String(caller))).n) >= 5) throw new Error("the owner has not answered this caller's earlier requests yet: 5 are waiting, and the owner approves or denies those first (vault.pending lists them)");
       const id = old ? old.id : "g_" + newId();
       if (!old) this.db.prepare("INSERT INTO vault_grant_requests (id, item, module, watcher, project, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, project, String(caller), now());
       this.audit("grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
