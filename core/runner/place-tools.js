@@ -170,7 +170,8 @@ export function registerPlaceTools(ctx, d) {
     description: "Put a chat back on its own person's computer after another person's turn took it to the server. Internal: the Switchboard, on that person's next turn. Input: thread, person. Answers { moved }.",
     internal: true, callers: ["module"],
     input: obj({ thread: str, person: str }, ["thread", "person"]),
-    run: async i => {
+    run: async (i, meta) => {
+      if (!meta || meta.caller !== "module:threads") throw refuse("only the chat engine puts a chat back on its person's computer, when that person sends their next message: send a message in the chat", "denied");
       const thread = threadOf(i), person = String(i.person);
       const hit = find(thread, undefined, person);
       if (!hit || hit.row.person !== person || hit.row.where !== "server" || hit.row.reason !== "another-person") return { moved: false };
