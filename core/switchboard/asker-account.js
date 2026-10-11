@@ -17,9 +17,9 @@ export async function askerOver(sb, id, kernelTurn) {
   const mine = await sb.accountFor({ provider, person: asker, ...scope }).catch(() => null);
   if (mine && mine.id) return mine.id === rec.account ? null : { provider, account: String(mine.id), person: asker };
   // Nobody but the owner runs on the owner's login, nor on the machine's own credential: a person with no sign-in of their own here is refused, whatever account the thread names (or none).
-  const owner = sb.deps && typeof sb.deps.owner === "function" ? sb.deps.owner() : "";
+  const owner = ownerOf(sb);
   // (with no account named, the thread runs on the machine's own login only where this machine has one to give: on a box, the vault's setup token)
-  if (owner && asker !== owner && (rec.account || await holdsLogin(sb))) throw needOwnSignIn();
+  if (owner && sb.canon(asker) !== owner && (rec.account || await holdsLogin(sb))) throw needOwnSignIn();
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
