@@ -131,7 +131,8 @@
       "per-agent"
     ],
     "daemon": [
-      "credentials"
+      "credentials",
+      "agentActor"
     ],
     "kernel": {
       "actions": [

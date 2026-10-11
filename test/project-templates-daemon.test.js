@@ -35,11 +35,11 @@ async function boot(/** @type {any} */ t, member = true) {
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const meta = async () => ({ token: (await d.kernel.surfaces.open(ownerChain, {})).token });
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", await meta()); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
-  // the roster agent the template's role is filled by is a member of the Space
-  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  // the roster agent the template's role is filled by: making it makes it an actor of the Space (member = false leaves it out, so the role names an agent the Space does not have)
   const actor = { kind: "agent", id: "research", space };
   if (!member) return { d, space, owner, ownerChain, call, meta, host: d.registry.deps.flowsHost.get(space) };
-  await d.kernel.gateway.grants.addActor(ownerChain, actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
+  const made = await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(made.note, undefined, "the answer to a create that made the agent an actor has no warning");
   // and may do the tasks it is given
   const gi = { subject: { kind: "actor", actor }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
   await d.kernel.gateway.grants.create(ownerChain, gi, { presence: proof("grants.create", gi, `vyre://${space}/grant/new`) });
@@ -202,4 +202,51 @@ test("a Flow attached to a template runs for each project it starts, as its own 
   await call("work.start-project", { template: "tpl_with-automation", name: "Rivera" });
   await until(async () => (await names()).filter((/** @type {string} */ n) => n === "Welcome Intake").length === 2, "and once for each project");
   await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad auto", automations: [{ when: "Nowhere", flow: def.id }] } }), /when is "start" or the name/);
+});
+
+test("an agent is made an actor of its Space when it is made: under its name, once, and not by a call with no person; deleting it takes the actor back", { timeout: 180_000 }, async t => {
+  const { d, call, meta } = await boot(t, false);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const ask = async (/** @type {string} */ name) => { const r = await call("work.start-project", { template: "tpl_estate-plan", name }); return r; };
+  // a name with a capital is not an agent's name: the id the stage uses is the name as written
+  await assert.rejects(() => call("agents.create", { name: "Research", kind: "agent", projects: [] }), /lowercase letters, digits and dashes/);
+  // a model and a member never make an agent (the tool's callers), so neither makes an actor
+  for (const caller of ["mcp:agent:kit", "space", "mcp"]) { const r = await d.registry.call("agents.create", { name: "sneaky", kind: "agent", projects: [] }, caller, await meta()); assert.ok(r.error, `${caller} cannot make an agent`); }
+  // a module's call carries no person: the agent is made, it is not an actor, and the answer says so and what to do
+  const viaModule = await d.registry.call("agents.create", { name: "research", kind: "agent", projects: [] }, "module:onboard");
+  assert.equal(viaModule.error, undefined, JSON.stringify(viaModule.error));
+  assert.match(String(viaModule.data.note), /not a member of this Space yet.*vyre space add-agent spc_/);
+  assert.equal((await ask("Before")).tasks_made, 0, "its task is skipped, not claimed");
+  await call("agents.delete", { agent: "research" });
+  // a person makes it: an actor, so its task is made
+  const mine = await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  assert.equal(mine.note, undefined);
+  assert.equal((await ask("After")).tasks_made, 1);
+  // deleting it takes the actor back: a project started now skips the task again
+  await call("agents.delete", { agent: "research" });
+  const gone = await ask("Gone");
+  assert.equal(gone.tasks_made, 0);
+  assert.deepEqual(gone.tasks_skipped, [{ task: "Gather documents", why: "research is not in this space yet" }]);
+});
+
+test("agents made before they became actors are made actors when the agents module starts again (an update fixes the people who already hit it)", { timeout: 240_000 }, async t => {
+  const root = tempHome(t);
+  const start1 = async () => { const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence }); return d; };
+  let d = await start1();
+  const owner = d.kernel.id.owner, space = d.kernel.id.space;
+  const chain = () => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(chain(), {})).token }); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  await call("agents.create", { name: "research", kind: "agent", projects: [] });
+  // the state of an install from before: the agent row is there and the Space has no such actor
+  const actor = { kind: "agent", id: "research", space };
+  await d.kernel.gateway.grants.removeActor(chain(), actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  assert.equal((await call("work.start-project", { template: "tpl_estate-plan", name: "Before" })).tasks_made, 0, "no actor, no task");
+  await d.stop();
+  d = await start1();
+  t.after(() => d.stop());
+  const ok = await until(async () => (await call("work.start-project", { template: "tpl_estate-plan", name: `After${Math.random().toString(36).slice(2, 6)}` })).tasks_made === 1, "the agent became an actor after the restart", 40_000);
+  assert.ok(ok);
 });

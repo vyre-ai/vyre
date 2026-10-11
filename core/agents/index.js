@@ -164,6 +164,24 @@ export default {
     const urnOf = async (/** @type {string} */ slug) => { const r = await ctx.call("projects.record", { project: slug }); if (r.error) throw new Error(`no record for project ${slug}: ${r.error.message}`); return String(r.data.urn); };
     /** Whether this call carries a person to act as: a module's own call (the plugin agent's grant makes its agent this way) carries none, and then the grants are the caller's to make with its own proof. */
     const hasPerson = async (/** @type {any} */ meta) => { try { const c = await K.chain(meta); return c.hops.length === 1 && c.hops[0].actor.kind === "person"; } catch { return false; } };
+    /**
+     * An agent is made an actor of this Space under its NAME, the id a template's stage names for a task's doer (kernel/flows/stages.js) and a chat that lists it registers (core/daemon/index.js chatFor), so a
+     * project started from a template gets its assistant tasks. It is the person's own act: only a call that carries a person registers (a module's call and a model's never do; agents.create already
+     * refuses a model and a member by its callers), and it is done by the daemon under the owner's chain, once (already one: nothing changes). Returns null when it is done, else the words for the answer.
+     * @param {string} name @param {any} meta
+     */
+    const becomeActor = async (name, meta) => {
+      if (!K || !K.grants || typeof ctx.agentActor !== "function") return null;   // no kernel here: there is no Space to be an actor of
+      const later = (/** @type {string} */ why) => `${name} is made, but it is not a member of this Space yet, so no task can be given to it (${why}). Add it with: vyre space add-agent ${K.space} ${name}`;
+      if (!(await hasPerson(meta))) { ctx.log(`agents: ${name} was made by a call with no person, so it is not an actor of the Space yet`); return later("this call carried no person"); }
+      try { await ctx.agentActor(name); return null; }
+      catch (e) {
+        const c = String(/** @type {any} */ (e).code || "");
+        if (c === "conflict" || c === "exists") return null;
+        ctx.log(`agents: could not make ${name} an actor of the Space: ${/** @type {Error} */ (e).message}`);
+        return later(String(/** @type {Error} */ (e).message).slice(0, 160));
+      }
+    };
     const syncAccess = async (/** @type {string} */ name, /** @type {any} */ before, /** @type {any} */ after, /** @type {any} */ meta) => {
       if (!K || !K.grants) return; // no kernel here: there are no grants to keep in step with
       if (!(await hasPerson(meta))) {
@@ -479,7 +497,8 @@ export default {
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         await mirror.schedule();
-        return get(i.name);
+        const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
+        return note ? { ...get(i.name), note } : get(i.name);
       },
     });
 
@@ -760,7 +779,9 @@ export default {
           if (!(await hasPerson(meta))) throw Object.assign(new Error("deleting an agent takes back what it was given, which is the person's own act; this call carries no person"), { code: "denied" });
           await revokeReach(K, meta, { agent: a.uid });
           const { chain, proof } = await (await import("../../lib/project-reach.js")).asPerson(K, meta);
-          try { await K.grants.removeActor(chain, { kind: "agent", id: a.uid, space: K.space }, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found" && c !== "unknown") throw e; }
+          for (const id of [a.uid, a.name]) {   // the stable id (reach grants) and the name (tasks, chats)
+            try { await K.grants.removeActor(chain, { kind: "agent", id, space: K.space }, proof); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found" && c !== "unknown") throw e; }
+          }
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
@@ -827,6 +848,14 @@ export default {
       try { k0.events.subscribe(k0.serviceChain("agents"), "agents-mirror", {}, async (/** @type {any} */ e) => { if (e && /^agent\.(created|updated|removed)$/.test(e.type)) await mirror.schedule(); }); } catch { /* no event feed in this kernel: the roster's own changes still schedule it */ }
     }
 
+    // Agents made before an agent became an actor when it was made (they were never actors, and a template's tasks for them were skipped): each is made one now, in the background, once (already one: nothing changes).
+    if (K && K.grants && typeof ctx.agentActor === "function") {
+      void (async () => {
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT name FROM agents_agents WHERE kind != 'assistant'").all())) {
+          try { await ctx.agentActor(String(r.name)); } catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "conflict" && c !== "exists") ctx.log(`agents: could not make ${r.name} an actor of the Space: ${/** @type {Error} */ (e).message}`); }
+        }
+      })();
+    }
     return { async stop() {} };
   },
 };
