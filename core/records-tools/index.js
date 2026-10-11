@@ -3,6 +3,7 @@
 // chain in the Space it names (lib/gateway-door.js: a token's or the person's facts, never the body), so the kernel's grants, sealed fields and rooms decide each answer. A refusal is
 // { error: { code, message } } with the kernel's own codes (not_found, version_conflict, sealed_value_refused, bad_input, denied).
 import { createDoor } from "../../lib/gateway-door.js";
+import { MEMBER_BLOCKED_TYPES, MEMBER_READ_ONLY_TYPES } from "../../kernel/remote/member-guard.js";
 import { segments } from "../../kernel/core/urn.js";
 import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
@@ -210,8 +211,17 @@ export default {
       const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
       const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
       const d = await door.open({}, extra);
+      // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
+      const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
+      const trusted = role === "owner" || role === "admin";
+      const urnType = typeof clean.urn === "string" ? (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(clean.urn) || [])[1] : undefined;
+      for (const ty of [clean.type, urnType]) {
+        if (typeof ty !== "string" || trusted) continue;
+        if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
+        if ((i.call === "create" || i.call === "update") && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
+      }
       const out = await op.fn(clean, d);
-      return out;
+      return !trusted && i.call === "types" && out && Array.isArray(out.types) ? { ...out, types: out.types.filter((/** @type {any} */ x) => !MEMBER_BLOCKED_TYPES.has(String(x && x.name))) } : out;
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
     ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events"]), run: serve(["me", "actors", "types", "list", "get", "events"]) });

@@ -6,7 +6,8 @@
 //
 // ADDING A ROW (the same three steps for every group):
 //   1. kernel/remote/wire.js: put the call name in CALLS.<group> (a new group needs its name in the peer door's services, below, which is automatic from this table's keys);
-//   2. here: add `"<group>.<call>": ["<registry tool>", "<call>"]` to MEMBER_TOOLS. With a call name the tool is a *.serve entry and is run with `{ call, input }`; with `null` the tool is run with the input itself;
+//   2. here: add `"<group>.<call>": { tool, call, keys, types }` to MEMBER_TOOLS: with a call name the tool is a *.serve entry and is run with `{ call, input }`, with `null` it is run with the input itself; `keys` are the only input keys the door passes;
+//      `types` are the record types the row keeps (each in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES, a test fails otherwise);
 //   3. the tool: declare it in its module.json with "reach": "modules" and "crossSpace": "<an action the MEMBER role holds>", and read the person from `extra.in_space_chain` (NEVER assume the owner; the work
 //      module's chainOf and skills' serve tools are the pattern). Test it as a member, as the owner and as a non-member (core/work/member-tools.test.js is the template: a row without that test is not added).
 // A row is added only for a tool that takes the person from the chain.
@@ -14,43 +15,47 @@
 import { KernelError } from "../../kernel/core/errors.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 
-/** door call ("<group>.<call>") -> [registry tool, its call name or null]. Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, [string, string | null]>>} */
+/**
+ * door call ("<group>.<call>") -> the registry tool that serves it, the call name it is run with (null: the tool is run with the input itself), the input keys the door lets through (every other key is dropped,
+ * so a member never names the person, the agent, the project or the Space), and the record types the row keeps (each must be in kernel/remote/member-guard.js MEMBER_BLOCKED_TYPES: a test fails otherwise).
+ * Edited by roles and Settings later; today it is this file. @type {Readonly<Record<string, { tool: string, call: string | null, keys: readonly string[], types: readonly string[] }>>}
+ */
 export const MEMBER_TOOLS = Object.freeze({
   // a member's own skills (core/skills/member-ops.js): her personal skill is drafted and approved by her alone; a draft at a higher level waits for its owner; kind "skill" only
-  "skills.list": ["skills.serve", "list"],
-  "skills.get": ["skills.serve", "get"],
-  "skills.versions": ["skills.serve", "versions"],
-  "skills.draft": ["skills.serve-write", "draft"],
-  "skills.approve": ["skills.serve-write", "approve"],
-  // a member's daily work on the team's records and tasks (the app Store's calls, by the same names and input shapes): her chain decides every record and task; service-kept record types are kept from her by the kernel
-  "records.me": ["records.serve", "me"],
-  "records.actors": ["records.serve", "actors"],
-  "records.types": ["records.serve", "types"],
-  "records.list": ["records.serve", "list"],
-  "records.get": ["records.serve", "get"],
-  "records.events": ["records.serve", "events"],
-  "records.create": ["records.serve-create", "create"],
-  "records.update": ["records.serve-update", "update"],
-  "tasks.list": ["tasks.serve", "list"],
-  "tasks.get": ["tasks.serve", "get"],
-  "tasks.request": ["tasks.serve-request", "request"],
-  "tasks.move": ["tasks.serve-work", "move"],
-  "tasks.submit": ["tasks.serve-work", "submit"],
+  "skills.list": { tool: "skills.serve", call: "list", keys: ["level"], types: ["skill"] },
+  "skills.get": { tool: "skills.serve", call: "get", keys: ["id"], types: ["skill"] },
+  "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
+  "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
+  "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version"], types: ["skill"] },
+  // a member's daily work on the team's records and tasks, the app Store's own calls (same names, same input keys): her chain decides every record and task; the kept record types are refused in the tool and by the gateway
+  "records.me": { tool: "records.serve", call: "me", keys: [], types: [] },
+  "records.actors": { tool: "records.serve", call: "actors", keys: [], types: [] },
+  "records.types": { tool: "records.serve", call: "types", keys: [], types: [] },
+  "records.list": { tool: "records.serve", call: "list", keys: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], types: [] },
+  "records.get": { tool: "records.serve", call: "get", keys: ["urn"], types: [] },
+  "records.events": { tool: "records.serve", call: "events", keys: ["record", "task", "since", "limit"], types: [] },
+  "records.create": { tool: "records.serve-create", call: "create", keys: ["type", "data"], types: [] },
+  "records.update": { tool: "records.serve-update", call: "update", keys: ["urn", "patch", "base_version"], types: [] },
+  "tasks.list": { tool: "tasks.serve", call: "list", keys: ["record", "doer", "checker", "state", "limit"], types: [] },
+  "tasks.get": { tool: "tasks.serve", call: "get", keys: ["id"], types: [] },
+  "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
+  "tasks.move": { tool: "tasks.serve-work", call: "move", keys: ["id", "to", "reason", "suggested_fix"], types: [] },
+  "tasks.submit": { tool: "tasks.serve-work", call: "submit", keys: ["id", "evidence"], types: [] },
 });
 
 /**
- * Door calls whose names the kernel's own gateway also serves, with the gateway's argument shape (records.get(type, id), tasks.request(spec)...). A member's HOME reaches the team through the gateway's names (its remote
- * client), a member's APP through the Store's: so one name answers both. An object argument that has the Store's keys is the Store's call; anything else goes to the gateway untouched, as before.
+ * Door names the kernel's gateway also serves (records.get(type, id), tasks.get(id), tasks.request(spec)): a member's HOME reaches the team through the gateway's shapes, her APP through the Store's. A call whose
+ * first argument is not the Store's object goes to the gateway untouched, and every call of these two groups the table does not name passes through to the gateway as before.
  */
 const SHARED = Object.freeze({
-  "records.get": (/** @type {any[]} */ a) => a.length === 1 && a[0] && typeof a[0] === "object" && typeof a[0].urn === "string",
-  "records.create": (/** @type {any[]} */ a) => a.length === 1 && a[0] && typeof a[0] === "object" && typeof a[0].type === "string" && a[0].data && typeof a[0].data === "object",
-  "records.update": (/** @type {any[]} */ a) => a.length === 1 && a[0] && typeof a[0] === "object" && typeof a[0].urn === "string",
-  "tasks.get": (/** @type {any[]} */ a) => a.length === 1 && a[0] && typeof a[0] === "object" && typeof a[0].id === "string",
-  "tasks.request": (/** @type {any[]} */ a) => a.length === 1 && a[0] && typeof a[0] === "object" && a[0].task && typeof a[0].task === "object",
+  "records.get": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
+  "records.create": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.type === "string" && a.data && typeof a.data === "object",
+  "records.update": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
+  "tasks.get": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.id === "string",
+  "tasks.request": (/** @type {any} */ a) => a && typeof a === "object" && a.task && typeof a.task === "object",
 });
 
-const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_allowed: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found", version_conflict: "version_conflict", sealed_value_refused: "sealed_value_refused", unavailable: "unavailable", conflict: "conflict" });
+const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_allowed: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found", version_conflict: "version_conflict", sealed_value_refused: "sealed_value_refused", unavailable: "unavailable" });
 
 /** The groups of the table, each with its calls: the peer door's services. */
 export const memberGroups = () => {
@@ -63,6 +68,12 @@ export const memberGroups = () => {
  * One service per group of the table, for the peer door's `services`. @param {{ space: string, kernel: any, registry: { callInSpace(m: any, space: string, base: any, tool: string, input: any, chain: any): Promise<any> } }} o
  */
 export function createMemberTools(o) {
+  // every row's tool must be one only this door runs: internal, for modules, declared to run in another Space (a row whose tool is not is a mistake that must stop the daemon, not a hole)
+  const tools = /** @type {any} */ (o.registry).tools;
+  if (tools && typeof tools.get === "function") for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
+    const def = tools.get(row.tool);
+    if (def && !(def.internal === true && def.crossSpace && def.reach === "modules")) throw new Error(`member door row ${door}: ${row.tool} must be an internal tool for modules that declares crossSpace`);
+  }
   const who = (/** @type {any} */ chain) => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || chain.viewer === true || chain.delegated === true || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw new KernelError("not_found", "not found");
@@ -71,35 +82,35 @@ export function createMemberTools(o) {
   const isMember = (/** @type {string} */ person) => {
     try { const r = o.kernel?.gateway?.members?.roleOf({ kind: "person", id: person, space: o.space }); return typeof r === "string" && r !== ""; } catch { return false; }
   };
-  /** The gateway's own function for a shared name, called as the peer door calls it: (chain, ...args). @param {string} door */
+  /** The gateway's own function for a name: called as the peer door calls it, (chain, ...args). @param {string} door */
   const gatewayFn = (door) => {
-    const [group, name] = [door.slice(0, door.indexOf(".")), door.slice(door.indexOf(".") + 1)];
+    const group = door.slice(0, door.indexOf(".")), name = door.slice(door.indexOf(".") + 1);
     const tree = group === "tasks" ? o.kernel?.gateway?.ask : o.kernel?.gateway?.[group];
     const fn = tree && Object.hasOwn(tree, name) ? tree[name] : null;
     return typeof fn === "function" ? fn : null;
   };
   const run = (/** @type {string} */ door) => async (/** @type {any} */ chain, /** @type {any} */ input, /** @type {any[]} */ ...rest) => {
-    // a call the gateway also serves, in the gateway's own shape: not the Store's, so it goes to the gateway exactly as before the table named it
-    if (Object.hasOwn(SHARED, door) && !/** @type {any} */ (SHARED)[door]([input, ...rest].filter((x, k) => k === 0 || x !== undefined))) {
+    if (Object.hasOwn(SHARED, door) && !(/** @type {any} */ (SHARED)[door])(input)) {
       const g = gatewayFn(door);
       if (!g) throw new KernelError("not_found", "not found");
       return g(chain, input, ...rest);
     }
     const person = who(chain);
     if (!isMember(person)) throw new KernelError("not_found", "not found");   // not a member: nothing to say
-    const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
-    delete i.space; delete i.as;
-    const [tool, call] = MEMBER_TOOLS[door];
-    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, tool, call ? { call, input: i } : i, chain);
+    const row = MEMBER_TOOLS[door];
+    const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+    const i = Object.fromEntries(row.keys.filter(k => Object.hasOwn(src, k)).map(k => [k, src[k]]));   // only the keys the row names: never the person, the agent, the project or the Space
+    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, row.tool, row.call ? { call: row.call, input: i } : i, chain);
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };
   /** @type {Record<string, Record<string, any>>} */ const out = {};
   for (const [group, calls] of Object.entries(memberGroups())) {
     out[group] = Object.fromEntries(calls.map(c => [c, run(`${group}.${c}`)]));
-    // a group the kernel's gateway also serves (records, tasks): this service stands in for the whole group at the door, so every other call of the gateway's passes through to it unchanged
+    // records and tasks are groups the gateway serves too: this service stands in for the whole group at the door, so every other call of the gateway's passes through unchanged
+    if (group !== "records" && group !== "tasks") continue;
     for (const c of (/** @type {Record<string, readonly string[]>} */ (CALLS)[group] || [])) {
-      if (Object.hasOwn(out[group], c) || (group !== "records" && group !== "tasks")) continue;
+      if (Object.hasOwn(out[group], c)) continue;
       const g = gatewayFn(`${group}.${c}`);
       if (g) out[group][c] = (/** @type {any} */ chain, /** @type {any[]} */ ...a) => g(chain, ...a);
     }

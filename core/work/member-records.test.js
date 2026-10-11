@@ -65,6 +65,13 @@ test("a member lists, makes, reads and changes records of the team's Space as he
   assert.equal((await w.as(w.OWNER, "records.list", { type: "contact" })).rows.length, 1);
   // input keys the call does not take are dropped: a member cannot name a Space, a chain or the kernel's system types
   assert.ok((await w.as(ANA, "records.types", { system: true, space: "spc_zzzzzzzzzzzz" })).types.every((/** @type {any} */ x) => !x.system));
+  // the types the team's own tools keep are not hers through the Store's calls: not read, not listed, not written (the owner keeps them)
+  assert.equal(await code(w.as(ANA, "records.list", { type: "skill" })), "not_found");
+  assert.equal(await code(w.as(ANA, "records.create", { type: "skill", data: { name: "x" } })), "not_found");
+  assert.equal(await code(w.as(ANA, "records.get", { urn: `vyre://${w.space}/def-flow/rec_x` })), "not_found");
+  assert.equal(await code(w.as(ANA, "records.create", { type: "team-member", data: {} })), "not_allowed", "the project team is kept by the team's own tools");
+  assert.ok((await w.as(ANA, "records.types")).types.every((/** @type {any} */ x) => x.name !== "skill" && x.name !== "def-flow"));
+  assert.notEqual(await code(w.as(w.OWNER, "records.list", { type: "skill" })), "not_found", "the owner keeps access to the kept types");
   // a stranger (not a member) and a chain with an agent behind it
   assert.equal(await code(w.as(ZED, "records.list", { type: "contact" })), "not_found", "a person who is not a member gets nothing");
   const agentChain = { ...w.chainOf(ANA), hops: [...w.chainOf(ANA).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
