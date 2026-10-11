@@ -5,6 +5,7 @@
 // the line turns green by itself when the piece lands. Proof (the transcript) is written to <out>/j9/ and copied to team/0.3.3/proof/team-day/ by whoever signs it off.
 //   VYRE_JOURNEY_BOX=1 node scripts/journeys/run.mjs J9      (a throwaway test box or a CI runner; see scripts/proof-dev-droplet.mjs --journeys J9)
 import assert from "node:assert/strict";
+import { sharedChatSteps } from "./lib/shared-chat.mjs";
 import crypto from "node:crypto";
 import { createRing, holdersOf } from "../../lib/chat-keys.js";
 import path from "node:path";
@@ -159,7 +160,7 @@ export default {
         return people.map((p, n) => `${p.name} warm ${warm[n].toFixed(1)} s, after 150 s idle ${cold[n].toFixed(1)} s`).join("; ");
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
-      await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
+      await sharedChatSteps({ J, w, team, people, needs: [SIGN] });   // G03 and G04: each person's message on their own AI account, in one chat (scripts/journeys/lib/shared-chat.mjs, as J9 does)
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       // the server's own log, kept with the proof: the box is torn down after the run (store define lines, store attach, who waited for whom)
