@@ -327,7 +327,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   const calls = b.calls();
   assert.ok(!calls.includes("volume rm"), calls);
   assert.ok(calls.includes("rm -f c1 c2"), "agents' computers are removed");
-  assert.ok(calls.includes("compose --profile computers down --remove-orphans"), calls);
+  assert.ok(calls.includes("compose down --remove-orphans"), calls);
   assert.ok(calls.includes("image rm -f img1 img2"), "Vyre's own images go, once each: " + calls);
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "the vyre command is removed");
   assert.doesNotMatch(r.stdout, /Tailscale/i, "no Tailscale step: there is none");

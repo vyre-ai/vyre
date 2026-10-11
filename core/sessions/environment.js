@@ -44,7 +44,7 @@ const some = (xs, max, what) => (xs.length <= max ? xs.join(", ") : `${xs.slice(
  * @typedef {{ agent?: { name: string, kind?: string|null, projects?: string[]|"*" }|null, project?: string|null, provider?: string|null,
  *   tools?: string[], space?: { name?: string|null, role?: string|null }|null, spaces?: { name: string, role?: string|null, current?: boolean }[],
  *   types?: { name: string, fields?: string[], kind?: string }[]|null, connectors?: { name: string, state?: string }[], team?: { name: string, role?: string|null }[],
- *   memory?: boolean, vaultItems?: string[], person?: string|null, artifactsDir?: string|null, timeLine?: string|null }} Sources
+ *   memory?: boolean, vaultItems?: string[], person?: string|null, artifactsDir?: string|null, timeLine?: string|null, computerDefault?: boolean }} Sources
  */
 
 /**
@@ -101,6 +101,10 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   if (has("work")) add("work", 5, [
     "Work is Tasks inside Flows. A task has one doer and optionally one checker, says what done looks like, and moves through the stages of its Flow. Take a task you are given, do it, submit it for check; to hand off, request a task for the next doer rather than doing their part.",
     fam("flows") ? "You can read Flows and propose a new one (tools_call flows.propose); a Flow you write stays a draft until a person approves it." : "",
+  ]);
+
+  if (s.computerDefault === true) add("computer", 6, [
+    "Vyre Computer is this person's default browser. For anything that needs a browser, run tools_call computer.use first (the cloud computer by default, or the computer they name in `on`); it fills logins from the Vault and keeps the person's approvals. Use your own browsing tool only when Vyre Computer cannot do the job.",
   ]);
 
   add("approvals", 6, [

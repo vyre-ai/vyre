@@ -104,11 +104,13 @@ need_docker() {
   [ -S "$s" ] && [ ! -w "$s" ] && die "this needs Docker, which only root can reach here: run it with sudo: sudo vyre ${VYRE_VERB:-}"
   return 0
 }
+# The agents' computers are on in every run: the docker-api proxy (the computers profile) is named here by the wrapper, in the one command's environment, so a person need not edit .env, and a root run, which reads no
+# compose setting from .env, runs the same stack as the person's run.
 compose() {
-  if [ "$ROOT_RUN" != 1 ]; then need_docker; docker compose "$@"; return; fi
+  if [ "$ROOT_RUN" != 1 ]; then need_docker; COMPOSE_PROFILES=computers docker compose "$@"; return; fi
   [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
-  if [ "$BUILDF" = 1 ]; then docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" "$@"
-  else docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" "$@"
+  if [ "$BUILDF" = 1 ]; then COMPOSE_PROFILES=computers docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" "$@"
+  else COMPOSE_PROFILES=computers docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" "$@"
   fi
 }
 # The update this run is (UPD_TRACK=1 under the path unit): where it has got to, for the card in the Deck.
@@ -1156,7 +1158,7 @@ uninstall() {
   comp=$(docker ps -aq --filter network=vyre-computers 2>/dev/null || true)
   # shellcheck disable=SC2086 # one container id per word
   [ -z "$comp" ] || docker rm -f $comp >/dev/null
-  compose --profile computers down --remove-orphans
+  compose down --remove-orphans
   # Vyre's own images (the box and the computers, and the one kept for a rollback) are not data: a
   # gigabyte of layers with no use once Vyre is gone. Docker itself stays.
   imgs=$(docker image ls -q --filter 'reference=ghcr.io/vyre-ai/*' --filter 'reference=vyre:*' 2>/dev/null | sort -u || true)

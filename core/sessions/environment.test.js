@@ -215,3 +215,8 @@ test("environment: every brief carries the time line, in the person's own zone e
   const iq = (await d.registry.call("sessions.prompt.compose", { purpose: "capsule", now: NOW, zone: "Asia/Karachi" }, "module:vyred")).data;
   assert.match(iq.text, /9:41 pm for the person \(Asia\/Karachi\)/);
 });
+
+test("the brief says Vyre Computer is the default browser only when the person turned that on", () => {
+  assert.doesNotMatch(environmentOf(base).text, /default browser/);
+  assert.match(environmentOf({ ...base, computerDefault: true }).text, /Vyre Computer is this person's default browser\. For anything that needs a browser, run tools_call computer\.use first/);
+});

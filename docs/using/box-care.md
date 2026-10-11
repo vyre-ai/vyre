@@ -418,16 +418,13 @@ new box answers, Vyre is taken off the old server, whose volumes stay until you 
 The new server must not already hold a box or Vyre volumes. If anything fails after the old stack
 stops, the move stops the new one and starts the old one again, and says which.
 
-## Turn on agents' computers
+## Agents' computers
 
-Agents' computers run as their own containers through Vyre's Docker proxy, which is off by
-default. On the box, add to `/srv/vyre/.env`:
+Agents' computers run as their own containers through Vyre's Docker proxy. It runs on every Vyre
+server from the install: the `vyre` command names the `computers` profile itself, so there is nothing to
+add to `/srv/vyre/.env`.
 
-```
-COMPOSE_PROFILES=computers
-```
-
-then run `vyre up`. What the proxy allows is in
+What the proxy allows is in
 [The box and the Mac](../concepts/box-and-mac.md#the-agents-computers).
 
 ## Remove it

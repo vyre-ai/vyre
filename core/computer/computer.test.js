@@ -50,7 +50,12 @@ test("no name is the cloud computer, as the caller's own agent; the engine's inp
 test("a model may use only its own agent's computer", async () => {
   const b = await boot({ macs: MACS });
   await assert.rejects(b.run({ do: "look", agent: "juno" }), /can only use its own computer/);
-  await assert.rejects(b.run({ do: "look" }, "mcp"), /names no agent/);
+  await assert.rejects(b.run({ do: "look" }, "mcp"), /has no assistant to lend/, "a plain chat with no assistant on the install has no computer");
+  const withAssistant = await boot({ macs: MACS, answers: { "agents.list": [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] } });
+  const plain = await withAssistant.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp");
+  assert.equal(plain.computer, "Cloud computer");
+  assert.deepEqual(withAssistant.calls.find(c => c.tool === "chrome.open").input, { url: "https://example.org/x", agent: "juno" }, "a plain chat works on the person's assistant's cloud computer");
+  await assert.rejects(withAssistant.run({ do: "look", agent: "kit" }, "mcp"), /not kit's/);
   assert.equal((await b.run({ do: "look", agent: "juno" }, "cli")).engine, "chrome.snapshot", "a person's surface may name the agent");
 });
 
@@ -166,4 +171,12 @@ test("the paired Macs are the box owner's: another member's session sees only th
   const r = await b.run({ do: "look", on: "Office Mac mini" }, "deck", { person: "per_teammate" });
   assert.equal(r.asked, true, "naming the Mac is not a way to it: the name matches nothing for this person");
   assert.ok(!b.calls.some(c => c.tool === "link.macs.call"), "no Mac was asked");
+});
+
+test("a plain chat works on its own person's assistant's computer: a member's plain chat is refused the owner's", async () => {
+  const b = await boot({ macs: MACS, answers: { "agents.list": [{ name: "juno", kind: "assistant" }] } });
+  const ok = await b.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp");
+  assert.equal(ok.computer, "Cloud computer", "the owner's plain chat");
+  await assert.rejects(b.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp", { person: "per_teammate" }), /its own person's assistant's computer/);
+  assert.equal(b.calls.filter(c => c.tool === "chrome.open").length, 1, "only the owner's chat reached the browser");
 });
