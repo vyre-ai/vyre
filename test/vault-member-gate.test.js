@@ -73,10 +73,11 @@ for (const mode of ["stub-presence", "real-presence"]) {
     assert.deepEqual(names, ["owner-del", "owner-over", "owner-secret"], `${mode}: the owner's vault is as the owner left it`);
     assert.equal((await d.registry.call("vault.state", {}, "cli", await ownerTok())).data.locked, false, "and it is not locked");
     if (mode === "stub-presence") assert.equal((await d.registry.call("vault.reveal", { name: "owner-secret" }, "cli", await ownerTok())).data.value, SECRET, "the owner still reads their own secret");
-    // the owner's own assistant and agent: today's behaviour (measured, not changed here)
+    // the owner's own assistant and agent: the vault.item rule for a model (not changed here)
     const oa = { kernelFacts: { kind: "agent_session", vouched: true, person: owner, agent: "assistant", session: "s-oa" }, agent: "assistant", agentKind: "assistant" };
     const ownerAssistant = await d.registry.call("vault.item", { name: "owner-secret" }, "mcp:agent:assistant", oa);
-    assert.ok(!ownerAssistant.error, `${mode}: the owner's assistant keeps today's vault.item: ${JSON.stringify(ownerAssistant.error)}`);
+    // the landed model rule (vault-model-grant): a model, the owner's assistant included, learns of an item only if it holds a grant on it, so an ungranted item answers the not-found words
+    assert.ok(ownerAssistant.error && /no item named owner-secret/.test(String(ownerAssistant.error.message)), `${mode}: the owner's assistant gets the not-found words for an ungranted item: ${JSON.stringify(ownerAssistant.error || ownerAssistant.data)}`);
     const ownerGrant = await d.registry.call("vault.grant", { name: "owner-secret", module: "threads" }, "mcp:agent:assistant", oa);
     console.log(`FINDING|${mode}|owner's assistant vault.grant of an owner item to a module: ${ownerGrant.error ? "REFUSED " + ownerGrant.error.code + ": " + ownerGrant.error.message : "ALLOWED " + JSON.stringify(ownerGrant.data).slice(0, 100)}`);
     // every tool the vault registers is gated or on the allow-list: a new one is refused for members by default
