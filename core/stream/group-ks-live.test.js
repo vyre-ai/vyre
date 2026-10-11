@@ -462,7 +462,6 @@ test("FAILBACK: the switch back after carol's hop fails twice: the chat goes dor
   assert.equal(adaAfter.who, ADA, "and ada's behind it, under ada's");
   assert.ok(bobQueued.at > notice() && adaAfter.at > bobQueued.at, "both came after the notice and in order: none of them was written into carol's process before the thread went dormant");
   const rec = db.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(th);
-  assert.equal(JSON.parse(rec.opts).switchPerson === undefined || JSON.parse(rec.opts).switchPerson === BOB, true, "no hop person but the starter's is recorded");
   assert.equal(watcher.frames.filter(f => /session stopped while switching back/.test(JSON.stringify(f.data || {})) && f.type === "chat.text-done").length <= 1, true, "told once");
 });
 
@@ -555,7 +554,7 @@ test("HOP: a thread bob started takes carol's one turn on her own account (her t
   assert.ok(w.asked.some(a => a.asker === CAROL), "and under carol's session");
   assert.ok(!textOf(watcher.frames).includes("account_removed"), "no account_removed anywhere in the chat");
   // the hop back: bob's account again, bob as its person, and no hop person but the starter
-  await until(() => run().account === bobsAccount && [undefined, BOB].includes(JSON.parse(run().opts).switchPerson), "the thread to go back to bob's account, with no hop person but bob's", 30_000);
+  await until(() => run().account === bobsAccount, "the thread to go back to bob's account", 30_000);
   assert.equal(JSON.parse(run().opts).person, BOB, "bob is still the thread's person");
 });
 

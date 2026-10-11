@@ -58,6 +58,7 @@ import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, rec
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -791,7 +792,7 @@ export class Switchboard {
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {
-        this.emit("thread.text", { message: "vyre", text: `Could not save a generated file as an artifact: ${String(/** @type {Error} */ (e).message).slice(0, 160)}`, done: true, notice: true }, id, rec.project);
+        this.emit("thread.text", { message: "vyre", text: "Could not save a generated file as an artifact. The file is still in the session's folder; ask for it again if you need it among your artifacts.", done: true, notice: true }, id, rec.project);
         return;
       }
     }
@@ -1171,8 +1172,8 @@ export class Switchboard {
   dropQueuedChatTurn(id, rows, project) {
     const drop = this.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?");
     for (const r of rows) drop.run(r.id);
+    this.endAnnouncedTurn(id, project);   // first: the stream's member stops running, so the notice below is shown in the room
     this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
-    this.endAnnouncedTurn(id, project);
   }
 
   /** A thread that went dormant with queued chat turns waiting (a switch back that failed) starts again on its own base, the way a restart does: the leading row's asker opens its own session. @param {string} id */
@@ -1768,7 +1769,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (person) kept.switchPerson = person; else delete kept.switchPerson;
+    if (acct) kept.account = acct.id; else delete kept.account;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2663,7 +2664,6 @@ export class Switchboard {
       const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (once.back.account) kept.account = once.back.account; else delete kept.account;
       if (once.back.person) kept.person = once.back.person; else delete kept.person;
-      delete kept.switchPerson;
       this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
       const left = this.live.get(id); if (left) left.haltReason = "switching back failed";
       await this.stop(id).catch(() => {});
@@ -3878,6 +3878,8 @@ export const queuesFor = caller => {
 
 export default {
   async start(ctx) {
+    // threads.notice says words in any thread's room as Vyre, outside a turn: an added module that lists it in needs.tools must not reach it (first-party callers: agents, team).
+    closeToAddedModules(ctx, { only: ["threads.notice"] });
     ctx.store.migrate(MIGRATIONS);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     const cfg = sessionsConfig(ctx.config);
@@ -4813,7 +4815,7 @@ export default {
     ctx.tool("threads.notice", {
       description: "Say something in a thread as Vyre.", internal: true,
       input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str } },
-      run: async i => sb.notice(i.thread, i.text),
+      run: async i => sb.notice(i.thread, String(i.text == null ? "" : i.text).replace(/\s+/g, " ").trim().slice(0, 300)),   // one line, 300 characters: it can reach a room outside a turn
     });
     // A chat's runs and their events, to leave this device with the chat (Personal to My Cloud: core/work/chat-upgrade.js) and to be put back on the other. Modules only; the caller (the work module) has
     // already checked that the person is in the chat. What is not carried: the provider's own session file (a resumed run starts from the brief, not from native context).

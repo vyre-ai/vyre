@@ -2,7 +2,9 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { revertSettled, runQueuedOver } from "./asker-account.js";
+import { hopRefusal, revertSettled, runQueuedOver } from "./asker-account.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js";
+import fs from "node:fs";
 import { Switchboard } from "./index.js";
 
 const LOCK = Symbol("lock");
@@ -141,7 +143,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
     once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
     live: new Map([["t", { turn: null, stopping: false, hopProcess }]]), deps: { log() {} },
     record: () => ({ project: null, provider: "codex", account: "carols" }),
-    db: { prepare: (/** @type {string} */ q) => ({ get: () => ({ opts: JSON.stringify({ account: "carols", person: "per_carol", switchPerson: "per_carol", origin: "x" }) }), run: (/** @type {any[]} */ ...a) => { sql.push([q.slice(0, 40), a]); return { changes: 1 }; } }) },
+    db: { prepare: (/** @type {string} */ q) => ({ get: () => ({ opts: JSON.stringify({ account: "carols", person: "per_carol", origin: "x" }) }), run: (/** @type {any[]} */ ...a) => { sql.push([q.slice(0, 40), a]); return { changes: 1 }; } }) },
     emit: (/** @type {string} */ type, /** @type {any} */ p) => events.push([type, p.text]),
     switchProvider: async () => { tries++; throw new Error("no process"); },
     stop: async () => { stops++; sb.live.delete("t"); },
@@ -156,7 +158,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
   assert.ok(update, "the base is written back to the record");
   assert.deepEqual(update[1].slice(0, 3), ["claude", "bobs", "opus"], "provider, account and model of the base");
   const opts = JSON.parse(update[1][3]);
-  assert.deepEqual([opts.account, opts.person, opts.switchPerson], ["bobs", "per_bob", undefined], "nothing recorded says the thread is on the member's account");
+  assert.deepEqual([opts.account, opts.person], ["bobs", "per_bob"], "nothing recorded says the thread is on the member's account");
   assert.equal(stops, 1, "the hop's process is stopped");
   assert.equal(sb.live.has("t"), false, "no live process");
   assert.ok(events.some(e => e[0] === "thread.provider"), "the app's provider chip follows the base");
@@ -214,4 +216,38 @@ test("a lost mark releases only its own lock and drains nothing; the revert's ow
   sb2.drainQueued("t", sb2.live.get("t"), null);
   assert.equal(takes, 1, "the same rows are taken once");
   assert.equal(sb2.draining.size, 1, "and the lock is still held by the drain that took it");
+});
+
+test("a queued hop that fails after it was announced ends the announced turn first and then shows its notice, in fixed words", async () => {
+  /** @type {string[]} */ const order = []; /** @type {string[]} */ const words = [];
+  const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
+    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, onceTarget: async () => ({}),
+    emit: (/** @type {string} */ type, /** @type {any} */ p) => { order.push(type); if (type === "thread.text") words.push(p.text); },
+    endAnnouncedTurn: () => order.push("end-announced"), drainQueued() {},
+    sendOnce: async (/** @type {any} */ _i, /** @type {any} */ _t, /** @type {any} */ _s, /** @type {any} */ _o, /** @type {any} */ o) => { o.onClaim(); throw Object.assign(new Error("account 7f3a9c is not yours / path /srv/x"), { code: "denied" }); } });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  runQueuedOver(sb, "t", [{ id: 7, text: "A-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_ada", over: { provider: "claude", account: "x", person: "per_ada" } }, () => ({ changes: 1 }), 1, LOCK);
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(order, ["thread.sent", "end-announced", "thread.text"], "announced, then ended, then the notice");
+  assert.doesNotMatch(words[0], /7f3a9c|\/srv/, "no account id or path reaches the room");
+});
+
+test("hopRefusal names the next step for each cause and never a lookup's own message", () => {
+  for (const code of ["busy", "denied", "account_required", "account_unavailable", "account_removed", "not_found", "unavailable", undefined, "weird"]) {
+    const text = hopRefusal(code);
+    assert.match(text, /Nothing was sent/, code);
+    assert.match(text, /again|Pick|Open AI accounts|add one/, `${code}: says what to do`);
+  }
+});
+
+test("threads.notice is closed to added modules and capped in the Switchboard's start", async () => {
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const ctx = { tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) };
+  closeToAddedModules(ctx, { only: ["threads.notice"] });
+  ctx.tool("threads.notice", { run: async () => "said" });
+  await assert.rejects(async () => tools.get("threads.notice").run({}, { caller: "module:added", firstParty: false }), { code: "not_declared" });
+  assert.equal(await tools.get("threads.notice").run({}, { caller: "module:agents", firstParty: true }), "said");
+  const src = fs.readFileSync(new URL("./index.js", import.meta.url), "utf8");
+  assert.match(src, /closeToAddedModules\(ctx, \{ only: \["threads\.notice"\] \}\)/, "the Switchboard's start closes it");
+  assert.match(src, /\.slice\(0, 300\)/, "and the text is one line of at most 300 characters");
 });

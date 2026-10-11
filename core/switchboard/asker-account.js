@@ -70,8 +70,9 @@ export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
       if (started === null) { sent(); await sb.deliverRow(id, r, kt); }   // no hop was needed: announced here, then delivered plainly   // no hop was needed (the thread already is on the asker's account): the words still go in, under their asker
       sb.drainDone(id, true, lock);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
-      sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
-      if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // the turn announced as begun for these words ends here (nothing was announced if the target was refused first)
+      // The announced turn ends FIRST (the stream's member stops running), then the room is told: a notice while a turn still runs would take the reply path with no session and be dropped.
+      if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // (nothing was announced if the target was refused first)
+      sb.emit("thread.text", { message: "vyre", text: hopRefusal(e && e.code), done: true, notice: true }, id, rec ? rec.project : null);
       sb.drainDone(id, true, lock);
     }
   })();
@@ -181,3 +182,11 @@ export function libraryPerson(sb, rec, o) {
   return o.person ? NOBODY : /** @type {any} */ (undefined);
 }
 
+
+/** The words the room sees when a person's hop onto their own account could not start: one fixed sentence per cause and the next step, never the lookup's own message (it can carry one person's account id). @param {string | undefined} code */
+export function hopRefusal(code) {
+  if (code === "busy") return "The chat is busy with another turn. Nothing was sent. Send the message again in a moment.";
+  if (code === "denied" || code === "account_required") return "That sign-in is not yours to use here. Nothing was sent. Pick your own account, or add one under AI accounts.";
+  if (code === "account_unavailable" || code === "account_removed" || code === "not_found" || code === "unavailable") return "Your sign-in for that AI is not available right now. Nothing was sent. Open AI accounts to sign in again, then send the message again.";
+  return "Your message could not run on your own account. Nothing was sent. Send it again, or pick another account.";
+}
