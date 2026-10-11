@@ -127,6 +127,8 @@ export default {
       await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
       await heavy("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
+      // J9_KEEP=<minutes>: leave the box up that long after the steps, to look inside it (docker exec -u vyre vyre-vyre-1 ...)
+      if (process.env.J9_KEEP) await new Promise(r => setTimeout(r, Number(process.env.J9_KEEP) * 60_000));
       for (const p of people) { try { p.app.close(); } catch { /* closed */ } }
       await w.stop().catch(() => {});
     }
