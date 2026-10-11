@@ -206,3 +206,19 @@ test("fromSignIn: a Connection whose key was refused is 'The key for <host> stop
   assert.equal(rows[0].kind, "signin");
   assert.deepEqual(rows[0].answer, { tool: "connectors.connection.check", input: { id: "acme-crm" }, fill: [] });
 });
+
+test("a request a model filed says who asked, in words, and that it was not the owner", async () => {
+  const { askedBy, fromVault } = await import("./items.js");
+  assert.equal(askedBy("mcp:agent:juno", "assistant"), "asked by your assistant, not by you", "the assistant, by its kind");
+  assert.equal(askedBy("mcp:agent:assistant", "agent"), "asked by the agent assistant, not by you", "a named agent called assistant is not the assistant");
+  assert.equal(askedBy("mcp:agent:assistant"), "asked by the agent assistant, not by you", "and a request with no kind recorded is never called the assistant");
+  assert.equal(askedBy("mcp", "assistant"), "asked by a Claude session, not by you", "a kind with no agent in the label names no agent");
+  assert.equal(askedBy("mcp:agent:kit"), "asked by the agent kit, not by you");
+  assert.equal(askedBy("mcp:thread:01a12b17-0122-4e26"), "asked by a Claude session, not by you");
+  assert.equal(askedBy("mcp"), "asked by a Claude session, not by you");
+  assert.equal(askedBy("module:connectors"), "asked by the connectors module, not by you");
+  assert.equal(askedBy(""), "");
+  const [card] = fromVault({ grants: [{ id: "g_1", name: "owner-secret", module: "threads", by: "mcp:agent:kit", at: 1 }] });
+  assert.equal(card.title, 'Let threads use "owner-secret"');
+  assert.equal(card.detail, "asked by the agent kit, not by you");
+});

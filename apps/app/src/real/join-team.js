@@ -136,10 +136,10 @@ export async function homeSession(d, channel, space, invite) {
   } catch (e) { try { conn.close(); } catch { /* closed */ } throw e; }
   let n = 0;
   return {
-    /** One wire call (kernel/remote/wire.js): the answer's result, or an Error with the home's code. @param {string} call @param {any[]} args */
-    async call(call, args) {
+    /** One wire call (kernel/remote/wire.js): the answer's result, or an Error with the home's code. `opt.timeoutMs` is how long to wait for the answer (30 s when not given: a person's app never gives it). @param {string} call @param {any[]} args @param {{ timeoutMs?: number }} [opt] */
+    async call(call, args, opt) {
       const id = `rq_${(d.now ?? Date.now)().toString(36)}_${(++n).toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-      const reply = await peer.call("kernel.call", { v: 1, space, id, ts: (d.now ?? Date.now)(), call, args });
+      const reply = await peer.call("kernel.call", { v: 1, space, id, ts: (d.now ?? Date.now)(), call, args }, opt);
       if (!reply || reply.v !== 1 || reply.id !== id || typeof reply.ok !== "boolean") throw refuse("unavailable", "The home's answer was not understood.");
       if (!reply.ok) throw refuse(String(reply.error && reply.error.code || "unavailable").slice(0, 40), String(reply.error && reply.error.message || "refused").slice(0, 300));
       return reply.result;
@@ -215,9 +215,9 @@ export async function openInvite(d, link) {
  * A call to a space this device joined, as a member: the member row kept at the accept, a channel with the hello `invite: "member"`, and the home's kernel answering for membership.
  * @param {Deps} d @param {string} spaceId @param {string} call @param {any[]} [args]
  */
-export async function callTeam(d, spaceId, call, args = []) {
+export async function callTeam(d, spaceId, call, args = [], opt = undefined) {
   const row = d.store ? await d.store.get(`member-of/${spaceId}`) : null;
   if (!row || !row.channel) throw refuse("not_a_member", "This device has not joined that space.");
   const home = await homeSession(d, row.channel, spaceId, "member");
-  try { return await home.call(call, args); } finally { home.close(); }
+  try { return await home.call(call, args, opt); } finally { home.close(); }
 }
