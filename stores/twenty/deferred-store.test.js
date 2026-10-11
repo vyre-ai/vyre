@@ -198,3 +198,20 @@ test("a module handle's refused define is asked again only when the store is no 
   for (let i = 0; i < 3; i++) await assert.rejects(() => s2.records.create(chain(k2), "thing", { name: "x" }), (e) => /collides/.test(e.message));
   assert.equal(defines, 1, "a refused type is not asked for again on every call");
 });
+
+test("two calls at once after a store-away refusal run one define, not two", async () => {
+  const THING = { name: "thing", label: "Thing", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  const d = createDeferredStore({ reason: () => "Records is down", waits: () => false });
+  const k = /** @type {any} */ (await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: d }));
+  d.bootDone();
+  const svc = k.kernelFor({ name: "thinger", needs: { kernel: { actions: ["records.create", "records.read"], prefixes: ["thing/*"], types: [THING] } } });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await assert.rejects(() => svc.records.create(owner, "thing", { name: "a" }), (e) => e.code === "unavailable");
+  const real = createMemoryStore(); let defines = 0; const define0 = real.define;
+  real.define = async (/** @type {any} */ x) => { if (JSON.stringify(x).includes('"thing"')) { defines++; await new Promise((r) => setTimeout(r, 30)); } return define0.call(real, x); };
+  await d.attach(real);
+  defines = 0;
+  const both = await Promise.all([svc.records.create(owner, "thing", { name: "b" }), svc.records.create(owner, "thing", { name: "c" })]);
+  assert.equal(both.length, 2);
+  assert.equal(defines, 1, "one define for two callers");
+});
