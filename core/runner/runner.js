@@ -199,7 +199,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, chat?: string, folder?: string, preview?: boolean, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, folder?: string, preview?: boolean, seed?: { native: string, count: number, from?: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
@@ -218,7 +218,7 @@ export function createRunner(o) {
     // A chat that began on the server and moves here: the Space's store holds its whole turns as the session's transcript, and this computer writes them into its own agent home before the program starts, in the
     // folder the program will see as its own, so the program's resume finds them. The first checkpoint after the next turn then covers them like any other line.
     if (!s.resume && s.seed && o.sync && typeof o.sync.getTranscript === "function") {
-      const lines = await o.sync.getTranscript(s.session, 1);
+      const lines = await o.sync.getTranscript(s.session, Number.isInteger(s.seed.from) && s.seed.from >= 1 ? s.seed.from : 1);
       if (lines.length) {
         const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
         const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native)) : null;
