@@ -720,6 +720,8 @@ export function createRecords(cfg) {
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
+    // a project a member makes is hers (kernel/gateway/ownership.js): with no owner named, she is it, so the ownership rule finds her on her own project
+    if (type === "project" && data && typeof data === "object" && data.owner === undefined && !isTrustedChain(chain, roleFor)) { const me = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (me) data = { ...data, owner: { actor: { kind: "person", id: me.actor.id, space } } }; }
     // `{ import: true, id }`: a record moved here from another space of the person's keeps its id (links, chats and memory point at ids). An admin act of its own (`records.import`), and the id is a time-prefixed uuid.
     let id = mintUuid(clock());
     if (opts.import === true) {
