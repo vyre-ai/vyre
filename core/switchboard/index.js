@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, runQueuedOver, servesChip, startingOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -2234,6 +2234,8 @@ export class Switchboard {
 
   /** The words queued for after a turn run next, one asker's at a time. @param {string} id @param {any} st @param {string|null} project */
   drainQueued(id, st, project) {
+    // another person's one-turn is being started from this queue (the move to their account is under way): the rest waits for the end of that turn
+    if (startingOver(this, id)) return;
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
@@ -2299,7 +2301,7 @@ export class Switchboard {
   resumeQueued(id) {
     const st = this.live.get(id);
     // A one-turn ask on another provider has not had its turn yet: a resume that starts it is not the end of one (turnEnded would send the session back before the answer).
-    if (!st || st.turn || this.once.has(id)) return;
+    if (!st || st.turn || this.once.has(id) || startingOver(this, id)) return;
     const rec = this.record(id);
     this.turnEnded(id, st, rec ? rec.project : null);
   }

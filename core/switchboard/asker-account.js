@@ -36,6 +36,11 @@ export function busyTurn(sb, id) {
   return Boolean(sb.once.has(id) || (st && st.turn && rec && ["working", "waiting"].includes(String(rec.status))));
 }
 
+/** Threads whose queued one-turn is being started (the move to the asker's account is under way, the turn has not begun): nothing else drains this thread's queue meanwhile. @type {WeakMap<object, Set<string>>} */
+const starting = new WeakMap();
+/** @param {any} sb @param {string} id */
+export const startingOver = (sb, id) => Boolean(starting.get(sb) && /** @type {Set<string>} */ (starting.get(sb)).has(id));
+
 /**
  * A queued one-turn (the turn's facts carry `over`) is run when the thread is free: marked delivered and sent as the one-turn it was asked as. True when this took the rows.
  * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now
@@ -47,7 +52,9 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
   const rec = sb.record(id);
   // the turn begins here as a queued one does anywhere else: the stream moves the replies (and the notice that the turn moved provider) to ITS asker, not the turn that just ended
   sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
-  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
+  if (!starting.has(sb)) starting.set(sb, new Set());
+  const going = /** @type {Set<string>} */ (starting.get(sb)); going.add(id);
+  void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } }).finally(() => going.delete(id)).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
   return true;
 }
 
