@@ -236,7 +236,7 @@ export default {
     // The server carries a chat on from a person's computer (resume-lent.js): the home hands this tool the lender's view of the session; where the chat's transcript belongs comes from the Switchboard,
     // the server's own store from the host. The daemon's `resume` calls it; nothing else may.
     const resumeLent = createResumeLent({
-      target: async thread => { const x = /** @type {any} */ (await ctx.call("threads.transcript-target", { thread })); return x && x.data ? x.data : null; },
+      target: async (thread, person) => { const x = /** @type {any} */ (await ctx.call("threads.transcript-target", { thread, person })); if (x && x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x && x.data ? x.data : null; },
       port: space => { try { return hostOf()?.ownServer?.port(space) || null; } catch { return null; } },
       place: async (tg, bytes) => { const h = hostOf()?.ownServer; if (!h || typeof h.place !== "function") throw Object.assign(new Error("this server cannot place a transcript in an account's home: ask the owner of this server to update it"), { code: "unavailable" }); await h.place(Number(tg.account), tg.file, bytes); },
       say: (type, payload) => { try { ctx.events.emit(type, payload); } catch { /* a notice */ } },

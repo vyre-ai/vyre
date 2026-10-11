@@ -12,6 +12,7 @@ const ALLOWED = new Map([
   ["lib/ws.js", "the one framing"],
   ["core/computers/image/computerd/ws.js", "generated from lib/ws.js (scripts/sync-copies.mjs, test/generated-copies.test.js): the image is built from that folder alone"],
   ["local/hands-chrome-mac/standalone/harness/real.mjs", "a test harness that fakes a WebSocket server"],
+  ["core/runner/testing/fake-agent.js", "the stand-in dev server of a runner test: it runs alone inside the runner sandbox, where only its own folder is readable, so it cannot import lib/ws.js"],
 ]);
 const PATTERNS = [/258EAFA5/, /Switching Protocols\\r\\nUpgrade: websocket/i, /header\[1\]\s*=\s*(?:0x80\s*\|\s*)?(?:bit\s*\|\s*)?12[67]/];
 

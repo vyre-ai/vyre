@@ -16,7 +16,7 @@ const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "rl-")));
 const line = (/** @type {number} */ n) => JSON.stringify({ type: "user", n });
 
 /** A lender's store with `whole` lines checkpointed and `extra` more lines that were sent after (the cut turn), and a server with a project folder. */
-async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @type {Record<string, string>} */ ({}) } = {}) {
+async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @type {Record<string, string>} */ ({}), noCover = false } = {}) {
   const dir = tmp(); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const lent = createCheckpointStore({ space: SPACE, root: path.join(dir, "lent"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
   const own = createCheckpointStore({ space: SPACE, root: path.join(dir, "own"), authorize: async () => ({ effect: "allow" }) }).port(() => chain);
@@ -24,7 +24,7 @@ async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @
   await lent.appendTranscript(LENT, entries);
   /** @type {Record<string, any>} */ const manifest = {};
   for (const [rel, text] of Object.entries(files)) { const r = await lent.putFile(LENT, `files/${rel}`, Buffer.from(text)); manifest[`files/${rel}`] = { hash: crypto.createHash("sha256").update(text).digest("hex"), version: r.version, len: text.length }; }
-  if (whole) await lent.putCheckpoint(LENT, { turn: 1, seq: whole, manifest, state: {} });
+  if (whole) await lent.putCheckpoint(LENT, { turn: 1, seq: whole, manifest, state: noCover ? {} : { cover: coverOf(manifest, entries.filter(e => e.seq <= whole), whole, 1) } });
   const cwd = path.join(dir, "project"); fs.mkdirSync(cwd, { recursive: true });
   const root = path.join(dir, "claude", "projects"); fs.mkdirSync(root, { recursive: true });
   const file = path.join(root, cwd.replace(/[^A-Za-z0-9]/g, "-"), `${NATIVE}.jsonl`);
@@ -150,4 +150,16 @@ test("settings, hooks, MCP lists and instructions in the work folder are never c
   assert.equal(plantable("README.md"), false);
   assert.equal(plantable("src/.hidden/x.js"), true, "a dot segment anywhere is held");
   assert.equal(plantable("src/app.js"), false);
+});
+
+test("a checkpoint with no seal over its history is refused, with the next step", async t => {
+  const w = await world(t, { whole: 4, extra: 0, noCover: true });
+  await assert.rejects(() => w.go(), (/** @type {any} */ e) => e.code === "unavailable" && /update Vyre on that computer/.test(e.message));
+  assert.ok(!fs.existsSync(w.file), "nothing was placed");
+});
+
+test("a lent session with no chat or thread known to this server is not carried on, and nothing is placed under the session id the computer chose", async t => {
+  const w = await world(t);
+  await assert.rejects(() => w.go({ thread: undefined, chat: null }), (/** @type {any} */ e) => e.code === "unavailable" && /start it again from its chat/.test(e.message));
+  assert.ok(!fs.existsSync(w.file));
 });

@@ -15,14 +15,15 @@ export const LEVELS = ["view", "interact", "admin", "owner"];
 const lvl = (/** @type {string} */ l) => LEVELS.indexOf(l);
 const MAX_BODY = 512 * 1024, MAX_SUBS = 64, PER_MIN = 240;
 
-/** @param {string} key @param {string} header @param {number} [maxAgeMs] @param {string} [scope] the preview it must have been made for (host name pv-<id>); a header made for another preview, or for none, is refused when one is named */
-export function readViewer(key, header, maxAgeMs = 9 * 3_600_000, scope = undefined) {
+/** @param {string} key @param {string} header @param {number | undefined} maxAgeMs @param {string} scope the preview it must have been made for (host name pv-<id>), required: a header made for another preview, or for none, is nobody, and a caller that names no preview accepts nothing */
+export function readViewer(key, header, maxAgeMs = 9 * 3_600_000, scope = /** @type {any} */ (undefined)) {
+  if (typeof scope !== "string" || !scope) return null;
   const [body, mac] = String(header || "").split(".");
   if (!body || !mac) return null;
   const want = crypto.createHmac("sha256", key).update(body).digest("base64url");
   const a = Buffer.from(mac), b = Buffer.from(want);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  try { const v = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); return v && typeof v.w === "string" && Date.now() - Number(v.t) < maxAgeMs && (scope === undefined || v.p === scope) ? { w: v.w, r: String(v.r || ""), t: Number(v.t) } : null; } catch { return null; }
+  try { const v = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); return v && typeof v.w === "string" && Date.now() - Number(v.t) < maxAgeMs && v.p === scope ? { w: v.w, r: String(v.r || ""), t: Number(v.t) } : null; } catch { return null; }
 }
 
 /** The viewer's level on a preview, in Claude's words: the maker is `owner`, a Space owner or admin `admin`, a member `interact`, anyone else `view`. @param {{ created_by: string | null }} row @param {{ w: string, r: string }} v */
