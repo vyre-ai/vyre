@@ -3,7 +3,7 @@
 // The assistant's task and a template agent's teammate running are added when team-credential is merged.
 import assert from "node:assert/strict";
 
-const TEMPLATE = { name: "Walk intake", description: "One stage with a task", tags: ["walk"], stages: [{ name: "Intake", tasks: [{ title: "Gather the documents", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] };
+const TEMPLATE = { name: "Walk intake", description: "One stage with a task", tags: ["walk"], stages: [{ name: "Intake", tasks: [{ title: "Gather the documents", doer: "creator", output: { kind: "note" } }] }, { name: "Done" }] };
 
 /** @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: each { name, app, joined } */
 export async function memberProjectsSteps({ J, w, people, needs }) {
@@ -59,6 +59,42 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
     return `made ${blank.slug}`;
   }, { needs: [...needs, B], owner: "projects-flows" });
 
-  const F = "a member puts a file in her project's files area and reads it back through the app's path";
-  await J.step(F, () => { throw new Error("NOT BUILT YET: the member door has no files/drive call (kernel/remote/wire.js CALLS), so the app cannot add or open a project's files for a member (owner: operations)"); }, { needs: [...needs, E], owner: "operations" });
+  const F = "a member puts a file in her project's files area and reads it back; another member cannot see it";
+  await J.step(F, async () => {
+    const up = await grace.joined.call("files.upload", [{ project: hers.slug, name: "walk-note.txt", data: Buffer.from("hello from Grace").toString("base64") }]);
+    assert.equal(up.size, 16);
+    const list = await grace.joined.call("files.list", [{ project: hers.slug }]);
+    assert.ok(list.files.some((/** @type {any} */ f) => f.name === "walk-note.txt"), JSON.stringify(list));
+    const got = await grace.joined.call("files.read", [{ project: hers.slug, name: "walk-note.txt" }]);
+    assert.equal(Buffer.from(got.data, "base64").toString(), "hello from Grace");
+    await assert.rejects(() => edith.joined.call("files.list", [{ project: hers.slug }]), undefined, "Edith cannot list it");
+    await assert.rejects(() => edith.joined.call("files.upload", [{ project: hers.slug, name: "edith.txt", data: Buffer.from("x").toString("base64") }]), undefined, "Edith cannot add to it");
+    await assert.rejects(() => grace.joined.call("files.read", [{ project: hers.slug, name: "../.project" }]), /file name is/, "and nobody reads the marker");
+    return "uploaded, listed, read back; the other member refused; the marker out of reach";
+  }, { needs: [...needs, B], owner: "operations" });
+
+  const G = "her task from the template is in her task list and she submits it (tasks.submit through the door)";
+  await J.step(G, async () => {
+    const mine = await grace.joined.call("tasks.list", [{ record: hers.project }]);
+    const rows = mine.rows || mine.tasks || mine;
+    const task = rows.find((/** @type {any} */ t) => String(t.title || (t.task && t.task.title) || "").includes("Gather the documents"));
+    assert.ok(task, `her task: ${JSON.stringify(rows).slice(0, 400)}`);
+    const out = await grace.joined.call("tasks.submit", [{ id: task.id, evidence: { note: "documents gathered by the walk" } }]);
+    return `submitted ${task.id}: ${JSON.stringify(out).slice(0, 120)}`;
+  }, { needs: [...needs, B], owner: "projects-flows" });
+
+  const H = "the Records screen's types leave out the team's kept types, and she adds a client and a note";
+  await J.step(H, async () => {
+    const t = await grace.joined.call("records.types", [{}]);
+    const names = (Array.isArray(t) ? t : t.types || []).map((/** @type {any} */ x) => String(x.name));
+    for (const kept of ["skill", "def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher"]) assert.ok(!names.includes(kept), `${kept} is not in her type list: ${names.join(", ")}`);
+    assert.ok(names.includes("contact"), `a client type: ${names.join(", ")}`);
+    const client = await grace.joined.call("records.create", [{ type: "contact", data: { name: "Walk Client" } }]);
+    const clientRec = client.record || client;
+    const list = await grace.joined.call("records.list", [{ type: "contact" }]);
+    assert.ok(JSON.stringify(list).includes("Walk Client"), "the client is in her list");
+    const noteType = names.includes("note") ? "note" : null;
+    if (noteType) await grace.joined.call("records.create", [{ type: noteType, data: { title: "Walk note", body: "added by Grace" } }]);
+    return `types ${names.length}, none kept; client ${clientRec.id || ""}${noteType ? " and a note" : " (no `note` type here: the note is not tried)"}`;
+  }, { needs: [...needs, B], owner: "trust" });
 }
