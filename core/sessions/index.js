@@ -52,6 +52,7 @@ export const MODEL_ALIASES = Object.freeze([
 ]);
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
+import { createAccountsService } from "./accounts-service.js";
 
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
@@ -92,6 +93,12 @@ export function askedOnly(meta, what, { assistant = false } = {}) {
  */
 export const testBase = u => { try { const x = new URL(String(u)); return x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname); } catch { return false; } };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** Set only by sessions.accounts.serve, in this file: a symbol cannot arrive over a wire or a tool call, so a request never names the person an account call is for. */
+const MEMBER = Symbol("member door");
+/** The caller label of the daemon's own door: the only one that may run the member calls. */
+const DOOR = "module:vyred";
+/** The sign-in calls a team member reaches through the team's server, and the account tool each runs (kernel/remote/wire.js CALLS.accounts). A member adds a login of their own; a key needs a Vault of their own (0.3.4). */
+const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind" });
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
 const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
@@ -114,6 +121,7 @@ export default {
     const accounts = new Accounts(db, { owner: () => (ctx.kernel && typeof ctx.kernel.owner === "string" ? ctx.kernel.owner : null), wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
     /** The person a call is for: the first person on its kernel chain, whatever hops follow (an assistant asks for that person); null when the call carries none (the home's own modules). */
     const personOf = async (/** @type {any} */ meta) => {
+      if (meta && typeof meta[MEMBER] === "string") return meta[MEMBER];   // the member door's own call (sessions.accounts.serve): the person is the one the Space's kernel named
       if (!ctx.kernel || typeof ctx.kernel.chain !== "function" || !(meta && (meta.kernelFacts || meta.token))) return null;
       try { const c = await ctx.kernel.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; }
     };
@@ -142,7 +150,9 @@ export default {
     };
     const prompts = new Prompts(ctx.store.db);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
-    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, ...(callers ? { callers } : {}), ...extra });
+    /** Each account tool's run by name, for the member door (sessions.accounts.serve): the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
+    const runs = new Map();
+    const tool = (name, description, input, run, callers, extra = {}) => { runs.set(name, run); return ctx.tool(name, { description, input, run, ...(callers ? { callers } : {}), ...extra }); };
 
     const status = () => {
       const cfg = sessionsConfig(ctx.config);
@@ -601,6 +611,20 @@ export default {
     tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings.",
       { type: "object", required: ["account", "privacy"], properties: { account: str, privacy: { type: "boolean" } } },
       async (i, meta) => { await mine(accounts.row(String(i.account)), meta); return accounts.setPrivacy(String(i.account), Boolean(i.privacy)); });
+    // A team member's own sign-in, from the Space's kernel (core/sessions/accounts-service.js). The daemon's door says which person; the account is theirs alone (serves() lets no one else's turn use it).
+    ctx.tool("sessions.accounts.serve", {
+      description: "A team member's own AI sign-in call on the team's server: list, signin, remove or default, as that member. Only the daemon's own door runs it.", internal: true,
+      input: { type: "object", required: ["call", "person", "space"], properties: { call: { type: "string", enum: Object.keys(MEMBER_ACCOUNTS) }, person: str, space: str, input: { type: "object" } } },
+      run: async (i, meta = {}) => {
+        if (String(meta.caller || "") !== DOOR) throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
+        const tool = /** @type {Record<string, string>} */ (MEMBER_ACCOUNTS)[String(i.call)];
+        const run = tool ? runs.get(tool) : null;
+        if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(String(i.person))) throw Object.assign(new Error(`call is ${Object.keys(MEMBER_ACCOUNTS).join(", ")}`), { code: "bad_input" });
+        const input = i.input && typeof i.input === "object" ? { ...i.input } : {};
+        const picked = i.call === "default" ? { id: input.id, is_default: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
+        return run(picked, { caller: "local", [MEMBER]: String(i.person) });
+      },
+    });
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str } },
@@ -785,6 +809,6 @@ export default {
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null, environment: (await environment(i)).text, context: i.context || null }),
     });
 
-    return { async stop() { clearInterval(sweeper); signins.stop(); } };
+    return { async stop() { clearInterval(sweeper); signins.stop(); }, peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createAccountsService(o) };
   },
 };

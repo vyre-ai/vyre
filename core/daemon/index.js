@@ -22,6 +22,7 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
+import { devAllowedPorts } from "./dev-ports.js";
 import { build, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
@@ -124,7 +125,16 @@ async function kernelSession(req, kernelOf) {
   if (!t || t.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t)) return null;
   const k = kernelOf ? kernelOf() : null;
   if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return null;
-  try { await k.surfaces.verify(t); return t; } catch { return null; }
+  try { await k.surfaces.verify(t); return t; } catch { /* not this home's own: a team Space's, below */ }
+  // A TEAM Space's own session (a model running a team chat's turn, opened by that Space's kernel): checked by THAT Space's Surfaces door, never accepted on the body's say-so
+  const sp = teamSpaceOfToken(t);
+  if (!sp || sp === k.id.space) return null;
+  try { const h = k.spaces && k.spaces.for(sp); if (!h || h.hosted !== true || !h.surfaces) return null; await h.surfaces.verify(t); return t; } catch { return null; }
+}
+
+/** The Space a session token names in its body (read only to pick which Space's door checks it; the check itself is that door's). @param {string} token @returns {string | null} */
+function teamSpaceOfToken(token) {
+  try { const b = JSON.parse(Buffer.from(String(token).split(".")[0], "base64url").toString()); return typeof b.space === "string" && /^spc_[a-z2-7]{12,26}$/.test(b.space) ? b.space : null; } catch { return null; }
 }
 
 /** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
@@ -546,13 +556,31 @@ async function startLocked(opts, root, p, release) {
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
     const reopenOpts = (/** @type {any} */ o) => ({ personChainFor, ...o });
+    // The open turns reopen after a restart in the engine they belong to: the home's own for a home chat, each TEAM Space's for that Space's (the stored turn says which: `space`).
+    const reopenAll = async (/** @type {any} */ o) => {
+      const home = await kernelSessions.reopenPending(reopenOpts({ ...o, filter: (/** @type {any} */ r) => !r.space }));
+      const resumed = [...home.resumed], gaveUp = [...home.gaveUp];
+      for (const sp of new Set(turns.all().map(([, r]) => r && r.space).filter(Boolean))) {
+        const mine = turns.all().filter(([, r]) => r && r.space === sp).map(([t]) => t);
+        try {
+          const e = teamEngine(String(sp));
+          const r = await e.sessions.reopenPending({ ...o, personChainFor: async (/** @type {string} */ p) => teamChain(e.kernel, p), filter: (/** @type {any} */ x) => x.space === sp });
+          for (const t of r.resumed) spaceOfThread.set(t, String(sp));
+          resumed.push(...r.resumed); gaveUp.push(...r.gaveUp);
+        } catch (err) {
+          // the team's Space is not here (retired, not hosted now): its turns are given up, said in their chats, and forgotten
+          for (const t of mine) { turns.delete(t); gaveUp.push(t); try { await o.onGiveUp?.(t, String(/** @type {any} */ (err).code || "failed")); } catch { /* the giving up stands */ } }
+        }
+      }
+      return { resumed, gaveUp };
+    };
     registry.deps.kernelThreads = Object.freeze({
-      forThread: (/** @type {string} */ thread) => kernelSessions.forThread(thread),
-      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return kernelSessions.reopenPending(reopenOpts(o)); },
+      forThread: (/** @type {string} */ thread) => { const sp = spaceOfThread.get(thread); return sp && teamSessions.get(sp) ? teamSessions.get(sp).sessions.forThread(thread) : kernelSessions.forThread(thread); },
+      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return reopenAll(o); },
     });
-    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
-    closeKernelSessions = () => kernelSessions.closeAll();
-    registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
+    reopenLater = () => { if (!reopenCalled) void reopenAll({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
+    closeKernelSessions = async () => { for (const e of teamSessions.values()) await e.sessions.closeAll(); await kernelSessions.closeAll(); };
+    registry.deps.kernelSessionCount = () => kernelSessions.list().length + [...teamSessions.values()].reduce((n, e) => n + e.sessions.list().length, 0); // how many are open now (a number, for tests and status: never a token or a way to open one)
     // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
     // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
     // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
@@ -597,7 +625,32 @@ async function startLocked(opts, root, p, release) {
       if (lastOf("actor.added") > lastOf("actor.removed")) return;
       await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id, space: kernel.id.space }, {});
     };
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
+    // A TEAM Space's chat turn (0.3.3 J9): the chat's record and people are that Space's own kernel's, so its session is opened by THAT kernel, for the asker as a member of that Space (a chain the home builds from vyred's
+    // own key, never from the asker's say-so), and its replies are written there. One session engine per team Space, made on first use over the same durable turn store; `spaceOfThread` says which engine holds a thread.
+    /** @type {Map<string, { kernel: any, sessions: any }>} */ const teamSessions = new Map();
+    /** @type {Map<string, string>} */ const spaceOfThread = new Map();
+    const teamEngine = (/** @type {string} */ space) => {
+      let e = teamSessions.get(space);
+      if (e) return e;
+      const h = /** @type {any} */ (kernel.spaces && kernel.spaces.for(space));
+      if (!h || h.hosted !== true || !h.kernel) throw Object.assign(new Error("no such team Space here: its owner hosts it on this server, or the chat moves with it (spaces.list shows the Spaces here)"), { code: "not_found" });
+      const tk = h.kernel;
+      e = { kernel: tk, sessions: createKernelSessions({ kernel: tk, turns, chats: tk.kernelFor({ name: "kernel-sessions" }).chats, pinned: async () => false }) };
+      teamSessions.set(space, e);
+      return e;
+    };
+    const teamChain = (/** @type {any} */ tk, /** @type {string} */ person) => tk.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, space?: string, probe?: boolean }} */ q) => {
+      if (q.space && q.asker) {
+        const e = teamEngine(q.space), chain = teamChain(e.kernel, q.asker), chat = q.chat;
+        if (q.probe) { e.kernel.gateway.grants.chats.read(chain, chat); return null; }
+        let agent = await kernelAgentOf(q);
+        let project;
+        if (!agent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) { agent = q.rec.slot; if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project; }
+        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread, space: q.space });
+        spaceOfThread.set(q.thread, q.space);
+        return { token: e.sessions.tokenFor(s.id), end: () => e.sessions.end(s.id) };
+      }
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || kernel.id.owner);
@@ -639,7 +692,7 @@ async function startLocked(opts, root, p, release) {
           else { const mine = path.join(accounts, String(o.account)); try { const o2 = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => f !== mine && fs.statSync(f).isDirectory()); if (o2) other = o2; } catch { /* the box's one agent's home stands */ } }
           // vyred's own listeners, and those of the Wink node programs it started itself (a WireGuard socket on a port of its own choosing), are the box's expected ones; any other listener, UDP port or abstract socket refuses the start, with its port named
           const own = ownListeners("/proc", { children: (() => { try { const w = registry.modules.get("wink"); return w && w.handle && typeof w.handle.nodePids === "function" ? w.handle.nodePids() : []; } catch { return []; } })() });
-          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, refuseListen: true, allowListen: [...own.tcp, ...own.udp], allowAbstract: own.abstract, out: [
+          return confineSelfTest({ ...o, vyreUid: process.getuid ? process.getuid() : -1, refuseListen: true, allowListen: [...own.tcp, ...own.udp, ...devAllowedPorts()], allowAbstract: own.abstract, out: [
             { name: "Vyre's own home", path: userHome }, { name: "the vault and keys", path: path.join(root, "kernel") }, { name: "the daemon's socket", path: p.socket },
             { name: "the spawner's socket", path: spawnerSocket }, { name: "the spawner's folder", path: path.dirname(spawnerSocket) }, { name: "the box's secrets folder", path: "/var/lib/vyre-secrets" },
             { name: "the key file", path: path.join(root, "kernel", "space.json") }, { name: "the list of accounts", path: accounts, list: true },
@@ -724,7 +777,7 @@ async function startLocked(opts, root, p, release) {
       registry.deps.lentRows = (/** @type {string} */ space) => { registry.deps.lentHome(space); return lent.rows(space); };
       registry.deps.lentSpaces = () => lent.spaces();
       registry.deps.lentStop = () => lent.stop();
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"); return { ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"), ss = of("sessions"); return { ...(ss && typeof ss.peerService === "function" ? { accounts: ss.peerService({ space, kernel: k, registry }) } : {}), ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -1427,7 +1480,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length)));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
-    const input = await body(req);
+    let input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
     if (pluginAgent) {
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
@@ -1532,7 +1585,26 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
-    let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
+    // (a session of the home's own Space names that Space in its token too: it is no team turn)
+    const turnSpace = typeof sessionToken === "string" ? (sp => (sp && sp !== (kernelOf && kernelOf() && kernelOf().id.space) ? sp : null))(teamSpaceOfToken(sessionToken)) : null;
+    /** @type {any} */ let teamResult = null;
+    // (a team token with a body that is not a plain object of arguments is an error, never a call that falls through to the home)
+    if (turnSpace && !(input && typeof input === "object" && !Array.isArray(input))) teamResult = { error: { code: "bad_input", message: "a call made inside a team chat takes an object of arguments: send { } with the tool's inputs" } };
+    else if (turnSpace) {
+      const def = registry.tools.get(name);
+      // Whatever tool it is and whatever label the call carries, a team turn's token acts in its own Space or nowhere: another Space named in the input is refused here, once, not left to each tool's own door.
+      if (input.space !== undefined && input.space !== turnSpace) teamResult = { error: { code: "denied", message: "this chat's tools act in its own Space: leave `space` out, or name this chat's Space" } };
+      else if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) { if (input.space === undefined) input = { ...input, space: turnSpace }; }
+      else if (def) {
+        // A tool with no `space` of its own, called with a team turn's token (a model, or anything else inside that session), never lands in the home: it runs in the chat's Space, as the member, only if it declares it
+        // may (`crossSpace`, which that Space's own authorize then checks); judged as the caller class it came in as. Any other tool says so.
+        const h = /** @type {any} */ (kernelOf && kernelOf() && kernelOf().spaces && kernelOf().spaces.for(turnSpace));
+        if (def.crossSpace && h && h.hosted === true && h.surfaces) { try { teamResult = await registry.callInSpace({ name: "vyred" }, turnSpace, { gateway: h.gateway }, name, input, await h.surfaces.chainFor(sessionToken), String(caller)); } catch (e) { teamResult = { error: { code: "denied", message: String(/** @type {any} */ (e).message || "refused") } }; } }
+        else teamResult = { error: { code: "not_in_team_space", message: `${name} does not act in a team chat's Space, and a team chat's tools never act in the home: name the Space it is for, or use a tool made for teams` } };
+      }
+    }
+    let result = teamResult || await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };

@@ -72,7 +72,7 @@ async function world(t, opts = {}) {
     const ks = createKernelSessions({ kernel: k, turns, chats: Object.freeze({ ...kc, beginTurn: async (/** @type {string} */ tok) => { seamCalls.push("BEGIN"); return kc.beginTurn(tok); } }) });
     const db = open(p.db);
     const events = bus;
-    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: process.env.E2E_DEBUG ? (/** @type {string} */ m) => console.error("LOG", m) : () => {}, kernelFor });
+    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: (/** @type {string} */ m) => { LOGS.push(String(m)); if (LOGS.length > 60) LOGS.shift(); if (process.env.E2E_DEBUG) console.error("LOG", m); }, kernelFor });
     // a person's local surface arrives as the owner's own device, as through the real socket (the Switchboard's chat gate needs a person chain)
     { const orig = reg.call.bind(reg); reg.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => orig(tool, input, caller, m !== undefined ? m : (/^(cli|deck|local|capsule)$/.test(String(caller)) ? { kernelFacts: { kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s" } } : undefined)); }
     reg.deps.kernelThreads = Object.freeze({
@@ -118,6 +118,7 @@ async function world(t, opts = {}) {
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
   return { k, blank, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
+/** The last lines the daemon logged, so a wait that times out can say what the daemon said. @type {string[]} */ const LOGS = [];
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
 
@@ -133,10 +134,15 @@ function withCodex(t, root) {
   process.env.PATH = `${bin}:${process.env.PATH}`;
   process.env.FAKE_ACP_STORE = path.join(root, "acp-store");
   fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
+  // one line per launch of the stand-in: a wait that times out says whether Codex was ever started
+  process.env.FAKE_ACP_LOG = path.join(root, "acp.log");
+  process.env.FAKE_ACP_RPC_LOG = path.join(root, "acp-rpc.log");
   Object.assign(process.env, { FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "agent" });
-  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG", "FAKE_ACP_RPC_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 }
 
+// 11 Oct 2026: this test failed in CI a few times (the Codex answer to carol never arrived: the stand-in was launched and got the prompt, the reply found no kernel session) and never on testbox5 (30 loaded repeats,
+// Node 22 and 24). The race is NOT found; the request and log lines printed when the wait times out are diagnostics to find it, not a fix.
 test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and her AI is handed the whole conversation, so it can answer from bob's turn", async t => {
   const w = await world(t);
   withCodex(t, w.work);
@@ -155,7 +161,7 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   // carol asks on Codex
   const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], account: "codex", cwd: w.work });
   assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
-  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))}`); });
+  await until(() => /Vyre continuation/.test(textOf(carol.frames)), "codex's answer to carol", 120_000).catch(async e => { const ev = (await b.reg.call("threads.get", { thread, limit: 200 }, "cli")).data.events; throw new Error(`${e.message}: ${JSON.stringify(ev.slice(-14).map((/** @type {any} */ x) => [x.type, String(x.payload && (x.payload.text || x.payload.reason || x.payload.error || x.payload.to || "")).slice(0, 100)]))} frames ${JSON.stringify(carol.frames.slice(-6).map(f => [f.type, JSON.stringify(f.data).slice(0, 100)]))} log ${JSON.stringify(LOGS.slice(-40))} rpc ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_RPC_LOG), "utf8").split("\n").join(","); } catch { return "none"; } })()} launches ${(() => { try { return fs.readFileSync(String(process.env.FAKE_ACP_LOG), "utf8").slice(0, 600); } catch { return "none (the stand-in was never started)"; } })()}`); });
   const said = textOf(carol.frames);
   assert.match(said, /AMBER-92/, "carol's AI was handed bob's turn: the code word is in what it received");
   assert.match(said, /what was the code word\?/);
@@ -195,6 +201,39 @@ test("G04: two people each with their own Codex sign-in: the thread starts on bo
   const ev = (await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events;
   assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's own account");
   assert.match(textOf(carol.frames), /AMBER-92[\s\S]*what was the code word/, "and her AI was handed bob's turn");
+  await b.stop();
+});
+
+test("G04: a session lives in its account's own folder: carol's turn on her account starts a fresh session handed the conversation, and bob's next turn on his gets the conversation back", async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  process.env.FAKE_ACP_PER_HOME = "1";   // each account's folder keeps its own sessions, as a real Codex's CODEX_HOME does: bob's session cannot be loaded by carol's account
+  t.after(() => { delete process.env.FAKE_ACP_PER_HOME; });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const carol = await b.watch("carol", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex"), carolsAcct = await own("carol", "Carol's Codex");
+  const say = async (/** @type {string} */ who, /** @type {string} */ text, /** @type {any} */ extra = {}) => { const r = await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work, ...extra }); assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); };
+  const lastAnswer = () => (textOf(carol.frames).split("echo:").pop() || "");
+  await say("bob", "the code word is AMBER-92", { account: `codex:${bobsAcct}` });
+  await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 120_000);
+  await until(() => carol.frames.some(f => f.type === "chat.text-done"), "bob's answer to end", 30_000);
+  assert.equal(carol.frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning && String(f.data.text).includes("echo: the code word is AMBER-92")).length, 1, "an answer is one message in the chat, not the same words twice");
+  await say("carol", "what was the code word?");
+  await until(() => /what was the code word\?/.test(lastAnswer()), "carol's answer on her own account", 120_000);
+  assert.match(lastAnswer(), /AMBER-92/, "carol's session, new to her account, was handed bob's turn");
+  const thread = kitThread(b, chat.id);
+  assert.ok((await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's account");
+  await until(async () => (await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back"), "the thread to go back to bob's account", 30_000);
+  await say("bob", "and once more please", { account: `codex:${bobsAcct}` });
+  await until(() => /and once more please/.test(lastAnswer()), "bob's next answer on his own account", 120_000);
+  assert.match(lastAnswer(), /AMBER-92[\s\S]*what was the code word|what was the code word[\s\S]*AMBER-92/, "and bob's session, back on his account, was handed what was said while it was away");
   await b.stop();
 });
 

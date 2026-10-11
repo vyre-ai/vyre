@@ -326,6 +326,21 @@ test("a field value in what an assistant thinks, runs or says is dropped in a ro
   assert.ok(JSON.stringify(ada.frames).includes("progress") || ada.frames.some(f => f.type === "chat.tool-progress"), "the rest of the turn is shown");
 });
 
+test("a field value in a closing text frame is dropped when the room grew after the mirror was last read: the reply is opened, and the room read, before the decision (review: p6)", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("q5", ["bob"], ["kit"]);
+  const bob = r.watch("q5", "bob");
+  await r.send("q5", "bob", "m1", "go", ["assistant:kit"]);   // the mirror now says: one person
+  r.fk.change("q5", { add: ["ada"] });                         // the kernel's list has two before the reply starts
+  const kitM = /** @type {any} */ (r.groups.member("q5", "assistant:kit"));
+  const FEE = { block: "field", label: "Fee", kind: "money", value: "4200" };
+  kitM.ad = { event: () => [{ kind: "text-done", data: { message: "m9", blocks: [{ block: "text", text: "see below" }, FEE] } }] };
+  r.say(r.threadOf("q5", "assistant:kit"), "x", { done: true });
+  await r.groups.idle();
+  assert.ok(!JSON.stringify(bob.frames).includes("4200"), "no field value reached the group");
+  assert.ok(!JSON.stringify(r.fk.replies).includes("4200"), "and none reached the handle");
+});
+
 test("no frame of a kernel group chat reaches the log by any path but the reply handle (a content-free status aside)", async t => {
   /** @type {{ ev: string, rid?: string }[]} */ const seq = [];
   /** @type {any} */ let port0;

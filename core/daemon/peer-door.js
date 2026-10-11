@@ -228,7 +228,7 @@ export function createPeerDoor(o) {
       }, () => {});
       const handle = async (/** @type {string} */ tool, /** @type {any} */ input) => {
         const a = await admit();
-        if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
+        if (!a.ok) { finished = true; end("not admitted"); throw a.why === "rate_limited" ? err("rate_limited", "this device is calling the team's server too often: wait a minute and try again") : err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
         if (a.member === true) {
           // a member's stream: the space's kernel calls and nothing else (no registry tool, no other space); the invite calls are not a member's

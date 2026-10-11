@@ -28,6 +28,11 @@ test("a member's chat tools go through the team door: only the five, and only fo
   assert.equal(memberChatWire("work.chat.create"), "chat.create");
   assert.equal(memberChatWire("work.chat.persistent"), "chat.persistent");
   assert.equal(memberChatWire("work.chat.keys.begin"), null, "a chat key call is not a member's");
+  assert.equal(memberChatWire("stream.send"), "chat.send");
+  assert.equal(memberChatWire("stream.reply-mode"), "chat.reply-mode");
+  assert.equal(memberChatWire("stream.keep"), null, "keeping one answer of a fan-out is not a member call yet");
+  assert.equal(memberChatWire("sessions.accounts.signin"), "accounts.signin");
+  assert.equal(memberChatWire("sessions.accounts.key"), null, "a key is not a member's call: it needs a Vault of their own");
   assert.equal(memberChatWire("records.list"), null);
   assert.equal(chatSpace({ space: B }, A), B);
   assert.equal(chatSpace({}, A), A);

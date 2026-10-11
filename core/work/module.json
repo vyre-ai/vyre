@@ -123,13 +123,15 @@
         "reach": "anyone",
         "effect": "read",
         "projectArg": "project",
-        "projectIsRecord": true
+        "projectIsRecord": true,
+        "crossSpace": "records.read"
       },
       {
         "name": "work.chat.get",
         "summary": "one chat you are in: its record, its slots (assistants and models running in it) and its transcript address",
         "reach": "anyone",
-        "effect": "read"
+        "effect": "read",
+        "crossSpace": "records.read"
       },
       {
         "name": "work.chat.span",

@@ -35,6 +35,7 @@ import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
 import { presenceFor } from "./presence.js";
 import { createSendContext } from "./context.js";
+import { chatFolderFor } from "./chat-folder.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 
 const MIGRATIONS = [`
@@ -58,7 +59,10 @@ const MIGRATIONS = [`
 // Images a message carries (JSON), handed to the assistant's thread with the words.
 `ALTER TABLE stream_groups_outbox ADD COLUMN images TEXT;`,
 // The AI account the sender chose for this one message ("provider" or "provider:account"): it runs on THEIR account, not the thread's (0.3.3 G04).
-`ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`];
+`ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`,
+// The Space a chat belongs to when it is a TEAM Space's (0.3.3 J9): the chat's record and people are that Space's kernel's, so every kernel question about it (who is in it, may this viewer receive a reply, which
+// session answers) is asked there. A chat of the home's own Space has no row.
+`CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -108,6 +112,24 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const markers = createReadMarkers();
   for (const r of db.prepare("SELECT person, session, upto FROM stream_groups_marks").all()) markers.set(String(r.person), String(r.session), Number(r.upto));
   /** @type {Map<string, Group>} */ const groups = new Map();
+  /** The team Space a chat belongs to (none for the home's own). @type {Map<string, string>} */ const spaceOfChat = new Map();
+  // prepared now, while the module's store is the home's: a statement prepared inside a call routed to a team Space would run against that Space's own (empty) file
+  const spaceAdd = db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)");
+  for (const r of db.prepare("SELECT grp, space FROM stream_groups_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
+  /** Say which Space a chat belongs to, once: the first call that carries the Space (the member door's, through callInSpace) records it; a chat never changes Space. @param {string} grp @param {string} space */
+  const setSpace = (grp, space) => {
+    if (!/^spc_[a-z2-7]{12,26}$/.test(String(space))) return;
+    const had = spaceOfChat.get(grp);
+    if (had) { if (had !== space) throw fail("denied", "this chat belongs to another Space"); return; }
+    spaceAdd.run(grp, space);
+    spaceOfChat.set(grp, space);
+  };
+  /** The kernel's chat calls for the Space a chat belongs to: the team's own kernel for a team chat, else the home's. @param {string} grp */
+  const chatsOf = grp => {
+    const sp = spaceOfChat.get(grp);
+    if (!sp) return ctx.kernel.chats;
+    try { return ctx.kernel.for(sp).kernel.kernelFor({ name: "stream" }).chats; } catch { return null; }
+  };
   /** @type {Map<string, Member>} */ const byThread = new Map();
   /** @type {Set<Member>} */ const dirty = new Set();
   /** @type {any} */ let timer = null;
@@ -246,7 +268,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const h = await ks.forThread(thread).appendOpen({ kind: "text", ...(asker ? { asker } : {}) });
       return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
     },
-    mayReceive: (_grp, _person, r, chain) => { try { return ctx.kernel.chats.mayReceive(chain, r.kid) === true; } catch { return false; } },
+    mayReceive: (_grp, _person, r, chain) => { try { return chatsOf(_grp).mayReceive(chain, r.kid) === true; } catch { return false; } },
   };
   const kernelChats = ctx.kernel && ctx.kernel.chats;
   const port = replyPort || (ks && kernelChats && typeof kernelChats.mayReceive === "function" ? ksPort : null) || (standIn || !kernelChats ? mirrorPort : (typeof kernelChats.appendOpen === "function" && typeof kernelChats.mayReceive === "function" ? kernelPort : unavailablePort));
@@ -411,7 +433,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** The specs of a thread event written straight into the group's log. @param {Member} m @param {any[]} specs */
   function project0(m, specs) {
-    const room = group(m.grp).people.size > 1;
+    const room = inRoom(m.grp);
     for (const s of specs) {
       if (SKIP.has(s.kind)) continue;
       // In a room of more than one person an assistant's reply never carries a field value (it is the same words for everyone): a field is cited as a field-ref block, drawn per viewer.
@@ -506,7 +528,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (s.kind === "tool-finished" && s.data && s.data.ok === false) st.failed++;
       s = { ...s, data: { ...s.data, step: st.id } };
     }
-    if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
+    if (carriesFieldValue(s.data) && inRoom(m.grp)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     const m0 = m.buf || (m.buf = new Map()); m.refused ||= new Set();
     /** @type {any} */ let b = null; let message = ACT;
     for (const [id, x] of m0) if (x.h && id !== ACT) { b = x; message = id; }
@@ -518,6 +540,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     await put(m, b, s, withNote(m.grp, s.data), message === ACT ? undefined : message);
   }
 
+  /** Is this chat a room for the purpose of field values? Yes unless the group counts exactly one person: nobody counted (an empty mirror) or any doubt means a room, so a value is dropped, never kept. @param {string} grp */
+  const inRoom = grp => { try { return group(grp).people.size !== 1; } catch { return true; } };
+
   /** What every frame of an open reply carries (`rid`, not `kid`: that is a person's message): the kernel's id for it and the membership version it was opened at. @param {any} b */
   const stampOf = b => ({ rid: b.h.id, ver: b.h.ver });
 
@@ -527,7 +552,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @param {Member} m @param {any} b @param {any} s @param {any} data @param {string} [message]
    */
   async function put(m, b, s, data, message) {
-    if (group(m.grp).people.size > 1 && carriesFieldValue(data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return true; }
+    if (inRoom(m.grp) && carriesFieldValue(data)) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return true; }
     const delta = s.kind === "text-delta" && typeof data.text === "string" ? data.text : JSON.stringify(data);
     try { await b.h.write(delta); } catch (err) { withdraw(m, b, message ?? ACT, s, err); return false; }
     write(m, s, { ...data, ...stampOf(b) }, message);
@@ -625,13 +650,14 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     }
     let blocks = Array.isArray(s.data.blocks) ? s.data.blocks : [];
     if (!b.h && !b.reply && blocks.length === 0) { b.items.push({ ...s, data: { ...s.data, message } }); return; } // reasoning so far: held until the turn ends
-    // A room of more than one person (the kernel's own list, mirrored here): the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
-    if (group(m.grp).people.size > 1 && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
+    // The reply is opened first: opening it reads the kernel's list for this room (begin), so the decision below is made on the room as it is now, not on a mirror that may be stale.
+    if (!b.h && !(await begin(m, b, message))) return;
+    // A room of more than one person (the kernel's own list, mirrored here), or one this group cannot count: the reply never carries a field value, it cites it as a field-ref, drawn per viewer.
+    if (inRoom(m.grp) && blocks.some((/** @type {any} */ x) => x && x.block === "field" && x.placeholder !== true)) {
       log(`text-done for ${m.who} in ${m.grp}: a field value was dropped (cite it as a field-ref)`);
       blocks = blocks.filter((/** @type {any} */ x) => !(x && x.block === "field" && x.placeholder !== true));
     }
     blocks = blocks.map((/** @type {any} */ x) => noted(m.grp, x));
-    if (!b.h && !(await begin(m, b, message))) return;
     const done = { ...s.data, message, ...(blocks.length ? { blocks } : {}), ...stampOf(b) };
     if (!blocks.length) delete done.blocks;
     try { await b.h.close({ text: b.reply, ...(blocks.length ? { blocks } : {}) }); } catch (err) { withdraw(m, b, message, s, err); return; }
@@ -670,7 +696,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   }
 
   /** A chat's own working folder, where a run with no folder of its own works: `<home>/chats/<chat id>/work`. @param {string} grp */
-  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); const d = path.join(String(root), "chats", grp, "work"); fs.mkdirSync(d, { recursive: true }); return d; };
+  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); return chatFolderFor({ root: String(root), role: ctx.config && ctx.config.role, space: spaceOfChat.get(grp) || null, grp }); };
 
   // ---- runs started outside the stream (One Chat) -----------------------------------------------------
 
@@ -743,7 +769,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     // The turn begins at the kernel when its session opens (lib/kernel-session.js open, called for the asker by the Switchboard on this very send): the stream does not begin it a second time.
     const surface = row.surface ? String(row.surface) : "deck";
     // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
-    const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker) } : {};
+    const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker), ...(spaceOfChat.get(String(row.grp)) ? { space: spaceOfChat.get(String(row.grp)) } : {}) } : {};
     // A delivery after a restart runs in no call (a timer, the start): a module hop with no origin is refused for a tool a person's surface reaches, so the row's own surface (the class of the
     // call that wrote it) is the origin. The kernel still checks the asker is in the chat; this only says the words came from a person's surface.
     const run = (/** @type {() => Promise<any>} */ f) => (ctx.events && typeof ctx.events.withOrigin === "function" && !ctx.events.origin() ? ctx.events.withOrigin(surface, f) : f());
@@ -953,6 +979,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
      * appended), also after a restart. @param {string} grp @param {{ people: string[], assistants?: string[] }} chat @param {any} meta @param {string} person @param {any} chain
      */
     async mirror(grp, chat, meta, person, chain) {
+      if (meta && typeof meta.in_space === "string" && meta.in_space_chain) setSpace(grp, meta.in_space);
       if (meta && typeof meta === "object") { kernelPerson.set(meta, person); kcalls.set(meta, { chain, person }); }
       const g = adopt(grp, chat);
       // An assistant that is working for this person has no session token after a restart: open one now, so the replies waiting for it can be written.

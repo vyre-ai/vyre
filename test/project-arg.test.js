@@ -27,6 +27,7 @@ const EXEMPT = {
   "work.team.context": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
   "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",
   "work.team.doing": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
+  "files.drive.space.read": "`path` is a path in the Space's Drive, not a project folder: a model reads it only in a team chat's turn, as the member who spoke, and the Space's own `drive.read` decides per path",
 };
 /** Input names that can point at a project's files or its name, besides project, projects and cwd. A tool with one and no declaration is named in UNJUDGED until someone decides whether an agent's grant must cover it. */
 const FOLDERISH = ["repo", "folder", "folders", "workspace", "slug", "dir", "path", "paths"];

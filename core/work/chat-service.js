@@ -6,13 +6,19 @@
 //   persistent({ kind })   the member's pinned assistant chat (or none yet)     pin({ kind, chat })     make a chat theirs
 //   list({ ... })          the chats they may see                              get({ chat })           one chat they are in
 //   create({ ... })        start a chat (they are always in it)
+//   send, catchup, typing, react, pin-message, reply-mode, mark-read   the stream's own calls in a chat they are in (core/stream `stream.serve`)
 //
 // Each runs the work module's own chat tool IN THIS SPACE under the member's chain (`work.chat.serve` through registry.callInSpace: the Space's own authorize says whether this member may), so the rules
 // and the storage are the tools' own, once. A member never picks the Space, the person or the chain: the service has them from the wire.
 
 import { KernelError } from "../../kernel/core/errors.js";
 
-const CALLS = Object.freeze(["persistent", "pin", "list", "get", "create"]);
+/** Each call of the wire's `chat` group and the daemon tool that serves it: [tool, the tool's own call]. */
+const CALLS = Object.freeze(/** @type {Record<string, [string, string]>} */ ({
+  persistent: ["work.chat.serve", "persistent"], pin: ["work.chat.serve", "pin"], list: ["work.chat.serve", "list"], get: ["work.chat.serve", "get"], create: ["work.chat.serve", "create"],
+  send: ["stream.serve", "send"], catchup: ["stream.serve", "catchup"], typing: ["stream.serve", "typing"], react: ["stream.serve", "react"], "pin-message": ["stream.serve", "pin"],
+  "reply-mode": ["stream.serve", "reply-mode"], "mark-read": ["stream.serve", "mark-read"],
+}));
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found" });
 
 /**
@@ -27,14 +33,15 @@ export function createChatService(o) {
   const isMember = (/** @type {string} */ person) => {
     try { const r = o.kernel?.gateway?.members?.roleOf({ kind: "person", id: person, space: o.space }); return typeof r === "string" && r !== ""; } catch { return false; }
   };
-  const run = (/** @type {string} */ call) => async (/** @type {any} */ chain, /** @type {any} */ input) => {
+  const run = (/** @type {string} */ name) => async (/** @type {any} */ chain, /** @type {any} */ input) => {
     const person = who(chain);
     if (!isMember(person)) throw new KernelError("not_found", "not found");   // not a member: nothing to say
     const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     delete i.space; delete i.as;
-    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, "work.chat.serve", { call, input: i }, chain);
+    const [tool, call] = CALLS[name];
+    const r = await o.registry.callInSpace({ name: "vyred" }, o.space, o.kernel, tool, { call, input: i }, chain);
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };
-  return Object.fromEntries(CALLS.map(c => [c, run(c)]));
+  return Object.fromEntries(Object.keys(CALLS).map(c => [c, run(c)]));
 }
