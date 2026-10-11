@@ -193,7 +193,7 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(realManifest.name, "threads", "the real manifest name");
-  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "chatFor", "sandbox", "credentials"], "it declares what it needs from the daemon");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "chatFor", "sandbox", "credentials", "listModels"], "it declares what it needs from the daemon");
   const row = d.registry.status().find(m => m.name === "threads");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const real = d.registry.context(realManifest);
@@ -334,7 +334,14 @@ test("RF-1: a placeholder resolves under the turn token's own chain, not the per
   await G.addActor(owner, kit, { presence: pr("grants.role", { actor: kit }, `vyre://${space}/member/kit`) });
   const grant = { subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${space}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: {}, source: "test" };
   await G.create(owner, grant, { presence: pr("grants.create", grant, `vyre://${space}/grant/new`) });
-  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT] });
+  const { PROJECT, TEAM_MEMBER } = await import("../records/core-types.js");
+  await d.kernel.gateway.records.define(owner, { add_types: [CONTACT, ...[PROJECT, TEAM_MEMBER].map(ty => ({ ...ty, fields: ty.fields.filter(f => f.name !== "client" && f.name !== "contact") }))] });
+  // an agent reaches a project's records only as its teammate on a task there (G22): kit is on p1's team with a task, and not on p2's
+  const proj1 = await d.kernel.gateway.records.create(owner, "project", { name: "P1", slug: "p1", owner: { actor: { kind: "person", id: d.kernel.id.owner, space } } });
+  await d.kernel.gateway.records.create(owner, "project", { name: "P2", slug: "p2", owner: { actor: { kind: "person", id: d.kernel.id.owner, space } } });
+  await d.kernel.gateway.records.create(owner, "team-member", { name: "kit", actor: { actor: kit }, kind: "assistant", project: { urn: proj1.urn } });
+  const work = d.kernel.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "project/*", "team-member/*"] } } });
+  await work.tasks.request(owner, { title: "Draft the letter", doer: kit, checker: { kind: "person", id: d.kernel.id.owner, space }, output: { kind: "note" }, project: proj1.urn });
   const mine = await d.kernel.gateway.records.create(owner, "contact", { name: "Jane", age: 40 }, { attrs: { project: "p1" } });
   const other = await d.kernel.gateway.records.create(owner, "contact", { name: "Mallory", age: 51 }, { attrs: { project: "p2" } });
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", other.urn.split("/").pop())).data.name, "Mallory", "the person reads both");
