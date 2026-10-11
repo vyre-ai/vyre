@@ -33,6 +33,7 @@ import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
 import { signalTree, pidsUnder, portIsSessions } from "./proctree.js";
 import { endOrphans, startedOf } from "./orphans.js";
+import { SANDBOX_PORTS } from "./homesandbox.js";
 export { endOrphans };
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
@@ -418,8 +419,9 @@ export function createRunner(o) {
       const h = live.get(session);
       if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here: ask the chat to start its dev server first, then try the preview again"), { code: "not_found" }));
       const port = Number(job.port);
-      if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535"));
-      if (!h.preview.dir && !ownsPort(h, port)) return Promise.reject(new Error("the dev server on that port did not answer (not_this_chat's)"));
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535: start the dev server on one of those, then open its preview"));
+      if (SANDBOX_PORTS.includes(port)) return Promise.reject(new Error("that port belongs to the sandbox itself, not to a dev server: start the dev server on another port, then open its preview"));
+      if (!h.preview.dir && !ownsPort(h, port)) return Promise.reject(new Error("the dev server on that port is not one this chat started: start it from this chat, then open its preview"));
       const body = job.body ? Buffer.from(String(job.body), "base64") : Buffer.alloc(0);
       return new Promise((resolve, reject) => {
         /** @type {any} */ const opts = { method: String(job.method || "GET"), path: String(job.path || "/"), headers: { ...job.headers, host: `localhost:${port}`, "content-length": String(body.length) }, timeout: 30_000 };
@@ -432,7 +434,7 @@ export function createRunner(o) {
           res.on("error", reject);
         });
         req.on("timeout", () => req.destroy(new Error("the dev server did not answer in time")));
-        req.on("error", e => reject(new Error(`the dev server on that port did not answer (${/** @type {any} */ (e).code || e.message})`)));
+        req.on("error", e => reject(new Error(`the dev server on that port did not answer (${/** @type {any} */ (e).code || e.message}): check that it is running, then open the preview again`)));
         req.end(body);
       });
     },
@@ -444,7 +446,7 @@ export function createRunner(o) {
     previewTunnel(session, job, io) {
       const h = live.get(session);
       const port = Number(job.port);
-      if (!h || !h.preview || !Number.isInteger(port) || port < 1024 || port > 65535) return null;
+      if (!h || !h.preview || !Number.isInteger(port) || port < 1024 || port > 65535 || SANDBOX_PORTS.includes(port)) return null;
       if (!h.preview.dir && !ownsPort(h, port)) return null;   // a Mac has no shim: only a port this chat's own processes listen on, never the person's other loopback services
       const c = h.preview.dir ? net.connect(path.join(h.preview.dir, "p.sock")) : net.connect(port, "127.0.0.1");
       if (h.preview.dir) c.write(`PORT ${port}\n`);
