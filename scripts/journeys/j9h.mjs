@@ -102,7 +102,7 @@ export default {
         assert.ok(first, "the library offers a template");
         const inst = await whenStoreIsUp(w, "work.template.install", { id: first.id });
         const tpl = inst.template || first.id;
-        await whenStoreIsUp(w, "work.template.golive", { template: tpl });   // an installed template is a draft; the owner puts it live
+        await whenStoreIsUp(w, "work.template.golive", { template: tpl, version: inst.version || 1 });   // an installed template is a draft; the owner puts it live
         const started = await whenStoreIsUp(w, "work.start-project", { template: tpl, name: `Team day ${w.person.slice(-4)}` });
         assert.ok(started.project, "a project was made");
         assert.ok((started.tasks_made || 0) > 0, `tasks were made (${JSON.stringify(started.tasks_skipped || [])})`);
