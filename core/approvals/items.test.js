@@ -211,7 +211,7 @@ test("a request a model filed says who asked, in words, and that it was not the 
   const { askedBy, fromVault } = await import("./items.js");
   assert.equal(askedBy("mcp:agent:assistant"), "asked by your assistant, not by you");
   assert.equal(askedBy("mcp:agent:kit"), "asked by the agent kit, not by you");
-  assert.equal(askedBy("mcp:thread:01a12b17-0122-4e26"), "asked by a Claude session (01a12b17), not by you");
+  assert.equal(askedBy("mcp:thread:01a12b17-0122-4e26"), "asked by a Claude session, not by you");
   assert.equal(askedBy("mcp"), "asked by a Claude session, not by you");
   assert.equal(askedBy("module:connectors"), "asked by the connectors module, not by you");
   assert.equal(askedBy(""), "");

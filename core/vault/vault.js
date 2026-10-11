@@ -30,8 +30,7 @@ import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind, ownerDevice } from "../modules/index.js";
-import { isAsker } from "./asker.js";
-import { modelKey } from "../../lib/caller.js";
+import { isAsker, requestCap } from "./asker.js";
 import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
@@ -1399,10 +1398,7 @@ export class Vault {
       // Claude asking waits as a request that carries no authority; only a person's approval makes the grant.
       if (this.releases.views().some(v => v.item === name && v.module === module && v.watcher === watcher && v.project === project)) return { grant: this.grantOut({ id: "", item: name, module, watcher, project, status: "active" }) };
       const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grant_requests WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
-      // A model files a few requests at most: each shows on the owner's approvals list, and a flood of them is a way to get one approved unread.
-      // Counted per agent identity (modelKey: mcp:agent:kit and harness:agent:kit are one, every thread of an unnamed model is one), so a model does not get 5 per thread.
-      if (!old && /** @type {any[]} */ (this.db.prepare("SELECT by FROM vault_grant_requests").all()).filter(r => modelKey(String(r.by)) === modelKey(String(caller))).length >= 5) throw new Error("the owner has not answered this caller's earlier requests yet: 5 are waiting, and the owner approves or denies those first (vault.pending lists them)");
-      const id = old ? old.id : "g_" + newId();
+      const id = old ? old.id : (requestCap(this.db, caller), "g_" + newId());
       if (!old) this.db.prepare("INSERT INTO vault_grant_requests (id, item, module, watcher, project, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, project, String(caller), now());
       this.audit("grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
       this.emit("grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });

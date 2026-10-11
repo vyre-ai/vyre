@@ -5,6 +5,7 @@
 // Each is now an ITEM CARD in this queue: it appears the moment its owner holds it, carries the owner's tool that settles it (`answer`), and is closed with the outcome when the owner
 // settles it. The owner still holds the content and still decides (its detail screen, its edit, its own answer tool); this module holds the one list, so a surface reads one place.
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
+import { agentClaim } from "../modules/index.js";
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
 export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"]);
@@ -63,9 +64,9 @@ const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 
 export const askedBy = by => {
   const b = String(by || "");
   if (!b) return "";
-  const who = /^(?:mcp|harness):agent:assistant$/.test(b) ? "your assistant" : (m => (m ? `the agent ${clean(m[1], 30)}` : ""))(/^(?:mcp|harness):agent:(.+)$/.exec(b))
-    || (m => (m ? `a Claude session (${String(m[1]).slice(0, 8)})` : ""))(/^(?:mcp|harness):thread:(.+)$/.exec(b)) || (/^(?:mcp|harness)$/.test(b) ? "a Claude session" : "")
-    || (m => (m ? `the ${clean(m[1], 30)} module` : ""))(/^module:(.+)$/.exec(b)) || clean(b, 40);
+  const agent = agentClaim(b);
+  // A thread's id is never read out of its label here (test/thread-label-hygiene.test.js), and an owner does not need it: "a Claude session" is who, the item and module are what.
+  const who = agent === "assistant" ? "your assistant" : agent ? `the agent ${clean(agent, 30)}` : /^(?:mcp|harness)(?::thread:.*)?$/.test(b) ? "a Claude session" : (m => (m ? `the ${clean(m[1], 30)} module` : ""))(/^module:(.+)$/.exec(b)) || clean(b, 40);
   return `asked by ${who}, not by you`;
 };
 

@@ -190,7 +190,7 @@ test("approvals.items: a held draft is a card, the owner's settling closes it, a
   const w = await world(t, ALL, { held: [HELD], asks: [ASK_P], vault: VAULT });
   const open = (await w.call("approvals.items")).data;
   assert.deepEqual(open.items.map(x => x.id).sort(), ["gate:g1", "threads:a2", "vault:g_1"]);
-  assert.deepEqual(open.items.find(x => x.id === "vault:g_1"), { id: "vault:g_1", kind: "access", title: 'Let mail use "billing-key"', detail: "asked by mcp", at: T + 5000, source: "vault",
+  assert.deepEqual(open.items.find(x => x.id === "vault:g_1"), { id: "vault:g_1", kind: "access", title: 'Let mail use "billing-key"', detail: "asked by a Claude session, not by you", at: T + 5000, source: "vault",
     state: "waiting", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] }, presence: { required: true, covered: false, since: null } });
   assert.deepEqual(open.recent, []);
   w.data.held = [];
