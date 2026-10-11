@@ -42,6 +42,25 @@ const starting = new WeakMap();
 export const startingOver = (sb, id) => Boolean(starting.get(sb) && /** @type {Set<string>} */ (starting.get(sb)).has(id));
 
 /**
+ * The row of a chat turn that waited is asked after once more before it runs: the kernel says whether its asker is still in the chat. A person who left gets no turn (and none without their
+ * token): their rows are marked dropped, the room is told in words, and the rest of the queue goes on. True when this took the rows (it runs `go` itself when the kernel says yes).
+ * @param {any} sb @param {string} id @param {any} st @param {string | null} lead the leading rows' turn facts @param {any[]} rows @param {() => void} go
+ */
+export function admitDrain(sb, id, st, lead, rows, go) {
+  let kt = null; if (lead) { try { kt = JSON.parse(lead); } catch { /* no turn facts */ } }
+  if (!kt || !kt.chat || !sb.deps.kernelSession) return false;
+  const live = () => sb.live.get(id) === st && !st.stopping && !st.turn;
+  sb.assertAsker(id, sb.record(id), kt).then(() => { if (live()) go(); }, () => {
+    const drop = sb.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
+    for (const r of rows) drop.run(Date.now(), r.id);
+    const rec = sb.record(id);
+    sb.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, rec ? rec.project : null);
+    if (live()) sb.resumeQueued(id);
+  });
+  return true;
+}
+
+/**
  * A queued one-turn (the turn's facts carry `over`) is run when the thread is free: marked delivered and sent as the one-turn it was asked as. True when this took the rows.
  * @param {any} sb @param {string} id @param {any[]} rows the queued rows of one turn @param {any} kt the turn's facts @param {(at: number, rowId: number) => { changes: number | bigint }} mark @param {number} now
  */

@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, runQueuedOver, servesChip, startingOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, runQueuedOver, servesChip, startingOver, admitDrain } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -2229,38 +2229,13 @@ export class Switchboard {
       for (const u of [...st.steers.keys()]) this.steered(id, st, u, project);
       return;
     }
-    this.drainQueued(id, st, project);
-  }
-
-  /** The words queued for after a turn run next, one asker's at a time. @param {string} id @param {any} st @param {string|null} project */
-  drainQueued(id, st, project) {
-    // another person's one-turn is being started from this queue (the move to their account is under way): the rest waits for the end of that turn
-    if (startingOver(this, id)) return;
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
-    if (!all.length) return;
-    // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
-    // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
+    if (!all.length || startingOver(this, id)) return;   // (another person's one-turn is being started from this queue: the rest waits for its end)
+    // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end. A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
-    // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
-    let kt0 = null; if (lead) { try { kt0 = JSON.parse(lead); } catch { /* no turn facts */ } }
-    if (kt0 && kt0.chat && this.deps.kernelSession) {
-      this.assertAsker(id, this.record(id), kt0).then(
-        () => { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); },
-        () => {
-          const drop = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
-          for (const r of rows) drop.run(Date.now(), r.id);
-          this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, project);
-          if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainQueued(id, st, project);
-        });
-      return;
-    }
-    this.drainRun(id, lead, rows, project);
-  }
-
-  /** The leading rows of one asker go out as one turn. @param {string} id @param {string|null} lead @param {any[]} rows @param {string|null} project */
-  drainRun(id, lead, rows, project) {
+    const go = () => {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
@@ -2273,6 +2248,7 @@ export class Switchboard {
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
     if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).catch(() => {}).finally(deliver); return; } }
     deliver();
+    }; if (!admitDrain(this, id, st, lead, rows, go)) go();
   }
 
   /**
