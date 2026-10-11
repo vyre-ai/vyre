@@ -37,10 +37,17 @@ export default {
         const r0 = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
         const f1 = `names-directory record for "${team.label}" before the workaround: HTTP ${r0.status}`;
         // HARNESS WORKAROUND so the walk can go on past finding 1: give the home Space a root key (host-here does this for a hosted Space only) and publish its record as a hosted Space's is.
-        const { spaceFiles } = await import("../../core/spaces/host.js");
-        const files = spaceFiles(path.join(w.dir, "server", ".vyre", "spaces"));
-        const kp = await files.keys.generate();
-        await files.keys.hold(team.space, kp.privateKey);
+        const crypto = await import("node:crypto"), cp = await import("node:child_process"), fs = await import("node:fs");
+        const { newKeyPair } = await import("../../core/spaces/identity.js");
+        const kp = await newKeyPair();
+        if (srv.kind === "installer") {   // the box's home lives in the container: write the key as the server's own user
+          const r = cp.spawnSync("docker", ["exec", "-i", "-u", "vyre", "vyre-vyre-1", "sh", "-c", `umask 077 && mkdir -p ~/.vyre/spaces/${team.space} && cat > ~/.vyre/spaces/${team.space}/root.key`], { input: kp.privateKey + "\n", encoding: "utf8" });
+          assert.equal(r.status, 0, `could not place the Space's root key in the box: ${r.stderr}`);
+        } else {
+          const { spaceFiles } = await import("../../core/spaces/host.js");
+          await spaceFiles(path.join(w.dir, "server", ".vyre", "spaces")).keys.hold(team.space, kp.privateKey);
+        }
+        void crypto; void fs;
         const claimed = await mac.claimExistingSpace(`day${w.person.slice(-5)}`, team.space, kp.publicKey);
         team.label = claimed.label; team.name = claimed.name;
         const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
