@@ -233,6 +233,14 @@ test("an outside signer signs in a real browser through the public door: relay, 
   const stray = [...resp.map(r => r.url), ...sent.map(x => x.split(" ")[1])].filter(u => { try { const x = new URL(u); return x.host !== NAME || !x.pathname.startsWith("/sign/_/"); } catch { return !u.startsWith("data:") && !u.startsWith("blob:"); } });
   assert.deepEqual(stray, [], "every request of the signing walk went under /sign/_/ of the Space's own address");
   assert.ok(sent.some(x => x.startsWith("POST ") && new URL(x.split(" ")[1]).pathname === "/sign/_" + new URL(asked.data.url).pathname.replace(/^\/sign\/\d+/, "/s")), `the browser's submit was posted: ${sent.join(" | ").slice(0, 300)}`);
+  // the signed copy, by its expiring link, on the same address and under the same mount: the browser gets the PDF
+  const linked = await d.registry.call("appmods.signed.link", { name: "documents", slug: asked.data.slug }, "module:documents");
+  assert.ok(!linked.error, JSON.stringify(linked.error));
+  assert.equal(new URL(linked.data.url).host, NAME);
+  assert.match(new URL(linked.data.url).pathname, /^\/sign\/_\/signed\//, "the signed copy's link is under the mount too");
+  const pdf = await ev(`fetch(${JSON.stringify(linked.data.url)}).then(async r => [r.status, r.headers.get("content-type"), (await r.arrayBuffer()).byteLength])`);
+  assert.deepEqual([pdf[0], pdf[1]], [200, "application/pdf"], "the signed copy arrives");
+  assert.ok(pdf[2] > 1000);
   const subm = await api("GET", `/api/submissions/${asked.data.submission}`);
   assert.equal(subm.s, 200);
   assert.equal(subm.j.status, "completed", "the signing app recorded the signature: the browser's submit reached it");
