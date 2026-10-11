@@ -11,6 +11,9 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["vault.member.put", "puts the person's own AI key in the server's vault: a secret goes in only by the person's own hand, never an assistant's (G03, lead)"],
+  ["vault.member.list", "lists the person's own keys: names and kinds of what only the person owns (G03, lead)"],
+  ["vault.member.remove", "removes the person's own key: the person's own act (G03, lead)"],
   ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
   ["spaces.storage.put", "writes the person's own per-member storage: the person's own act until an assistant's write is decided (lead, 0.2.9)"],
   ["spaces.storage.put-if", "writes the person's own per-member storage if unchanged: the person's own act (lead, 0.2.9)"],

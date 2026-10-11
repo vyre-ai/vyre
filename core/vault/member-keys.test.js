@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
+import { MemberKeys, MEMBER_KEYS_MIGRATION } from "./member-keys.js";
 import { backup, restore } from "./backup.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -19,9 +20,11 @@ function makeVault(t, name) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-memberkeys-"));
   const db = open(path.join(home, "vyre.db"));
   t.after(() => { try { db.close(); } catch {} fs.rmSync(home, { recursive: true, force: true }); });
-  migrate(db, "vault", MIGRATIONS);
+  migrate(db, "vault", [...MIGRATIONS, MEMBER_KEYS_MIGRATION]);
   const dir = path.join(home, "vault");
-  return { home, db, dir, vault: new Vault({ db, dir, config: { name, vault: { keystore: "file" } }, emit: () => {} }) };
+  const vault = new Vault({ db, dir, config: { name, vault: { keystore: "file" } }, emit: () => {} });
+  vault.memberKeys = new MemberKeys(vault);
+  return { home, db, dir, vault };
 }
 const secret = () => `sk-fixture-${crypto.randomBytes(14).toString("hex")}`;
 
