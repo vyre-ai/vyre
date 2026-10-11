@@ -255,15 +255,15 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.match(s1, /ERR (EACCES|EPERM|ENOENT)|stay out of reach/, `the member cannot open the daemon's main socket (the session floor says so, or the socket refuses): ${s1}`);
     assert.doesNotMatch(s1, /CONNECTED/);
     const s2 = await R("member", "vyre vault list 2>&1");
-    assert.match(s2, /owner's vault|stay out of reach/, `vault list is refused in words (the vault gate, or the session floor in front of it): ${s2}`);
+    assert.match(s2, /owner's vault|stay out of reach|not available inside a session/, `vault list is refused in words (the vault gate, or the session floor in front of it): ${s2}`);
     assert.ok(!s2.includes(itemName), "and shows no item name");
     const s3 = await R("member", `vyre vault reveal ${itemName} 2>&1`);
-    assert.match(s3, /owner's vault|stay out of reach/, `vault reveal is refused in words: ${s3}`);
+    assert.match(s3, /owner's vault|stay out of reach|not available inside a session/, `vault reveal is refused in words: ${s3}`);
     assert.ok(!s3.includes("WALK-NOT-A-REAL-VALUE"), "and no value");
     const s4 = await R("member", "vyre vault put walkx 2>&1");
-    assert.match(s4, /owner's vault|stay out of reach/, `vault put is refused: ${s4}`);
+    assert.match(s4, /owner's vault|stay out of reach|not available inside a session/, `vault put is refused: ${s4}`);
     const s4b = await R("member", "vyre vault lock 2>&1");
-    assert.match(s4b, /owner's vault|stay out of reach/, `vault lock is refused: ${s4b}`);
+    assert.match(s4b, /owner's vault|stay out of reach|not available inside a session/, `vault lock is refused: ${s4b}`);
     // folders: another chat's parent cannot be listed by a member's session, and the walk's own chat folder is not named by its id
     const s5 = await R("member", "ls /work/chats 2>&1; ls /work/chats/* 2>&1");
     assert.match(s5, /Permission denied|stay out of reach/i, `a session cannot list the chats' parents: ${s5}`);
