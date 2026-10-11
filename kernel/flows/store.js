@@ -293,7 +293,12 @@ export class RecordsFlowStore {
   }
   async list() {
     const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
-    return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
+    const rows = r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
+    // a Flow has a state row only once it is approved; a draft nobody has approved is still a Flow of the Space (Flows belong to the Space: every member sees it, and the cap on a member's new Flows counts it)
+    const known = new Set(rows.map((/** @type {any} */ x) => x.id));
+    const defs = await this.k.records.query(this.chain, "def-flow", { page: { limit: 5000 } });
+    for (const d of defs.rows) { const id = String(d.data.flow_id); if (!known.has(id)) { known.add(id); rows.push({ id, status: "draft", active: null, paused: null }); } }
+    return rows;
   }
 
   /** @param {string} flow @returns {Promise<number|null>} */
