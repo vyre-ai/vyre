@@ -31,3 +31,10 @@ test("recordsStatus says nothing of a Space the caller is not in, and shows a st
     { space: "spc_other", ready: false, words: "starting Records: setting up its workspace (12 s so far)" },
     { space: "spc_failed", ready: false, words: "the records are not ready yet" }], "progress words pass; a failure's text does not");
 });
+
+test("recordsStatus asks the gateway when the handle carries no store (the home's own Space): a store still starting is not ready", async () => {
+  const { recordsStatus } = await import("./kernel-members.js");
+  const K = (/** @type {boolean} */ ok) => ({ space: "spc_home", spaces: { list: () => [] }, for: () => ({ gateway: { health: async () => ({ ok }) } }) });
+  assert.deepEqual((await recordsStatus(K(true), ["spc_home"])).spaces, [{ space: "spc_home", ready: true }]);
+  assert.deepEqual((await recordsStatus(K(false), ["spc_home"])).spaces, [{ space: "spc_home", ready: false, words: "the records are not ready yet" }]);
+});

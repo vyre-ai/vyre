@@ -112,6 +112,11 @@ export async function recordsStatus(K, mine) {
     if (!known.has(id)) continue;
     let h = null; try { h = K ? K.for(id) : null; } catch { h = null; }
     const store = (h && h.store) || (id === (K && K.space) ? K.store : null);
+    // a module's kernel handle for the home's own Space carries no store: its gateway's health says whether the store answers (a store still starting does not)
+    if (!store && h && h.gateway && typeof h.gateway.health === "function") {
+      const up = await h.gateway.health().then((/** @type {any} */ x) => x && x.ok !== false, () => false);
+      out.push(up ? { space: id, ready: true } : { space: id, ready: false, words: "the records are not ready yet" }); continue;
+    }
     if (!store || typeof store.attached !== "function" || store.attached()) { out.push({ space: id, ready: true }); continue; }
     let detail = "";
     try { detail = String((await store.health()).detail || ""); } catch { /* no words */ }
