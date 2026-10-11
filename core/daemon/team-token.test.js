@@ -58,4 +58,9 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
     const r = await call("system.info", {}, { root: w.root, caller, headers: { "x-vyre-kernel-session": team } });
     assert.equal(r.error && r.error.code, "not_in_team_space", `system.info as ${caller} with a team token: ${JSON.stringify(r).slice(0, 200)}`);
   }
+  // a body that is not an object of arguments, with a team token, is an error and never a call in the home
+  for (const body of [[], "records.me", 7, null]) {
+    const r = await call("records.me", body, asToken(team));
+    assert.equal(r.error && r.error.code, "bad_input", `a body of ${JSON.stringify(body)}: ${JSON.stringify(r).slice(0, 160)}`);
+  }
 });
