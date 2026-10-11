@@ -145,7 +145,7 @@ export function registerPlaceTools(ctx, d) {
       const p0 = placements();
       if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
       const space = i.space || p0.spaces()[0];
-      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!space) throw refuse("no computer of yours is set up to run this Space's chats yet: turn on Run on this computer on the Mac, then move the chat", "unavailable");
       if (!(await mineChat((await who(meta, space)).chain, thread))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       try { await p0.adopt(space, { thread, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
       const placed = find(thread, space, person);
