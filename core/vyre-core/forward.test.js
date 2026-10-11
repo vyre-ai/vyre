@@ -93,7 +93,7 @@ test("vyre-core forward: the vault module forwards to core, refuses plain values
   await assert.rejects(run("vault.release", { name: "orders-imap" }, { caller: "module:google" }), /not granted to google/);
   await assert.rejects(run("vault.release", { name: "orders-imap" }, { caller: "cli" }), /only modules/);
   // A terminal never gets a plain value here: the Capsule does.
-  await assert.rejects(run("vault.reveal", { name: "orders-imap" }, { caller: "cli" }), e => /** @type {any} */ (e).code === "core_owned" && /only in the Capsule/.test(e.message));
+  await assert.rejects(run("vault.reveal", { name: "orders-imap" }, { caller: "cli" }), e => /** @type {any} */ (e).code === "core_owned" && /only in Lumen/.test(e.message));
   // A slice that hasn't moved says so plainly.
   await assert.rejects(run("vault.import", {}, { caller: "cli" }), e => /** @type {any} */ (e).code === "core_owned" && /on this Mac yet/.test(e.message));
   // Core's own store has it; nothing was opened on vyred's side.

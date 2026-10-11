@@ -259,7 +259,7 @@ test("capsule: the install card lists the commands, the tools they call and the 
   const wider = JSON.parse(JSON.stringify(m));
   wider.shows.capsule["view:more"] = { title: "More", list: { tool: "kit.list", input: {} } };
   wider.needs = { slots: ["front"] };
-  assert.deepEqual(widened(card, capabilities(wider)).map(w => [w.kind, w.what]), [["command", "More"], ["slot", "what is in front of the Capsule"]]);
+  assert.deepEqual(widened(card, capabilities(wider)).map(w => [w.kind, w.what]), [["command", "More"], ["slot", "what is in front of Lumen"]]);
   assert.deepEqual(widened(card, card), [], "nothing new installs quietly");
   assert.equal(capabilities({ name: "plain", version: "0.1.0" }).capsule, undefined, "a module with no view: entries has no capsule line");
 });

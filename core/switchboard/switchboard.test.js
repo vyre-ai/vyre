@@ -739,7 +739,7 @@ shardTest("queued for a terminal session: the Stop hook hands it over, Claude an
 
   // The session's current turn ends: Stop sends it back to Claude with the message.
   const stop1 = (await tool("harness.stop", { session: busy.id, text: "Tests pass.", stop_hook_active: false }, "harness")).data;
-  assert.deepEqual(stop1, { decision: "block", reason: "Message from the user via the Capsule: which branch are you on?" });
+  assert.deepEqual(stop1, { decision: "block", reason: "Message from the user via Lumen: which branch are you on?" });
   const sent = await until(() => of(s.got, busy.id, "thread.sent")[0], "thread.sent at hand-over");
   assert.deepEqual([sent.payload.text, sent.payload.via, sent.payload.surface], ["which branch are you on?", "stop", "capsule"]);
   assert.equal(of(s.got, busy.id, "thread.text").length, 0, "the turn before is not the reply");
@@ -756,7 +756,7 @@ shardTest("queued for a terminal session: the Stop hook hands it over, Claude an
   // Idle in the terminal: the next prompt the user types there carries it.
   await tool("threads.send", { thread: busy.id, text: "also bump the version", surface: "capsule" });
   const enrich = (await tool("harness.enrich", { session: busy.id, prompt: "run the tests", cwd: work }, "harness")).data;
-  assert.match(enrich.text, /^Message from the user via the Capsule: also bump the version\n\nThis was sent while the session was idle/);
+  assert.match(enrich.text, /^Message from the user via Lumen: also bump the version\n\nThis was sent while the session was idle/);
   assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "Bumped and tested." }, "harness")).data, { ok: true });
   await until(() => of(s.got, busy.id, "thread.text").some(e => e.payload.text === "Bumped and tested."), "the second reply");
   assert.equal(launches().filter(l => l.argv.includes(busy.id)).length, 0, "no process was started for it");
@@ -772,7 +772,7 @@ shardTest("threads.unqueue: a person takes back words not yet handed over; hande
   assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id })).data, { unqueued: [a.queued_id] });
   // Only "second" is handed over at the Stop.
   const stop = (await tool("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false }, "harness")).data;
-  assert.equal(stop.reason, "Message from the user via the Capsule: second");
+  assert.equal(stop.reason, "Message from the user via Lumen: second");
   const late = (await tool("threads.unqueue", { thread: busy.id, queued: b.queued_id })).data;
   assert.deepEqual(late.unqueued, []);
   assert.match(late.note, /already handed over/);

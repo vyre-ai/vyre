@@ -930,7 +930,7 @@ test("peer: presence.capsule.pin is presence-required and lives in vyred's own d
   // with a plain reason, nothing pinned.
   const none = await pin(undefined);
   assert.equal(none.error?.code, "denied", JSON.stringify(none));
-  assert.match(none.error.message, /could not read this Capsule's code signature/);
+  assert.match(none.error.message, /could not read this Lumen build's code signature/);
   const adhoc = await pin({ cdhash, signed: true, adhoc: true });
   assert.equal(adhoc.error?.code, "denied", JSON.stringify(adhoc));
   assert.match(adhoc.error.message, /ad-hoc signed[\s\S]*vyre capsule install/);
