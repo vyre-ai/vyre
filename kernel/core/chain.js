@@ -163,7 +163,7 @@ export function createChainBuilder(cfg) {
   /**
    * The chain a Flow run acts under: the approver's own chain with the automation appended (the approver stays the assigner of what the run makes), the run
    * id as its job, and taint carried: a run that read foreign content is external for good. `approver` must be a kernel chain that is exactly one person.
-   * @param {{ flow: string, approver: any, run: string, tainted?: boolean }} o
+   * @param {{ flow: string, approver: any, run: string, tainted?: boolean, hash?: string }} o
    */
   function forFlow(o) {
     if (!isChain(o.approver) || o.approver.hops.length !== 1 || o.approver.hops[0].actor.kind !== "person") return refuse("a Flow runs under one person's approval");
@@ -171,7 +171,7 @@ export function createChainBuilder(cfg) {
     if (o.approver.viewer === true || o.approver.delegated === true || o.approver.room) return refuse("a Flow runs under a person's own approval, not a viewer's, a session's or a room's");
     if (typeof o.flow !== "string" || !o.flow || typeof o.run !== "string" || !o.run) return refuse("a Flow run needs its flow and its run id");
     const labels = o.tainted ? mergeLabels(o.approver.labels, { trust: "external", red: "public", source_spaces: [space] }) : o.approver.labels;
-    return make([...o.approver.hops, hop("automation", o.flow, "job")], labels, { job: o.run });
+    return make([...o.approver.hops, hop("automation", typeof o.hash === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(o.hash) ? `${o.flow}@${o.hash}` : o.flow, "job")], labels, { job: o.run });   // the version's hash is part of the hop: a standing yes is for exactly that version
   }
 
   /** A module acting for an approver: [approver, service:module], so what the module assigns carries the approver as its assigner. @param {{ module: string, approver: any, first_party?: boolean }} o */

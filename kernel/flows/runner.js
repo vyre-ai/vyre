@@ -1316,7 +1316,7 @@ export class FlowRunner {
   #chain(ctx) {
     if (ctx.actAs) return ctx.actAs;
     const r = ctx.run;
-    return this.chains.forFlow({ flow: r.flow, space: r.space, approver: r.approver, tainted: r.tainted, run: r.id, source_spaces: r.source_spaces });
+    return this.chains.forFlow({ flow: r.flow, space: r.space, approver: r.approver, tainted: r.tainted, run: r.id, hash: r.hash, source_spaces: r.source_spaces });
   }
 
   // ------------------------------------------------------------------ authority
@@ -1368,6 +1368,8 @@ export class FlowRunner {
     const forced = !standingReceipt && !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
     if (forced) effect = "ask";
     if (standingReceipt) effect = "allow";
+    // A connector send the person's standing yes covers (authorize waives its ask for the grant of this Flow version): a step marked approve: true still asks, and a send that goes out says which grant let it.
+    if (s.kind === "service" && effect === "allow" && OUTWARD.has(risk)) { if (s.approve === true) effect = "ask"; else if (d.standing) this.#emit("flow.standing", { run: run.id, flow: run.flow, step: s.id, connector: s.connector, grant: d.standing }, run, `vyre://${run.space}/flow-run/${run.id}`); }
     if (effect === "deny") {
       this.#note(ctx, s, `denied: ${d.rule && d.rule.label ? d.rule.label : d.reason}`);
       if (d.rule && d.reason === "rule_never") throw new StepFail("rule_never", `a rule of this space does not allow this: ${d.rule.label || "never"}`);

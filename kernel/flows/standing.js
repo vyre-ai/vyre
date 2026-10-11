@@ -36,11 +36,13 @@ export function recipientOf(step, cat) {
 }
 
 /**
- * Can the person's one yes cover this step at all? Only a call to a tool whose module declared its destination fields, with no input field the tool did not declare (a field nothing checks could name
+ * Can the person's one yes cover this step at all? A connector send the Flow names itself, or a call to a tool whose module declared its destination fields, with no input field the tool did not declare (a field nothing checks could name
  * a second destination). Anything else asks, as before.
  * @param {any} step @param {any} cat
  */
 export function covered(step, cat) {
+  // a connector send (kind service, not a read) is covered through the kernel's grant for that exact connector (authorize waives its ask): the Flow names the connector itself, never an expression
+  if (step.kind === "service") return isSend(step, cat) && typeof step.connector === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(step.connector);
   if (step.kind !== "call" || !isSend(step, cat) || !declaredFields(step, cat).length) return false;
   const known = new Set(Object.keys(((cat && cat.actions) || {})[step.action].inputs || {}));
   const input = step.input && typeof step.input === "object" ? step.input : null;
@@ -80,7 +82,7 @@ export function sendsOf(flow, cat) {
   walkSteps((flow && flow.steps) || [], (/** @type {any} */ s) => {
     if (!isSend(s, cat)) return;
     const r = recipientOf(s, cat);
-    out.push({ step: s.id, action: s.kind === "service" ? `${s.method} ${s.connector || s.connection}` : s.action, to: r.values, source: r.literal ? "literal" : "outside", approve: s.approve === true, covered: covered(s, cat) });
+    out.push({ step: s.id, action: s.kind === "service" ? `${s.method} ${s.connector || s.connection}` : s.action, to: r.values, source: r.literal ? "literal" : "outside", approve: s.approve === true, covered: covered(s, cat), ...(s.kind === "service" ? { connector: String(s.connector) } : {}) });
   });
   return out;
 }

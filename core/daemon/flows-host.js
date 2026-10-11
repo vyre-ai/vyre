@@ -12,7 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
-import { boundsOf } from "../../kernel/flows/standing.js";
+import { boundsOf, sendsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
@@ -251,22 +251,30 @@ export function createFlowsHost(o) {
     const reconcileStanding = async (/** @type {string} */ flow, mint = false) => {
       if (!sh.mint) return null;
       const live = await store.active(flow).catch(() => null), want = live && live.approver ? standingUrn(flow, live.hash) : null;
+      const cat = await catalog().catch(() => null);
+      // the connectors the approval card lists as sends this Flow makes on its own: each gets one grant for exactly that connector, on this Flow version as the actor
+      const svc = new Set(live && live.approver && cat ? sendsOf(live.flow, cat).filter(x => x.covered && x.connector).map(x => `vyre://${space}/service/${x.connector}`) : []);
+      const who = live ? `${flow}@${live.hash}` : "";
       const have = (await sh.mint.list({ source: `flows:standing:${flow}@` })) || [];
-      for (const g of have) if (g.resource.prefix !== want) await sh.mint.end({ id: g.id, reason: "the approved version changed, paused or ended" });
+      for (const g of have) if (!(g.resource.prefix === want || (svc.has(g.resource.prefix) && g.subject && g.subject.actor && g.subject.actor.id === who))) await sh.mint.end({ id: g.id, reason: "the approved version changed, paused or ended" });
       if (!want) return null;
-      if (have.some((/** @type {any} */ g) => g.resource.prefix === want)) return want;
-      if (!mint) return null;
-      const b = boundsOf(live.flow, await catalog().catch(() => null));
-      await sh.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: live.approver.id, space } }, actions: ["flows.act-standing"], resource: { prefix: want }, source: `flows:standing:${flow}@${live.hash}`,
+      const has = (/** @type {string} */ prefix) => have.some((/** @type {any} */ g) => g.resource.prefix === prefix && g.status !== "revoked");
+      if (!mint) return has(want) ? want : null;
+      const b = boundsOf(live.flow, cat);
+      if (!has(want)) await sh.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: live.approver.id, space } }, actions: ["flows.act-standing"], resource: { prefix: want }, source: `flows:standing:${flow}@${live.hash}`,
         conditions: { budget: { meter: `flow-act:${flow}@${live.hash}`, limit: b.max }, rate: { n: b.per_minute, per_seconds: 60 } }, reason: "the person turned this Flow on" });
+      for (const prefix of svc) if (!has(prefix)) await sh.mint.make({ subject: { kind: "actor", actor: { kind: "automation", id: who, space } }, actions: ["service.call"], resource: { prefix }, source: `flows:standing:${flow}@${live.hash}:svc`,
+        conditions: { budget: { meter: `flow-svc:${who}:${prefix.split("/").pop()}`, limit: b.max }, rate: { n: b.per_minute, per_seconds: 60 }, when: { expires: clock() + 90 * 86_400_000 } }, reason: "the person turned this Flow on: a send to this connector" });
       return want;
     };
     /** A member removed, or given a role that no longer lets them run that Flow: the standing grants made on their approval end now. A promotion, or any change that keeps the right, leaves them. */
     const endStandingOf = async (/** @type {string} */ person, /** @type {boolean} */ removed) => {
       if (!sh.mint) return;
       for (const g of (await sh.mint.list({ source: "flows:standing:" })) || []) {
-        if (!g.subject || !g.subject.actor || g.subject.actor.id !== person) continue;
         const flow = String(g.source).slice("flows:standing:".length).split("@")[0];
+        // the grant is the approver's yes: a person's own grant names them, a connector grant names the Flow version and its approver is the one who approved it
+        const approver = g.subject && g.subject.actor && g.subject.actor.kind === "person" ? g.subject.actor.id : ((await store.active(flow).catch(() => null)) || {}).approver?.id;
+        if (approver !== person) continue;
         let keeps = false;
         if (!removed) { try { const d = await gw.authorizePeek({ chain: personChain(person), action: "flows.run", resource: `vyre://${space}/flow/${flow}` }); keeps = Boolean(d && d.effect === "allow"); } catch { keeps = false; } }
         if (!keeps) await sh.mint.end({ id: g.id, reason: "the person who approved it was removed or can no longer run it" });

@@ -295,11 +295,21 @@ export function createAuthorizer(cfg) {
       let presence = "none";
       let unknownObligation = false;
       let approver = null;
+      /** @type {any} */ let standing = null;
       for (const h of chain.hops) {
         const actor = h.actor;
         // A Flow run's automation hop is a job label under its approving person (kernel/core/chain.js forFlow: only the builder makes one, and only from a person's chain): it adds no
         // grants and takes none away, so the run can do exactly what its approver can, narrowed further by the runner's declared caps. Without a person in the chain it is nothing.
-        if (actor.kind === "automation" && typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "automation" && typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) {
+          // The one thing an automation hop can hold: the approver's standing yes for THIS Flow version (subject `<flow>@<hash>`, source `flows:standing:`), made at turn-on, exact to one connector, outward send only,
+          // bounded by its own budget, rate and expiry. It waives the ask for that send and for nothing else; the person's own authority is still checked above and below.
+          if (action === "service.call" && !standing) for (const g of await cfg.grants.forSubject(actor, h, input)) {
+            if (g.status !== "active" || g.space !== cfg.space || !String(g.source || "").startsWith("flows:standing:") || !g.actions.includes("service.call")) continue;
+            const r = await evaluate(g, h, undefined, chain, "service.call", resource, attrs, now, 0, input.probe === true, input.origin);
+            if (r.ok) { standing = g; used.push(g.id); for (const o of r.obligations) if (o.type !== "presence" && o.type !== "ask") obligations.push(o); break; }
+          }
+          continue;
+        }
         if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
@@ -335,7 +345,7 @@ export function createAuthorizer(cfg) {
 
       // 5. Policy by risk class and sensitivity; the strictest wins.
       let ask = null;
-      if (OUTWARD.has(risk)) { presence = maxPresence(presence, "fresh"); ask = { kind: risk, approver: approver || "owner" }; }
+      if (OUTWARD.has(risk) && !(standing && risk === "outward.send")) { presence = maxPresence(presence, "fresh"); ask = { kind: risk, approver: approver || "owner" }; }
       else if (approver) ask = { kind: risk, approver };
       if (risk === "grant") presence = maxPresence(presence, "fresh");
       // ONE permission rule (lead ruling c328cd1): a person caller (a paired device, the terminal, the Capsule, the app: a chain of exactly one person) does admin acts with no presence; the yes is asked at
@@ -382,7 +392,7 @@ export function createAuthorizer(cfg) {
       // 7. Return. Approvals are K4's: an ask stays an ask until the kernel's task machinery records the approval.
       if (ask) return done("ask", tainted && !OUTWARD.has(risk) ? "tainted" : "needs_approval", used, out);
       if (!presenceMet) return Object.freeze({ ...done("ask", "needs_presence", used, out), ...(presenceWhy ? { presence_reason: presenceWhy } : {}) });
-      return done("allow", "ok", used, out);
+      return standing ? Object.freeze({ ...done("allow", "ok", used, out), standing: standing.id }) : done("allow", "ok", used, out);
     } catch (e) {
       // Fail closed on anything unexpected: a deny that says only why in the log (invariant 1).
       if (e instanceof KernelError) return deny(e.code === "not_a_member" ? "not_a_member" : "bad_input");
