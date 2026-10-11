@@ -17,14 +17,13 @@ import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/e
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
-/** The record types a module KEEPS: its own bookkeeping, readable and writable only by that module's service chain and by an owner or admin, on every path (records.*, events.read, the registry tools, a session's token). type -> module names. */
+/** The record types a module KEEPS: its own bookkeeping (the Flow types are `protected: true` in kernel/flows/store.js and reached through the Flows host's owner-and-service chain), readable and writable only by that module's service chain and by an owner or admin, on every path (records.*, events.read, the registry tools, a session's token). type -> module names. */
 export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]>} */ ({
   skill: ["skills"],
   "project-template": ["work"],
   "def-watcher": ["watchers"],
   planner_state: ["planner"], planner_firing: ["planner"],
   preview_doc: ["previews"],
-  "def-flow": ["flows"], def_flow: ["flows"], "flow-approval": ["flows"], "flow-state": ["flows"], "flow-control": ["flows"], "flow-tests": ["flows"], "flow-schedule": ["flows"], "flow-run": ["flows"],
 }));
 
 export const RECORD_ACTIONS = Object.freeze([
@@ -1353,7 +1352,7 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
-    mayKeep: (/** @type {any} */ chain, /** @type {string} */ type) => !KEEPERS[type] || mayKeep(chain, type),
+    mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type),
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
