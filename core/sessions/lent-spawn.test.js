@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -400,4 +400,23 @@ test("the other person's message that waited while the chat came back is the nex
   assert.equal(ended.length, 0, "never into a process that is on a computer");
   lentDrain(sb(fresh, true), "t", before);
   assert.equal(ended.length, 1, "the fresh idle process on the server takes the waiting message as its turn");
+test("a chat that another person's turn took to the server is offered back to its own person only: the row says why, nobody else's turn and no hand-over of the person's own qualifies", async () => {
+  const kernel = (/** @type {any} */ row) => ({ runnerHost: () => ({ placements: { spaces: () => [SPACE], find: () => row } }) });
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION, person: BOB };
+  assert.ok(lentOfferedFor(kernel({ where: "server", reason: "another-person", person: BOB }), q), "the owner's next turn is offered the chat back");
+  assert.equal(lentOfferedFor(kernel({ where: "server", reason: "another-person", person: BOB }), { ...q, person: CAROL }), null, "not Carol's turn");
+  assert.equal(lentOfferedFor(kernel({ where: "server", reason: "you", person: BOB }), q), null, "a chat the person handed over themself stays where they put it");
+  assert.equal(lentOfferedFor(kernel({ where: "mac", reason: null, person: BOB }), q), null, "a chat on the computer needs nothing");
+});
+
+test("the owner's next turn asks for the chat back; when the computer is not ready the turn runs on the server and the chat says so in one line", async () => {
+  /** @type {string[]} */ const said = [], asked = [];
+  const sb = (/** @type {any} */ r) => ({ deps: { lentOfferBack: async (/** @type {any} */ x) => { asked.push(x.person); return r; } }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ project: null }), emit: (/** @type {string} */ _t, /** @type {any} */ p) => said.push(p.text) });
+  assert.equal(await lentReturn(sb({ moved: true }), SESSION, {}, BOB), true);
+  assert.equal(await lentReturn(sb({ moved: false }), SESSION, {}, BOB), false);
+  assert.equal(said.length, 0, "not eligible: nothing said");
+  assert.equal(await lentReturn(sb({ moved: false, why: "none of your computers is ready to take this chat now" }), SESSION, {}, BOB), false);
+  assert.ok(said.length === 1 && /runs on the server/.test(said[0]), "said once: " + said.join("|"));
+  assert.equal(await lentReturn(sb({ moved: true }), SESSION, {}, null), false, "no person, no offer");
+  assert.equal(await lentReturn(sb({ moved: true }), SESSION, { turn: "t:1" }, BOB), false, "never while a turn runs");
 });
