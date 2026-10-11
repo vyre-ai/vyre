@@ -11,7 +11,7 @@ import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { chatSpace, memberChatWire, withSpace } from "./with-space.js";
+import { NOT_FOR_MEMBERS_YET, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
@@ -52,6 +52,11 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
       try { return (await team.teamCall(space, wire, [rest])) as T; }
       catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
     }
+  }
+  // A team the person joined is showing and this is the team's own work with no door call for her: it never goes to her own home as if it were the team's.
+  if (!wire && isTeamWork(name)) {
+    const space = chatSpace(given, useSpaces.getState().space);
+    if (space && (await (await import("./team-join")).joinedHere(space))) throw new BoxError("not_allowed", NOT_FOR_MEMBERS_YET);
   }
   // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
   const input = withSpace(name, given, useSpaces.getState().space);

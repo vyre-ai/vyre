@@ -56,6 +56,7 @@ export function shareNote(who: string, item: string, r: { grant?: { status?: str
 
 /** The words for a refused share, from the box's code. */
 export function shareRefusal(code: string | undefined, message: string): string {
+  if (/owner's vault/i.test(message)) return "This is the owner's vault. Ask the owner to share the item with you, or add your own key in your account settings.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked" || code === "vault_locked") return "Unlock the vault first.";
   if (code === "not_found") return "That item is no longer in the vault.";

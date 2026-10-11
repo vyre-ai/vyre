@@ -95,6 +95,12 @@ export async function joinedHere(space: string): Promise<boolean> {
   try { return Boolean(await store.get(`member-of/${space}`)); } catch { return false; }
 }
 
+/** Is the space showing a team this device JOINED as a member (so its screens speak to the team's door, not to her own home)? */
+export async function showingJoined(): Promise<boolean> {
+  const { useSpaces } = await import("../../screens/shell/state");
+  return joinedHere(useSpaces.getState().space ?? "");
+}
+
 /** A call to a team space this device joined, as a member. */
 export async function teamCall(space: string, call: string, args: unknown[] = []) {
   const d = await joinDeps();

@@ -349,7 +349,7 @@
  "core/sessions/readfile.test.js": 3,
  "core/sessions/routes.test.js": 3,
  "core/sessions/sdk-install.test.js": 3,
- "core/sessions/signin.test.js": 9,
+ "core/sessions/signin.test.js": 10,
  "core/sessions/slots.test.js": 5,
  "core/sessions/spawn-agent.test.js": 3,
  "core/sessions/testing/real/real.test.js": 10,
@@ -1051,5 +1051,6 @@
  "test/journey-space-computers.test.js": 1,
  "test/journey-assistant-access.test.js": 6,
  "apps/app/screens/assistants/access-model.test.js": 2,
- "core/work/member-projects.test.js": 11
+ "core/work/member-projects.test.js": 11,
+ "core/work/member-files.test.js": 6
 }

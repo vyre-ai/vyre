@@ -67,3 +67,16 @@ test("accounts: default, remove and privacy are one call each; a refusal comes b
     { tool: "sessions.accounts.remove", input: { id: "a2" } },
   ]);
 });
+
+test("a team member can add Claude (her own login, a pasted code back); the owner's Claude stays on the Claude card", async () => {
+  const { addableFor, ADDABLE } = await import("./accounts-model.ts");
+  assert.deepEqual([...addableFor(true)], ["claude", "codex", "grok"]);
+  assert.deepEqual([...addableFor(false)], [...ADDABLE]);
+  assert.ok(!ADDABLE.includes("claude"), "the owner is not offered a second Claude sign-in");
+});
+
+test("a server that runs Claude on its own login says so in words with a next step", async () => {
+  const { serverCannotWords } = await import("./accounts-model.ts");
+  assert.match(serverCannotWords("on this machine Claude uses the login already on it (run claude and sign in there)") ?? "", /Ask the owner/);
+  assert.equal(serverCannotWords("some other failure"), null);
+});

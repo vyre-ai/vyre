@@ -797,6 +797,15 @@ export default {
     });
 
     // The stable id of an agent, for the modules that make grants for it (projects, the plugin agent): the module's own call, never a person's or a model's.
+    ctx.tool("agents.credentials", {
+      description: "The sign-in picked for an agent (its vault item, fallback key and budget) as a launch takes it: { auth, env, fallback, budget_usd }. For the team module, which starts a teammate's turn itself.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+      callers: ["module"],
+      run: async ({ agent }, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:team") throw Object.assign(new Error("an agent's launch credentials are for the team module only; start the agent with agents.ask instead"), { code: "not_allowed" });
+        return credentials(must(String(agent).toLowerCase()));
+      },
+    });
     ctx.tool("agents.uid", {
       description: "An agent's stable id (the kernel's grants name it, never the name): { uid }; given a uid, its name: { name }. For the projects, plugin-agent and vault modules.",
       input: { type: "object", properties: { name: { type: "string" }, uid: { type: "string" } } },

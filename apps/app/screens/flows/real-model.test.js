@@ -58,3 +58,14 @@ test("explain a run: the box's paragraph is the card's words, and nothing else d
   assert.equal(explainText(null), "");
   assert.equal(explainText({ explain: 5 }), "");
 });
+
+test("a member approves her own Flow and sends someone else's version for approval; an owner or admin approves any", async () => {
+  const { approvalPath } = await import("./real-model.js");
+  assert.equal(approvalPath({ role: "member", by: "per_bob", me: "per_bob" }), "approve");
+  assert.equal(approvalPath({ role: "member", by: { id: "per_bob" }, me: "per_ann" }), "propose");
+  assert.equal(approvalPath({ role: "member", by: "per_bob", me: "per_ann" }), "propose");
+  assert.equal(approvalPath({ role: "owner", by: "per_bob", me: "per_ann" }), "approve");
+  assert.equal(approvalPath({ role: "admin", by: "per_bob", me: "per_ann" }), "approve");
+  assert.equal(approvalPath({ role: "member", by: undefined, me: "per_ann" }), "approve", "an unknown author keeps Approve; the door still decides");
+  assert.equal(approvalPath({ role: undefined, by: "per_bob", me: "per_ann" }), "approve", "no role known: the door decides");
+});

@@ -839,7 +839,10 @@ export default {
             const filler = first ? await fillerOf(tm) : null;
             const projectSlug = await slugOf(req.project);
             try {
+              // The agent filling the teammate's role runs on the sign-in picked for it (as that agent's own launch does), so a member's request never falls back to the owner's login.
+              const creds = filler ? await use("agents.credentials", { agent: filler.name }).catch(() => null) : null;
               t = await use("threads.launch", { agent, agent_kind: "teammate", project: projectSlug, purpose: "teammate",
+                ...(creds ? { auth: creds.auth, ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}), ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}) } : {}),
                 prompt: wrapped, name: agent, ...(worktreeDir ? { cwd: worktreeDir } : {}),
                 ...(first ? { append: preamble({ ...tm, project_name: projectSlug, charter: charterCurrent(agent)?.text || null, filler_character: filler?.instructions || null }) } : { resume: tm.thread }),
                 ...(over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) }) });
