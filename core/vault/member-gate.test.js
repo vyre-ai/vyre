@@ -44,11 +44,14 @@ test("fails closed for a call that claims a person: an unreadable chain, or fact
   assert.equal((await service.call("vault.test", { caller: "cli", token: "gone" })).error.code, "denied", "a token that maps to no person is refused");
   assert.equal((await service.call("vault.test", { caller: "cli", firstParty: true })).data, "ran", "a call that claims no person (the owner's terminal, the daemon) is unchanged");
   for (const c of ["local", "capsule", "mcp", "harness", "deck", "mobile", "mcp:thread:t1", "mcp:agent:kit", "harness:thread:t1", "harness:agent:kit", "cli:agent:kit"]) assert.equal((await service.call("vault.test", { caller: c, firstParty: true })).data, "ran", `${c} on the owner's socket or listeners, claiming no one`);
-  // a REMOTE caller that claims no one must show a People session (the owner's paired device), or it is refused
+  // a REMOTE caller that claims no one is refused whatever session it shows: a People session proves a device signed in, not whose it is
   for (const c of ["device:abcdef", "web:aaaaaaaaaaaaaaaa", "setup:aaaaaaaaaaaaaaaa", "tailnet", "tailnet-guest:x", "space:bob@spc_x"]) {
     assert.equal((await service.call("vault.test", { caller: c })).error?.code, "denied", `${c} with no token, facts or session`);
-    assert.equal((await service.call("vault.test", { caller: c, person: { id: "ps_1", kind: "cookie" } })).data, "ran", `${c} with a People session (the owner's signed-in device)`);
+    assert.equal((await service.call("vault.test", { caller: c, person: { id: "ps_1", kind: "cookie" } })).error?.code, "denied", `${c} with a People session alone: a member's device holds one too`);
   }
+  // the owner's paired device arrives with the facts the daemon computes from its device row; they prove the owner and pass, and a People session beside them changes nothing
+  const ownerDevice = rig(kernelOf(() => ({ hops: [hop("person", OWNER)] })));
+  assert.equal((await ownerDevice.call("vault.test", { caller: "device:abcdef", person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device", person: OWNER } })).data, "ran", "a device whose facts name the owner passes");
   // facts or a token decide, a People session does not override them: a member's device with facts that prove a member is refused
   const memberFacts = rig(kernelOf(() => ({ hops: [hop("person", BOB)] })));
   assert.equal((await memberFacts.call("vault.test", { caller: "device:abcdef", person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device" } })).error?.code, "denied", "a device whose facts name a member is refused whatever session it shows");

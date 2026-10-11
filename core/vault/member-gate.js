@@ -45,12 +45,10 @@ export function gateTools(ctx) {
     const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (!claims) {
       if (NO_PERSON(caller)) return;
-      // A REMOTE caller (a device, a browser, a setup page, a tailnet node, another Space's peer) that claims no person must show a People session, the daemon's own sign-in of a device the OWNER paired
-      // (presence_people has no person column: its sessions are the owner's devices). A remote caller with neither is refused: nothing shows who it is.
-      if (REMOTE.test(caller)) {
-        if (meta && meta.person) return;
-        throw Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
-      }
+      // A REMOTE caller (a device, a browser, a setup page, a tailnet node, another Space's peer) that claims no one is refused, whatever session it shows. A People session proves a DEVICE signed in, not
+      // WHICH PERSON holds it: a member enrols a device key of their own and signs in with it exactly as the owner does. What shows a remote caller is the owner's is the daemon's facts about its device
+      // (core/daemon/index.js callerFacts: the device row names the owner), which arrive as kernelFacts and are checked above; without them nothing shows who it is.
+      if (REMOTE.test(caller)) throw Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
       // Every other unclaimed label reaches vyred only on the owner's own 0600 unix socket or through the owner's own listeners (their terminal, the Capsule, deck and mobile as the owner's listeners set
       // them, their local Claude and a thread or agent label on that socket): a member's session never arrives unclaimed (it carries its token), so there is no one else to keep out here.
       return;
