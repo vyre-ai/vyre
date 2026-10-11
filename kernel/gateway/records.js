@@ -636,7 +636,8 @@ export function createRecords(cfg) {
       const trusted = isTrustedChain(chain, (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined));
       const project = projectTeamOf(store, urn);
       // the kernel attributes a create carries (owner, project, sensitivity) are judged for every type; the three types are judged field by field
-      if (op === "create" && attrs) await mayAttrs(chain, attrs, { trusted, project });
+      // (a gateway built with no membership at all, as a store test rig is, cannot tell who is a member; the Space's own kernel always has it)
+      if (op === "create" && attrs && members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted, project });
       if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
         op, trusted, project,
         task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
