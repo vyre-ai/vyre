@@ -104,7 +104,7 @@ test("every row of the member door's table keeps only protected record types, na
   t.after(() => d.stop());
   for (const [door, row] of Object.entries(MEMBER_TOOLS)) {
     for (const type of row.types) assert.ok(MEMBER_BLOCKED_TYPES.has(type), `${door}: ${type} is not in MEMBER_BLOCKED_TYPES`);
-    assert.ok(Array.isArray(row.keys) && !row.keys.some(k => ["person", "agent", "space", "as", "project"].includes(k)), `${door}: its input keys never name the person, the agent, the project or the Space`);
+    assert.ok(Array.isArray(row.keys) && !row.keys.some(k => ["person", "agent", "space", "as", "project"].includes(k)), `${door}: its input keys are declared (an empty list is a row that takes no input) and never name the person, the agent, the project or the Space`);
     const def = /** @type {any} */ (d.registry).tools.get(row.tool);
     assert.ok(def && def.internal === true && def.reach === "modules" && def.crossSpace, `${door}: ${row.tool} is an internal tool for modules that declares crossSpace`);
   }
