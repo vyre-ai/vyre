@@ -780,8 +780,10 @@ test("gate apps: the Space's own address carries /sign/... to the apps' front fo
   const before = f.seen.length;
   for (const p of ["/", "/signature", "/s/abc", "/packs/js/form.js", "/key?v=130"]) await raw(port, req("GET", "alex.vyre.run", p));
   assert.equal(f.seen.length, before, "no other path of the Space's address reached the apps' front");
-  // another address under the same suffix is not the Space's
-  assert.deepEqual(await raw(port, req("GET", "bob.vyre.run", "/sign/_/s/abc")), NOT_FOUND === undefined ? null : await raw(port, req("GET", "bob.vyre.run", "/sign/_/s/abc")));
+  // another address is not the Space's
+  const mid = f.seen.length;
+  await raw(port, req("GET", "bob.vyre.run", "/sign/_/s/abc"));
+  assert.equal(f.seen.length, mid, "another Space's address is not carried");
   const none = await setup(t, { ingress: { hooks: () => null, share: () => null, apps: () => ({ port: f.port, hosts: ["docuseal.alex.vyre.run"] }), appsSuffix: SUFFIX } });
   const before2 = f.seen.length;
   const r = (await raw(none.port, req("GET", "alex.vyre.run", "/sign/_/s/abc"))).toString();
