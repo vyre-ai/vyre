@@ -6,7 +6,9 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { boot } from "../sessions/testing/boot.js";
+import { createRing, holdersOf } from "../../lib/chat-keys.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const OWNER = "per_" + "abcdefghijklmnopqrstuvwxyz", ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -131,9 +133,13 @@ test("the Drive's read tools are open to a model, but a model in a HOME chat (a 
   const { w, firm, lines } = await world(t);
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
-  const made = await w.tool("work.chat.create", { title: "Home chat", people: [], agents: [] });
+  // a chat as the app starts it: its device makes the chat's key ring
+  const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
+  const id = `chat_${crypto.randomUUID()}`;
+  const ring = createRing(id, holdersOf([{ device: "dev_test", agree: dev.getPublicKey().toString("base64url") }]));
+  const made = await w.tool("work.chat.create", { title: "Home chat", id, ring: ring.doc, people: [], agents: [] });
   assert.ok(!made.error, JSON.stringify(made.error));
-  const chat = String(made.data.chat);
+  const chat = String(made.data.chat || id);
   const sent = await w.tool("stream.send", { chat, text: `vyre files.drive.space.list {"space":"${firm.space}"}` });
   assert.ok(!sent.error, JSON.stringify(sent.error));
   let said = "";
