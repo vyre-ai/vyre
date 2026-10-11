@@ -662,6 +662,7 @@ export function createRecords(cfg) {
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
       try { log.append(chain, { type: "store.disagreed", sv: 1, subject: u, data: { operation: op, expected: expect, got, version: rec.version } }, { decision: d.decision }); } catch { /* the refusal stands */ }
       await finishTx();
+      { const A = merged || {}, B = rec.data || {}; const diff = [...new Set([...Object.keys(A), ...Object.keys(B)])].filter(k => JSON.stringify(A[k]) !== JSON.stringify(B[k])).map(k => `${k}: asked ${JSON.stringify(A[k])} got ${JSON.stringify(B[k])}`); console.error("DIAG store_disagreed", type, op, "deleted", Boolean(rec.deleted_at), "ver", rec.version, "base", base, diff.join(" | ").slice(0, 1500)); }
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
     try { emit(chain, intent, rec, before, d.decision, false); }
