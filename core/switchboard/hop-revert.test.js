@@ -36,12 +36,13 @@ test("a write that throws while a queued turn is handed over releases the drain 
     draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }), deps: { log() {} },
     write() { throw new Error("lent: the words may not go into a process on a computer"); },
+    dropQueuedChatTurn: (/** @type {string} */ id) => drained.push("notice"),   // the room is told the words were not sent
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
   assert.throws(() => Switchboard.prototype.drainRun.call(sb, "t", null, [{ id: 1, text: "x", surface: "s", uuid: "u", at: 1 }], null), /lent/);
   assert.equal(sb.draining.has("t"), false, "the lock is released");
-  assert.deepEqual(drained, ["t"], "and the rows behind it are drained again");
+  assert.deepEqual(drained, ["notice", "t"], "the room is told, and the rows behind it are drained again");
 });
 
 test("a hop whose turn ended before sendOnce resolved still drains the row behind it", async () => {
@@ -64,7 +65,7 @@ test("runQueuedOver past the revert wait puts the row back instead of judging it
   /** @type {any[]} */ const ran = []; /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
     reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Set(["t"]), once: new Map(), live: new Map([["t", { turn: null }]]),
-    db: { prepare: (/** @type {string} */ q) => ({ run: (/** @type {any[]} */ ...a) => { ran.push([q.slice(0, 40), a]); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
+    db: { prepare: (/** @type {string} */ q) => ({ run: (/** @type {any[]} */ ...a) => { ran.push([q.slice(0, 90), a]); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
