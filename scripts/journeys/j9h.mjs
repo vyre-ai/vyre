@@ -124,13 +124,15 @@ export default {
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
       await J.step("each member has their own session on the server and sees their own Chats", async () => {
-        const made = [];
+        const made = [], firstChatMs = /** @type {string[]} */ ([]);
         for (const p of people) {
           // the member's device makes the chat's key ring, as the app does (journeys/lib/chat.mjs startChat does the same for the owner): the server has no agreement point for a joined member until their device is opened
           const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
           const cid = `chat_${crypto.randomUUID()}`;
           const ring = createRing(cid, holdersOf([{ device: `dev_${p.name.toLowerCase()}`, agree: dev.getPublicKey().toString("base64url") }]));
+          const t0 = Date.now();
           const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes`, id: cid, ring: ring.doc }]);
+          firstChatMs.push(`${p.name} ${((Date.now() - t0) / 1000).toFixed(1)} s`);
           assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
           made.push(c.chat);
         }
@@ -139,7 +141,7 @@ export default {
           assert.ok(list.some((/** @type {any} */ x) => x.chat === made[n] && x.open === true), `${p.name} sees their own chat`);
           assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
         }
-        return `${people.length} members, each in their own chat`;
+        return `${people.length} members, each in their own chat; first chat.create: ${firstChatMs.join(", ")}`;
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
