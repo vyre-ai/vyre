@@ -6,6 +6,7 @@
 //   "readfile <path>"  asks the client for fs/read_text_file and says what came back (or the error)
 //   "writefile <path> <text>"  the same through fs/write_text_file
 //   "term <command>"   runs it through terminal/create and says its output
+//   "walk-term:<command>"  the same, found anywhere in the prompt, and says the exit code too
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
 //   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
@@ -100,6 +101,14 @@ async function prompt(id, blocks) {
       say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
       await call("terminal/release", { sessionId: session, terminalId });
     } catch (e) { say("term failed: " + e.message); }
+  } else if ((m = /walk-term:(.+)$/m.exec(t))) {
+    // a walk's command inside the session, found anywhere in what the agent was handed (a seed or catch-up block may come first)
+    try {
+      const { terminalId } = await call("terminal/create", { sessionId: session, command: "/bin/sh", args: ["-c", m[1].trim()] });
+      const ex = await call("terminal/wait_for_exit", { sessionId: session, terminalId });
+      say(`walk-term exit=${ex && ex.exitCode !== undefined ? ex.exitCode : "?"}: ` + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
+      await call("terminal/release", { sessionId: session, terminalId });
+    } catch (e) { say("walk-term failed: " + e.message); }
   } else if ((m = /^termline (.+)$/.exec(t))) {
     // Grok Build's shape: the whole command line in `command`, no args.
     try {
