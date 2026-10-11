@@ -99,7 +99,7 @@ export function createLentHome(o) {
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
   const nudge = (/** @type {string} */ device) => { const x = waiters.get(device); if (!x) return; clearTimeout(x.t); waiters.delete(device); x.res({ directives: directivesFor(device) }); };
   /** The ready computer of this person's to start a session on, or null: it beat lately and said nothing holds it back, both Offers stand, and the server could take the session back if the lid closed. The computer already running the session wins. */
-  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null) => {
+  const pickLender = (/** @type {string} */ person, /** @type {string} */ session, /** @type {string | null} */ folder = null, /** @type {boolean} */ again = false) => {
     const row = SESSION.test(session) ? book.get(session) : null;
     // a chat given a folder of a computer runs on the computer that has that folder, and needs no server to carry it on: it never goes there
     const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)) && (!folder || (l.folders || []).some(f => f.id === folder)));
@@ -109,7 +109,7 @@ export function createLentHome(o) {
       return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
     }
     // A chat is not started on a computer while the server could not carry it on if the lid closed: it would sit frozen on a sleeping Mac. It fails as a spawn that never started and runs on the box.
-    if (!canResume() || !SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server" && !row.allowMac)) return null;
+    if (!canResume() || !SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server" && !row.allowMac && !again)) return null;
     if (row && row.where === "mac") return (fresh.find(([d]) => d === row.device) || [null])[0];
     return fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
   };
@@ -145,16 +145,19 @@ export function createLentHome(o) {
     if (!r.changed) return r;
     lent.delete(String(session)); dropCalls(String(session)); owed.add(String(session));   // the thread stays until the server has carried the chat on (resumeOwed): the loader needs it
     previews.close(String(session));
-    pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
-    kickResume(String(session));
+    // The server's copy of the chat is made whole BEFORE the chat's process here is told it moved: that end is what starts the chat on the server, and it must find the lender's turns already written (it was racing the loader)
+    const carrying = kickResume(String(session));
+    if (carrying) await carrying.catch(() => {});
+    pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     return r;
   };
   /** Start the server's continuation of a session, once at a time; the caller does not wait for it (a slow continuation must not hold a lender's release or the sweep of the others). */
   const kickResume = (/** @type {string} */ session) => {
-    if (resuming.has(session)) return;
+    if (resuming.has(session)) return resuming.get(session);
     const p = resumeOwed(session).finally(() => { resuming.delete(session); });
     resuming.set(session, p);
+    return p;
   };
   const resumeOwed = async (/** @type {string} */ session) => {
     const row = book.get(session);
@@ -394,12 +397,18 @@ export function createLentHome(o) {
     async adopt(i) {
       const session = String(i && i.session), person = String(i && i.person);
       if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
-      if (book.get(session)) throw err("conflict", "that chat already has a place");
-      const device = pickLender(person, session);
+      // A chat that came back from a computer (its row says server, and the server has carried it on) may go out again: it is adopted afresh, from the server's whole turns, as the person's own ask to run there.
+      const had = book.get(session);
+      if (had && (had.person !== person || had.where !== "server" || owed.has(session) || resuming.has(session))) throw err("conflict", "that chat already has a place");
+      const device = pickLender(person, session, null, Boolean(had));
       if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
       const lines = Array.isArray(i.lines) ? i.lines : [];
       if (!lines.length) throw err("unavailable", "this chat has no whole turn to move yet");
-      return Promise.resolve(store.appendTranscript(HOME, session, lines.map((line, k) => ({ seq: k + 1, line: String(line) })))).then(() => {
+      // the home's store already holds the turns the computer ran before the chat came back: only what the server added since goes in
+      const held = had ? ((await Promise.resolve(store.getTranscript(HOME, session, 1, 1_000_000)).catch(() => [])) || []).length : 0;
+      if (held > lines.length) throw err("conflict", "the server's copy of this chat is shorter than the computer's: it cannot move");
+      return Promise.resolve(store.appendTranscript(HOME, session, lines.slice(held).map((line, k) => ({ seq: held + k + 1, line: String(line) })))).then(() => {
+        if (had) book.bringBack(session, person);
         const row = book.lend({ session, chat: i.chat || null, person, device, key: keys.get(device) || null });
         seeds.set(session, { native: String(i.native), count: lines.length });
         threads.set(session, String(i.thread));
