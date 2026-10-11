@@ -14,11 +14,14 @@ export function EmptyState({ title, body, action }: { title: string; body?: stri
   );
 }
 
-export function ErrorState({ title, reason, retry }: { title: string; reason?: string; retry?: () => void }) {
+/** A failed call or load: what happened, what to do about it (`recourse`) and the code to quote when asking for help. The words come from errorNote() (src/real/error-note.js). */
+export function ErrorState({ title, reason, retry, recourse, code }: { title: string; reason?: string; retry?: () => void; recourse?: string; code?: string }) {
   return (
     <View accessibilityRole="alert" className="items-center gap-s2 p-s6">
       <Text strong tone="err">{title}</Text>
       {reason ? <Text tone="muted" className="text-center">{reason}</Text> : null}
+      {recourse ? <Text className="text-center">{recourse}</Text> : null}
+      {code ? <Text tone="muted" className="text-center">{`Code: ${code}`}</Text> : null}
       {retry ? <Button size="sm" label="Try again" onPress={retry} /> : null}
     </View>
   );
