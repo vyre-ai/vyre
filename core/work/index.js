@@ -916,6 +916,7 @@ export default {
       internal: true, callers: ["module"],
       input: obj({ call: { type: "string", enum: ["persistent", "pin", "list", "get", "create"] }, input: { type: "object" } }, ["call"]),
       run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        kernelOf(); // no kernel wired: unavailable, with its next step, before anything about who may run this
         if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("denied", "only the team server's member door runs this");
         const run = memberRuns.get(`work.chat.${i.call}`);
         if (!run) throw fail("bad_input", "call is persistent, pin, list, get or create");

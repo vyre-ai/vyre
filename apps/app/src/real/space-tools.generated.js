@@ -155,6 +155,7 @@ export const TOOLS_WITH_SPACE = [
  "spaces.label",
  "spaces.members.add",
  "spaces.members.add-agent",
+ "spaces.members.computers",
  "spaces.members.extend",
  "spaces.members.list",
  "spaces.members.remove",
@@ -202,5 +203,14 @@ export const TOOLS_WITH_SPACE = [
  "wink.network.leave",
  "wink.offer.set",
  "wink.phone.open",
- "work.move.serve"
+ "work.move.serve",
+ "work.start-project",
+ "work.template.define",
+ "work.template.from-project",
+ "work.template.get",
+ "work.template.golive",
+ "work.template.install",
+ "work.template.library",
+ "work.template.list",
+ "work.template.test"
 ];
