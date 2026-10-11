@@ -2,7 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { baseRec, revertSettled, runQueuedOver } from "./asker-account.js";
+import { revertSettled, runQueuedOver } from "./asker-account.js";
 import { Switchboard } from "./index.js";
 
 test("revertSettled: true with no hop back, true once it finishes (or fails), false when it is still held open after the wait", async () => {
@@ -132,22 +132,33 @@ test("deliverRow writes the words under the asker's session, and tells the room 
   assert.deepEqual(log, [["write", "C-ONE", "per_carol"], ["told"]]);
 });
 
-test("a switch back that fails twice: tried twice, the room is told, the saved base stands in for the hop's, and a later try puts the thread back", async () => {
-  /** @type {any[]} */ const notes = []; let tries = 0, work = false;
+test("a switch back that fails twice leaves the record on the base with no live process, tells the room once, and starts a waiting row on the base; nothing is written into the hop's process", async () => {
+  /** @type {any[]} */ const events = []; /** @type {any[]} */ const sql = []; /** @type {string[]} */ const resumed = []; let stops = 0, tries = 0;
+  const hopProcess = { writes: [] };
   const sb = /** @type {any} */ ({
-    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), pendingBack: new Map(), reverting: new Map(),
-    record: () => ({ project: null, provider: "codex", account: "carols" }), live: new Map(), deps: { log() {} },
-    emit: (/** @type {string} */ type, /** @type {any} */ p) => notes.push([type, p.text]),
-    switchProvider: async () => { tries++; if (!work) throw new Error("no process"); },
+    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
+    live: new Map([["t", { turn: null, stopping: false, hopProcess }]]), deps: { log() {} },
+    record: () => ({ project: null, provider: "codex", account: "carols" }),
+    db: { prepare: (/** @type {string} */ q) => ({ get: () => ({ opts: JSON.stringify({ account: "carols", person: "per_carol", switchPerson: "per_carol", origin: "x" }) }), run: (/** @type {any[]} */ ...a) => { sql.push([q.slice(0, 40), a]); return { changes: 1 }; } }) },
+    emit: (/** @type {string} */ type, /** @type {any} */ p) => events.push([type, p.text]),
+    switchProvider: async () => { tries++; throw new Error("no process"); },
+    stop: async () => { stops++; sb.live.delete("t"); },
+    launch: async (/** @type {any} */ o) => { resumed.push(o.resume); },
+    turnEnded: () => { throw new Error("turnEnded must not run on a thread with no process"); },
   });
+  sb.resumeWaiting = Switchboard.prototype.resumeWaiting;
+  sb.db.prepare = ((orig) => (/** @type {string} */ q) => (/waiting|delivered_at IS NULL AND kturn/.test(q) ? { get: () => ({ n: 1 }) } : orig(q)))(sb.db.prepare);
   await Switchboard.prototype.revertOnce.call(sb, "t");
   assert.equal(tries, 2, "retried once");
-  assert.match(String(notes[0] && notes[0][1]), /Could not switch back to .*stays on/, "the room is told");
-  assert.equal(sb.pendingBack.get("t").account, "bobs", "the original base is kept");
-  assert.equal(baseRec(sb, "t").account, "bobs", "the next asker is judged on the saved base, not on the hop's account");
-  sb.retryBack = Switchboard.prototype.retryBack;
-  assert.equal(await sb.retryBack("t"), false, "still failing: the thread is not claimed to be back");
-  work = true;
-  assert.equal(await sb.retryBack("t"), true, "when the switch works the thread is back");
-  assert.equal(sb.pendingBack.has("t"), false);
+  const update = sql.find(r => /UPDATE threads_runs SET provider/.test(r[0]));
+  assert.ok(update, "the base is written back to the record");
+  assert.deepEqual(update[1].slice(0, 3), ["claude", "bobs", "opus"], "provider, account and model of the base");
+  const opts = JSON.parse(update[1][3]);
+  assert.deepEqual([opts.account, opts.person, opts.switchPerson], ["bobs", "per_bob", undefined], "nothing recorded says the thread is on the member's account");
+  assert.equal(stops, 1, "the hop's process is stopped");
+  assert.equal(sb.live.has("t"), false, "no live process");
+  assert.equal(events.filter(e => e[0] === "thread.text").length, 1, "the room is told once");
+  assert.match(String(events[0][1]), /session stopped while switching back/);
+  assert.deepEqual(resumed, ["t"], "a row already waiting starts the thread again on its base, as a restart would");
+  assert.deepEqual(hopProcess.writes, [], "and no queued words went into the hop's process");
 });

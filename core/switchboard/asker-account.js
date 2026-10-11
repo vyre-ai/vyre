@@ -11,7 +11,7 @@
  * @returns {Promise<{ provider: string, account: string, person: string | null } | null>} the one-turn target, or null when the thread's own account is theirs to use
  */
 export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
-  const rec = baseRec(sb, id);
+  const rec = sb.record(id);
   if (!rec || !kernelTurn || !kernelTurn.asker) return null;
   // Whether the asker is in the chat is the kernel's first word (a person who is not in it is refused as that, before anything about their sign-in is said).
   if (typeof sb.assertAsker === "function" && kernelTurn.chat) await sb.assertAsker(id, rec, kernelTurn);
@@ -125,7 +125,7 @@ const isOwner = (/** @type {any} */ sb, /** @type {string} */ owner, /** @type {
  * @param {any} sb @param {string} id the thread @param {string} provider @param {string | null} account @param {{ asker: string }} kt @param {{ provider: string, account: string, person: string | null } | null} own what askerOver gave
  */
 export async function chipOver(sb, id, provider, account, kt, own) {
-  const rec = baseRec(sb, id), cur = (rec && rec.provider) || "claude";
+  const rec = sb.record(id), cur = (rec && rec.provider) || "claude";
   if (account) return { provider, account, person: kt.asker };
   if (provider === cur) return own;
   const mine = rec ? await sb.accountFor({ provider, person: kt.asker, project: rec.project, agent: rec.agent }).catch(() => null) : null;
@@ -181,8 +181,3 @@ export function libraryPerson(sb, rec, o) {
   return o.person ? NOBODY : /** @type {any} */ (undefined);
 }
 
-/** The thread's record as its base is: after a switch back that failed twice, the saved provider and account stand in for the hop's, so the next asker is judged on the thread's own base. @param {any} sb @param {string} id */
-export function baseRec(sb, id) {
-  const rec = sb.record(id), saved = sb.pendingBack && sb.pendingBack.get(id);
-  return rec && saved ? { ...rec, provider: saved.provider, account: saved.account } : rec;
-}

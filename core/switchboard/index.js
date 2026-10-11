@@ -485,7 +485,6 @@ export class Switchboard {
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
     /** @type {Set<string>} threads with a queued turn being handed over now: one drain at a time, so two never start two hops (drainDone releases it) */ this.draining = new Set();
-    /** @type {Map<string, any>} the saved base of a thread whose switch back failed (twice): its provider and account, kept until a later turn's end switches it back; the next hop and the next asker are judged on THIS, not on the hop's state */ this.pendingBack = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
     /** A thread's rollover in flight (./rollover.js): a person's message to it waits for this, never racing a second start. @type {Map<string, Promise<any>>} */
@@ -1176,20 +1175,31 @@ export class Switchboard {
     this.endAnnouncedTurn(id, project);
   }
 
-  /** A switch back that failed twice is tried again before the next turn is judged: true when the thread is on its base again (or never left it). @param {string} id */
-  async retryBack(id) {
-    const back = this.pendingBack.get(id);
-    if (!back) return true;
-    try { await this.switchProvider(id, { provider: back.provider, account: back.account, model: back.model, person: back.person, reason: "back" }); this.pendingBack.delete(id); return true; } catch (e) { this.deps.log(`threads: switch back of ${id.slice(0, 8)} failed again: ${/** @type {Error} */ (e).message}`); return false; }
+  /** A thread that went dormant with queued chat turns waiting (a switch back that failed) starts again on its own base, the way a restart does: the leading row's asker opens its own session. @param {string} id */
+  resumeWaiting(id) {
+    if (this.closing || this.live.has(id)) return;
+    let waiting; try { waiting = this.db.prepare("SELECT 1 AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL AND kturn IS NOT NULL").get(id); } catch { return; }
+    if (waiting) void this.launch({ resume: id }).catch((/** @type {Error} */ e) => this.deps.log(`threads: could not start the queued chat messages of ${id.slice(0, 8)} (${e.message})`));
   }
 
   /** The turn announced as begun for words that did not run ends here: the stream's member is not left running. @param {string} id @param {string | null} project */
   endAnnouncedTurn(id, project) { this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project); }
 
+  /** Open a queued turn's kernel session within a bound (10 s): false past it, or when it could not open. A session that completes AFTER the bound is ended again (its row was dropped; nobody's turn runs on it). @param {string} id @param {any} rec @param {{ chat?: string, asker?: string }} turn @param {number} [ms] */
+  async renewCapped(id, rec, turn, ms = 10_000) {
+    /** @type {any} */ let timer;
+    const renewing = this.renewKernelSession(id, rec, turn).then(x => x, () => false);
+    const first = await Promise.race([renewing, new Promise(r => { timer = setTimeout(() => r("capped"), ms); })]);
+    clearTimeout(timer);
+    if (first !== "capped") return Boolean(first);
+    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id); });
+    return false;
+  }
+
   /** A queued row that needs no hop (the thread already is on the asker's account): its words go in as a plain drained turn, under their asker. @param {string} id @param {any} r @param {any} kt */
   async deliverRow(id, r, kt) {
     const rec = this.record(id), project = rec ? rec.project : null;
-    const ok = rec ? await Promise.race([this.renewKernelSession(id, rec, { chat: kt.chat, asker: kt.asker }).then(x => x, () => false), new Promise(res => setTimeout(() => res(false), 10_000))]) : false;
+    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker }) : false;
     if (!ok) { this.dropQueuedChatTurn(id, [r], project); return; }
     this.write(id, r.text, { uuid: r.uuid || crypto.randomUUID(), askedBy: kt.asker || null, images: imagesFrom(r.images) || null, ...(r.note ? { note: r.note } : {}) });
   }
@@ -2281,6 +2291,9 @@ export class Switchboard {
    *   - a queued hop (kt.over): runQueuedOver waits for the hop back, checks the target, tells the stream the turn began, runs the hop; a hop that needs no move delivers the words plainly (deliverRow);
    *     a hop that cannot start says so, ends the announced turn and drains the rest; past the revert wait the row is put back once, dropped in words the second time;
    *   - a plain turn: the asker's session opens within 10 s (else the row is dropped in words), the words are written; a write that throws is logged, told to the room and drained past;
+   *   - a hop back that failed twice: the base is written back, the hop's process stopped, the room told once, and rows waiting resume on the base (resumeWaiting), judged as any resume;
+   *   - a session that opens after the 10 s bound is ended again (renewCapped); a hop row that needs no hop is delivered plainly (deliverRow); a write or an asker check that throws is logged and told, never thrown;
+   *   - a plain send with no chat turn waits for the revert and the drain lock (revertSettled), is refused in words past the wait, and never rides a finished turn's session;
    *   - every exit releases the lock (drainDone) and re-drains only when the thread is idle with no hop pending and no hop back in flight.
    * @param {string} id @param {any} st @param {string|null} project
    */
@@ -2322,7 +2335,7 @@ export class Switchboard {
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void Promise.race([this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false), new Promise(r => setTimeout(() => r(false), 10_000))]).then(ok => { try { if (ok) { deliver(); this.draining.delete(id); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); if (this.draining.has(id)) this.drainDone(id, true); } }); return; } }
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok) { deliver(); this.draining.delete(id); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); if (this.draining.has(id)) this.drainDone(id, true); } }); return; } }
     try { deliver(); } catch (e) { this.deps.log(`threads: could not write a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); }   // (logged here, not thrown into whatever ended the turn)   // a write that throws (lent, not live) releases the lock and the rows behind it still run
     this.draining.delete(id);
   }
@@ -2589,8 +2602,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = this.pendingBack.get(id) || { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };   // (a failed switch back keeps the thread's real base here)
-    this.pendingBack.delete(id);
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
     const { seed } = await this.transferSeed(id, rec, provider, movesAccount(rec, provider, acct));
     // One hop at a time: claimed in the same tick it is checked, so a second ask never overwrites (or later reverts) the first's.
     if (this.once.has(id)) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
@@ -2629,10 +2641,19 @@ export class Switchboard {
       try { await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" }); failed = null; break; } catch (e) { failed = e; }
     }
     if (failed) {
-      // The switch back failed twice: the thread stays where the hop left it, and everyone is told so; the saved base is used by the next hop and the next asker, and the switch is tried again at the end of that turn.
-      this.pendingBack.set(id, once.back);
+      // The switch back failed twice. The thread is NOT left live on the hop's account (a queued row would be written into the member's process, on the member's login): its base goes back into the record,
+      // anything of the hop still running is stopped, and the room is told once. The thread is then dormant: the next message, or the resume of a row already waiting, is an ordinary resume on the
+      // thread's own base, judged by the code that is always used.
       this.deps.log(`threads: could not switch ${id.slice(0, 8)} back: ${failed.message}`);
-      this.emit("thread.text", { message: "vyre", text: `Could not switch back to ${providerName(once.back.provider)}; this chat stays on ${to} until someone switches it. The next message is judged as if it were back, and the switch is tried again then.`, done: true, notice: true }, id, rec ? rec.project : null);
+      const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+      if (once.back.account) kept.account = once.back.account; else delete kept.account;
+      if (once.back.person) kept.person = once.back.person; else delete kept.person;
+      delete kept.switchPerson;
+      this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
+      await this.stop(id).catch(() => {});
+      this.emit("thread.text", { message: "vyre", text: `The chat's session stopped while switching back to ${providerName(once.back.provider)}. The next message starts it again.`, done: true, notice: true }, id, rec ? rec.project : null);
+      this.resumeWaiting(id);
+      return;
     }
     const now = this.live.get(id);
     this.reverting.delete(id);   // the process is swapped: the drain below is the first that may run
@@ -4347,7 +4368,6 @@ export default {
         // the previous hop is fully back before this person's turn is judged; if it is not within the wait, nothing is judged on the wrong base: the send is refused in words and the stream sends it again
         const settled = await revertSettled(sb, i.thread);
         if (!settled) throw Object.assign(new Error("This chat is still handing over the previous turn. Nothing was sent: send it again in a few seconds."), { code: "busy" });
-        if (!(await sb.retryBack(i.thread))) throw Object.assign(new Error("This chat could not be switched back to its own account yet. Nothing was sent: send it again in a moment."), { code: "busy" });
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
