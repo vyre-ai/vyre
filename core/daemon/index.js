@@ -570,7 +570,13 @@ async function startLocked(opts, root, p, release) {
     // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
     // A provider's model names for one API-key account, from the inference door (the switchboard's threads.models-fetch asks): the owner's chain, names only, never the key.
     registry.deps.listModels = async (/** @type {{ provider: string, account: any }} */ q) => /** @type {any} */ (kernel.gateway).model.listModels({ chain: await personChainFor(kernel.id.owner), provider: q.provider, account: q.account });
-    registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
+    // One actor.added event per agent, however many times this is asked (addActor appends one each time): an agent that is already an actor of the Space (the last actor.added for it newer than any actor.removed) is left alone.
+    registry.deps.agentActor = async (/** @type {string} */ agent) => {
+      const id = String(agent);
+      const lastOf = (/** @type {string} */ type) => { let n = 0; for (const e of /** @type {any} */ (kernel).log.read({ type })) if (e.data && e.data.actor && e.data.actor.kind === "agent" && e.data.actor.id === id) n = Math.max(n, Number(e.seq)); return n; };
+      if (lastOf("actor.added") > lastOf("actor.removed")) return;
+      await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id, space: kernel.id.space }, {});
+    };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.

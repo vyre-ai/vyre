@@ -8,7 +8,7 @@ import http from "node:http";
 import { SessionLog } from "./log.js";
 import { serve, serveSSE } from "./server.js";
 import { forViewer } from "./viewer.js";
-import { holds } from "./testkit.js";
+import { holds } from "../../test/holds.js";
 import { createAdapter, pipe } from "./adapter.js";
 
 const SECRET_REF = "seal:abc-9f31", SECRET_VALUE = "123-45-6789";

@@ -9,6 +9,7 @@ import { createKernel } from "./index.js";
 import { canonical, sha256 } from "./core/canonical.js";
 import { startSealer } from "./seal/client.js";
 import { tmp } from "./seal/testing.js";
+import { leaks } from "../test/holds.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", REC = `vyre://${SPACE}/matter/m_1`;
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
@@ -57,7 +58,7 @@ test("sealDetect: one owner-visible event per answered call, naming the module a
   const ev = k.log.read({ type: "seal.detect" });
   assert.equal(ev.length, 2);
   assert.deepEqual(ev.map(e => e.data), [{ module: "memory", count: 1 }, { module: "memory", count: 2 }]);
-  assert.equal(JSON.stringify(ev).includes("6789"), false, "no candidate in the log");
+  assert.equal(leaks(ev, "6789"), false, "no candidate in the log");
   for (let i = 0; i < 3; i++) await mem.sealDetect(owner, `99${i}-00-1111`);
   assert.equal(await code(mem.sealDetect(owner, "444-55-6666")), "rate_limited");
   // Another module has its own bucket: the count is by the registry's name.

@@ -132,7 +132,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Tools: [20](tools.md#agents), 6 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
-- Needs daemon: `credentials`
+- Needs daemon: `credentials`, `agentActor`
 - Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"tags","kind":"text","label":"Tags"}]}]}`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
