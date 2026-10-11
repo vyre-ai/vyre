@@ -26,7 +26,10 @@ async function world(t) {
   const d = w.d;
   const firm = await d.kernel.spaces.host({ owner: OWNER, name: "Harlow Legal" });
   const owner = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
-  for (const [person, role] of [[ANA, "member"], [BEN, "member"], [ADA, "admin"], [TOM, "temp"]]) await firm.gateway.grants.setRole(owner, { person, role }, { presence: proof() });
+  for (const [person, role] of [[ANA, "member"], [BEN, "member"], [ADA, "admin"], [TOM, "temp"]]) {
+    const m = role === "temp" ? { person, role, scope: [`vyre://${firm.space}/chat-record/*`], expires: Date.now() + 3600_000 } : { person, role };
+    await firm.gateway.grants.setRole(owner, m, { presence: proof() });
+  }
   const assistant = { kind: "agent", id: "assistant", space: firm.space };
   await firm.gateway.grants.addActor(owner, assistant, { presence: proof() }).catch(() => {});
   const svc = /** @type {any} */ (d.registry.modules.get("work")).handle.peerService({ space: firm.space, kernel: firm.kernel, registry: d.registry });
