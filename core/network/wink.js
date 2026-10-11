@@ -26,7 +26,7 @@ export function registerWinkNetwork(ctx) {
   const owner = (caller, meta, what) => {
     readers(caller, what);
     const c = String(caller);
-    if ((meta && meta.agent) || agentClaim(c) || ["hook", "onboard"].includes(c)) throw fail("denied", `${what} is the owner's, from the Capsule, the Deck or this computer's terminal`);
+    if ((meta && meta.agent) || agentClaim(c) || ["hook", "onboard"].includes(c)) throw fail("denied", `${what} is the owner's, from Lumen, the Deck or this computer's terminal`);
   };
   /** The Wink module's answer, its error thrown as the error it is. @param {Promise<any>} call */
   const via = async call => {

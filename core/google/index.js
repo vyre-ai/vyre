@@ -490,7 +490,7 @@ export default {
     // ---- the Capsule ----
 
     ctx.tool("google.find", {
-      description: "Find events and messages for the Capsule (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }.",
+      description: "Find events and messages for Lumen (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }.",
       input: obj({ q: { type: "string", description: "words, or what's next, today, tomorrow, email from someone, email about a topic" }, limit: int }, ["q"]),
       run: safe(async ({ q, limit }) => {
         const all = accounts.all();
@@ -510,7 +510,7 @@ export default {
     });
 
     ctx.tool("google.open", {
-      description: "A Capsule action on a google.find row: `as: \"open\"` (default) gives the event's or message's url and a line about it; `as: \"reply\"` puts an empty reply to the message in Gmail's drafts, which goes nowhere.",
+      description: "A Lumen action on a google.find row: `as: \"open\"` (default) gives the event's or message's url and a line about it; `as: \"reply\"` puts an empty reply to the message in Gmail's drafts, which goes nowhere.",
       input: obj({ id: str, as: { type: "string", enum: ["open", "reply"] } }, ["id"]),
       run: safe(async ({ id, as = "open" }) => {
         const r = parseRowId(id);

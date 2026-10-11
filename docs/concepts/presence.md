@@ -37,7 +37,7 @@ A moment tool called without a yes answers 403:
 | Form | Where | What happens |
 |---|---|---|
 | A card | every client | `approvals.ask { moment, request }` makes a card; your phone shows it and signs it; the client calls again with `x-vyre-approval: <id>`. A card is single use and bound to the exact call and the asking device. |
-| Touch ID or a terminal code | the Mac or a computer of your own | `approvals.local-yes { id }` shows the system dialog (or writes a code to your login terminal that you type back). The CLI, the Capsule and the Vyre app do this first. A server with no screen of its own leaves the card for your phone. |
+| Touch ID or a terminal code | the Mac or a computer of your own | `approvals.local-yes { id }` shows the system dialog (or writes a code to your login terminal that you type back). The CLI, Lumen and the Vyre app do this first. A server with no screen of its own leaves the card for your phone. |
 | A signed yes | a device holding a key enrolled with the sealing process | the device signs `sign` and sends it as `x-vyre-yes`. Single use. A software key counts only on a development build. |
 
 A yes for `vault.reveal`, `vault.copy` or `vault.totp` may ask to be **reused for five minutes** by that device. During the window the same device calls those three tools with no proof; nothing else is covered, no agent ever is, and a restart ends it. There are no 30-minute sessions and no terminal window any more.

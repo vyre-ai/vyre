@@ -635,7 +635,7 @@ export class Connections {
     if (!r) return "";
     const what = `${cut(r.label, 80)} (${cut(r.provider, 40)}, ${cut(r.account, 120)})`;
     if (!surface) return `Change ${what}`;
-    const who = { capsule: "the Capsule", chat: "Claude in chat threads", agents: "your agents", phone: "your phone" }[String(surface)] || cut(surface, 20);
+    const who = { capsule: "Lumen", chat: "Claude in chat threads", agents: "your agents", phone: "your phone" }[String(surface)] || cut(surface, 20);
     return `Let ${who} use ${what}`;
   }
 

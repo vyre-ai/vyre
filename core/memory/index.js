@@ -1462,7 +1462,7 @@ export default {
       description: "Answer questions about the user's past work or life from past sessions and personal facts, with sources, or abstain. Ask before claiming not to remember.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean", description: "true emits memory.thinking { id, stage } as each step starts, then memory.answered { id, abstained, limited }" }, id: { type: "string", maxLength: 64, description: "your id for those stream events; else a new one, returned in the reply" },
-        screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
+        screen: { type: "object", description: "what the person is looking at (Lumen, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
       run: async (input, extra = {}) => {
         const { caller } = extra;
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];

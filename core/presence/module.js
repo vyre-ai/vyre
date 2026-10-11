@@ -42,7 +42,7 @@ export default {
 
     ctx.tool("presence.keys", {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
-      description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
+      description: "Lumen keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
       // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
       run: async () => (presence.coreLink ? presence.coreLink.keys() : presence.keys()),
@@ -53,8 +53,8 @@ export default {
       // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
       // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
       callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
-      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
-      presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
+      description: "Enroll a Lumen key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
+      presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Lumen key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
         device: str, core_proof: str },
         ["kind", "public_key"]),
@@ -103,7 +103,7 @@ export default {
       // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
       // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
       callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
-      description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
+      description: "Remove an enrolled Lumen key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
       run: async ({ id }) => {
@@ -115,23 +115,23 @@ export default {
 
     ctx.tool("presence.capsule.pin", {
       effect: "write",
-      description: "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by the Capsule's own enrolled presence key (method \"capsule\"), the same identity a paired Capsule already proves with, not a new one -- so only the real Capsule, not a model's shell with a same-uid file write, can ever set this.",
-      presence: { summary: async () => "Pin this Mac's Capsule build" },
+      description: "Pins the Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by Lumen's own enrolled presence key (method \"capsule\"), the same identity a paired Lumen already proves with, not a new one -- so only the real Lumen, not a model's shell with a same-uid file write, can ever set this.",
+      presence: { summary: async () => "Pin this Mac's Lumen build" },
       input: obj({ cdhash: str }, ["cdhash"]),
       run: async ({ cdhash }, meta = {}) => {
         // presence:{} above accepts any of touchid/passkey/device/capsule (whichever methods
         // this Mac has enrolled); narrowed here to exactly the identity this claim is ABOUT --
         // the Capsule proving it is itself, not the person separately vouching for it by some
         // other means, which would prove nothing about which binary is asking.
-        if (meta.presence?.method !== "capsule") throw Object.assign(new Error("only the Capsule's own enrolled key pins a Capsule build"), { code: "denied" });
+        if (meta.presence?.method !== "capsule") throw Object.assign(new Error("only Lumen's own enrolled key pins a Lumen build"), { code: "denied" });
         // The calling binary's own signature, read by vyred from the socket (core/daemon), never
         // from the input. An ad-hoc build has no signing identity, so a same-uid program could
         // pass as it: refused until the Capsule is signed with a stable identity (the lead's
         // decision, 28 Sep).
         const sig = meta.codeSignature;
-        if (!sig || !sig.cdhash) throw Object.assign(new Error("Vyre could not read this Capsule's code signature, so it cannot pin it. Pin from the Capsule app on this Mac."), { code: "denied" });
-        if (!sig.signed || sig.adhoc) throw Object.assign(new Error("This Capsule is ad-hoc signed, so Vyre cannot tell it apart from another app on this Mac. Reinstall it with `vyre capsule install`, which signs it, then try again."), { code: "denied" });
-        if (sig.cdhash !== cdhash) throw Object.assign(new Error("A Capsule can only pin its own build."), { code: "denied" });
+        if (!sig || !sig.cdhash) throw Object.assign(new Error("Vyre could not read this Lumen build's code signature, so it cannot pin it. Pin from the Lumen app on this Mac."), { code: "denied" });
+        if (!sig.signed || sig.adhoc) throw Object.assign(new Error("This Lumen build is ad-hoc signed, so Vyre cannot tell it apart from another app on this Mac. Reinstall it with `vyre capsule install`, which signs it, then try again."), { code: "denied" });
+        if (sig.cdhash !== cdhash) throw Object.assign(new Error("Lumen can only pin its own build."), { code: "denied" });
         return presence.pinCapsule(cdhash);
       },
     });
@@ -166,7 +166,7 @@ export default {
       presence: { summary: async input => {
         if (!input.cc) return "Sign this browser in for 30 days";
         let at = "an app";
-        try { const u = new URL(String(input.return || "")); at = u.hostname === "127.0.0.1" ? "the vyre command line and Capsule on this Mac" : u.host; } catch {}
+        try { const u = new URL(String(input.return || "")); at = u.hostname === "127.0.0.1" ? "the vyre command line and Lumen on this Mac" : u.host; } catch {}
         return `Sign ${at} in on this device for 30 days`;
       } },
       callers: ["deck", "capsule"],

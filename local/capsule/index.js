@@ -31,7 +31,7 @@ export default {
     ctx.tool("capsule.status", {
       effect: "read",
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller
-      description: "Whether the Capsule can run on this machine: macOS, the native app's source, whether it is built, and autostart.",
+      description: "Whether Lumen can run on this machine: macOS, the native app's source, whether it is built, and autostart.",
       input: { type: "object", properties: {} },
       run: async () => ({ mac: process.platform === "darwin", native: native(), native_built: fs.existsSync(appPath(ctx.paths.root)),
         autostart: Boolean(ctx.config.capsule && ctx.config.capsule.autostart) }),
@@ -40,7 +40,7 @@ export default {
     // ask for it); it reports here when that changes, and `vyre doctor` reads the last report.
     ctx.tool("capsule.report", {
       effect: "write",
-      description: "The Capsule app says whether Control twice works, and if not, why. Emits capsule.hotkey.",
+      description: "Lumen app says whether Control twice works, and if not, why. Emits capsule.hotkey.",
       input: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" }, message: { type: "string" } } },
       callers: ["capsule", "local", "cli"],
       run: async ({ ok, message }) => {
@@ -50,7 +50,7 @@ export default {
     });
     ctx.tool("capsule.show", {
       effect: "write",
-      description: "Open the Capsule on this Mac (or hide or toggle it). It opens ready to type; it does not answer anything by itself.",
+      description: "Open Lumen on this Mac (or hide or toggle it). It opens ready to type; it does not answer anything by itself.",
       input: { type: "object", properties: { action: { type: "string", enum: ["show", "hide", "toggle"] } } },
       run: async ({ action = "show" }) => {
         const e = ctx.events.emit("capsule.requested", { action });
@@ -65,7 +65,7 @@ export default {
       const child = spawn(process.execPath, [vyre, "capsule", "--hidden"], { detached: true, stdio: "ignore",
         env: { ...process.env, VYRE_SOCKET: ctx.paths.socket, VYRE_HOME: ctx.paths.root } });
       child.unref();
-      ctx.log(`starting the native Capsule (pid ${child.pid})`);
+      ctx.log(`starting the native Lumen (pid ${child.pid})`);
     }
     return { async stop() {} };
   },

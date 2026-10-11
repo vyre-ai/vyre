@@ -169,7 +169,7 @@ export function macSide(ctx, seam = {}) {
     if (human || PERSON_ONLY.has(String(tool))) {
       const person = saved.person;
       if (!person || !isPerson(caller)) {
-        return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
+        return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, Lumen or the phone` } };
       }
       extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
       // A human-only tool that is one of the three moments needs the person's yes: no proof is made here (0.3.1 has no device-key header); the box names what must be approved and the yes goes by a card
@@ -556,7 +556,7 @@ export function macSide(ctx, seam = {}) {
   let signing = null;
   ctx.tool("link.signin", {
     effect: "write",
-    description: "Sign this Mac's command line and Capsule in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to open; you confirm with your passkey on the box's page.",
+    description: "Sign this Mac's command line and Lumen in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to open; you confirm with your passkey on the box's page.",
     callers: ["cli", "local", "capsule"],
     input: { type: "object", properties: {} },
     run: async () => {
@@ -650,7 +650,7 @@ export function macSide(ctx, seam = {}) {
 
   ctx.tool("link.signout", {
     effect: "write",
-    description: "Sign this Mac out on the box: its command line and Capsule are only a device there again.",
+    description: "Sign this Mac out on the box: its command line and Lumen are only a device there again.",
     callers: ["cli", "local", "capsule"],
     input: { type: "object", properties: {} },
     run: async () => {

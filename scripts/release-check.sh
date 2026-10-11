@@ -210,13 +210,13 @@ grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_r
 grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"
 # The Capsule zip is retired: the Mac installs from npm and builds the Capsule there.
 if grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" >/dev/null 2>&1 || tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Vyre-mac\.sha256$'; then
-  fail "the retired Capsule zip is still referenced: $(grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" 2>/dev/null | tr '\n' ' ')"
+  fail "the retired Lumen zip is still referenced: $(grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" 2>/dev/null | tr '\n' ' ')"
 fi
 # /start is served as committed: nothing between the checkout and the site rewrote it.
 if git -C "$repo" rev-parse --verify HEAD >/dev/null 2>&1; then
   git -C "$repo" diff --quiet HEAD -- site/start || fail "site/start differs from what is committed"
 fi
-ok "_redirects sends /box and /download/mac; no Capsule zip; /start is as committed"
+ok "_redirects sends /box and /download/mac; no Lumen zip; /start is as committed"
 
 if [ "$LIVE" = 1 ]; then
   step "live at $base"

@@ -131,7 +131,7 @@ Lumen signed ad hoc is a new identity to macOS after each rebuild (an npm update
 
 Click Lumen's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open it again. Option-Space opens it meanwhile; it needs no permission.
 
-### "the Capsule is not installed: vyre capsule install"
+### "Lumen is not installed yet. Build it with vyre capsule install"
 
 `vyre up` found no Lumen source to build on this Mac, or `vyre doctor` found no built app in `~/.vyre/capsule`. Run `vyre capsule install`.
 

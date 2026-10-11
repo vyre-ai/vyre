@@ -804,7 +804,7 @@ export default {
     "A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's",
     "own is refused, and in 0.2 an added module may not say \"replaces\".",
     "In the box's container, the host restarts vyred: docker compose restart vyre.",
-    "--view prints frames for the Capsule and the phone (docs/reference/cli-json.md).",
+    "--view prints frames for Lumen and the phone (docs/reference/cli-json.md).",
   ].join("\n"),
   run: (/** @type {string[]} */ args) => moduleCommand(args),
 };

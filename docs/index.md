@@ -15,7 +15,7 @@ Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out.
 The fastest path, in order:
 
 1. [Install](get-started/install.md): put Vyre on a Linux server and your Mac. From the Mac it is one command.
-2. [Your first day](get-started/first-day.md): open the Capsule, start a thread in a project, launch an agent, store a secret, find something from last week.
+2. [Your first day](get-started/first-day.md): open Lumen, start a thread in a project, launch an agent, store a secret, find something from last week.
 
 On a Mac, the install starts here:
 
@@ -31,7 +31,7 @@ Vyre is not on npm yet, so the package comes from vyre.run. `vyre up` asks where
 | Section | For | What is in it |
 | --- | --- | --- |
 | [Get started](get-started/install.md) | users | Install, onboarding, the first day, fixes for common failures. |
-| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Vyre app, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
+| [Using Vyre](using/capsule.md) | users | One page per surface and feature: Lumen, the Vyre app, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
 | [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, your private network, presence, the security floor, modules. |
 | [Build on Vyre](build/module-contract.md) | builders, agents | The module contract, tools and events, writing a module, the MCP hub. |
 | [Reference](reference/cli.md) | everyone | Generated from the code: every [command](reference/cli.md), [tool](reference/tools.md), [event](reference/events.md), [config key](reference/config.md) and [module](reference/modules.md). |

@@ -216,7 +216,7 @@ test("presence: capsule and device rows always store alg -7; old rows are refuse
   };
   const old = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("capsule", "old-capsule", ed.privateKey, true) });
   assert.equal(old.ok, false);
-  assert.match(old.message, /re-enroll the Capsule's key/);
+  assert.match(old.message, /re-enroll Lumen's key/);
   assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "old-phone", phone.privateKey) })).ok, true, "a filled-in phone row still proves");
   // A device row whose stored key isn't P-256, whatever its alg says: the phone's own wording.
   const bad = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "ed-phone", ed.privateKey, true) });

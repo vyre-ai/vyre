@@ -41,7 +41,7 @@ export default {
         return emit(keys, { kind: "table", title: "Keys", empty: "No keys enrolled yet",
           columns: [{ key: "id", label: "Id" }, { key: "kind", label: "Kind" }, { key: "label", label: "Label" }, { key: "created", label: "Created" }], rows: keys });
       }
-      if (!keys.length) { out(dim("  no keys enrolled · the Capsule enrolls one at first run, the Deck with vyre presence code")); return 0; }
+      if (!keys.length) { out(dim("  no keys enrolled · Lumen enrolls one at first run, the Deck with vyre presence code")); return 0; }
       for (const k of keys) {
         const when = k.created ? new Date(k.created).toISOString().slice(0, 10) : "";
         out(`  ${bold(String(k.id))} ${k.kind || ""} ${k.label ? k.label + " " : ""}${dim(when)}`);

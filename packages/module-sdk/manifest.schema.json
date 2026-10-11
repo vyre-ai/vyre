@@ -51,7 +51,7 @@
         "screen": { "type": "object", "description": "A screen in the design language: { v: 2, layout, blocks, forms?, surfaces? }. Blocks come from the catalogue (lib/views/blocks.js); data is plain, never code." },
         "summary": { "type": "object", "description": "Counts and one small chart: { tool, input?, map: { cards: [{ label, path }], chart?: { kind: bar | line, rows, label, value } } }." },
         "forms": { "type": "object" }
-      } }, "description": "The screens this module describes, drawn by Vyre in its own components on the app and the Capsule (never module code in Vyre's window): a list (with detail and actions), a board, a summary or a form, by id. Maps name fields in a tool's JSON by dotted path. A sidebar entry for one is { kind: \"module\", module, screen: <view id> }. shows.capsule's `view:<id>` entries are the older name for the same thing." },
+      } }, "description": "The screens this module describes, drawn by Vyre in its own components on the app and Lumen (never module code in Vyre's window): a list (with detail and actions), a board, a summary or a form, by id. Maps name fields in a tool's JSON by dotted path. A sidebar entry for one is { kind: \"module\", module, screen: <view id> }. shows.capsule's `view:<id>` entries are the older name for the same thing." },
     "setupTools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$" }, "x-message": "must be a list of tool names like \"relay.setup\"", "description": "Tools of this module the setup channel may call before the person has signed in. Built in only: an added module that declares it fails to load. The relay reads it to build the setup-channel allowlist." },
     "does": {
       "type": "object",
@@ -135,7 +135,7 @@
         },
         "cli": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "deprecated": true, "description": "Deprecated (ADR 0047): use does.commands." },
         "streams": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "WebSocket streams. Built in only in 0.2." },
-        "notices": { "type": "array", "x-status": "planned", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "Notice kinds it raises, rendered from needs.list by push, the Capsule, the Deck and the phone, instead of a fixed map." }
+        "notices": { "type": "array", "x-status": "planned", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "Notice kinds it raises, rendered from needs.list by push, Lumen, the Deck and the phone, instead of a fixed map." }
       }
     },
     "settings": {

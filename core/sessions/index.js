@@ -102,7 +102,7 @@ const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: 
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
 const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
-const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
+const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (Lumen's quick answer, Vyre IQ)" };
 
 export default {
   async start(ctx) {
@@ -200,7 +200,7 @@ export default {
       }, PEOPLE);
 
     tool("sessions.prompt.preview", "Preview the system prompt a session would start with for an agent and project, and how its levels combine. Excludes Vyre's own launch text.",
-      { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"], description: "capsule: the Capsule's quick answer prompt (Vyre IQ), with no facts." } } },
+      { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"], description: "capsule: Lumen's quick answer prompt (Vyre IQ), with no facts." } } },
       async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
@@ -802,7 +802,7 @@ export default {
     });
 
     ctx.tool("sessions.prompt.compose", {
-      description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
+      description: "The system prompt for a session starting now: the environment brief, then the levels around Vyre's own launch text, then the project's own context (context, for a driver with no SessionStart hook). purpose \"capsule\" is Lumen's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
       input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str }, provider: str, context: str, artifacts_dir: str, zone: str, space_zone: str, now: { type: "number" }, contacts: { type: "array", items: { type: "object" } } } },
       run: async i => i.purpose === "capsule"
         ? (r => ({ ...r, text: `${r.text}\n\n${timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: zoneFrom(i.zone, zoneFrom(i.space_zone, "UTC")), space: zoneFrom(i.space_zone, "") || null, contacts: Array.isArray(i.contacts) ? i.contacts : [] })}` }))(composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") }))

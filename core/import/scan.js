@@ -66,7 +66,7 @@ export function sessionFiles(root) {
 export function notSuggested(cwd, { quick = null, ask = null, isDev = () => false } = {}) {
   if (!cwd) return "the folder it ran in is unknown";
   if (quick && (cwd === quick || cwd.startsWith(quick + path.sep))) return "Vyre's own quick sessions";
-  if (ask && (cwd === ask || cwd.startsWith(ask + path.sep))) return "the Capsule's own questions";
+  if (ask && (cwd === ask || cwd.startsWith(ask + path.sep))) return "Lumen's own questions";
   if (/^\/(?:tmp|private\/tmp|var\/folders)\//.test(cwd)) return "a temporary folder";
   return null;
 }

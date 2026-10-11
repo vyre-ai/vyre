@@ -8,11 +8,11 @@ The user ran `/vyre $ARGUMENTS`.
 - No arguments or `status`: call `tools_call system_info`, `tools_call projects_of` with the current folder, and
   `tools_call agents_list`, then say in at most three lines what this machine runs, which project this
   folder is in, and what the assistant and each agent is doing. If `gate_held` or `tools_call threads_asks`
-  has anything, add one line: how many things need the user, and that the Deck or the Capsule
+  has anything, add one line: how many things need the user, and that the Deck or Lumen
   answers them.
 - `ask <agent> <text>`: call `agents_ask` with `{"agent": "<agent>", "text": "<text>"}` and show
   the reply as the agent wrote it, under its name. If it came back with a permission question
-  instead, show the question and say the user answers it in the Deck, the Capsule or
+  instead, show the question and say the user answers it in the Deck, Lumen or
   `vyre threads`. With no text, ask what to say. With no agent, call `tools_call agents_list` and show the
   names.
 - `send <session> <text>`: `<session>` is a thread id, its first 8 characters, or its name. Call

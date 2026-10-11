@@ -1044,7 +1044,7 @@ const run = {
     if (t.status === "idle") {
       const r = await tool("threads.stop", { thread: t.id });
       if (!r) return 1;
-      out(dim("  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit"));
+      out(dim("  handed over from vyred; a message from the Deck or Lumen brings it back there once you exit"));
     }
     return resume({ id: t.id, cwd: t.cwd, label }, { project: t.project || undefined });
   },

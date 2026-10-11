@@ -87,11 +87,11 @@ The fakes themselves:
 
 The rule from the spec still holds: anything that talks to Claude Code or a network is also exercised for real once before it merges. A fake proves the logic, not the integration.
 
-The suite also runs on Linux. Where Node has no Argon2id (before 24.7), the vault tests' cheap password key uses scrypt at its test floor instead (`TEST_KDF` in `core/vault/testing.js`), and the tests of the real Capsule helpers skip off macOS.
+The suite also runs on Linux. Where Node has no Argon2id (before 24.7), the vault tests' cheap password key uses scrypt at its test floor instead (`TEST_KDF` in `core/vault/testing.js`), and the tests of the real Lumen helpers skip off macOS.
 
 ## Dialogs
 
-A test must never raise anything on the screen: a Touch ID prompt, a keychain prompt, a browser tab, the Capsule. `dialogsAllowed()` in `core/config/dialogs.js` is the one check, and the code that could raise one asks it first. It returns false:
+A test must never raise anything on the screen: a Touch ID prompt, a keychain prompt, a browser tab, Lumen. `dialogsAllowed()` in `core/config/dialogs.js` is the one check, and the code that could raise one asks it first. It returns false:
 
 - when `VYRE_NO_DIALOGS=1`, always;
 - under `node --test` (it sees `NODE_TEST_CONTEXT`, which child processes inherit), unless `VYRE_TEST_DIALOGS=1` is set by a person at the machine running one test on purpose;

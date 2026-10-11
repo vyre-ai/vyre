@@ -231,7 +231,7 @@ export async function diagnose(deps = {}) {
 
   // --------------------------------------------------------------- this machine
   const capsule = role === "box" || process.platform !== "darwin" ? Promise.resolve(null) : (async () => {
-    const labelCap = "The Capsule";
+    const labelCap = "Lumen";
     // The native app, built on this Mac into the Vyre home (capsule-native.js).
     const app = (deps.capsuleApps || [capsuleApp(config.paths().root)]).find(p => fs.existsSync(p));
     if (!app) return failed("capsule", labelCap, "not installed", "vyre capsule install");
@@ -320,7 +320,7 @@ export async function diagnose(deps = {}) {
 
 /** Every check's id and short label, in the order diagnose runs them. */
 export const IDS = ["vyred", "identity", "space-link", "path", "relay", "door", "storage", "clock", "paired", "passkey", "claude", "capsule", "modules", "recall", "vyre-on-path", "install", "always-on", "filevault"];
-const LABELS = ["vyred", "Signed in to Vyre", "Link to your space", "Path to your server", "Relay", "Server door", "Storage", "Clock", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size", "Comes back after a power cut", "FileVault"];
+const LABELS = ["vyred", "Signed in to Vyre", "Link to your space", "Path to your server", "Relay", "Server door", "Storage", "Clock", "Paired", "Passkey", "Claude on the box", "Lumen", "Every module started", "Search", "The vyre on PATH", "Install size", "Comes back after a power cut", "FileVault"];
 
 /**
  * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
@@ -353,7 +353,7 @@ async function live() {
 
 export default {
   name: "doctor", order: 12, usage: "vyre doctor [--json] [--repair]",
-  summary: "check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix",
+  summary: "check Vyre, your link, the relay, your devices, passkey, pairing, Claude and Lumen, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {

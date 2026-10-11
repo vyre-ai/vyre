@@ -4363,7 +4363,7 @@ export default {
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # and @ tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too. An account chip (kind account, id codex, or codex:<account> when a provider has several) runs this one turn on that provider: it gets the session's memory and files, the reply names it, and the session stays on its own provider. A person's surface only. Refused in plain words, with no fallback, when that account is signed out or out of usage." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
-        model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
+        model: { type: "string", description: "Switch the thread to this model first (as threads.model): Lumen's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       (sendHandler = async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;

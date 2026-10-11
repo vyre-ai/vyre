@@ -1951,7 +1951,7 @@ const HELP = [
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
   ["autobackup [status|enrol|run] | restore --drill", "daily automatic backups, and a drill that proves they restore"],
   ["--json", "on any command: the tool's {data} or {error} as one line; exit 3 presence, 4 locked"],
-  ["--view --stdin", "for the Capsule, chat and the phone: frames; a secret comes piped in with --stdin, else exit 2"],
+  ["--view --stdin", "for Lumen, chat and the phone: frames; a secret comes piped in with --stdin, else exit 2"],
 ];
 
 function help() {

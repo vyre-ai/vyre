@@ -155,7 +155,7 @@ vyre/
     commands/              /vyre slash commands
     mcp/                   the Vyre MCP server (tools Claude can call)
   local/                   Mac-only modules
-    capsule/               the Capsule                             (workstream: capsule)
+    capsule/               Lumen                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
   apps/app/                the Vyre app (Expo); vyred serves its web build at /app/
   modules/                 first-party optional modules (hands-desktop, hands-chrome)

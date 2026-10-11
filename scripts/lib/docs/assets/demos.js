@@ -119,7 +119,7 @@
     var input = h("input", {
       type: "text", autocomplete: "off", spellcheck: "false", placeholder: "Ask, or @agent",
       role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": listId,
-      "aria-label": "Capsule demo: ask, or @ an agent, project or thread",
+      "aria-label": "Lumen demo: ask, or @ an agent, project or thread",
     });
     var chip = h("span", { class: "vd-chip", hidden: true });
     var hint = h("span", { class: "vd-hint" });

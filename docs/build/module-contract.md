@@ -60,7 +60,7 @@ gives the same answer with no dependencies, and a test holds every manifest in t
 | `needs` | `vault` | vault items it fetches with `ctx.vault.fetch` |
 | `teaches` | `memory` | kinds of fact it hands the curator with `ctx.memory.teach` |
 
-The loader does not act on `shows`. Surfaces read it through `GET /v1/modules`: the Capsule reads `shows.capsule` (`results:<tool>` and `action:<tool>` keys). The Vyre app lists modules in Settings but does not read `shows.deck` yet, and `vyre <module> <tool>` from `shows.cli` is not built; both come with the slots in ADR 0033.
+The loader does not act on `shows`. Surfaces read it through `GET /v1/modules`: Lumen reads `shows.capsule` (`results:<tool>` and `action:<tool>` keys). The Vyre app lists modules in Settings but does not read `shows.deck` yet, and `vyre <module> <tool>` from `shows.cli` is not built; both come with the slots in ADR 0033.
 
 ## What the loader checks
 
@@ -183,7 +183,7 @@ Every call runs these checks, in order:
 | the caller's kind is in `callers` | `denied` | 403 |
 | a guest from another network is not calling a presence tool | `denied` | 403 |
 | the input matches the schema | `bad_input` | 400 |
-| the floor's rules allow it, for any caller but you at the CLI, `local`, the Vyre app or the Capsule (see [the security floor](../concepts/floor.md#where-the-floor-lives)) | `denied` | 403 |
+| the floor's rules allow it, for any caller but you at the CLI, `local`, the Vyre app or Lumen (see [the security floor](../concepts/floor.md#where-the-floor-lives)) | `denied` | 403 |
 | a person proved presence, for a presence tool and a caller that is not a module | `presence_required` | 403 |
 | a Touch ID proof was asked for where Vyre may raise no dialog (under tests, or a home other than `~/.vyre`) | `no_dialog` | 403 |
 | `run` succeeds | the thrown code, or `failed` | 500 |

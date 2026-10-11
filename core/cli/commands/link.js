@@ -147,10 +147,10 @@ export default {
       const r = await call("link.signin", {});
       if (r.error) return fail(r);
       if (json()) return emit(r.data, { kind: "card", title: "Confirm with your passkey", state: "wait", fields: [{ label: "Open", value: String(r.data.url) },
-        { label: "Then", value: "this Mac's command line and Capsule can answer and approve on the box for 30 days" }] });
+        { label: "Then", value: "this Mac's command line and Lumen can answer and approve on the box for 30 days" }] });
       openUrl(r.data.url);
       out(`  confirm with your passkey on your box's page: ${bold(r.data.url)}`);
-      out(dim(`  This Mac's command line and Capsule can then answer and approve on the box for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
+      out(dim(`  This Mac's command line and Lumen can then answer and approve on the box for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
       // At a terminal, wait for the passkey and say how it went; a script gets the link and goes.
       if (!process.stdout.isTTY) return 0;
       const expires = await signedIn(r.data.expires, { before: had });

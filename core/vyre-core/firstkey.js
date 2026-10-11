@@ -71,17 +71,17 @@ const PROOF_SKEW = 2 * 60_000;
  */
 export function enrollCapsule({ db, presence, now = Date.now }, input) {
   const no = (/** @type {string} */ message, code = "presence_required") => Object.assign(new Error(message), { code });
-  if (!input || input.kind !== "capsule" || (input.alg !== undefined && input.alg !== -7)) throw no("a server's Capsule key is a Secure Enclave key (P-256, alg -7)", "bad_input");
+  if (!input || input.kind !== "capsule" || (input.alg !== undefined && input.alg !== -7)) throw no("a server's Lumen key is a Secure Enclave key (P-256, alg -7)", "bad_input");
   if (!fingerprintOf(input.public_key)) throw no("that is not a P-256 public key (base64url SPKI)", "bad_input");
   const proof = parse(String(input.proof || ""));
-  if (!proof || proof.method !== "device" || !proof.key || !proof.sig) throw no("the Capsule key's enrolment is signed by the setup key: a device proof is needed");
+  if (!proof || proof.method !== "device" || !proof.key || !proof.sig) throw no("the Lumen key's enrolment is signed by the setup key: a device proof is needed");
   const body = { kind: "capsule", name: input.name, public_key: input.public_key, alg: -7 };
   db.exec("BEGIN IMMEDIATE");
   try {
     const row = db.prepare("SELECT used, key_id, capsule_done FROM core_first_key WHERE id = 1").get();
     const keys = presence.keys();
     if (!row || !row.used || !row.key_id) throw no("no first key has been taken, so there is nothing to hand over from");
-    if (row.capsule_done) throw no("the Capsule key was already taken for this server");
+    if (row.capsule_done) throw no("the Lumen key was already taken for this server");
     if (now() - Number(row.used) > FIRST_KEY_TTL) throw no("the hour of the first key is over");
     if (keys.length !== 1 || keys[0].id !== row.key_id) throw no("the setup key is no longer vyre-core's only key: enroll with a proof from a key it has");
     if (String(proof.key) !== row.key_id) throw no("that proof is not from the setup key");
