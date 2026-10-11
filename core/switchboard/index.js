@@ -2427,9 +2427,7 @@ export class Switchboard {
       }
       // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
-      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
-      // the chat is on the server only because another person's turn had to run: this is its own person again, so it goes back to their computer (when ready) before the turn starts
-      if (!(st && st.turn)) await lentReturn(this, id, st, kernelTurn.asker);
+      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);   if (!(st && st.turn)) await lentReturn(this, id, st, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
     if (!kernelTurn) { const stL = this.live.get(id); if (stL && lentBlocks(this, id, stL, askedBy)) { await lentYield(this, id, stL, askedBy); return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author }); } } if (!this.live.has(id)) {
