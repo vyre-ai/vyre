@@ -11,7 +11,7 @@ import { Readable } from "node:stream";
 import { start } from "../core/daemon/index.js";
 import { COOKIE } from "../core/presence/person.js";
 import { tempHome, present, pairDevice } from "./helpers.js";
-import { MEMBER_REFUSAL } from "../core/vault/member-gate.js";
+import { MEMBER_REFUSAL, STARTED } from "../core/vault/member-gate.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -28,6 +28,7 @@ for (const claimed of [true, false]) {
     const before = d.kernel.id.owner;
     if (claimed) await d.kernel.adoptOwner("per_" + "q".repeat(26), { from: d.kernel.id.owner });
     const owner = d.kernel.id.owner;
+    assert.equal(STARTED.withKernel, true, "the vault module started with the kernel handle on a kernel-run daemon (else the gate would treat a team server as having no kernel and stay open)");
     const chainOf = (/** @type {string} */ person) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" });
     await d.kernel.gateway.grants.setRole(chainOf(owner), { person: BOB, role: "member" }, { presence: { method: "stand-in" } });
     pairDevice(d, OWNER_DEV, owner);

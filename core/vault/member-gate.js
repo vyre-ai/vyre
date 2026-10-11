@@ -23,10 +23,13 @@ export const MEMBER_ALLOWED = new Set([]);
 /** The names of the tools that were registered through the gate (so a test can tell one that slipped past). */
 export const GATED = new Set();
 
+/** What the last gateTools() saw of the kernel at the module's start (a test reads it on a kernel-on daemon: a boot-order slip would leave a team server open). */
+export const STARTED = { withKernel: /** @type {boolean | null} */ (null) };
+
 export const MEMBER_REFUSAL = "this is the owner's vault: ask the owner to share the item with you, or add your own key in your account settings";
 
 /** The labels of the owner's own 0600 unix socket (core/daemon/index.js: a socket only the owner's Linux user can open), exactly: a thread- or agent-bound label is not one of them. */
-const SOCKET_LABELS = new Set(["cli", "local", "capsule", "mcp", "harness"]);
+const SOCKET_LABEL = /^(?:cli|local|capsule|mcp|harness)$/;
 
 /** Every person hop of a call's chain, from the kernel. Throws when the chain cannot be read. @param {any} k @param {any} meta @returns {Promise<string[]>} */
 async function ids(k, meta) {
@@ -45,6 +48,7 @@ export function gateTools(ctx) {
   // A daemon fact, fixed when the module starts: the kernel is wired before any module starts (core/daemon/index.js sets registry.deps.kernelFor, then starts the registry). A home that ran no kernel then has
   // no members; one that did and loses its handle later refuses, it does not open.
   const kernelRuns = Boolean(ctx.kernel);
+  STARTED.withKernel = kernelRuns;
   const refuse = () => Object.assign(new Error(MEMBER_REFUSAL), { code: "denied" });
   const check = async (/** @type {string} */ name, /** @type {any} */ meta) => {
     if (MEMBER_ALLOWED.has(name)) return;
@@ -59,7 +63,7 @@ export function gateTools(ctx) {
     const caller = String((meta && meta.caller) || "");
     const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
     if (!claims) {
-      if (NO_PERSON(caller) || SOCKET_LABELS.has(caller)) return;
+      if (NO_PERSON(caller) || SOCKET_LABEL.test(caller)) return;
       throw refuse();
     }
     let persons;
