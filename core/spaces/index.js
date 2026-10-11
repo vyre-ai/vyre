@@ -2377,6 +2377,8 @@ export default {
       try { r = await dir.resolve(label, { pin: /** @type {any} */ (await kv.get(`person-pin/${label}`)) || undefined }); } catch { return null; }
       if (!r.ok || r.kind !== "person" || r.id !== id || !Array.isArray(r.ops)) return null;
       await kv.put(`person-pin/${label}`, r.pin);
+      // The directory says this name is this person's: remember it. A member who joined through the kernel's invite is otherwise never named here (spaces.person.learn has no caller), and stateOfPerson, so the key-agreement read, finds no list for her.
+      await kv.put(`person-name/${id}`, label);
       // ONE clock for "young" (the sealing process uses the same): the signed time the entry was added to the list (the op's own), against this server's clock. Not when this server first saw it.
       const at = Date.now(), st = await C.verifyChain(r.ops, { now: at });
       return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
