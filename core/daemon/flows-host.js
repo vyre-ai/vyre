@@ -34,7 +34,7 @@ export function whenStoreReady(store, f) {
 }
 
 /**
- * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
+ * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, taskWake?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
  * }} o
  */
 export function createFlowsHost(o) {
@@ -341,6 +341,17 @@ export function createFlowsHost(o) {
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
+    // The one grant an agent teammate needs to work a task it was given: tasks.read and tasks.work on THAT task, made by this module for the agent the assigner gave it to, for a few hours, and ended when the task is handed in
+    // or flagged. The kernel limits it to the `task` prefix and these two actions (a module's `mints`); the doer rule still makes it the agent's own task and the chain still includes the assigner.
+    const taskWorkGrants = () => {
+      const h = k.kernelFor({ name: "task-wake", needs: { kernel: { actions: [], mints: [{ prefix: "task", actions: ["tasks.read", "tasks.work"] }] } } });
+      return Object.freeze({
+        make: (/** @type {string} */ agent, /** @type {string} */ task, /** @type {number} */ until) => h.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: agent, space } }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${task}` }, conditions: { when: { expires: until } }, source: `task-wake:${task}`, reason: "an agent teammate works the task it was given" }),
+        end: (/** @type {string} */ task) => h.mint.end({ source: `task-wake:${task}`, reason: "the task was handed in or flagged" }),
+      });
+    };
+    // An agent teammate does the task it is given (core/daemon/task-wake.js): in the home's own Space, where the agents and their teams are.
+    if (o.taskWake && o.agentsSpace && o.agentsSpace() === space) { try { o.taskWake.attach({ space, gw, chains: k.chains, ownerChain: owner, ownerId: ownerOf, grantWork: taskWorkGrants(), subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("task-wake", {}, cb) }); } catch (err) { log(`flows ${space}: task wake did not start (${/** @type {Error} */ (err).message})`); } }
     return host;
   }
 
@@ -348,6 +359,6 @@ export function createFlowsHost(o) {
     attach,
     get: (/** @type {string} */ space) => spaces.get(space) || null,
     spaces: () => [...spaces.keys()],
-    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); if (o.calendarSync) o.calendarSync.stop(); },
+    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); if (o.calendarSync) o.calendarSync.stop(); if (o.taskWake) o.taskWake.stop(); },
   });
 }

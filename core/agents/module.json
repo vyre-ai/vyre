@@ -48,6 +48,11 @@
         "reach": "modules"
       },
       {
+        "name": "agents.work",
+        "summary": "run one task for an agent on the giving person's own AI account (the daemon's task wake only)",
+        "reach": "modules"
+      },
+      {
         "name": "agents.threads",
         "reach": "anyone",
         "effect": "read"

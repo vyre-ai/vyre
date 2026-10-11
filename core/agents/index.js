@@ -642,6 +642,25 @@ export default {
     });
 
 
+    // A task given to an agent teammate, done in a side thread on the account of the person who gave it (G08, core/daemon/task-wake.js). Never the agent's own credentials, never another member's account:
+    // a person with no usable account makes this refuse with account_required, and the daemon turns that into a stuck task that names the next step.
+    ctx.tool("agents.work", {
+      description: "Run one task for an agent as a side thread on the giving person's own AI account, in the task's project. For the daemon's task wake.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["agent", "prompt", "project", "person"], properties: { agent: { type: "string" }, prompt: { type: "string" }, project: { type: "string" }, person: { type: "string" }, owner: { type: "boolean", description: "the person owns this home, so the machine's own login is theirs" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the daemon's task wake starts a task for an agent"), { code: "denied" });
+        const a = must(i.agent);
+        if (a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
+        const acct = await ctx.call("sessions.accounts.resolve", { provider: "claude", person: i.person, project: i.project, agent: a.name });
+        // The home's own login (no account added yet) is the home owner's and nobody else's: it is never a stand-in for another member's account.
+        const own = !acct.error && acct.data && (acct.data.synthetic || !acct.data.id) && i.owner === true;
+        if (!own && (acct.error || !acct.data || acct.data.synthetic || !acct.data.id)) throw Object.assign(new Error(`no AI account for ${i.person}: they connect one in Settings, then the task runs`), { code: "account_required" });
+        const t = await use("threads.launch", { agent: a.name, agent_kind: a.kind, append: preamble(a), scope: await scope(a), prompt: i.prompt, purpose: "job", once: true, project: i.project, name: a.name, ...(own ? {} : { account: String(acct.data.id), person: i.person }) });
+        return { agent: a.name, thread: t.id };
+      },
+    });
+
     // ---- Subagents (R031-07) ---------------------------------------------------------------------------------------------------------------------------------------------------------------
     // `agents.spawn` starts a short-lived helper for one job. It is the PARENT agent in a thread of its own (same credentials, same projects, the same kernel actor), so it can hold nothing the parent does
     // not; its tool list can only be shorter (a list it names must be inside the parent's own, and a helper never starts helpers). It is announced with the same `summon.*` events teammates use, so the
