@@ -32,6 +32,9 @@ async function world(t) {
   }
   const assistant = { kind: "agent", id: "assistant", space: firm.space };
   await firm.gateway.grants.addActor(owner, assistant, { presence: proof() }).catch(() => {});
+  // everyone who speaks to the assistant has a Claude sign-in of their own (the rule: a member's turn never runs on the owner's or the machine's login); the fake claude is the provider
+  let uid = 90000;
+  for (const person of [ANA, BEN, ADA, TOM]) d.registry.deps.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, scope_projects, scope_agents, is_default, uid, added, updated, pending, signed_in_at, person) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(`acct_${person.slice(4)}`, "claude", `${person} Claude`, "login", "\"*\"", "\"*\"", 1, uid++, Date.now(), Date.now(), 0, Date.now(), person);
   const svc = /** @type {any} */ (d.registry.modules.get("work")).handle.peerService({ space: firm.space, kernel: firm.kernel, registry: d.registry });
   const chainOf = (/** @type {string} */ person) => firm.kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "relay" });
   return { w, d, firm, svc, lines, as: (/** @type {string} */ person, /** @type {string} */ call, input = {}) => svc[call](chainOf(person), input) };
