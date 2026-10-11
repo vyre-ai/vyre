@@ -177,7 +177,7 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
 async function beyondBound(f, id, version, v, chain, kernel) {
   if (MEMBER_APPROVAL === "own-any") return "";
   const flow = v.flow || {};
-  const trigger = flow.trigger && flow.trigger.kind ? String(flow.trigger.kind) : flow.trigger ? String(flow.trigger) : "manual";
+  const trigger = flow.trigger && typeof flow.trigger === "object" ? String(flow.trigger.on || flow.trigger.kind || "manual") : flow.trigger ? String(flow.trigger) : "manual";
   if (trigger !== "manual") return `it starts by itself (${trigger}), and an unattended Flow is an owner's or admin's to approve`;
   const card = await f.flows.tools["flows.card"](chain, { id, version });
   const e = card && card.effects ? card.effects : {};
