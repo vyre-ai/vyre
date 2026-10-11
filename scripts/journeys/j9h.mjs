@@ -99,7 +99,6 @@ export default {
       await J.step(P, async () => {
         // a person adds the assistant the template names (Settings, Assistants) before starting from it: the library template's first tasks are done by "research", which a new Space does not have (every app walk does this first)
         await whenStoreIsUp(w, "agents.create", { name: "research", kind: "agent", projects: [], instructions: "Finds and reads the documents." });
-        await whenStoreIsUp(w, "spaces.members.add-agent", { space: team.space, agent: "research" });   // the task's doer is the agent as an actor of the Space ("research is not in this space yet")
         const lib = await whenStoreIsUp(w, "work.template.library", {});
         const first = (lib.templates || [])[0];
         assert.ok(first, "the library offers a template");
@@ -148,6 +147,16 @@ export default {
           assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
         }
         return `${people.length} members, each in their own chat; first chat.create: ${firstChatMs.join(", ")}`;
+      }, { needs: [SIGN], owner: "chat" });
+      // what a member pays for the first call after being idle (the invitee stream is reused only for a short while): a trivial call before and after two idle minutes, each member
+      await J.step("a member idle for two minutes: what their next call costs", async () => {
+        const timed = async (/** @type {any} */ p) => { const t = Date.now(); await p.joined.call("grants.members.list", []); return (Date.now() - t) / 1000; };
+        const warm = [];
+        for (const p of people) warm.push(await timed(p));
+        await new Promise(r => setTimeout(r, 150_000));
+        const cold = [];
+        for (const p of people) cold.push(await timed(p));
+        return people.map((p, n) => `${p.name} warm ${warm[n].toFixed(1)} s, after 150 s idle ${cold[n].toFixed(1)} s`).join("; ");
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
