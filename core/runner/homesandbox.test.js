@@ -11,7 +11,7 @@ import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig, checkEntri
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
-import { programDirs } from "../../lib/agent-sandbox.js";
+import { programDirs, PARTIAL_NOTICE } from "../../lib/agent-sandbox.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hs-"));
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
@@ -314,6 +314,14 @@ test("settings path: a valid folder is in the profile, the secret folders stay d
   }
 });
 
+test("the partly sandboxed notice names the real writable settings folder", () => {
+  assert.match(PARTIAL_NOTICE, /Partly sandboxed: this assistant keeps its own settings folder/);
+  assert.match(PARTIAL_NOTICE, /That folder is the real one and this session can write it/);
+  assert.match(PARTIAL_NOTICE, /hooks or tool servers/);
+  assert.match(PARTIAL_NOTICE, /your own Grok later runs outside Vyre/);
+  assert.match(PARTIAL_NOTICE, /Look through that folder before you start Grok outside Vyre/);
+});
+
 test("settings path: the self-test can use the settings folder and cannot read another provider's folder, a personal file or Vyre's key", { skip: SKIP, timeout: 90_000 }, async t => {
   const r = await rig(t);
   const grok = path.join(r.home, ".grok");
@@ -330,6 +338,20 @@ test("settings path: the self-test can use the settings folder and cannot read a
   assert.notEqual(res.results.keyFile, "READ");
   assert.notEqual(res.results.personal, "READ");
   assert.notEqual(res.results.personal, "LISTED");
+});
+
+test("settings path: the personal-file probe writes its own file when the home has no Documents, Desktop or Downloads", { skip: SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  for (const name of ["Documents", "Desktop", "Downloads"]) fs.rmSync(path.join(r.home, name), { recursive: true, force: true });
+  const grok = path.join(r.home, ".grok");
+  fs.mkdirSync(grok);
+  fs.writeFileSync(path.join(grok, "config.toml"), "own\n");
+  const probes = { ...r.probes };
+  delete probes.homeFile;
+  const res = await selfTest(base(r, { agent: ownAgent([grok], []), probes }));
+  assert.equal(res.ok, true, JSON.stringify(res.failures));
+  assert.ok(res.results.personal && res.results.personal !== "READ" && res.results.personal !== "LISTED", String(res.results.personal));
+  assert.equal(fs.readdirSync(r.home).some(n => n.startsWith(".vyre-probe-")), false, "the probe file is removed");
 });
 
 test("env allow-list: planted credentials never reach the plan, and only a name the caller lists is passed", async t => {

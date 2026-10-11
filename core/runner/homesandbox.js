@@ -375,7 +375,21 @@ export async function selfTest(o) {
   const ownPaths = new Set(mounts.flatMap(m => [m.real, m.dest, m.given]));
   const givenForeign = (Array.isArray(o.agent?.foreignSettings) ? o.agent.foreignSettings : []).filter(p => typeof p === "string" && p);
   const foreignDirs = mounts.length ? [...new Set(givenForeign.map(p => realOr(p) || path.resolve(p)).filter(p => !ownPaths.has(p)))] : [];
-  const personal = !mounts.length ? "" : (o.probes.homeFile || ["Documents", "Desktop", "Downloads"].map(n => path.join(real(o.home), n)).find(c => { try { return fs.statSync(c).isDirectory(); } catch { return false; } }) || "");
+  // A file of our own in the home, outside the settings folder, so the personal probe has a target when the home has no Documents, Desktop or Downloads. Removed when this check ends.
+  let personalMade = "";
+  let personal = "";
+  if (mounts.length) {
+    if (o.probes.homeFile) personal = o.probes.homeFile;
+    else {
+      const made = path.join(real(o.home), `.vyre-probe-${rnd}`);
+      try { fs.writeFileSync(made, "probe\n", { flag: "wx" }); }
+      catch (e) { return { ok: false, failures: [`the personal-file probe could not be created (${e.code || "error"}). Check that this account can write its home, then start the session again.`], results: null }; }
+      personalMade = made;
+      personal = made;
+    }
+  }
+  const dropPersonal = () => { if (!personalMade) return; const f = personalMade; personalMade = ""; try { fs.rmSync(f, { force: true }); } catch { /* a leftover probe file is one hidden name in the home */ } };
+  try {
   const probes = { ...o.probes, mustNotWrite, addrPorts, direct: o.platform === "darwin" ? "1.1.1.1" : "", ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || []), ...mounts.map(m => m.dest)], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : (o.platform === "darwin" && o.proxy?.port ? o.proxy.port : 0), hostTmp: o.platform === "darwin" ? hostTmpProbe : "", launchLabel: o.platform === "darwin" ? launchLabel : "", launchMarker: o.platform === "darwin" ? launchMarker : "", proxyToken: o.proxy?.token || "", foreignDirs, personal };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
@@ -407,7 +421,7 @@ export async function selfTest(o) {
   const agent = await agentCheck;
   try { if (agentChild && agentChild.exitCode === null) agentChild.kill("SIGKILL"); } catch {}   // nothing of a failed check is left running
   const probeMs = Date.now() - t0;
-  let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
+  let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { dropPersonal(); return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
   if (hostTmpProbe) fs.rmSync(hostTmpProbe, { force: true });
   let escaped = false;
   if (launchLabel) {
@@ -439,5 +453,7 @@ export async function selfTest(o) {
   (res.writes || []).forEach((w, i) => { if (w !== "ok") { const detail = res.writeDetail?.[i] ? ": " + res.writeDetail[i] : ""; failures.push(settingDests.has(probes.writable[i]) ? `this assistant's settings folder cannot be read and written (${w}${detail}). Sign the account in, then start the session again.` : `the agent cannot use ${probes.writable[i]} (${w}${detail})`); } });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
   if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
+  dropPersonal();
   return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };
+  } finally { dropPersonal(); }
 }
