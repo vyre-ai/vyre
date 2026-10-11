@@ -529,3 +529,22 @@ test("answering an ask, changing the mode and stopping a turn of a session that 
   const server = { ...base(), live: new Map([[SESSION, { turn: null, proc: { where: "box", write() { throw reached(); }, interrupt() { throw reached(); } } }]]) };
   await assert.rejects(Promise.resolve().then(() => Switchboard.prototype.interrupt.call(server, SESSION, CAROL)), /reached the process/, "on the box anyone who may interrupt, interrupts");
 });
+
+
+test("another person's one-turn hop to her own account never stops a process on the owner's computer: the hand-over comes first and her turn waits behind it", async () => {
+  const { Switchboard } = await import("../switchboard/index.js");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  /** @type {string[]} */ const log = [];
+  const live = { turn: null, proc: { where: "lent", stop: async () => { log.push("stopped the process"); } } };
+  const stub = { live: new Map([[SESSION, live]]), once: new Map(), carry: new Map(), deps: { lentRow: () => row, lentTakeBack: async () => { log.push("hand-over asked"); return "taken"; } }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ provider: "claude", project: null }), canon: (/** @type {string} */ x) => x,
+    onceTarget: async () => ({ rec: { project: null }, provider: "codex", cur: "claude", acct: { id: "a1" } }), switchProvider: async () => { log.push("switched"); },
+    queue: (/** @type {any[]} */ ...a) => { log.push("queued"); return { sent: false, queued: 1, kt: a[4].kernelTurn }; }, leases: { typing: () => ({ ok: true }) }, emit() {} };
+  const over = { provider: "codex", account: "a1", person: CAROL };
+  const r = await Switchboard.prototype.sendOnce.call(stub, SESSION, "her question", "deck", over, { kernelTurn: { chat: "chat_bob", asker: CAROL } });
+  assert.deepEqual(log, ["hand-over asked", "queued"], "no stop, no switch: the hand-over, then the wait");
+  assert.equal(r.kt.over, over, "the one-turn choice is kept with the queued turn");
+  assert.equal(r.kt.asker, CAROL);
+  // the switch itself refuses too, whoever asks it (fail closed)
+  await assert.rejects(Switchboard.prototype.doSwitchProvider.call({ ...stub, must: () => ({ project: null, provider: "claude" }), deps: { ...stub.deps, providers: new Map() } }, SESSION, { provider: "claude", kernelTurn: { chat: "chat_bob", asker: CAROL }, person: CAROL }), (/** @type {any} */ e) => e.code === "denied");
+  assert.ok(!log.includes("stopped the process"), "the owner's process was never stopped");
+});

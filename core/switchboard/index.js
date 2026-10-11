@@ -1702,7 +1702,7 @@ export class Switchboard {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
-    const st = this.live.get(id);
+    const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : person);   // a switch stops the process: on a person's own computer only that person may
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
@@ -2525,7 +2525,7 @@ export class Switchboard {
   async sendOnce(id, text, surface, over, o = {}) {
     const target = await this.onceTarget(id, over);
     if (!target) return null;
-    const { rec, provider, cur, acct } = target;
+    const { rec, provider, cur, acct } = target;   const st0 = this.live.get(id), by0 = o.kernelTurn ? o.kernelTurn.asker : null;   if (st0 && lentBlocks(this, id, st0, by0)) { await lentYield(this, id, st0, by0); const q = this.queue(id, text, surface, undefined, { ...(o.uuid ? { uuid: o.uuid } : {}), kernelTurn: { ...(o.kernelTurn || {}), over } }); lentDrain(this, id, st0); return q; }   // another person's one-turn hop never stops a process on a person's own computer: the hand-over comes first and the turn waits behind it, as any send does
     const no = (msg, code = "account_unavailable") => Object.assign(new Error(`${msg} Nothing was sent, and the turn did not move to another provider.`), { code });
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
