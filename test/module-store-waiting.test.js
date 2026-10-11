@@ -54,10 +54,12 @@ test("a module whose start finds the record store away is waiting, not failed; i
   assert.equal(row("after").waiting, undefined);
 });
 
-test("a real daemon whose record store cannot start: no module is failed, and the planner waits for the records", { timeout: 200_000 }, async t => {
+test("a real daemon whose record store cannot start: no module is failed, and the planner waits for the records", { timeout: 60_000 }, async t => {
   process.env.VYRE_STORE = "twenty";   // no room for a Twenty here, so the Space's store stays away
   t.after(() => { delete process.env.VYRE_STORE; });
-  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true });
+  // the machine's own preflight would provision a real Twenty on a box that can run one (minutes, and it is another test's server); this test says the store cannot start, on any machine
+  const recordsStore = { preflight: async () => ({ ok: false, reasons: ["Docker is not installed (the test says so)"], facts: {} }) };
+  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true, recordsStore });
   t.after(() => d.stop());
   const st = d.registry.status();
   assert.deepEqual(st.filter((/** @type {any} */ m) => m.state === "failed" || m.state === "invalid").map((/** @type {any} */ m) => m.name), [], "nothing fails the start while the store is away");

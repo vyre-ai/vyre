@@ -79,7 +79,9 @@ export function planType(def, hint = {}) {
   /** @type {FieldPlan[]} */ const fields = [];
   for (const f of def.fields) {
     const isTitle = f.name === title;
-    const tw = isTitle ? "name" : safe(camel(f.name));
+    // a field named like a column Twenty keeps on every object (created_by, id, position ...) is stored under a "Field" suffix and mapped back, as a type named like a standard object is stored under a vyre prefix
+    const named = safe(camel(f.name));
+    const tw = isTitle ? "name" : SYSTEM_FIELDS.has(named) ? `${named}Field` : named;
     if (!isTitle && SYSTEM_FIELDS.has(tw)) throw new PlanError("invalid", `Field "${f.name}" of ${def.name} collides with a name Twenty uses on every object`);
     // a link to a type is a relation (or, for a list, a junction); a link to any record, and every other kind, is a plain column
     const rel = !isTitle && f.kind === "link" && typeof f.to === "string" && f.to ? { to: f.to, many: f.many === true, space: hint.space ?? "", inverseLabel: String(f.inverse && f.inverse.label ? f.inverse.label : hint.inverseLabels?.get(`${def.name}.${f.name}`) ?? `${def.label ?? def.name} ${f.label ?? f.name}`) } : null;
