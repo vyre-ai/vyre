@@ -104,3 +104,21 @@ test("all or nothing: when the accept does not finish after the key was enrolled
   assert.equal((await early.ask(bind)).error.code, "not_listed");
   assert.equal(early.seen.unjoined.length, 0);
 });
+
+test("the join that succeeded tells the home who joined, by the verified name; a refused or failed accept, and a peer with no name, tell it nothing", async () => {
+  /** @param {any} o @param {any} [peer] */
+  async function run(o, peer = {}) {
+    const told = /** @type {any[]} */ ([]);
+    const chain = { fake: "chain" };
+    const k = { chains: { fromFacts: () => chain }, gateway: { members: { roleOf: () => null }, grants: { invites: { get: async () => ({ status: "pending" }), accept: async () => { if (o.acceptFails) throw Object.assign(new Error("contents differ"), { code: "contents_differ" }); return { accepted: true }; } } } }, surfaces: {}, unjoinKey: async () => ({ undone: true }), joinKey: async () => ({ ok: true }) };
+    const server = createRemoteServer({ space: SPACE, kernel: k, identityEvidence: async () => (o.refuse ? { ops: [], entries: [] } : { ops: [{ id: KIT }], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", founder: true, since: 1 }] }), personJoined: async (/** @type {any} */ w) => { told.push(w); } });
+    const r = await server.serve({ v: 1, space: SPACE, id: "rq_" + Math.random().toString(36).slice(2), ts: Date.now(), call: "grants.invites.accept", args: [INVITE, { seen: { role: "member" }, proof: { key_id: "dk_1" }, bind }] }, { person: KIT, device_key_id: "inv_dev", entry: ENTRY, name: "kit.vyre.run", ...peer });
+    return { r, told };
+  }
+  const good = await run({});
+  assert.equal(good.r.ok, true, JSON.stringify(good.r));
+  assert.deepEqual(good.told, [{ person: KIT, name: "kit.vyre.run" }], "told once, with the person and the name the transport verified");
+  assert.deepEqual((await run({ acceptFails: true })).told, [], "an accept the kernel refused tells nothing");
+  assert.deepEqual((await run({ refuse: true })).told, [], "a bind that was refused tells nothing");
+  assert.deepEqual((await run({}, { name: undefined })).told, [], "no name, nothing to tell");
+});
