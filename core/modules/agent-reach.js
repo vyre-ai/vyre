@@ -226,6 +226,7 @@ export const PERSON_ONLY = new Map([
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["publish.decide", "would let an assistant widen its own authority: publishing decisions"],
   ["publish.domain.remove", "would let an assistant widen its own authority: publishing decisions"],
+  ["publish.job.run", "runs a scheduled job now and spends its secrets: only who may put the job live, never an assistant on their behalf"],
   ["publish.retire", "would let an assistant widen its own authority: publishing decisions"],
   ["relay.devices.ask-trust", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.devices.remove", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],

@@ -1225,6 +1225,14 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
+  "publish.job.attention": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+  },
+  "publish.job.runs": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+  },
   "publish.list": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
