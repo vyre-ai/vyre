@@ -37,6 +37,10 @@ export function installStandins() {
       assert.equal(l.status, 0, `the agent's logs: ${l.stderr}`);
     }
   }
+  // SHIM(harness): the installer's directory forwarder (a node process listening on the box's loopback so the box can reach the walk's stand-in directory) is stopped before the first session starts. With the
+  // sandbox on, a session's confinement check correctly refuses to start while any other process in the box listens on a port it can reach; the team is made and joined by now, and the doors need no directory.
+  const stop = sh(["exec", "-u", "vyre", BOX, "sh", "-c", "for p in $(ps -eo pid,args | grep 'net.createServer' | grep -v grep | awk '{print $1}'); do kill $p; done"]);
+  assert.equal(stop.status, 0, `the directory forwarder stopped: ${stop.stderr}`);
   return found;
 }
 
