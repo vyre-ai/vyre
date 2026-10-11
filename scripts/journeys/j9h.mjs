@@ -35,24 +35,19 @@ export default {
         assert.ok(home && /^spc_/.test(String(home.id || home.space)), `the server's own Space is listed: ${JSON.stringify(rows).slice(0, 400)}`);
         team = { space: String(home.id || home.space), label: String(home.name || home.label || ""), name: String(home.name || home.label || home.id), home };
         const r0 = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
-        const f1 = `names-directory record for "${team.label}" before the workaround: HTTP ${r0.status}`;
-        // HARNESS WORKAROUND so the walk can go on past finding 1: give the home Space a root key (host-here does this for a hosted Space only) and publish its record as a hosted Space's is.
-        const crypto = await import("node:crypto"), cp = await import("node:child_process"), fs = await import("node:fs");
-        const { newKeyPair } = await import("../../core/spaces/identity.js");
-        const kp = await newKeyPair();
-        if (srv.kind === "installer") {   // the box's home lives in the container: write the key as the server's own user
-          const r = cp.spawnSync("docker", ["exec", "-i", "-u", "vyre", "vyre-vyre-1", "sh", "-c", `umask 077 && mkdir -p ~/.vyre/spaces/${team.space} && cat > ~/.vyre/spaces/${team.space}/root.key`], { input: kp.privateKey + "\n", encoding: "utf8" });
-          assert.equal(r.status, 0, `could not place the Space's root key in the box: ${r.stderr}`);
-        } else {
-          const { spaceFiles } = await import("../../core/spaces/host.js");
-          await spaceFiles(path.join(w.dir, "server", ".vyre", "spaces")).keys.hold(team.space, kp.privateKey);
-        }
-        void crypto; void fs;
-        const claimed = await mac.claimExistingSpace(`day${w.person.slice(-5)}`, team.space, kp.publicKey);
+        const f1 = `names-directory record for "${team.label}" before naming: HTTP ${r0.status}`;
+        // the owner makes the server's own Space the team's (no host-here): the key, the directory record for the existing id, the listing name
+        const claimed = await mac.nameOwnSpace(`day${w.person.slice(-5)}`);
+        assert.equal(claimed.space, team.space, "the record names the server's own Space, not a new one");
         team.label = claimed.label; team.name = claimed.name;
         const r = await fetch(`${ins.names}/v1/ids/resolve?name=${team.label}`);
-        assert.equal(r.status, 200, "the directory resolves the Space's name after the harness claimed it");
-        return `${team.space} (was "${home.name}") now ${team.name}; harness workaround for findings 1 and 2; ${f1}`;
+        assert.equal(r.status, 200, "the directory resolves the Space's name");
+        const after = await w.call("spaces.list", {});
+        const rows2 = Array.isArray(after) ? after : after.spaces || [];
+        assert.equal(rows2.length, rows.length, "no second Space appeared");
+        const row = rows2.find((/** @type {any} */ x) => (x.id || x.space) === team.space);
+        assert.ok(row && row.label === team.label && row.tier === "cloud", `the Space is listed under its team name: ${JSON.stringify(row)}`);
+        return `${team.space} (was "${home.name}") now ${team.name}; ${f1}`;
       }, { owner: "projects-flows" });
 
       // two more people, each with their own app, name and keys

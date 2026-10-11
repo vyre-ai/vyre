@@ -1306,6 +1306,30 @@ export default {
       { const dk = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : ""; if (dk) { const l = await enrolledList(dk); if (l !== null && !l.includes(id)) await kv.put(`device-spaces/${dk}`, [...l, id]); } }
       return { space: id, existed: false, rootPublic: kp.publicKey };
     });
+    // ONE SPACE PER SERVER: the server's own (home) Space can be the team's. `spaces.name-here` gives it what a hosted Space gets from `spaces.host-here`, without hosting anything: its root key (made once, here,
+    // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
+    // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
+    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing.", obj({ name: str, done: { type: "boolean" } }, ["name"]), async (i, meta) => {
+      if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person || person !== K.owner) throw refuse("Only this home's owner can name its space.", "forbidden");
+      const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
+      if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) throw refuse("That is not a space name. Use 2 to 31 letters, digits or hyphens.", "bad_name");
+      const id = K.space;
+      // Renaming a Space is not designed yet: once the name is kept (`done`), a different name is refused, so the published directory record and the listing can never disagree.
+      const kept = await kv.get("home-named").catch(() => null);
+      if (kept && typeof kept.name === "string" && kept.name !== label) throw refuse(`This server's space is already named ${kept.name}. Renaming a space is not available yet: keep using ${kept.name}.`, "already_named");
+      let have = files.keys.load(id);
+      if (!have) {
+        const kp = await files.keys.generate();
+        await files.keys.hold(id, kp.privateKey);
+        have = files.keys.load(id);
+      }
+      if (!have) throw refuse("This server could not keep the space's key. Check the disk and try again.", "unavailable");
+      if (i.done === true) await kv.put("home-named", { name: label, at: now() });
+      return { space: id, existed: true, rootPublic: have.publicKey };
+    });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
@@ -1392,8 +1416,10 @@ export default {
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
     /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */
     const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
-    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "My Home" });
+    // the home Space is the person's own ("personal") until the owner gives it a team name (spaces.name-here, then the app publishes it): then it is listed under that name, which the app shows as "<Name>'s Cloud"
+    const homeNames = (/** @type {any} */ named = null) => named && typeof named.name === "string" ? { label: named.name, displayName: named.name } : { label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "My Home" };
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
+      const named = await kv.get("home-named").catch(() => null);
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
       if ((!st0 || !st0.exists || who !== st0.id) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
@@ -1402,7 +1428,7 @@ export default {
           let m = null; try { const r = who ? await K.membership(who, id) : null; if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
-          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames().label : null, displayName: id === K.space ? homeNames().displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : id === K.space && named ? `${named.name}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames(named).label : null, displayName: id === K.space ? homeNames(named).displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
         return mine;
       }
@@ -1422,7 +1448,7 @@ export default {
         if (K && typeof K.space === "string" && K.owner && !out.some(x => x.id === K.space)) {
           const sId = /** @type {string} */ (me().id);
           const m = typeof K.membership === "function" ? await K.membership(sId, K.space).catch(() => null) : null;
-          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), ...upgradedRow(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: named ? `${named.name}.vyre.run` : null, ...homeNames(named), ...upgradedRow(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
       } catch { /* no home row */ }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
