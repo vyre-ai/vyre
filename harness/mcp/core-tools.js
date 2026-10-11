@@ -92,7 +92,7 @@ export function indexOf(catalog) {
   const core = new Set(CORE);
   const hand = Object.fromEntries(Object.entries(ASKS).map(([k, v]) => [k, { ...v, core: core.has(k) }]));
   for (const n of CORE) if (!hand[n]) hand[n] = { core: true };
-  return buildToolIndex(catalog.map((c) => ({ name: c.name, also: c.tool, description: c.description, input: c.input, ...(c.group ? { group: c.group } : {}) })), hand);
+  return buildToolIndex(catalog.map((c) => ({ name: c.name, also: c.tool, description: c.description, input: c.input, ...(c.group ? { group: c.group } : {}), ...(c.via ? { via: c.via } : {}), ...(c.callAs ? { callAs: c.callAs } : {}), ...(c.asks ? { asks: c.asks } : {}) })), hand);
 }
 
 /** The best tools for an intent, named as they are called. @param {ReturnType<typeof indexOf>} index @param {string} query @param {number} [limit] */

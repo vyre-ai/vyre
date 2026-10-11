@@ -8,6 +8,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import { indexOf, find, weak, shapeFind } from "../harness/mcp/core-tools.js";
 import { agentCatalog } from "./tools-universe.js";
+import { workEntries } from "../lib/tools-extras.js";
 
 const intents = JSON.parse(fs.readFileSync(new URL("./fixtures/tools-find-intents.json", import.meta.url), "utf8"));
 // 17 of the 100 above name acts only a person has (inviting a member, approving a Flow): the registry offers an agent no tool for them. These 17 replace them, and were written AFTER the ranker was
@@ -31,8 +32,9 @@ test("tools_find puts the right tool first for at least 90% of the held-out inte
   for (const x of answerable) {
     const want = new Set(x.expect.map(mcpName));
     const got = find(index, x.intent, 3);
-    if (got[0] && want.has(got[0].name)) top1++; else misses.push(`${x.intent} => ${got.map((g) => g.name).join(", ") || "nothing"} (wanted ${x.expect.join(" or ")})`);
-    if (got.some((g) => want.has(g.name))) top3++;
+    const hits = (/** @type {any} */ g) => want.has(g.name) || Boolean(g.via && want.has(g.via));   // an operation behind a router counts as the router
+    if (got[0] && hits(got[0])) top1++; else misses.push(`${x.intent} => ${got.map((g) => g.name).join(", ") || "nothing"} (wanted ${x.expect.join(" or ")})`);
+    if (got.some(hits)) top3++;
   }
   const late = after.filter((/** @type {any} */ x) => { const g = find(index, x.intent, 3); return g[0] && x.expect.some((/** @type {string} */ e) => mcpName(e) === g[0].name); }).length;
   console.log(`tools_find on the ${after.length} written after tuning: top-1 ${late}`);
@@ -109,7 +111,10 @@ for (const name of ["dev", "sealed"]) {
   test(`tools_find on the ${name} asks: first place and first three can only go up (baseline in tools-find-baseline.json)`, async (t) => {
     const raw = fixture(`tools-find-${name}.json`);
     if (name === "sealed") assert.equal(crypto.createHash("sha256").update(raw).digest("hex"), fixture("tools-find-sealed.sha256").trim(), "the sealed set was edited; it may only be replaced by a new sealed set, said openly, with a new hash and a new baseline");
-    const r = scoreSet(await agentCatalog(t), JSON.parse(raw));
+    // the catalog a session with a person behind it has: the registry's tools and the operations work.tools lists for that person (test/fixtures/work-tools.json: a Space's base types, as listed on the test box)
+    const base = await agentCatalog(t);
+    const withRouter = [...base, ...workEntries(JSON.parse(fixture("work-tools.json")), new Set(base.map((c) => c.name))).catalog];
+    const r = scoreSet(process.env.FIND_NO_ROUTER ? base : withRouter, JSON.parse(raw));
     console.log(`tools_find ${name}: top-1 ${r.top1} of ${r.n} (${Math.round((100 * r.top1) / r.n)}%), top-3 ${r.top3} of ${r.n} (${Math.round((100 * r.top3) / r.n)}%)`);
     if (process.env.FIND_MISSES) for (const m of r.misses) console.log(`  miss: ${m}`);
     const b = baseline[name];

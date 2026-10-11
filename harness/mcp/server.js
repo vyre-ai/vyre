@@ -28,7 +28,7 @@ import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
 import { nextCall } from "../../lib/errors-teach.js";
-import { skillEntries, siteEntries } from "../../lib/tools-extras.js";
+import { skillEntries, siteEntries, workEntries } from "../../lib/tools-extras.js";
 import { createLearner } from "../../lib/tools-learn.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
@@ -150,6 +150,10 @@ async function tools() {
     for (const [n, r] of routes) next.set(n, r);
     cat.push(...more);
   }
+  // The operations behind work_call (find / create / update / move a stage per record type, assign a task): what work.tools lists for THIS caller, each its own entry returned with the ready work_call.
+  // A caller work.tools refuses (no person behind the session) has none; an operation the caller may not run is not in the list.
+  const wt = await call("work.tools", { schemas: true }, { ...ident(), session: sessionKey() });
+  if (!wt.error && wt.data && Array.isArray(wt.data.tools)) cat.push(...workEntries(wt.data.tools, new Set([...next.keys(), ...cat.map((c) => c.name)])).catalog);
   // The website operations Vyre learned for the person, when this session can run them (the Chrome tool is in its catalog): found by tools_find, run through chrome.op.
   if (cat.some((c) => c.tool === "chrome.op")) {
     const lo = await call("memory.site.learned", {}, { ...ident(), session: sessionKey() });

@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { tempHome } from "./helpers.js";
-import { skillEntries, siteEntries, SKILL_GROUP, SITE_GROUP } from "../lib/tools-extras.js";
+import { skillEntries, siteEntries, workEntries, workAsks, SKILL_GROUP, SITE_GROUP } from "../lib/tools-extras.js";
 import { indexOf, find, shapeFind } from "../harness/mcp/core-tools.js";
 
 const SKILLS = [
@@ -93,4 +93,26 @@ test("learned site operations become entries only when the session can run the C
   const index = indexOf([...REGISTRY, ...catalog]);
   const top = shapeFind(find(index, "search people on app.example.com", 5)).tools.find(x => /^site_/.test(x.name));
   assert.ok(top && top.group === SITE_GROUP && top.call.tool === "tools_call", "tools_find returns it with its group and a ready tools_call");
+});
+
+test("the operations behind work_call are their own entries, found by the words a person uses, and returned with the ready work_call", () => {
+  const tools = [
+    { name: "clients.find", risk: "read", description: "Find Client records.", schema: { type: "object", properties: { where: { type: "object" } } } },
+    { name: "clients.create", risk: "write", description: "Add a Client.", schema: { type: "object", required: ["name"], properties: { name: { type: "string" } } } },
+    { name: "contacts.update", risk: "write", description: "Change fields on a Contact.", schema: { type: "object", required: ["id"], properties: { id: { type: "string" } } } },
+    { name: "tasks.assign", risk: "write", description: "Give a task to a person or an assistant.", schema: { type: "object", properties: {} } },
+    { name: "not a tool name!", description: "x" },
+  ];
+  const { catalog } = workEntries(tools, new Set(["work_call"]));
+  assert.equal(catalog.length, 4, "a row without a usable name is skipped");
+  const add = catalog.find(c => c.name === "work_clients_create");
+  assert.equal(add.via, "work_call"); assert.equal(add.group, "records.clients.create");
+  assert.deepEqual(add.callAs, { tool: "work_call", arguments: { tool: "clients.create", input: { name: "<name>" } } });
+  assert.ok(workAsks("contacts", "update").every(a => !/delet|remov|forget/.test(a)), "nothing here deletes, so no ask promises it");
+  assert.deepEqual(workAsks("chat_records", "find")[0], "find chat records");
+  const found = shapeFind(find(indexOf([...REGISTRY, ...catalog]), "add a new client", 5)).tools[0];
+  assert.equal(found.name, "work_clients_create");
+  assert.equal(found.call.tool, "tools_call"); assert.equal(found.call.arguments.tool, "work_call");
+  assert.equal(found.call.arguments.arguments.tool, "clients.create", "the ready call is the router with the operation named");
+  assert.equal(workEntries(tools, new Set(["work_clients_create"])).catalog.some(c => c.name === "work_clients_create"), false, "a name already taken is not reused");
 });
