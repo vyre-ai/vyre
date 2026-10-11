@@ -245,6 +245,10 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
       for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await walkTerms()).filter(m => !known.has(m.message)); if (fresh.length) { const out = String(fresh[0].text); note(who, cmd, out); return out; } }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
+    // a plain command first: does a member's session run a shell at all? (what the refusals below are refusals OF)
+    const plain = await R("member", "echo walk-plain-ok; id -u");
+    transcript.push(`member$ echo walk-plain-ok; id -u\n${plain}\n`);
+    assert.match(plain, /walk-plain-ok/, `a plain command runs in a member's session (the refusals below mean something only if it does): ${plain}`);
     const sock = "$(ls /home/vyre/.vyre/vyred.sock 2>/dev/null || echo /home/vyre/.vyre/vyred.sock)";
     const net = (/** @type {string} */ p) => `node -e 'require("net").connect(${JSON.stringify(p)}).on("connect",()=>{console.log("CONNECTED");process.exit(0)}).on("error",e=>{console.log("ERR "+e.code);process.exit(2)})'`;
     const s1 = await R("member", net("/home/vyre/.vyre/vyred.sock"));
