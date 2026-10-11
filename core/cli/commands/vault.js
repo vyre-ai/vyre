@@ -1761,9 +1761,61 @@ async function backupCmd(args) {
   return 0;
 }
 
+/** `vyre vault autobackup enrol|status|run`: the daily automatic backup (G20). */
+async function autobackupCmd(args) {
+  const verb = args[0];
+  if (verb === "status" || !verb) {
+    const r = await tool("vault.autobackup.status", {});
+    if (r.error) return fail(r);
+    const d = r.data;
+    if (!d.enrolled) { say(`  ${dim("automatic backups are off")}  ·  turn them on: vyre vault autobackup enrol`); return 0; }
+    say(`  ${signal("automatic backups on")} ${dim(`· the newest ${d.keep} are kept`)}`);
+    say(`  last backup   ${d.last ? `${day(d.last.at)} · ${plural(d.last.items, "item")}` : dim("none yet")}`);
+    say(`  restore drill ${d.drill ? `${day(d.drill.at)} · ${d.drill.ok ? signal("passed") : bold("FAILED")} ${dim(`· ${d.drill.note}`)}` : dim("not run yet: vyre vault restore --drill")}`);
+    return 0;
+  }
+  if (verb === "run") {
+    const r = await tool("vault.autobackup.run", {}, { timeout: 120_000 });
+    if (r.error) return fail(r);
+    say(`  ${signal("backed up")} ${plural(r.data.items, "item")} to ${bold(r.data.file)}`);
+    return 0;
+  }
+  if (verb === "enrol") {
+    const gate = secretGate("Your recovery code");
+    if (gate !== null) return gate;
+    let code;
+    try { code = (await hiddenPrompt("recovery code: ")).trim(); } catch { return oops("cancelled"); }
+    const r = await tool("vault.autobackup.enrol", { code }, { timeout: 120_000 });
+    code = "";
+    if (r.error) return fail(r);
+    say(`  ${signal("automatic backups are on")} ${dim("· every day, sealed to your recovery code, the newest 14 kept")}`);
+    say(dim("  run the drill now to be sure they open: vyre vault restore --drill"));
+    return 0;
+  }
+  return oops("vyre vault autobackup [status | enrol | run]");
+}
+
+/** `vyre vault restore --drill [<file>]`: restore the newest automatic backup into a scratch vault and compare it with this one. Nothing in this vault changes. */
+async function drillCmd(file) {
+  const gate = secretGate("Your recovery code");
+  if (gate !== null) return gate;
+  let code;
+  try { code = (await hiddenPrompt("recovery code: ")).trim(); } catch { return oops("cancelled"); }
+  const r = await tool("vault.autobackup.drill", { code, ...(file ? { file: path.resolve(file) } : {}) }, { timeout: 180_000 });
+  code = "";
+  if (r.error) return fail(r);
+  const d = r.data;
+  say(`  ${d.ok ? signal("the drill passed") : bold("the drill FAILED")} ${dim(`· ${d.file} · ${d.note}`)}`);
+  if (d.newer.length) say(dim(`  changed since the backup: ${d.newer.join(", ")}`));
+  for (const n of d.missing) say(`  missing: ${n}`);
+  for (const n of d.changed) say(`  different: ${n}`);
+  return d.ok ? 0 : 1;
+}
+
 async function restoreCmd(args) {
-  const f = flags(args, { boolean: ["replace"] });
-  if (f._.length !== 1) return oops("vyre vault restore <file> [--replace]");
+  const f = flags(args, { boolean: ["replace", "drill"] });
+  if (f.drill) return f._.length <= 1 ? drillCmd(f._[0]) : oops("vyre vault restore --drill [<file>]");
+  if (f._.length !== 1) return oops("vyre vault restore <file> [--replace] | --drill");
   const file = path.resolve(f._[0]);
   let info;
   try { info = inspect(fs.readFileSync(file, "utf8").trim()); } catch (e) { return oops(`${file} is not a Vyre backup: ${e.message}`); }
@@ -1951,6 +2003,7 @@ const HELP = [
   ["pair [--name n] [--phone] | devices [revoke|unlock <id>]", "browser extensions, and phones (--phone), that autofill logins"],
   ["unlock-passphrase", "what an extension asks for before it fills"],
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
+  ["autobackup [status|enrol|run] | restore --drill", "daily automatic backups, and a drill that proves they restore"],
   ["--json", "on any command: the tool's {data} or {error} as one line; exit 3 presence, 4 locked"],
   ["--view --stdin", "for the Capsule, chat and the phone: frames; a secret comes piped in with --stdin, else exit 2"],
 ];
@@ -2059,7 +2112,7 @@ function viewOf(obj) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, autobackup: autobackupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 /** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
@@ -2078,7 +2131,8 @@ const VERBS = [
   { verb: "devices", summary: "paired browser extensions; revoke or unlock one", usage: "[revoke|unlock] [id]", read: true },
   { verb: "unlock-passphrase", summary: "what an extension asks for before it fills", usage: "[--stdin]", person: true },
   { verb: "backup", summary: "the whole vault, sealed to a passphrase of its own", usage: "<file> [--stdin]", person: true },
-  { verb: "restore", summary: "put a vault backup back", usage: "<file> [--replace] [--stdin]", person: true },
+  { verb: "restore", summary: "put a vault backup back, or --drill to prove the newest automatic one restores", usage: "<file> [--replace] [--stdin] | --drill [<file>]", person: true },
+  { verb: "autobackup", summary: "daily automatic backups: status, enrol (once, with the recovery code), run", usage: "[status | enrol | run]", person: true },
   { verb: "relay", summary: "use an item relayed to you; the value is added on its owner's box", usage: "<item> <url> [--method m] [--header h] [--data d] [--owner o]", person: true },
   { verb: "grant", summary: "let a module use an item", usage: "<name> <module> [--watcher w]", person: true },
   { verb: "revoke", summary: "take a grant back", usage: "<name> <module> [--watcher w]" },
