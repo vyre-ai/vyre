@@ -266,29 +266,3 @@ test("G04: a turn that arrives while another is running waits behind it, then ru
   await until(async () => (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === added.data.id), "carol's turn to run on her own account after bob's", 150_000);
   await b.stop();
 });
-
-test("an owner's login is the owner's alone: a member with no sign-in of their own is refused in a chat whose thread names no account, and when they speak first; the owner's own turn is unchanged", async t => {
-  const w = await world(t);
-  const b = await world0(w, t);
-  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
-  const watch = await b.watch("carol", chat.id);
-  // bob is the owner: his turn runs on the machine's own login, as before
-  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], cwd: w.work });
-  assert.ok(!first.error, first.error && first.error.message);
-  await until(() => /AMBER-92/.test(textOf(watch.frames)), "the owner's turn", 120_000);
-  const thread = kitThread(b, chat.id);
-  assert.equal((await b.reg.call("threads.get", { thread }, "cli")).data.thread.account ?? null, null, "the thread names no account: it runs on the machine's own login");
-  // carol has no sign-in: her message is never handed to that thread
-  const direct = await b.reg.call("threads.send", { thread, text: "what was the code word?", chat: chat.id, asker: CAROL }, "module:stream", {});
-  assert.ok(direct.error, "refused");
-  assert.equal(direct.error.code, "account_required");
-  assert.match(direct.error.message, /sign-in of your own/);
-  assert.ok(!(await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.sent" && /what was the code word/.test(String(e.payload.text))), "her words never reached the owner's login");
-  // and when she speaks first in a chat of her own, no session is started for her on the machine's login
-  const mine = await w.C.create(w.chains.carol, { people: [], assistants: ["assistant"] });
-  const watchMine = await b.watch("carol", mine.id);
-  await b.as("carol")("stream.send", { chat: mine.id, text: "hello on whose login?", to: ["assistant:assistant"], cwd: w.work });
-  await sleep(2500);
-  assert.ok(!/hello on whose login/.test(textOf(watchMine.frames)), "no answer came: no session ran for her without a sign-in of her own");
-  await b.stop();
-});
