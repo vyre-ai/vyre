@@ -1777,7 +1777,7 @@ export class Switchboard {
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
     if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(reason === "back" && !kernelTurn && person ? { skillsPerson: person } : {}) }); if (kernelTurn) said();
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 

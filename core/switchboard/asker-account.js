@@ -179,7 +179,9 @@ export const NOBODY = "-";
 export function libraryPerson(sb, rec, o) {
   const verified = (o.kernelTurn && o.kernelTurn.asker) || (rec && sb.turnAsker.get(rec.id)) || null;
   if (verified) return String(verified);
-  if (o.skillsPerson) return String(o.skillsPerson);   // the hop back: the base account's own person
+  // A hop with no turn of its own (the hop back, or a person's own surface asking another provider for one turn): the person the hop's account was resolved for. This relies on the lookup that already ran at the top of
+  // doSwitchProvider: an account serves only its own person (Accounts.serves), so a person who does not own the account fails there, before any launch. Canonical, so an owner who adopted an identity keeps his skills.
+  if (o.skillsPerson) return String(o.skillsPerson);
   return o.person ? NOBODY : /** @type {any} */ (undefined);
 }
 
