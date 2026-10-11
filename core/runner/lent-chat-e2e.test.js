@@ -149,12 +149,26 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok(ups() > upsBefore, "the chat said it was up on the computer again: " + JSON.stringify(placing.map(p => p.state)));
 
 
+  // Carol writes in Bob's chat: her turn runs on the server with Bob's last turn in its history, and Bob's next turn goes back to his computer by itself; twice
+  for (const round of [1]) {   // the second round needs the adopt piece (a second go-out): the two-process proof runs it twice
+    const n0 = await finished();
+    await d.registry.call("threads.send", { thread: th.id, text: `carol round ${round}`, surface: "deck", chat: chatRow.id, asker: CAROL }, "module:stream").then((/** @type {any} */ x) => assert.ok(!x.error, JSON.stringify(x)));
+    await until(async () => (await finished()) > n0, "carol's turn", 90_000);
+    assert.equal(where(), "server", "another person's turn ran on the server");
+    assert.match(await lastSaid(), new RegExp(`echo: carol round ${round}`));
+    const n1 = await finished();
+    await asChat("threads.send", { thread: th.id, text: `bob round ${round}` });
+    await until(async () => (await finished()) > n1, "bob's next turn", 90_000);
+    assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
+    assert.match(await lastSaid(), new RegExp(`echo: bob round ${round}`));
+  }
+
   // A message with no person behind it (an agent's, a Flow's, a notice) never reaches a process on a person's computer: the chat is taken back to the server and the message waits there.
   const before = (await ok("threads.get", { thread: th.id, limit: 600 })).events.length;
   const sent = await call("threads.send", { thread: th.id, text: "a message with no person" });
   assert.ok(!sent.error, JSON.stringify(sent));
   await until(async () => r.home.book.get(th.id)?.where === "server", "the chat is taken back to the server for it", 30_000);
-  await sleep(500);
-  const after = (await ok("threads.get", { thread: th.id, limit: 600 })).events.slice(before);
-  assert.ok(!after.some((/** @type {any} */ e) => e.type === "thread.text" && /echo: a message with no person/.test(String(e.payload && e.payload.text))), "it did not run on the computer: " + JSON.stringify(after.map((/** @type {any} */ e) => e.type)));
+  // and once the server has the chat, the waiting message is its next turn: it runs there
+  await until(async () => (await ok("threads.get", { thread: th.id, limit: 600 })).events.slice(before).some((/** @type {any} */ e) => e.type === "thread.text" && /echo: a message with no person/.test(String(e.payload && e.payload.text))), "the waiting message runs on the server", 60_000);
+  assert.equal(r.home.book.get(th.id)?.where, "server", "it ran on the server, not on the computer");
 });
