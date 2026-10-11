@@ -313,7 +313,8 @@ final class SSEConnection: @unchecked Sendable {
         let t = Thread { [self] in run(); onEnd() }
         t.name = "vyred events"
         t.qualityOfService = .utility
-        t.stackSize = 256 * 1024
+        // JSON parsing recurses once per level of nesting; 256 KB overflowed on a deeply nested event and killed Lumen with a bus error (CI Mac crash report, 11 Oct)
+        t.stackSize = 8 * 1024 * 1024
         t.start()
     }
 
