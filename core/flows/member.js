@@ -79,11 +79,7 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
     }
     case "run": await runOf(need("run", "the run's id")); return call();
     case "cancelrun": { const run = await runOf(need("run", "the run's id")); if (!admin && !startedBy(run, me) && (await setterUp(run.flow)) !== me) throw no("you cannot stop that run: it is not yours. Ask whoever set the Flow up, or an owner or admin."); return call(); }
-    case "propose": {
-      // asking whoever the Flow runs for, or an owner or admin, to approve a version of the Space's Flow: any member may; nothing applies until they say yes
-      if (i.what === "flow" || i.id) await there(need("id", "the Flow's id"));
-      return call();
-    }
+    case "propose": return proposeVersion();
     case "approve": return approve();
     default: throw new KernelError("bad_input", "that is not a Flows call a member can make");
   }
@@ -96,6 +92,23 @@ export async function serveMember(f, name, i, chain, me, role, kernel) {
   }
   /** @param {any} r */ function startedBy(r, /** @type {string} */ person) { return Boolean(r && r.trigger && typeof r.trigger.key === "string" && r.trigger.key.startsWith(`mem:${person}:`)); }
   async function runOf(/** @type {string} */ run) { const r = store.getRun ? await store.getRun(run) : null; if (!r) throw new KernelError("not_found", "there is no such run (flows.runs lists yours)"); return r; }
+
+  /** A version of the Space's Flow that someone else set up: a card goes to the person it runs for (or an owner when they are gone), who approves it in Flows with their own yes. Nothing applies by this call. */
+  async function proposeVersion() {
+    const id = need("id", "the Flow's id"), version = Number(i.version);
+    const row = await rowOf(id);
+    const made = row && row.versions ? row.versions.find((/** @type {any} */ x) => x.version === version) : null;
+    const v = made ? await store.getVersion(id, version) : null;
+    if (!v) throw new KernelError("not_found", "there is no such Flow version (define it first)");
+    if (v.approver) throw new KernelError("bad_input", "that version is already approved");
+    let to = await setterUp(id);
+    if (!to || to === me || !f.roleOf || !f.roleOf(to)) to = null;
+    if (!to) { const owners = typeof f.holders === "function" ? await f.holders("owner") : []; to = owners[0] && owners[0].id ? String(owners[0].id) : null; }
+    if (!to || to === me) throw new KernelError("bad_input", "nobody else can approve this: it is your own Flow, approve it yourself (approve)");
+    const name = String((v.flow && (v.flow.label || v.flow.name)) || id).slice(0, 100);
+    const task = await f.notify(to, `A new version of the Flow "${name}" is waiting for your yes`, { kind: "flow_change", flow: id, version, hash: v.hash, by: me, note: typeof i.note === "string" ? i.note.slice(0, 300) : "" }, `member-flow:${id}:${version}:${v.hash}`);
+    return { ok: true, asked: to, task: task && task.id, note: "They are asked. A new version runs only when they approve it in Flows." };
+  }
 
   /** Approving: a Flow runs on the authority of whoever approved it, so a member approves only a version of a Flow SHE set up (or one nobody has), within the bound; another member's version of it is a proposal for the
    * person it runs for, or an owner or admin. Nobody can swap the code under someone else's authority with her own yes. */
