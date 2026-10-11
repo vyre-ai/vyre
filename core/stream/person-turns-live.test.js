@@ -317,7 +317,7 @@ test("review B: a provider-only chip from a member WITH a sign-in runs on her ow
   const r = await bobsThread(t);
   const hers = await r.own("carol", "Carol's Codex 3");
   const before = (await r.events()).length;
-  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "chip with my own account", chat: r.chat.id, asker: CAROL, mentions: [{ kind: "account", id: "codex" }] }, "module:stream", {});
+  const sent = await r.b.reg.call("threads.send", { thread: r.thread, text: "chip with my own account", surface: "deck", chat: r.chat.id, asker: CAROL, mentions: [{ kind: "account", id: "codex" }] }, "module:stream", {});
   assert.ok(!sent.error, JSON.stringify(sent.error));
   await until(async () => ranOn((await r.events()).slice(before), hers), "the turn on carol's own account", 60_000);
   assert.ok(!ranOn((await r.events()).slice(before), r.bobsAcct), "and not on bob's");
