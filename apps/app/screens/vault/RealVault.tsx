@@ -11,6 +11,7 @@ import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
 import ImportPage from "./ImportPage";
+import { AssistantAreaMenu } from "../assistants/AssistantAreaMenu";
 import { DevicesPage, EditSheet, ItemHistory, SharingPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
 import { vaultMore } from "./more";
 import { healthSummary } from "./more-model";
@@ -195,7 +196,7 @@ export default function RealVault() {
   const slug = adding ? slugName(adding.name) : "";
 
   return (
-    <Frame title="Vault" sub="Assistants use these and never see them." actions={addMenu}>
+    <Frame title="Vault" sub="Assistants use these and never see them." actions={<>{addMenu}<AssistantAreaMenu area="vault" label="the Vault" /></>}>
       {ready && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={SECTIONS} fill={phone} /> : null}
       {ready && section === "sharing" ? <SharingPage rows={rows!} reload={load} openItem={openFrom} /> : null}
       {ready && section === "browsers" ? <DevicesPage rows={rows!} reload={load} openItem={openFrom} /> : null}
