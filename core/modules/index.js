@@ -14,6 +14,7 @@ import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { assistantLimit } from "./assistant-limit.js";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -1504,8 +1505,7 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
-    delete meta.relayedBy; // set below, by the registry relay alone
-    delete meta[COVERED]; // set below, only by a card this call just redeemed
+    delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT]; delete meta[FLOW_ACT]; // set by callFlow alone (below it becomes the same mark a redeemed card makes)
     const viewAsk = meta[VIEW_ASK]; delete meta[VIEW_ASK]; // set by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
@@ -1539,18 +1539,7 @@ export class Registry {
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
     if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
-    // The person narrowed their own assistant (G23): a tool, a family of tools or a whole area they turned off is refused for the assistant acting for them, with the reason in plain words. Only the proven default
-    // assistant (a session of the person's, no named agent: a named agent has its own grants) and only for tools it may otherwise reach; the check is the assistant module's, which keeps the person's rows.
-    // No assistant module running means nothing was narrowed. `proven` is the daemon's own binding of the call to a session; the module then limits only a chain that has an assistant hop, so the person's own calls are never limited. A check that fails is a refusal: never a way round the person's limit.
-    if (!door && proven(meta) && !(meta.agent && meta.agentKind !== "assistant") && !(agentClaim(caller) && meta.agentKind !== "assistant")) {
-      const chk = this.tools.get("assistant.access.check");
-      if (chk) {
-        let said = null;
-        try { said = await chk.run({ tool }, { ...meta, caller: "module:registry" }); }
-        catch { return { error: { code: "denied", message: `${tool} could not be checked against what you let your assistant do, so it did not run` } }; }
-        if (said && said.stopped) return { error: { code: "access_narrowed", message: said.words } };
-      }
-    }
+    { const limited = await assistantLimit(this.tools, { tool, door, caller, meta }); if (limited) return limited; } // the person narrowed their own assistant (G23): core/modules/assistant-limit.js
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.

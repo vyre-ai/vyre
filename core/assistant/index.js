@@ -159,7 +159,7 @@ export default {
     const accessProps = { assistant: { type: "string", enum: ["assistant"], description: "Whose access: the person's own assistant." }, tools: { type: "array", items: { type: "string" }, description: "Tool names, or a family like records.*." }, screens: { type: "array", items: { type: "string" }, description: "Areas: vault, mail, records, files, flows, projects, documents, publish, connections, memory, calendar." } };
 
     ctx.tool("assistant.access.get", {
-      description: "What the person has turned off for their own assistant: { assistant, tools: [{ name, at }], screens: [{ id, label, off }] }. The assistant may read it to say why something was refused.",
+      description: "What the person turned off for their own assistant, so it can say why a call was refused. Answers { tools, screens }.",
       input: { type: "object", properties: { assistant: accessProps.assistant } },
       run: async (_i, meta = {}) => stateOf(rowsOf(await personOf(meta, false))),
     });
