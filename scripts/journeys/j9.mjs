@@ -44,6 +44,21 @@ export default {
         return team.name;
       }, { owner: "projects-flows" });
 
+      // the owner of the team server presses "Set up My Cloud" (its hosting call: spaces.create ends in spaces.host-here on the server): a second Space on a server whose Space is the team's is refused, in words
+      await J.step("Set up My Cloud on the team's server is refused: this server's Space is already the team's", async () => {
+        const before = (() => w.call("spaces.list", {}))();
+        const rows0 = await before;
+        const n0 = (Array.isArray(rows0) ? rows0 : rows0.spaces || []).length;
+        let err = /** @type {any} */ (null);
+        try { await mac.callTool("spaces.host-here", { name: `mycloud${w.person.slice(-4)}` }); } catch (e) { err = e; }
+        assert.ok(err, "the second Space was refused");
+        assert.equal(err.code, "server_has_team", String(err && err.message));
+        assert.match(String(err.message), /Connect another server for My Cloud/);
+        const rows1 = await w.call("spaces.list", {});
+        assert.equal((Array.isArray(rows1) ? rows1 : rows1.spaces || []).length, n0, "nothing was made");
+        return String(err.message);
+      }, { owner: "projects-flows" });
+
       // two more people, each with their own app, name and keys
       const SIGN = "two more people sign in with their own logins and are members";
       await J.step(SIGN, async () => {
