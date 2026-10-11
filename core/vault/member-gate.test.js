@@ -43,8 +43,19 @@ test("fails closed for a call that claims a person: an unreadable chain, or fact
   assert.equal((await service.call("vault.test", { caller: "local", kernelFacts: { kind: "device" } })).error.code, "denied", "facts that did not hold give a service chain with no person: refused");
   assert.equal((await service.call("vault.test", { caller: "cli", token: "gone" })).error.code, "denied", "a token that maps to no person is refused");
   assert.equal((await service.call("vault.test", { caller: "cli", firstParty: true })).data, "ran", "a call that claims no person (the owner's terminal, the daemon) is unchanged");
+  for (const c of ["local", "capsule", "mcp", "harness"]) assert.equal((await service.call("vault.test", { caller: c, firstParty: true })).data, "ran", `${c} on the owner's socket`);
+  // every other unclaimed caller is refused by its own marker, whatever the chain says
+  for (const c of ["device:abcdef", "web:aaaaaaaaaaaaaaaa", "setup:aaaaaaaaaaaaaaaa", "tailnet", "tailnet-guest:x", "deck", "mobile", "mcp:thread:t1", "mcp:agent:kit", "harness:thread:t1", "harness:agent:kit", "space:bob@spc_x"])
+    assert.equal((await service.call("vault.test", { caller: c })).error?.code, "denied", `${c} with no token, facts or session`);
+  assert.equal((await service.call("vault.test", { caller: "device:abcdef", person: { id: BOB, kind: "app" } })).error?.code, "denied", "a People session alone (a member's app device with no facts) proves nothing and is refused");
+  assert.equal((await service.call("vault.test", { caller: "cli", person: { id: BOB, kind: "cli" } })).error?.code, "denied", "even on a socket label, a claimed People session must prove to be the owner");
   assert.equal((await thrower.call("vault.test", { caller: "mcp", firstParty: true, peerSession: "x" })).data, "ran", "so is an owner's local session on the socket");
-  assert.equal((await thrower.call("vault.test", { caller: "module:sessions", token: "t" })).data, "ran", "a module's call has no person behind it and passes");
+  assert.equal((await thrower.call("vault.test", { caller: "module:sessions" })).data, "ran", "a module's call with no claim (its own work) passes");
+  assert.equal((await thrower.call("vault.test", { caller: "module:sessions", token: "t" })).error?.code, "denied", "a module hop that inherited a token whose chain cannot be read is refused");
+  const asMember = rig(kernelOf(() => ({ hops: [hop("person", BOB)] })));
+  assert.equal((await asMember.call("vault.test", { caller: "module:connectors", token: "member's" })).error?.code, "denied", "a module's call made for a member (it inherited the member's token) is refused like the member's own");
+  const asOwner = rig(kernelOf(() => ({ hops: [hop("person", OWNER)] })));
+  assert.equal((await asOwner.call("vault.test", { caller: "module:connectors", token: "owner's" })).data, "ran", "and for the owner it passes");
   assert.equal((await thrower.call("vault.test", { caller: "ext:abc" })).data, "ran", "an outside agent's pass call passes");
   const noOwner = rig({ chain: async () => ({ hops: [hop("person", OWNER)] }) });
   assert.equal((await noOwner.call("vault.test", { caller: "cli", token: "t" })).error.code, "denied", "with no owner identity to compare, a claimed person does not pass");
