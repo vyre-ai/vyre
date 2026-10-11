@@ -149,7 +149,8 @@ export function registerPlaceTools(ctx, d) {
       if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
       const at = named && named.data;
-      if (!at || !(await mineChat(chain, String(at.chat || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!(await mineChat(chain, String((at && at.chat) || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!at) throw refuse("this chat has not run on this server yet, so there is nothing to carry to a computer: send it a message, then move it", "unavailable");
       // the chat's process on this server ends first (refused while it is working), so its next turn starts on the computer
       { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) throw refuse(String(left.error.message || "that chat is busy: let it finish, then move it"), "conflict"); }
       try { await p0.adopt(space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
