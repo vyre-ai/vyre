@@ -7028,7 +7028,7 @@
    "effect": "write",
    "review": false,
    "description": "Change presence capsule (spaces). Needs: cdhash.",
-   "was": "Pins Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous"
+   "was": "Pins the Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous"
   },
   {
    "old": "presence.code",

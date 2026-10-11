@@ -186,7 +186,7 @@ export async function startCore(o) {
     const no = message => ({ error: { code: "presence_required", message, methods: [...CORE_METHODS] } });
     if (presence.keys().length) return no("vyre-core already has a key: enroll with a proof from it, not a code");
     if (input.kind !== "capsule") return no("the installer's code enrolls Lumen's key and nothing else");
-    if (!(await codeFrom(pid))) return no("only Lumen vyre-core signed can use the installer's code");
+    if (!(await codeFrom(pid))) return no("only the Lumen vyre-core signed can use the installer's code");
     db.exec("BEGIN IMMEDIATE");
     try {
       if (presence.keys().length) { db.exec("ROLLBACK"); return no("vyre-core already has a key: enroll with a proof from it, not a code"); }

@@ -127,7 +127,7 @@ test("vyre-core: only the Capsule core signed may redeem the code, and two racin
   const refused = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), codeFrom: async () => false });
   const newPub = capsulePub(refused.presence);
   const r = await coreTool("presence.enroll", { kind: "capsule", name: "Capsule", public_key: newPub() }, { socket: refused.socket, coreUid: uid, presence: `code code=${mint(refused, INSTALL_CODE)}` });
-  assert.match(r.error.message, /only Lumen vyre-core signed/);
+  assert.match(r.error.message, /only the Lumen vyre-core signed/);
 
   const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), codeFrom: async () => true });
   const code = mint(c, INSTALL_CODE);
@@ -299,5 +299,5 @@ test("vyre-core: without dev set on purpose, the stand-in Capsule check says no,
   store.db.close();
   const k = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const e = await coreTool("presence.enroll", { kind: "capsule", name: "Capsule", public_key: k }, { socket: fresh.socket, coreUid: uid, presence: `code code=${code}` });
-  assert.match(String(e.error && e.error.message), /only Lumen vyre-core signed/);
+  assert.match(String(e.error && e.error.message), /only the Lumen vyre-core signed/);
 });

@@ -115,7 +115,7 @@ export default {
 
     ctx.tool("presence.capsule.pin", {
       effect: "write",
-      description: "Pins Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by Lumen's own enrolled presence key (method \"capsule\"), the same identity a paired Lumen already proves with, not a new one -- so only the real Lumen, not a model's shell with a same-uid file write, can ever set this.",
+      description: "Pins the Lumen build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by Lumen's own enrolled presence key (method \"capsule\"), the same identity a paired Lumen already proves with, not a new one -- so only the real Lumen, not a model's shell with a same-uid file write, can ever set this.",
       presence: { summary: async () => "Pin this Mac's Lumen build" },
       input: obj({ cdhash: str }, ["cdhash"]),
       run: async ({ cdhash }, meta = {}) => {
@@ -129,7 +129,7 @@ export default {
         // pass as it: refused until the Capsule is signed with a stable identity (the lead's
         // decision, 28 Sep).
         const sig = meta.codeSignature;
-        if (!sig || !sig.cdhash) throw Object.assign(new Error("Vyre could not read this Lumen build's code signature, so it cannot pin it. Pin from Lumen app on this Mac."), { code: "denied" });
+        if (!sig || !sig.cdhash) throw Object.assign(new Error("Vyre could not read this Lumen build's code signature, so it cannot pin it. Pin from the Lumen app on this Mac."), { code: "denied" });
         if (!sig.signed || sig.adhoc) throw Object.assign(new Error("This Lumen build is ad-hoc signed, so Vyre cannot tell it apart from another app on this Mac. Reinstall it with `vyre capsule install`, which signs it, then try again."), { code: "denied" });
         if (sig.cdhash !== cdhash) throw Object.assign(new Error("Lumen can only pin its own build."), { code: "denied" });
         return presence.pinCapsule(cdhash);
