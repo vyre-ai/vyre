@@ -139,8 +139,8 @@ export function registerPlaceTools(ctx, d) {
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
     const { person, chain } = await who(meta, i.space);
     const hit = find(thread, i.space, person);
-    // a chat that began on the server, or one that came back to it from a computer, goes out to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
-    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server"));
+    // a chat that began on the server, or one that came back to it from a computer, goes out (a session offered back after its computer got well is the computer's to start again, not a move out) to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
+    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server" && hit.row.offer !== "mac"));
     if (!hit || goingOut) {
       if (i.to === "server") return answer(null);
       const p0 = placements();
@@ -149,7 +149,8 @@ export function registerPlaceTools(ctx, d) {
       if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
       const at = named && named.data;
-      if (!at || !(await mineChat(chain, String(at.chat || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!(await mineChat(chain, String((at && at.chat) || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      if (!at) throw refuse("this chat has not run on this server yet, so there is nothing to carry to a computer: send it a message, then move it", "unavailable");
       // the chat's process on this server ends first (refused while it is working), so its next turn starts on the computer
       { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) throw refuse(String(left.error.message || "that chat is busy: let it finish, then move it"), "conflict"); }
       try { await p0.adopt(space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
