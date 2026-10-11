@@ -712,7 +712,7 @@ export default {
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const d = await storeFor(b.space.id).get("deployments", String(i.deployment || ""));
-        if (!d) throw refuse("no such deployment", "not_found");
+        if (!d) throw refuse("no such deployment: publish.list shows them", "not_found");
         return runJob(b.space.id, d);
       },
     });

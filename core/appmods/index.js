@@ -568,10 +568,10 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         publishOnly(meta);
         const row_ = byDeployment(i.deployment);
-        if (!row_) throw refuse("that job is not set up here", "not_found");
+        if (!row_) throw refuse("that job is not set up here: publish.status shows what is live", "not_found");
         const m = catalog.get(row_.name);
         if (!m || !m["x-publish"] || !m["x-publish"].job) throw refuse("that deployment is not a job", "bad_input");
-        if (typeof driver.run !== "function") throw refuse("jobs run on a server installed with its host helper; this server has none", "unsupported");
+        if (typeof driver.run !== "function") throw refuse("jobs run on a server installed with its host helper; this server has none: ask the owner of this server to install Vyre with the Linux installer", "unsupported");
         return driver.run({ manifest: m });
       },
     });

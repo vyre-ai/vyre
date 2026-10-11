@@ -93,7 +93,7 @@ export function createHelperDriver(o = {}) {
      */
     async run(p) {
       const x = pubOf(p.manifest) && p.manifest["x-publish"];
-      if (!x || !x.job) throw refuse("that is not a job", "unsupported");
+      if (!x || !x.job) throw refuse("that is not a job: a job is made with publish.create and its job schedule", "unsupported");
       /** @type {Error | null} */ let err = null;
       try { await askRun(x.deployment, x.job.timeoutS); } catch (e) { err = /** @type {Error} */ (e); }
       let output = "";
