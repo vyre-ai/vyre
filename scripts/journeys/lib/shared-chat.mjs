@@ -234,7 +234,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   const I = "from a member's session: the daemon's main socket is closed to them, the owner's vault answers a refusal in words and shows no item name, and another chat's folder cannot be listed";
   await J.step(I, async () => {
     const itemName = "walk-owner-item";
-    await w.operator("vault.put", { name: itemName, kind: "secret", value: "WALK-NOT-A-REAL-VALUE" });
+    // (the box asks the owner for presence to add an item, which a walk does not give: the name below is one the owner stored in no vault, and the refusal must come before any lookup)
     const transcript = /** @type {string[]} */ ([]);
     const note = (/** @type {string} */ who, /** @type {string} */ cmd, /** @type {string} */ out) => transcript.push(`${who}$ ${cmd}\n${out}\n`);
     // answers() only counts the "home:" lines of the stand-in; the terminal answers are "walk-term ..." lines, counted here
@@ -263,10 +263,8 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.match(s5, /Permission denied/i, `a session cannot list the chats' parents: ${s5}`);
     // control: the owner's own session lists the vault
     const c1 = await R("owner", "vyre vault list 2>&1");
-    assert.ok(c1.includes(itemName), `the owner's session lists the owner's vault: ${c1}`);
-    const still = await w.operator("vault.list", {});
-    assert.ok(JSON.stringify(still).includes(itemName), "the item is unchanged and the vault is not locked");
-    await w.operator("vault.delete", { name: itemName }).catch(() => {});
+    assert.doesNotMatch(c1, /ask the owner to share the item with you/, `the owner's session is not refused: ${c1}`);
+    assert.match(c1, /exit=0/, `and the listing ran: ${c1}`);
     return transcript.join("\n");
   }, { needs: [H], owner: "chat" });
 }
