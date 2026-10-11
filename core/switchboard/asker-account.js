@@ -179,6 +179,7 @@ export const NOBODY = "-";
 export function libraryPerson(sb, rec, o) {
   const verified = (o.kernelTurn && o.kernelTurn.asker) || (rec && sb.turnAsker.get(rec.id)) || null;
   if (verified) return String(verified);
+  if (o.skillsPerson) return String(o.skillsPerson);   // the hop back: the base account's own person
   return o.person ? NOBODY : /** @type {any} */ (undefined);
 }
 
