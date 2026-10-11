@@ -10,6 +10,7 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 import { createMemberTools, MEMBER_TOOLS } from "./member-tools.js";
+import { createDoor } from "../../lib/gateway-door.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
@@ -72,6 +73,9 @@ test("a member lists, makes, reads and changes records of the team's Space as he
   assert.equal(await code(w.as(ANA, "records.create", { type: "team-member", data: {} })), "not_allowed", "the project team is kept by the team's own tools");
   assert.ok((await w.as(ANA, "records.types")).types.every((/** @type {any} */ x) => x.name !== "skill" && x.name !== "def-flow"));
   assert.notEqual(await code(w.as(w.OWNER, "records.list", { type: "skill" })), "not_found", "the owner keeps access to the kept types");
+  // update and events on a kept type are refused too, by the type in the address
+  assert.equal(await code(w.as(ANA, "records.update", { urn: `vyre://${w.space}/skill/rec_x`, patch: { a: 1 }, base_version: 1 })), "not_found");
+  assert.equal(await code(w.as(ANA, "records.events", { record: `vyre://${w.space}/def-flow/rec_x` })), "not_found");
   // the Projects screen lists through records.list { type: "project" }: a member gets a page (a project is hers to see; the gateway's ownership rule decides which rows)
   const projects = await w.as(ANA, "records.list", { type: "project", limit: 10 });
   assert.ok(Array.isArray(projects.rows), "a member's project list answers a page, not a refusal: " + JSON.stringify(projects));
@@ -99,4 +103,28 @@ test("a member asks for, works and hands in tasks as herself; the gateway's own 
   assert.equal(rec.data.name, "Pat", "records.create(type, data) is the gateway's, untouched");
   const q = await w.as(ANA, "records.query", "contact", { page: { limit: 5 } });
   assert.ok(Array.isArray(q.rows), "and the calls the table does not name pass through");
+});
+
+test("the doing of a task is the doer's: the doer starts and hands in her task, a stranger who is a member does neither", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const made = (await w.as(ANA, "tasks.request", { task: { title: "Draft the letter", doer: ANA, output: { kind: "note" } } })).task;
+  assert.ok(made && made.id, JSON.stringify(made));
+  assert.ok(await code(w.as(BEN, "tasks.move", { id: made.id, to: "working" })), "another member cannot start Ana's task");
+  assert.ok(await code(w.as(BEN, "tasks.submit", { id: made.id, evidence: { note: { text: "done", sources: ["vyre://x/y/z"] } } })), "another member cannot hand in Ana's task");
+  assert.equal((await w.as(ANA, "tasks.move", { id: made.id, to: "working" })).task.state, "working");
+  const done = (await w.as(ANA, "tasks.submit", { id: made.id, evidence: { note: { text: "done", sources: ["vyre://x/y/z"] } } })).task;
+  assert.ok(["needs_check", "done"].includes(done.state), JSON.stringify(done));
+});
+
+test("door.open honors a held chain only when it is exactly one person's, for the Space the call names", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const door = createDoor({ kernel: { for: (/** @type {string} */ id) => (id === w.space ? { space: id, hosted: true, gateway: w.d.kernel.gateway, surfaces: w.d.kernel.surfaces } : null) } });
+  const chain = w.chainOf(ANA);
+  const opened = await door.open({}, { in_space: w.space, in_space_chain: chain });
+  assert.equal(opened.chain, chain, "a one-person chain for this Space is the call's chain");
+  const hop = { actor: { kind: "agent", id: "kit", space: w.space } };
+  for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["a chain for another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }]]) {
+    assert.equal(await code(door.open({}, { in_space: w.space, in_space_chain: bad })), "denied", what);
+  }
+  assert.equal(await code(door.open({}, { in_space: "spc_zzzzzzzzzzzz", in_space_chain: { ...chain, space: "spc_zzzzzzzzzzzz" } })), "not_found", "a Space this server does not host");
 });

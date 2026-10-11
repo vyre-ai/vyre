@@ -214,7 +214,8 @@ export default {
       // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
       const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
       const trusted = role === "owner" || role === "admin";
-      const urnType = typeof clean.urn === "string" ? (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(clean.urn) || [])[1] : undefined;
+      const ref = typeof clean.urn === "string" ? clean.urn : typeof clean.record === "string" ? clean.record : "";
+      const urnType = (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(ref) || [])[1];
       for (const ty of [clean.type, urnType]) {
         if (typeof ty !== "string" || trusted) continue;
         if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
