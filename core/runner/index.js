@@ -27,6 +27,9 @@ import { HEARTBEAT_MS } from "./placement-book.js";
 import { BEAT_MAX } from "./lent-home.js";
 import { createMover, sleepReason } from "./mover.js";
 
+/** The caller name the daemon itself calls with. */
+const DAEMON = "module:vyred";
+
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
 export const seams = new Map();
 
@@ -241,7 +244,7 @@ export default {
     ctx.tool("runner.resume-lent", { description: "Carry on a chat from the last whole turn its computer acknowledged. Internal: the daemon, when a lent session goes to the server.", internal: true, callers: ["module"],
       input: obj({ space: str, session: str, thread: str }, ["space", "session"]),
       run: async (i, meta) => {
-        if (!meta || meta.caller !== "module:vyred") throw Object.assign(new Error("only the daemon carries a chat on"), { code: "denied" });
+        if (!meta || meta.caller !== DAEMON) throw Object.assign(new Error("only the daemon carries a chat on"), { code: "denied" });
         const view = hostOf()?.lentView?.(String(i.space), String(i.session));
         if (!view) throw Object.assign(new Error("that session is not held here (runner.places shows where your chats run)"), { code: "not_found" });
         return resumeLent({ ...i, view });
