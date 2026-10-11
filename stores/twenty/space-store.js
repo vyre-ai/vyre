@@ -176,7 +176,7 @@ export function createStoreFor(cfg) {
     const timer = setInterval(() => { checkKey().catch((e) => log(`the daily key check failed: ${e.message}`)); }, (cfg.keyCheckEveryMs ?? 24 * 3600 * 1000)); timer.unref();
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
-    const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
+    const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     const tc = Date.now();
     { const g = progress.get(space); if (g) g.phase = "core types"; }
