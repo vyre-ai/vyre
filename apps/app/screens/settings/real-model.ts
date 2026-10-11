@@ -1,10 +1,13 @@
 // The pure half of Settings on the real box: update.status and push.settings answers as the lines the screens show.
 
-export type UpdateStatus = { current: string; available: string | null; channel: string; notes: string[]; checkedAt: number | null; auto: string; error: string | null; how: string; command?: string; canApply: boolean; pending: boolean; run?: unknown };
+export type UpdateStatus = { current: string; available: string | null; channel: string; notes: (string | { version: string; notes: string })[]; checkedAt: number | null; auto: string; error: string | null; how: string; command?: string; canApply: boolean; pending: boolean; run?: unknown };
 export type PushSettings = { quiet: { start: string; end: string; timezone?: string } | null; kinds: Record<string, boolean>; planner_label?: boolean; quiet_now?: boolean };
 export type PushDevice = { device: string; label: string; service: string; at: number; last_ok: number | null; fails: number };
 
 /** The headline of Updates. */
+/** What an update's notes say, one line each: the box gives { version, notes } for each release between this one and the new one (older boxes gave plain lines). Never an object as text. */
+export const noteLines = (notes: UpdateStatus["notes"] | null | undefined): string[] =>
+  (Array.isArray(notes) ? notes : []).map((n) => (typeof n === "string" ? n : n && typeof n === "object" ? [n.version ? `Vyre ${n.version}` : "", String(n.notes ?? "").trim()].filter(Boolean).join(": ") : "")).filter(Boolean);
 export function updateLine(s: UpdateStatus): string {
   if (s.error) return `The last look failed: ${s.error}`;
   if (s.pending) return "An update is being installed.";

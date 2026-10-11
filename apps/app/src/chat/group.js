@@ -152,6 +152,7 @@ export function createGroup(viewer) {
   /** @type {Map<string, { state: string, doing?: string }>} */ const presence = new Map();
   /** @type {Map<string, Map<string, Set<string>>>} message -> emoji -> who */ const reactions = new Map();
   /** @type {Set<string>} */ const pins = new Set();
+  /** @type {string | null} */ let replyMode = null;
   /** @type {Map<string, string[]>} parent -> reply messages */ const replies = new Map();
   /** @type {Map<string, string>} reply message -> parent */ const parentOf = new Map();
   /** @type {Map<string, Set<string>>} */ const mentions = new Map();
@@ -187,7 +188,7 @@ export function createGroup(viewer) {
     if (!f || typeof f.type !== "string") return out;
     const kind = f.type.replace(/^session\./, "");
     if (kind === "heartbeat") return out;
-    if (kind === "reset") { people.clear(); presence.clear(); reactions.clear(); pins.clear(); replies.clear(); parentOf.clear(); mentions.clear(); msgs.clear(); asks.clear(); fanouts.clear(); fanoutOf.clear(); cuts.clear(); readUpto = 0; last = typeof f.data?.head === "number" ? f.data.head : f.cur; rev++; return { touched: [], meta: true }; }
+    if (kind === "reset") { people.clear(); presence.clear(); reactions.clear(); pins.clear(); replyMode = null; replies.clear(); parentOf.clear(); mentions.clear(); msgs.clear(); asks.clear(); fanouts.clear(); fanoutOf.clear(); cuts.clear(); readUpto = 0; last = typeof f.data?.head === "number" ? f.data.head : f.cur; rev++; return { touched: [], meta: true }; }
     if (typeof f.cur !== "number" || f.cur <= last) return out;
     last = f.cur;
     const d = f.data ?? {};
@@ -238,6 +239,11 @@ export function createGroup(viewer) {
         if (d.remove) set.delete(by); else set.add(by);
         if (!set.size) byEmoji.delete(emoji);
         touch(message);
+        break;
+      }
+      case "reply-mode": {
+        replyMode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
+        out.meta = true;
         break;
       }
       case "pin": {
@@ -324,6 +330,8 @@ export function createGroup(viewer) {
     /** @param {string} v */ setViewer(v) { if (v && v !== viewer) { viewer = v; rev++; } },
     /** @returns {Participant[]} */ participants: () => [...people.values()].map((p) => (learned.has(p.id) ? { ...p, name: /** @type {string} */ (learned.get(p.id)) } : p)),
     /** The name for an assistant row whose frame names no author: the chat's one model or agent when it has one, else "Assistant". */
+    /** When the AI answers in this chat: "every", "mention", or null (the chat's own default). */
+    replyMode() { return replyMode; },
     assistantName() { for (const [id, name] of learned) if (id.startsWith("model:") || id.startsWith("agent:")) return name; return "Assistant"; },
     /** Teach the group names it was not told by a frame. @param {{ id: string, name: string }[]} list ids as `person:<id>`, `agent:<id>` or a slot id */
     learn(list) { let changed = false; for (const m of list) { if (m && m.id && m.name && learned.get(m.id) !== m.name) { learned.set(m.id, m.name); changed = true; } } if (changed) rev++; return changed; },

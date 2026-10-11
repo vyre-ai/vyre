@@ -143,3 +143,9 @@ test("privacy lists the sealed fields from the record types, and nothing else", 
   const ts = await settingsSource(b.call).types();
   assert.deepEqual(sealedFields(ts).map((x) => [x.typeLabel, x.label]), [["Contact", "SSN"], ["Contact", "Account"]]);
 });
+
+test("an update's notes are lines of words, whether the box gives releases ({ version, notes }) or plain lines", { skip: !strip }, async () => {
+  const m = await import("./real-model.ts");
+  assert.deepEqual(m.noteLines([{ version: "0.3.1", notes: "Calmer Now." }, "plain line", { version: "", notes: "no version" }, { version: "0.3.2", notes: "  " }]), ["Vyre 0.3.1: Calmer Now.", "plain line", "no version", "Vyre 0.3.2"]);
+  assert.deepEqual(m.noteLines(null), []);
+});

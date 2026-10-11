@@ -13,6 +13,9 @@ import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
+import { ComputersView } from "../screens/spaces/ComputersSection";
+import { memberLine } from "../screens/spaces/computers-model.js";
+import { SignInView } from "../screens/now/SignInAgain";
 import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
@@ -151,6 +154,13 @@ function Sample({ name }: { name: string }) {
     return <View style={{ gap: 8 }}><NoticeAnswered kind="approved" say="Approved: An assistant (kit) wants to send an email: Northwind" onClose={() => {}} /><NoticeAnswered kind="denied" say="Denied: An assistant (kit) wants to send an email: Oakline" onClose={() => {}} /><NoticeAnswered kind="gone" say="That request ended before you answered." onClose={() => {}} /><NoticeAnswered kind="failed" say="Face ID or Touch ID did not work. Nothing was approved." onClose={() => {}} /></View>;
   }
   if (name === "chat-tools-fork") return <View style={{ gap: 12 }}><Card><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace="mac" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace={null} onFork={() => {}} onForkTo={() => {}} /></Card></View>;
+  if (name === "signin-card") {
+    const site = { id: "connectors:li", title: "Sign in to app.example.com again", detail: "HTTP 401: the login ran out. Sign in on the site, then check again.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "li" } }] };
+    const screen = { ...site, id: "connectors:cp", title: "Sign in to portal.example.com again", buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "cp" } }, { label: "Open the computer's screen", open: "/u/glass/kit" }] };
+    const key = { id: "connectors:k", title: "The key for api.example.com stopped working", detail: "The service refused the key. Fix it in the Vault, then check it.", at: 1, buttons: [{ label: "Check it now", tool: "connectors.connection.check", input: { id: "k" } }] };
+    return <View style={{ gap: 12 }}><SignInView card={site} busy={false} hint="Still waiting. Sign in on the site, then check again." onPress={() => {}} /><SignInView card={screen} busy={false} hint="" onPress={() => {}} /><SignInView card={key} busy hint="" onPress={() => {}} /></View>;
+  }
+  if (name === "space-computers") return <View style={{ gap: 12 }}><ComputersView space="Northwind's Cloud" allowed={false} busy={false} problem="" onChange={() => {}} /><ComputersView space="Northwind's Cloud" allowed busy={false} problem="Only an owner or an admin of this Space can change that." onChange={() => {}} /><Card><Text tone="label">{memberLine("Northwind's Cloud", true)}</Text><Text tone="label">{memberLine("Harlow Legal's Cloud", false)}</Text></Card></View>;
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }

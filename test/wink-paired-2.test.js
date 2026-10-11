@@ -1102,7 +1102,7 @@ shardTest("an invitee on a development build joins in one accept: its own softwa
   const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
   assert.deepEqual([member.person, member.role], [kit.id, "member"]);
   // the joined space is kit's now: it is listed, and its records are reached through a member stream to the home (no invite, no pairing)
-  const listed = await k.call("spaces.list");
+  const listed = await k.call("spaces.list", {}, "cli", {});   // kit's own terminal: a Space list is for the person on the call, and a paired-device label alone is nobody (ledger row 54)
   assert.ok(!listed.error && listed.data.some((/** @type {any} */ x) => x.id === made.space && x.member === true), JSON.stringify(listed).slice(0, 300));
   // the home ends an invitee channel after its life (5 minutes in production; 1.2 s here): a member's next call reconnects with no error
   seams.set(f.w.root, { ...(seams.get(f.w.root) || {}), inviteeTotalMs: 1200 });
@@ -1345,7 +1345,8 @@ shardTest("join a team with no server, end to end: a second identity that has on
   // the app reaches the team's space as a member and calls a tool; the server's sealing process has this device's key now
   const list = await callTeam(deps, made.space, "grants.members.list", []);
   const people = (Array.isArray(list) ? list : list.members || []).map(m => m.person);
-  assert.deepEqual(people, [kit.id], "a member sees their own membership through the member door");
+  assert.ok(people.includes(kit.id), "a member sees their own membership through the member door");
+  assert.ok((Array.isArray(list) ? list : list.members || []).filter(m => m.person !== kit.id).every(m => m.partial === true && Object.keys(m).sort().join() === "partial,person,role,space"), "another member is only who is in and their role: no key ids, no terms");
   assert.equal(await sealer.presenceCheck({ chain: hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-kit", person: kit.id, path: "direct" }), op: "grant.accept", fields: { x: 1 }, proof: kitSigner.proof(inviteeChain, "grant.accept", { x: 1 }) }) !== "unknown_key", true, "this device's presence key is enrolled on the server");
   // the invite is spent; an invite meant for someone else, a forged fingerprint and a space nobody hosts show kit nothing
   await assert.rejects(() => openInvite(deps, mine.link), e => e.code === "not_for_you");
@@ -1517,7 +1518,8 @@ shardTest("a person whose device entry is a passkey joins a team through the inv
   assert.equal((await hosted.gateway.grants.members.get(ownerChain, pk.id)).role, "member");
   // and it reaches the space as a member: a new hello, a new assertion
   const list = await callTeam(deps, made.space, "grants.members.list", []);
-  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person), [pk.id]);
+  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person).filter(p => p === pk.id), [pk.id], "a member sees their own membership through the member door");
+  assert.ok((Array.isArray(list) ? list : list.members || []).filter(m => m.person !== pk.id).every(m => m.partial === true && Object.keys(m).sort().join() === "partial,person,role,space"), "another member is only who is in and their role: no key ids, no terms");
 });
 
 
@@ -1548,7 +1550,8 @@ shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.loc
   assert.equal((await open.accept()).joined, true);
   assert.equal((await hosted.gateway.grants.members.get(ownerChain, pc.id)).role, "member");
   const list = await callTeam(deps, made.space, "grants.members.list", []);
-  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person), [pc.id]);
+  assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person).filter(p => p === pc.id), [pc.id], "a member sees their own membership through the member door");
+  assert.ok((Array.isArray(list) ? list : list.members || []).filter(m => m.person !== pc.id).every(m => m.partial === true && Object.keys(m).sort().join() === "partial,person,role,space"), "another member is only who is in and their role: no key ids, no terms");
   // its own name: a phone's key joins the list, the change signed by the passkey (not held, so the chain takes it)
   const phone = crypto.generateKeyPairSync("ed25519");
   const phoneKey = phone.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("base64url");

@@ -196,6 +196,15 @@ test("two starts of one name at once: the second is told to wait and writes noth
   assert.ok(!fs.existsSync(lock), "the lock is released when the start is over");
 });
 
+test("Docker turns forwarding on in the vyre container when it joins a server's network: the helper turns it off again before the server starts", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP)).state, "ok");
+  r.flag("ip-forward-docker");
+  const st = await r.up(DEP);
+  assert.equal(st.state, "ok", JSON.stringify(st));
+  assert.ok(fs.existsSync(path.join(r.F, "ip-forward-zeroed")), "the helper wrote 0 into the container's network namespace");
+});
+
 test("a server is not started when the vyre container forwards packets between its networks, and its compose keeps the log files bounded", opts, async t => {
   const r = await ready(t);
   assert.equal((await r.build(DEP)).state, "ok");

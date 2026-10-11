@@ -84,5 +84,12 @@ export async function createRig({ space = SPACE, owner = "per_alex", people = {}
     /** Make a record as the owner. */
     create: (/** @type {string} */ type, /** @type {any} */ data) => gw.records.create(ownerChain, type, data),
     define: (/** @type {any} */ d) => gw.records.define(ownerChain, { add_types: [d] }),
+    /** Put an agent on a project's team with a ready task there (G22: an agent reaches a project and its records only as a teammate with a task). The rig must define the core `team-member` type. */
+    async putOnTask(/** @type {string} */ agent, /** @type {string} */ projectUrn) {
+      const a = actor("agent", agent);
+      await gw.records.create(ownerChain, "team-member", { name: agent, actor: { actor: a }, kind: "assistant", project: { urn: projectUrn } });
+      const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "project/*", "team-member/*"] } } });
+      await svc.tasks.request(ownerChain, { title: `Work for ${agent}`, doer: a, checker: { kind: "person", id: owner, space }, output: { kind: "note" }, project: projectUrn });
+    },
   };
 }

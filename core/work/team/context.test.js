@@ -6,6 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";
 import { teammateContext, parseUrn } from "./context.js";
+import { TEAM_MEMBER } from "../../../records/core-types.js";
 import { memberLabels } from "../../../lib/labels.js";
 
 const CLIENT = { name: "client", label: "Client", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "note", kind: "text", label: "Note" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
@@ -13,11 +14,12 @@ const PROJECT = { name: "project", label: "Project", fields: [{ name: "name", ki
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "name", kind: "text", label: "Name" }] };
 
 async function world() {
-  const rig = await createRig({ agents: ["research"], defs: [CLIENT, PROJECT, MATTER] });
+  const rig = await createRig({ agents: ["research"], defs: [CLIENT, PROJECT, MATTER, TEAM_MEMBER] });
   const alex = rig.actor("person", "per_alex"), research = rig.actor("agent", "research");
   await rig.grantTo(research, ["records.read"]);
   const client = await rig.create("client", { name: "Jane Doe", note: "n", ssn: { sealed: "us-ssn", ref: "seal_9", present: true, valid_format: true, set_at: 1 } });
   const project = await rig.create("project", { name: "Estate plan for Jane Doe", client: { urn: client.urn }, bank: { sealed: "bank-account", ref: "seal_7", present: true, valid_format: true, set_at: 1, hint: "1234" } });
+  await rig.putOnTask("research", project.urn);   // a teammate reaches the project only with a task there (G22)
   return { rig, alex, research, client, project, chain: rig.assistant("per_alex", "research") };
 }
 
@@ -52,11 +54,12 @@ test("a person-chain read still never puts a reference in the text", async () =>
 test("a linked record the teammate may not read is skipped and named (a link into another Space cannot be made)", async () => {
   const { rig, research, chain } = await world();
   // The teammate may read projects only (a deeper prefix than the world's blanket read): its first grant is replaced by a narrow one.
-  const rig2 = await createRig({ agents: ["research"], defs: [CLIENT, PROJECT, MATTER] });
+  const rig2 = await createRig({ agents: ["research"], defs: [CLIENT, PROJECT, MATTER, TEAM_MEMBER] });
   await rig2.grantTo(research, ["records.read"], `vyre://${rig2.space}/project/*`);
   const secret = await rig2.create("matter", { name: "Privileged" });
   // a link to another Space's record cannot be made at all (the kernel refuses it at create), so only the unreadable one is here to skip
   const project = await rig2.create("project", { name: "P", other: { urn: secret.urn } });
+  await rig2.putOnTask("research", project.urn);
   const ctx = await teammateContext(rig2.kernel, rig2.assistant("per_alex", "research"), { project: project.urn, space: rig2.space });
   assert.deepEqual(ctx.urns, [project.urn]);
   assert.equal(ctx.skipped.length, 1);
