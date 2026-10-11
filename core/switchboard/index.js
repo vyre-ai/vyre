@@ -2267,13 +2267,13 @@ export class Switchboard {
     this.draining.add(id);
     if (kt0 && kt0.chat && this.deps.kernelSession) {
       this.assertAsker(id, this.record(id), kt0).then(
-        () => { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); else this.drainDone(id, false); },
-        () => {
+        () => { try { if (this.live.get(id) === st && !st.stopping && !st.turn) this.drainRun(id, lead, rows, project); else this.drainDone(id, true); } catch (e) { this.deps.log(`threads: could not hand over a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true); } },
+        () => { try {
           const drop = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'dropped' WHERE id = ? AND delivered_at IS NULL");
           for (const r of rows) drop.run(Date.now(), r.id);
           this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: that person is no longer in this chat. Ask them to be added again to have it answered.", done: true, notice: true }, id, project);
           this.drainDone(id, true);
-        });
+        } catch (e) { this.deps.log(`threads: could not drop a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true); } });
       return;
     }
     this.drainRun(id, lead, rows, project);
@@ -2292,8 +2292,8 @@ export class Switchboard {
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { if (ok) { deliver(); this.draining.delete(id); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); } }); return; } }
-    deliver();
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).then(ok => ok, () => false).then(ok => { try { if (ok) { deliver(); this.draining.delete(id); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.drainDone(id, true); } }); return; } }
+    try { deliver(); } catch (e) { this.drainDone(id, true); throw e; }   // a write that throws (lent, not live) releases the lock and the rows behind it still run
     this.draining.delete(id);
   }
 
@@ -2576,7 +2576,7 @@ export class Switchboard {
       if (this.once.get(id) !== mine) throw e;
       this.carry.delete(id);
       const at = this.record(id);
-      if (at && (at.provider || "claude") !== back.provider) await this.revertOnce(id).catch(() => {});
+      if (at && (at.provider || "claude") !== back.provider) { const undo = this.revertOnce(id).catch(() => {}); this.reverting.set(id, undo); await undo; if (this.reverting.get(id) === undo) this.reverting.delete(id); }   // recorded like any hop back: the next person's turn waits for it
       this.once.delete(id);
       throw e;
     }

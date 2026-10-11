@@ -50,11 +50,16 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
   // lock is released when the hop has started or failed, whichever, so the rows behind it are never stranded.
   void (async () => {
     try {
-      await revertSettled(sb, id);
+      if (!(await revertSettled(sb, id, false))) {
+        // the hop back is still going past the wait: nothing is judged on the hop's state; the row goes back to the queue and the next turn's end (or resume) drains it
+        sb.db.prepare("UPDATE threads_inbox SET delivered_at = NULL, via = NULL WHERE id = ?").run(r.id);
+        sb.drainDone(id, false);
+        return;
+      }
       await sb.onceTarget(id, kt.over);
       sb.emit("thread.sent", { text: String(r.text).slice(0, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, rec ? rec.project : null);
       await sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, kernelTurn: { chat: kt.chat, asker: kt.asker } });
-      sb.drainDone(id, false);
+      sb.drainDone(id, true);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null);
       sb.drainDone(id, true);
@@ -133,15 +138,22 @@ export function movesAccount(rec, to, acct) {
 /**
  * A hop back in flight (turnEnded records it in sb.reverting) must finish before the next person's turn is judged: the thread's provider and account are the hop's until it has. True when settled, or when
  * nothing was reverting; false when it is still going after the wait (sb.revertWaitMs, 10 s), and nothing may be judged on the wrong base then.
- * @param {any} sb @param {string} id @returns {Promise<boolean>}
+ * @param {any} sb @param {string} id @param {boolean} [waitDrain] also wait for a queued hop being started (the drain lock): a send judged meanwhile would see a base about to change @returns {Promise<boolean>}
  */
-export async function revertSettled(sb, id) {
-  const back = sb.reverting.get(id);
-  if (!back) return true;
+export async function revertSettled(sb, id, waitDrain = true) {
+  const limit = Date.now() + (typeof sb.revertWaitMs === "number" ? sb.revertWaitMs : 10_000);
   /** @type {any} */ let timer;
-  const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), typeof sb.revertWaitMs === "number" ? sb.revertWaitMs : 10_000); timer.unref?.(); })]);
-  clearTimeout(timer);
-  return Boolean(settled);
+  const left = () => Math.max(0, limit - Date.now());
+  const back = sb.reverting.get(id);
+  if (back) {
+    const settled = await Promise.race([back.then(() => true, () => true), new Promise(r => { timer = setTimeout(() => r(false), left()); timer.unref?.(); })]);
+    clearTimeout(timer);
+    if (!settled) return false;
+  }
+  // a queued hop being started (the drain lock) is a base that is about to change too: wait for it to have started
+  if (!waitDrain) return true;   // (the queued hop's own start does not wait for itself)
+  while (sb.draining && sb.draining.has(id) && left() > 0) await new Promise(r => { const t = setTimeout(r, 20); t.unref?.(); });
+  return !(sb.draining && sb.draining.has(id));
 }
 
 /** What nobody's personal skills means to the skills library: a person id that owns nothing, so a launch with no verified person gets the shared (space, project, agent) skills only. */
