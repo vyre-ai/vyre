@@ -1529,6 +1529,15 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   await K.gateway.grants.removeMember(ownerChain, { person: gil.id }, { presence: sign("removeMember", { person: gil.id }) });
   assert.equal(await sees(gil, casey), 0, "a removed member reads nothing of a current one");
   assert.equal(await sees(casey, gil), 0, "and a current one reads nothing of a removed one");
+  // a manager is a member of the home Space: the role counts like any other that is a member (a temp member needs a scope, and is not made here)
+  await add(tess, "manager");
+  assert.equal(await sees(tess, casey), 1, "a manager reads a member's");
+  // a person who shares only a HOSTED second Space reads what that Space gives (the other member), and nothing of the home Space's other members
+  const hosted = await d.ok("spaces.create", { name: "second", displayName: "Second", home: { kind: "this-computer", confirmed: true } }, "cli", { token: ownerTok });
+  for (const p of [erin, casey]) { const r = await d.call("spaces.members.add", { space: hosted.space, person: p.id, role: "member" }, "cli", { token: ownerTok }); assert.ok(!r.error, JSON.stringify(r.error)); }
+  assert.equal(await sees(erin, casey), 1, "erin and casey share the hosted Space: unchanged, she reads casey's");
+  assert.equal(await sees(erin, dana), 0, "but erin, not a member of the home Space, learns nothing of its other members' devices");
+  assert.equal(await sees(dana, erin), 0, "and a home member learns nothing of a person who is only in the hosted Space");
   // a target that is not a person (an agent actor's id) is refused by shape
   assert.deepEqual(await d.ok("spaces.identity.devices.read", { person: "agt_" + "a".repeat(30) }, "module:work", { token: ownerTok }), { devices: [] });
   void K.membership;
