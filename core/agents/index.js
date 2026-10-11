@@ -464,6 +464,8 @@ export default {
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
+        // The approvals card says "your assistant" for the assistant: an agent that is not the assistant may not carry the name, or it could pose as it (a name already held keeps working; the card tells them apart by kind).
+        if (String(i.name).trim().toLowerCase() === "assistant" && kind !== "assistant") throw new Error("assistant is the name of your assistant: pick another name for this agent");
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
