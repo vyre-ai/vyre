@@ -6,6 +6,7 @@
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
+import { serveMember, CALLS as MEMBER_CALLS } from "./member.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
@@ -142,6 +143,22 @@ export default {
       on: (/** @type {string} */ type, /** @type {any} */ fn) => ctx.events.on(type, (/** @type {any} */ ev) => fn(ev && ev.payload !== undefined ? ev.payload : ev)),
       call: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await ctx.call(tool, input); return r && r.data !== undefined ? r.data : r; },
       log: (/** @type {string} */ m) => ctx.log(m) }) : null;
+    // A team member's own Flows on the team's server: the member door's rows (core/work/member-tools.js) run this entry under her chain, in the Space (callInSpace). The Flows tools check no role and no owner, so
+    // serveMember (core/flows/member.js) carries the rules: a Flow is its author's, she approves only a version she made, and a run is hers.
+    ctx.tool("flows.serve", {
+      description: "A team member's own Flows on the team's server: set up, test, approve her own version and start, as that member, in that Space. Only the daemon's member door runs it.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["call"], properties: { call: { type: "string", enum: Object.keys(MEMBER_CALLS) }, input: { type: "object" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
+        const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
+        if (!h || h.actor.kind !== "person") throw refuse("not found: only a member of this team has Flows here; ask an owner or admin to add you", "not_found");
+        const f = hostOf({ space: String(extra.in_space) });
+        const me = String(h.actor.id), role = f.roleOf ? f.roleOf(me) : "";
+        if (!role) throw refuse("not found: only a member of this team has Flows here; ask an owner or admin to add you", "not_found");
+        const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? { ...i.input } : {};
+        delete input.space; delete input.as;
+        return serveMember(f, String(i.call), input, chain, me, role, { gateway: { authorizePeek: f.authorizePeek } });
+      } });
     return { async stop() { if (typeof stopBridge === "function") stopBridge(); } };
   },
 };

@@ -19,6 +19,8 @@ import { normalizeFlow } from "./text.js";
 import { compareHistory } from "./replay.js";
 import { checkCase, runCases, expectFrom, simulateCase, CASE_LIMITS } from "./cases.js";
 import { describeFlow, describeRun, explainRun } from "./describe.js";
+import { hideRun } from "./redact.js";
+import { stepDetail, timelineOf } from "./timeline.js";
 import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, RecordsKitStore, KIT_TYPES, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
@@ -123,7 +125,10 @@ export function createFlows(o) {
       const v = await view(i.id, [i.version]);
       const c = await cat();
       const compiled = compileFlow(v.flow, c);
-      const prev = i.version && i.version > 1 ? await store.getVersion(i.id, i.version - 1) : null;
+      // What the approver compares against is what runs now: the ACTIVE version (even paused), else the version before this one. Not always "version minus one": after several drafts a big change followed by a small tweak would show only the tweak.
+      const row = await store.flowRow(i.id);
+      const baseVersion = row && row.active !== null && row.active !== undefined && row.active !== v.version ? row.active : v.version > 1 ? v.version - 1 : null;
+      const prev = baseVersion ? await store.getVersion(i.id, baseVersion) : null;
       return { id: v.id, version: v.version, hash: v.hash, authorship: v.flow.authorship, effects: compiled.effects, caps: compiled.caps, warnings: compiled.warnings, changes: prev ? flowChanges(prev.flow, v.flow, c) : [], text: seeAsCode(v.flow).text };
     },
     "flows.get": async (chain, i) => { const v = await view(need(i, "id", "the Flow's id (flows.list)"), [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
@@ -198,7 +203,16 @@ export function createFlows(o) {
       await runner.saveTests(id, cases.filter((/** @type {any} */ c) => c.name !== name));
       return { removed: name };
     },
-    "flows.timeline": async (chain, i) => runner.timeline(need(i, "run", "the run's id (flows.runs)"), { step: i.step }),
+    "flows.timeline": async (chain, i) => {
+      const id = need(i, "run", "the run's id (flows.runs)");
+      if (!i.hide_for) return runner.timeline(id, { step: i.step });
+      // a run on someone else's authority (the member door): the same picture drawn from the run with its data replaced
+      const raw = await runner.getRun(id);
+      if (!raw) throw Object.assign(new Error("no such run"), { code: "not_found" });
+      const run = hideRun(raw, String(i.hide_for)), ver = await store.getVersion(run.flow, run.version);
+      if (i.step) { const d = stepDetail(run, i.step); if (!d) throw Object.assign(new Error(`that run has no step ${i.step}`), { code: "not_found" }); return { run: run.id, step: d, hidden_for: run.hidden_for }; }
+      return { run: run.id, flow: run.flow, version: run.version, lines: timelineOf(run, ver ? ver.flow : null).lines, hidden_for: run.hidden_for };
+    },
     "flows.diff": async (chain, i) => {
       need(i, "id", "the Flow's id (flows.list)"); need(i, "from", "an older version number"); need(i, "to", "a newer version number");
       const a = await store.getVersion(i.id, Number(i.from)), b = await store.getVersion(i.id, Number(i.to));
@@ -222,7 +236,7 @@ export function createFlows(o) {
       return { ok: true, active: target.version, was: was ? was.version : null, changes, retried, refused };
     },
     "flows.describe": async (chain, i) => {
-      if (i && i.run) { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { explain: explainRun(r, v ? v.flow : null), lines: describeRun(r, v ? v.flow : null) }; }
+      if (i && i.run) { const r0 = await runner.getRun(i.run), r = i.hide_for ? hideRun(r0, String(i.hide_for)) : r0; if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { explain: explainRun(r, v ? v.flow : null), lines: describeRun(r, v ? v.flow : null) }; }
       const v = await view(i.id, [i.version]);
       const h = await runner.health(i.id);
       return { lines: describeFlow(v.flow, { id: v.id, version: v.version, status: v.status, health: h ? h.line : undefined }) };
@@ -271,12 +285,13 @@ export function createFlows(o) {
     "flows.control": async () => runner.controlState(),
     "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), ...(r.parent ? { parent: r.parent.run } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
     "flows.run": async (chain, i) => {
-      const r = await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)"));
+      const show = (/** @type {any} */ x) => (i.hide_for ? hideRun(x, String(i.hide_for)) : x);
+      const r = show(await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)")));
       if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" });
       const v = await store.getVersion(r.flow, r.version);
       // the lanes of a parallel step are runs of their own: their steps are painted on this run's picture, and each lane is listed with its state
       const lanes = [];
-      for (const l of Object.values(r.steps || {})) for (const id of (/** @type {any} */ (l).children || [])) { const k = await runner.getRun(id); if (k && k.parent && k.parent.lane) lanes.push({ lane: k.parent.lane, run: k.id, state: k.state, steps: k.steps }); }
+      for (const l of Object.values(r.steps || {})) for (const id of (/** @type {any} */ (l).children || [])) { const k = show(await runner.getRun(id)); if (k && k.parent && k.parent.lane) lanes.push({ lane: k.parent.lane, run: k.id, state: k.state, steps: k.steps }); }
       const shown = lanes.length ? { ...r, steps: Object.assign({}, ...lanes.map(k => k.steps), r.steps) } : r;
       return { run: r, painted: v ? paintRun(v.flow, shown, await cat()) : null, ...(lanes.length ? { lanes: lanes.map(({ lane, run, state }) => ({ lane, run, state })) } : {}) };
     },
