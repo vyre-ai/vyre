@@ -126,7 +126,7 @@ test("what a Dockerfile build cannot do is refused in words: no Dockerfile, no p
   fs.writeFileSync(path.join(d, "Dockerfile"), "FROM ghcr.io/vyre-ai/base:1\nEXPOSE 80\n");
   assert.equal((await build(dep(d))).runtime.port, 80, "the owner's allowed registry");
   assert.equal(built, 1, "nothing was built for a refused Dockerfile");
-  await assert.rejects(build({ ...dep(d), source: { kind: "repo", ref: "https://x.test/r.git" } }), /only GitHub repos are cloned/);
+  await assert.rejects(build({ ...dep(d), source: { kind: "repo", ref: "https://x.test/r.git" } }), /container builder, which is not installed/);
 });
 
 test("on a server that builds through its host helper: the context and the settings go into the deployment's folder, `pub-build <deployment>` is asked, and the answer is the image id; a build secret is refused; the folder is removed", async t => {
@@ -156,25 +156,4 @@ test("on a server that builds through its host helper: the context and the setti
   seam.helper = { present: () => true, ask: /** @type {any} */ (async () => { throw Object.assign(new Error("the server could not pub-build this site's image: the build failed: npm ERR"), { code: "failed" }); }) };
   await assert.rejects(build(), (/** @type {any} */ e) => { assert.equal(e.code, "build_failed"); assert.match(e.message, /npm ERR/); return true; });
   assert.ok(!fs.existsSync(path.join(home, "publish", SPC, "servers", DEP)), "and nothing is left after a failure");
-});
-
-test("a build command on a folder is built by a Dockerfile Vyre writes: the command in a node image, the output served as plain files on 8080; a folder with its own Dockerfile, or a node version not offered, is refused", async t => {
-  const d = tmp(t);
-  fs.writeFileSync(path.join(d, "package.json"), "{}"); fs.writeFileSync(path.join(d, "index.html"), "x");
-  /** @type {any[]} */ const asked = [];
-  seam.buildImage = async p => { asked.push({ files: p.files.map(f => f.path), docker: p.files.find(f => f.path === "Dockerfile")?.content.toString("utf8") }); return { image: "sha256:" + "e".repeat(64), logs: "ok" }; };
-  const build = await tool(t, { publish: { servers: true } });
-  const withCmd = (/** @type {any} */ b) => ({ ...dep(d), build: { output_dir: "dist", ...b } });
-  const r = await build(withCmd({ command: "npm run build", image: "node-22" }));
-  assert.deepEqual(r.runtime, { kind: "image", image: "sha256:" + "e".repeat(64), port: 8080, health: { path: "/", ok: [...HEALTH.ok] } });
-  assert.deepEqual(asked[0].files, ["Dockerfile", "index.html", "package.json"]);
-  assert.match(asked[0].docker, /^FROM node:22-alpine AS build\n/);
-  assert.match(asked[0].docker, /npm run build\nFROM busybox:stable\nCOPY --from=build \/app\/dist \/site\nUSER 65534\nEXPOSE 8080\nCMD \["httpd", "-f", "-p", "8080", "-h", "\/site"\]/);
-  const other = await build(withCmd({ command: "npm run build:prod", image: "node-22" }));
-  assert.notEqual(other.digest, r.digest, "a different command is a different version");
-  assert.match((await build(withCmd({ command: "npm run build", image: "node-20" }))).logs, /Built an image/);
-  await assert.rejects(build(withCmd({ command: "make", image: "python" })), /does not build with a command/);
-  await assert.rejects(build(withCmd({ command: "", image: "node-22" })), /needs a build command/);
-  fs.writeFileSync(path.join(d, "Dockerfile"), OK);
-  await assert.rejects(build(withCmd({ command: "npm run build", image: "node-22" })), /has its own Dockerfile/);
 });

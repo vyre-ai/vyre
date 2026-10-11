@@ -445,11 +445,11 @@ export default {
       }
       const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
       if (sc.room) {
-        if (!r.slugs.has(sc.room)) throw denied(`${r.agent} is not granted ${sc.room} at the moment: an agent reaches a project while it is on the project's team with a task there (add it to the team, then give it a task)`);
+        if (!r.slugs.has(sc.room)) throw denied(`${r.agent} is not granted ${sc.room}`);
         return { ...r, cwds };
       }
       const outside = cwds.filter(c => !within(c, r.folders));
-      if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")} at the moment: an agent reaches a project while it is on the project's team with a task there (add it to the team, then give it a task)`);
+      if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       return { ...r, cwds };
     };
     const agentField = { agent: { type: "string" } };

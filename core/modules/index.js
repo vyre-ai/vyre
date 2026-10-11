@@ -14,6 +14,7 @@ import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { assistantLimit } from "./assistant-limit.js";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -1500,12 +1501,10 @@ export class Registry {
   }
 
   async call(tool, input = {}, caller = "unknown", { proof = null, yes: yesProof = null, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
-    const def = this.tools.get(tool);
-    if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    const def = this.tools.get(tool); if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
-    delete meta.relayedBy; // set below, by the registry relay alone
-    delete meta[COVERED]; // set below, only by a card this call just redeemed
+    delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT]; delete meta[FLOW_ACT]; // set by callFlow alone (below it becomes the same mark a redeemed card makes)
     const viewAsk = meta[VIEW_ASK]; delete meta[VIEW_ASK]; // set by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
@@ -1539,6 +1538,7 @@ export class Registry {
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
     if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
+    { const limited = await assistantLimit(this.tools, { tool, door, caller, meta }); if (limited) return limited; } // the person narrowed their own assistant (G23): core/modules/assistant-limit.js
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.

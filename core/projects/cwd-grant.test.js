@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present, kernelCaller, putOnTask } from "../../test/helpers.js";
+import { tempHome, present, kernelCaller } from "../../test/helpers.js";
 
 async function world(/** @type {any} */ t) {
   const root = fs.realpathSync(tempHome(t));
@@ -25,7 +25,6 @@ async function world(/** @type {any} */ t) {
   // kit is a real agent, granted northwind only: a kernel grant made in the person's own call
   const made = await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] });
   assert.equal(made.error, undefined, JSON.stringify(made));
-  await putOnTask(d, root, "kit", "northwind");   // kit works a task in northwind (G22)
   return { reg, north, harlow };
 }
 

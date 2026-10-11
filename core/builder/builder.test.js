@@ -6,8 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import builder, { planOf, seam } from "./index.js";
-import { repoOf, cloneArgs } from "../../lib/publish/repo-source.js";
+import builder, { planOf } from "./index.js";
 
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-builder-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 async function tool(/** @type {import("node:test").TestContext} */ t) {
@@ -34,10 +33,10 @@ test("a folder of ready files builds: files, digest, a static runtime, and a log
 test("what it cannot build is refused in words that name what is missing, never skipped", async t => {
   const build = await tool(t);
   for (const [why, deployment, words] of /** @type {[string, any, RegExp][]} */ ([
-    ["a repo that is not on GitHub", dep({ source: { kind: "repo", ref: "https://git.example.test/x.git#main" } }), /only GitHub repos are cloned/],
+    ["a repo", dep({ source: { kind: "repo", ref: "https://git.example.test/x.git#main" } }), /container builder, which is not installed/],
     ["a Drive folder", dep({ source: { kind: "drive", ref: "abc" } }), /container builder/],
-    ["a build command with servers off", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "npm run build", output_dir: "dist", image: "static" } }), /turned off in this test release/],
-    ["a node image with servers off", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "", output_dir: ".", image: "node-22" } }), /turned off in this test release/],
+    ["a build command", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "npm run build", output_dir: "dist", image: "static" } }), /build command \(npm run build\) needs the container builder/],
+    ["a node image", dep({ source: { kind: "folder", ref: "/x" }, build: { command: "", output_dir: ".", image: "node-22" } }), /node-22 image needs the container builder/],
   ])) await assert.rejects(() => build(deployment), (/** @type {any} */ e) => { assert.equal(e.code, "refused", why); assert.match(e.message, words, why); return true; });
   assert.deepEqual(planOf({ source: { kind: "folder", ref: "/x" }, build: {} }), { dir: "/x", outputDir: ".", dockerfile: false }, "no command and no image asks for the folder as it is");
 });
@@ -54,27 +53,4 @@ test("publishing an app with its own server is switched off in the test release 
   assert.deepEqual(planOf({ source: { kind: "folder", ref: "/x" }, build: {} }), { dir: "/x", outputDir: ".", dockerfile: false }, "a folder of ready files is untouched");
   assert.equal(planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "static" } }).dockerfile, false);
   assert.equal(planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" } }, { servers: true }).dockerfile, true, "the setting turns it on");
-});
-
-test("a public GitHub repo is cloned, built like a folder, and its clone is removed; a repo that cannot be cloned is refused in words", async t => {
-  /** @type {any[]} */ const cloned = [];
-  seam.clone = async (url, branch, dir) => { cloned.push({ url, branch, dir }); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, "index.html"), "<h1>From the repo</h1>"); fs.mkdirSync(path.join(dir, ".git")); fs.writeFileSync(path.join(dir, ".git", "config"), "x"); };
-  t.after(() => { seam.clone = null; });
-  const build = await tool(t);
-  const r = await build(dep({ source: { kind: "repo", ref: "northwind/site#release" } }));
-  assert.deepEqual(r.files.map((/** @type {any} */ f) => f.path), ["index.html"], ".git is not in the site");
-  assert.deepEqual([cloned[0].url, cloned[0].branch], ["https://github.com/northwind/site.git", "release"]);
-  assert.ok(!fs.existsSync(path.dirname(cloned[0].dir)), "the clone is removed after the build");
-  assert.match(r.logs, /from site/);
-  seam.clone = async () => { throw Object.assign(new Error("could not get the repo: the repo is not there, or it is private (only public repos are cloned for now)"), { code: "refused" }); };
-  await assert.rejects(() => build(dep({ source: { kind: "repo", ref: "northwind/private" } })), /private/);
-});
-
-test("which repos may be named, and the clone's git arguments: https GitHub only, shallow, no hooks, no prompt", () => {
-  assert.deepEqual(repoOf("a-b/c.d"), { ok: true, url: "https://github.com/a-b/c.d.git", branch: null, owner: "a-b", name: "c.d" });
-  assert.equal(/** @type {any} */ (repoOf("https://github.com/o/n.git#feat/x")).branch, "feat/x");
-  for (const bad of ["", "o", "o/n/extra", "http://github.com/o/n", "https://evil.test/o/n", "file:///etc", "o/n#--upload-pack=x", "o/n#a/../b", "../x/y", "o/.."]) assert.equal(repoOf(bad).ok, false, bad);
-  const a = cloneArgs("https://github.com/o/n.git", "main", "/tmp/x");
-  assert.deepEqual(a.slice(-3), ["--", "https://github.com/o/n.git", "/tmp/x"]);
-  for (const want of ["core.hooksPath=/dev/null", "protocol.allow=never", "--depth", "--single-branch"]) assert.ok(a.includes(want), want);
 });

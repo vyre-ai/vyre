@@ -177,6 +177,10 @@
    "module": "assistant",
    "reason": "guard: in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent; it rolls the assistant's own daily thread and nothing else, deferred while the assistant is working"
   },
+  "assistant.access.get": {
+   "module": "assistant",
+   "reason": "read-only: what the person turned off for their own assistant, so it can say why a call was refused; it answers only for the person on the call's own chain"
+  },
   "assistant.glance": {
    "module": "assistant",
    "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"

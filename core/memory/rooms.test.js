@@ -15,7 +15,7 @@ import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import fs from "node:fs";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, kernelCaller, putOnTask } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 
@@ -227,7 +227,6 @@ test("rooms: vyred keeps the rooms in step with Projects, picks included, and gu
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
   assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
-  await putOnTask(d, root, "kit", "northwind");   // a teammate with a task (G22)
   // memory's guard now also checks projects.access (Vyre Drive step 3): seed it from what
   // agents.create just set, the way an upgrade would, so kit's grant keeps working here.
   await call("memory.curate", {}, opts);

@@ -12,7 +12,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome, putOnTask } from "../../test/helpers.js";
+import { tempHome } from "../../test/helpers.js";
 import { projectMarker, spaceMarker, visible, find } from "./markers.js";
 
 async function world(t) {
@@ -30,7 +30,6 @@ async function world(t) {
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
   assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
-  await putOnTask(d, root, "kit", "northwind");   // kit reaches Northwind as its teammate with a task (G22)
   return { d, root, nw: path.join(work, "northwind") };
 }
 const cwdsOf = r => (r.data.passages || r.data.hits || []).map(p => p.cwd).filter(Boolean);

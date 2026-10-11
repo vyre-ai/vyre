@@ -15,7 +15,7 @@ async function world(/** @type {any} */ t, /** @type {any} */ extra = {}) {
   const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), "vc-comp-"));
   t.after(() => fs.rmSync(sockDir, { recursive: true, force: true }));
   const sockPath = path.join(sockDir, "chrome.sock");
-  const s = await pair(t, { kernel: true, macConfig: { modules: { disable: ["hands"] }, chrome: { sockPath, extensionOrigin: null }, ...extra } });
+  const s = await pair(t, { macConfig: { modules: { disable: ["hands"] }, chrome: { sockPath, extensionOrigin: null }, ...extra } });
   const macs = await until(async () => { const m = (await s.boxCall("link.macs")).data; return m.length === 1 && m[0].online && m; });
   /** @type {any[]} */ const seen = [];
   const x = await fakeExtension(sockPath, { handler: (op, args) => {
@@ -29,12 +29,10 @@ async function world(/** @type {any} */ t, /** @type {any} */ extra = {}) {
   return { ...s, seen, name: macs[0].name };
 }
 const KIT = "mcp agent:kit";
-// the agent's session as the kernel sees it: the box owner's person first, then the agent (the Macs are the owner's; core/computer/index.js isOwner)
-const KITM = { kernelFacts: { kind: "agent_session", agent: "kit", session: "s-kit", vouched: true } };
 
 test("'on my Mac' runs in the Mac's Chrome only for a class the person allowed there, and stops when it is taken back", { timeout: 120_000 }, async t => {
   const s = await world(t);
-  const look = () => s.boxCall("computer.use", { do: "look", on: s.name }, KIT, KITM);
+  const look = () => s.boxCall("computer.use", { do: "look", on: s.name }, KIT);
   const before = await look();
   assert.ok(before.error, JSON.stringify(before));
   assert.match(JSON.stringify(before), /has not allowed the box|link\.computer\.allow/);
@@ -49,7 +47,7 @@ test("'on my Mac' runs in the Mac's Chrome only for a class the person allowed t
   assert.ok(s.seen.some(x => x.op === "page.snapshot"), "the Mac's own Chrome was read");
 
   // another class is its own yes
-  const open = await s.boxCall("computer.use", { do: "open", on: s.name, url: "https://example.org/" }, KIT, KITM);
+  const open = await s.boxCall("computer.use", { do: "open", on: s.name, url: "https://example.org/" }, KIT);
   assert.ok(open.error, JSON.stringify(open));
   assert.match(JSON.stringify(open), /act on this Mac|link\.computer\.allow act/);
 
@@ -83,8 +81,8 @@ test("files: the box finds and brings a file from Downloads, Desktop or Document
   fs.symlinkSync(path.join(home, "Library", "report-secret.txt"), path.join(home, "Downloads", "report-link.txt"));
   fs.writeFileSync(path.join(home, "Downloads", "huge-report.bin"), Buffer.alloc(9 * 1024 * 1024));
   const s = await world(t, { computer: { home }, files: { roots: ["Downloads", "Documents", "Library"].map(d => path.join(home, d)) } });
-  const find = (/** @type {string} */ q) => s.boxCall("computer.use", { do: "find", on: s.name, args: { q } }, KIT, KITM);
-  const get = (/** @type {string} */ p) => s.boxCall("computer.use", { do: "get", on: s.name, args: { path: p } }, KIT, KITM);
+  const find = (/** @type {string} */ q) => s.boxCall("computer.use", { do: "find", on: s.name, args: { q } }, KIT);
+  const get = (/** @type {string} */ p) => s.boxCall("computer.use", { do: "get", on: s.name, args: { path: p } }, KIT);
   assert.match(JSON.stringify(await find("report")), /link\.computer\.allow files|has not allowed/, "off until the person allows files");
   await s.macCall("link.computer.allow", { class: "files" });
   const found = await find("report");

@@ -119,7 +119,7 @@ export const credentialName = id => `conn-${id}`;
 /**
  * What a check's answer means, in plain words. `reply` is the vault.request answer ({status}); `error` is what it threw. Green only for a 2xx.
  * @param {{ reply?: { status?: number } | null, error?: { code?: string, message?: string } | null }} r
- * @returns {{ light: "green" | "red", words: string, cls?: string }}
+ * @returns {{ light: "green" | "red", words: string }}
  */
 export function outcomeOf({ reply, error }) {
   if (error) {
@@ -133,8 +133,8 @@ export function outcomeOf({ reply, error }) {
   }
   const s = Number(reply && reply.status);
   if (s >= 200 && s < 300) return { light: "green", words: "connected" };
-  if (s === 401) return { light: "red", words: "the key was refused (401)", cls: "auth" };
-  if (s === 403) return { light: "red", words: "the key is not allowed to do that (403)", cls: "auth" };
+  if (s === 401) return { light: "red", words: "the key was refused (401)" };
+  if (s === 403) return { light: "red", words: "the key is not allowed to do that (403)" };
   if (s === 404) return { light: "red", words: "that id was not found (404)" };
   if (s === 429) return { light: "red", words: "the service says to slow down (429)" };
   if (s >= 500) return { light: "red", words: `the service is having trouble (${s})` };

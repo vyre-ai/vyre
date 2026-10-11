@@ -26,28 +26,13 @@ export function projectFilesOf(resource, space) {
   return m ? m[1] : null;
 }
 
-/** The project a call is about: a specific project's reach, or a record that belongs to one (its kernel attribute `project`). @param {any} input @param {string} space @param {{ projectOf?: (resource: string) => string | null }} oracle */
-function projectReachOf(input, space, oracle) {
-  const m = new RegExp(`^vyre://${space}/project/([A-Za-z0-9_-]{1,64})$`).exec(String(input.resource));
-  if (m) return m[1];
-  const p = input.action.startsWith("records.") && oracle.projectOf ? oracle.projectOf(String(input.resource)) : null;
-  return typeof p === "string" && p ? p.replace(/^.*\//, "") : null;
-}
-
-/** @param {any} base @param {string} space @param {{ projectOf?: (resource: string) => string | null, noteReach?: (chain: any, data: any, resource: string) => void, chatHas: (p: string, c: string) => boolean, chatAssistants: (c: string) => string[] | null, sharedRead: (r: string, p: string) => Promise<boolean> }} oracle */
+/** @param {any} base @param {string} space @param {{ chatHas: (p: string, c: string) => boolean, chatAssistants: (c: string) => string[] | null, sharedRead: (r: string, p: string) => Promise<boolean> }} oracle */
 export function folderGuard(base, space, oracle) {
   const deny = (/** @type {any} */ d) => Object.freeze({ ...d, effect: "deny", reason: "not_found", obligations: Object.freeze([]) });
   return Object.create(base, { authorize: { value: async (/** @type {any} */ input) => {
     const d = await base.authorize(input), where = chatFolderOf(input && input.resource, space), project = oracle.projectHas ? projectFilesOf(input && input.resource, space) : null;
-    const hops = isChain(input.chain) ? input.chain.hops : [];
-    // A project's reach and its records (and so its memory and chats) are an agent's only while it is a teammate with a task there, as its files are (G22): a grant of its own opens nothing more.
-    if (d.effect !== "deny" && oracle.projectAgent && typeof input.action === "string" && (input.action === "project.reach" || input.action.startsWith("records."))) {
-      const agent = hops.slice(1).find((/** @type {any} */ h) => h.actor.kind === "agent"), at = projectReachOf(input, space, oracle);
-      if (agent && at && !(await oracle.projectAgent(agent.actor.id, at))) return deny(d);
-      // every allowed read by an agent is in the log with its chain; a read that cannot be logged is not made
-      if (agent && at && d.effect === "allow") { try { oracle.noteReach?.(input.chain, { project: at, agent: agent.actor.id, action: input.action }, input.resource); } catch { return deny(d); } }
-    }
     if ((!where && !project) || typeof input.action !== "string" || !input.action.startsWith("drive.")) return d;
+    const hops = isChain(input.chain) ? input.chain.hops : [];
     if (hops.length && hops[0].actor.kind === "service") return input.action === "drive.write" ? d : deny(d);
     const person = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null, agents = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent").map((/** @type {any} */ h) => h.actor);
     const shape = Boolean(person) && hops.slice(1).every((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "service") && agents.length <= 1;

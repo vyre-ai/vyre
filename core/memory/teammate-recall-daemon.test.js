@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { boot } from "../sessions/testing/boot.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { kernelCaller, putOnTask } from "../../test/helpers.js";
+import { kernelCaller } from "../../test/helpers.js";
 
 const FAKE_ACP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "sessions", "testing", "fake-acp.js");
 
@@ -40,7 +40,6 @@ test("a teammate's new session is given what the person decided in an earlier on
   }
   assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "juno", projects: ["harlow-legal"], instructions: "Harlow research." })).error, undefined);
   assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: ["northwind-bakery"], instructions: "Northwind research." })).error, undefined);
-  await putOnTask(w.d, w.root, "juno", "harlow-legal"); await putOnTask(w.d, w.root, "kit", "northwind-bakery");   // each is its project's teammate with a task (G22)
 
   // Session A: the person's own Claude Code session in the Harlow folder, a day ago, the way a terminal session is written (no SDK entrypoint, so Recall counts it as the person's).
   const dir = path.join(w.transcripts, path.join(work, "harlow").replace(/[^A-Za-z0-9]/g, "-"));

@@ -87,7 +87,7 @@ test("the card is built from the manifest only and says what the app may reach",
   assert.match(c.runs, /docuseal\/docuseal:3\.3\.1/);
   assert.match(c.pinned, /^sha256:e171808c/);
   assert.deepEqual(c.reaches, ["your Vyre, to tell it a document was signed"]);
-  assert.deepEqual(c.shows, ["Documents"]);
+  assert.deepEqual(c.shows, ["Signatures"]);
   assert.equal(c.opensFor, "the owner and the admins of this Space");
   assert.equal(c.notes.length, 3);
   assert.match(c.screensNeed, /need a server with a public address/);

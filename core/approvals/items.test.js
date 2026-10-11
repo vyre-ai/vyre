@@ -198,11 +198,3 @@ test("R031-79: a website Connection that waits for a person is one `signin` card
   const hint = owner.watch[0][1];
   assert.deepEqual(hint && hint("connectors.connection-checked", { id: "linkedin", light: "green" }), ["connectors:linkedin", "signed in"]);
 });
-
-test("fromSignIn: a Connection whose key was refused is 'The key for <host> stopped working', not a sign-in", async () => {
-  const { fromSignIn } = await import("./items.js");
-  const rows = fromSignIn([{ id: "acme-crm", class: "auth", key: true, host: "api.acme-crm.invalid", words: "the key was refused (401)", at: 5 }]);
-  assert.equal(rows[0].title, "The key for api.acme-crm.invalid stopped working");
-  assert.equal(rows[0].kind, "signin");
-  assert.deepEqual(rows[0].answer, { tool: "connectors.connection.check", input: { id: "acme-crm" }, fill: [] });
-});

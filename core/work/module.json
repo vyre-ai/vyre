@@ -495,7 +495,6 @@
         "records.read",
         "records.remove",
         "records.update",
-        "tasks.read",
         "tasks.request"
       ],
       "types": [

@@ -982,12 +982,116 @@ const SCREENS = {
     drawDiscover();
   },
 
-  // Connect accounts (G26, connect-anything only): there is no pick per service here. Any service Vyre can use connects the same way, from Connections, Any app; this step says so and moves on.
+  // Stub (docs/design/onboarding-v2.md step 5, lead 29 Sep): vault owns the engine and hasn't
+  // sent tool shapes yet. This slot exists so the step count, the celebration and the summary
+  // are right once it's real; the board (VaultImport.dc.html, work/app-design 19a96abd) already
+  // shows the masked/grouped list, the Touch ID moment and the per-key animate-in this becomes.
+  // Google/email/MCP (docs/design/onboarding-v2.md step 6): connectors/vault own the engine,
+  // spec not sent yet, so those stay a "coming soon" note; Settings > Connections works today
+  // outside onboarding. GitHub (ADR 0041, github.connect/.accounts/.connect.cancel) is real and
+  // built here: a card with its own state (connect, waiting on the device code, connected),
+  // matching Settings' own GitHub card (the app's Connections) but simpler, since onboarding
+  // has no vault-item picker to skip. Optional: Continue or Skip both move on regardless of
+  // whether an account is connected.
   accounts(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Connect accounts."),
-      h("p", { class: "lead" }, "Connect any service once and every agent can use it with your permission. You do it from Connections, Any app, whenever you want a service; nothing needs connecting now."));
+      h("p", { class: "lead" }, "GitHub now; Google, email and MCP servers connect from Settings for now. Connect once, and every agent can use it with your permission."));
+    const ghBox = h("div", { class: "ob-panel" });
+    col.append(ghBox);
+    col.append(h("p", { class: "small muted" }, "Google, email and other services connect from Settings, Connections, whenever you want them."));
     s.foot({ label: "Continue", run: s.next });
+
+    /** @typedef {{ id: string, user_code: string, verification_uri: string, verification_uri_complete?: string, minutes: number, over: boolean }} GhFlow */
+    /** @type {GhFlow | null} */ let flow = null;
+    /** @type {{ name: string, login: string }[]} */ let accounts = [];
+    let starting = false;
+
+    // Only https://github.com/... ever becomes a link's href (reviewer's LOW: verification_uri
+    // is GitHub's own reply, passed through unchecked otherwise); the plain device page always
+    // works with the code shown beside it.
+    const safeGithubUrl = (/** @type {string | undefined} */ u) => (/^https:\/\/github\.com\//.test(String(u || "")) ? /** @type {string} */ (u) : "https://github.com/login/device");
+
+    const draw = () => {
+      if (flow) { put(ghBox, waiting()); return; }
+      put(ghBox, h("div", { class: "lbl" }, "GitHub"),
+        accounts.length
+          ? h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Connected: ", h("b", null, accounts.map(a => a.login || a.name).join(", "))))
+          : [h("p", { class: "small muted" }, "Clone your repos and give an agent its own worktree and branch, one per session."),
+            h("button", { type: "button", class: "btn btn-sm", disabled: starting, onclick: start }, starting ? "Starting…" : "Connect GitHub")]);
+    };
+
+    /** The open device-code sign-in: the code, an Open GitHub link, how long it lasts, Cancel. */
+    const waiting = () => {
+      const f = /** @type {GhFlow} */ (flow);
+      return h("div", null,
+        h("div", { class: "lbl" }, "GitHub"),
+        h("p", { class: "small muted" }, "Enter this code at github.com/login/device:"),
+        command(f.user_code),
+        h("p", { style: { marginTop: "10px" } },
+          h("a", { class: "btn btn-sm", href: safeGithubUrl(f.verification_uri_complete || f.verification_uri), target: "_blank", rel: "noopener noreferrer" }, "Open GitHub")),
+        h("p", { class: "small muted" }, `Good for about ${plural(f.minutes, "minute")}.`),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", style: { marginTop: "6px" }, onclick: cancel }, "Cancel"));
+    };
+
+    async function start() {
+      // A guard against a double tap: the button disables at once, before the await, and its
+      // busy label replaces the click handler until this call settles one way or the other.
+      if (starting || flow) return;
+      starting = true;
+      draw();
+      const r = await attempt("github.connect", { name: "github" });
+      starting = false;
+      // The step was left while this was in flight. A successful connect still opened a real
+      // sign-in at GitHub; cancel it the same way leaving the step does once it's already shown
+      // (cleanup.push(cancel) below), rather than leaving it to poll until it expires on its own
+      // (reviewer's nit on c3c830eb).
+      if (!alive()) { if (r.data?.id) attempt("github.connect.cancel", { id: r.data.id }); return; }
+      const d = r.data || {};
+      if (r.error || !d.id || !d.user_code || !d.verification_uri) {
+        put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, r.error ? (r.error.message || "Could not start GitHub sign-in.") : "GitHub did not return a code. Try again."));
+        return;
+      }
+      flow = { id: d.id, user_code: d.user_code, verification_uri: d.verification_uri, verification_uri_complete: d.verification_uri_complete,
+        minutes: Math.max(1, Math.round((d.expires_in || 900) / 60)), over: false };
+      draw();
+    }
+    function cancel() {
+      if (!flow || flow.over) return;
+      flow.over = true;
+      attempt("github.connect.cancel", { id: flow.id });
+      flow = null;
+      draw();
+    }
+    // No timer: GitHub's own expiry ends an unfinished sign-in with github.connect-failed. But
+    // leaving this step (Back, Skip, Continue, or another onboarding step entirely) cancels an
+    // open sign-in rather than letting the server keep polling for a code the person can no
+    // longer see or finish (reviewer's LOW).
+    cleanup.push(cancel);
+    cleanup.push(on("github.connected", e => {
+      if (!flow || flow.over || e.payload?.id !== flow.id) return;
+      flow.over = true;
+      flow = null;
+      load();
+    }));
+    cleanup.push(on("github.connect-failed", e => {
+      if (!flow || flow.over || e.payload?.id !== flow.id) return;
+      flow.over = true;
+      flow = null;
+      put(ghBox, h("div", { class: "lbl" }, "GitHub"), h("p", { class: "small muted" }, e.payload?.error || "The sign-in ended without an account."));
+    }));
+
+    async function load() {
+      const r = await attempt("github.accounts", {}, { ifPresent: true });
+      if (!alive()) return;
+      accounts = Array.isArray(r.data) ? r.data : [];
+      draw();
+    }
+    /** True while this step's own render is still the one on screen (render() clears `cleanup`
+     * and rebuilds `col` on every navigation, so a stale async reply from a step already left
+     * must not touch a `ghBox`/`flow` that belong to whatever screen replaced it). */
+    const alive = () => col.isConnected;
+    load();
   },
 
   // Full build (lead, 29 Sep): Off / Browser only / Browser + desktops. Glass owns the backend

@@ -309,16 +309,3 @@ test("Any app: the GitHub preset fills the form and says which token scopes clon
   assert.match(gh.hint, /Contents \(read and write\)/);
   assert.match(formProblem(f) || "", /key|Vault/i, "the person still has to pick the key");
 });
-
-test("connect-anything only (G26): Connections has no tab for Google or GitHub, and onboarding no longer offers a GitHub pick", async () => {
-  const fs = await import("node:fs");
-  const screen = fs.readFileSync(new URL("./ConnectionsScreen.tsx", import.meta.url), "utf8");
-  const tabs = /items=\{(\[\[.*?\]\])\}/s.exec(screen);
-  assert.ok(tabs, "the tab list is in the screen");
-  const labels = [...tabs[1].matchAll(/\["([a-z]+)", "([^"]+)"\]/g)].map((m) => m[2]);
-  assert.deepEqual(labels, ["Connected", "Add", "Any app", "MCP", "Access"], "no Google tab, no GitHub tab");
-  assert.ok(!fs.existsSync(new URL("./RealGoogle.tsx", import.meta.url)) && !fs.existsSync(new URL("./RealGithub.tsx", import.meta.url)), "their screens are gone");
-  const onboard = fs.readFileSync(new URL("../../../../web/onboard/onboard.js", import.meta.url), "utf8");
-  const step = onboard.slice(onboard.indexOf("accounts(col, s) {"), onboard.indexOf("devices(col, s) {"));
-  assert.ok(step.includes("Any app") && !/github/i.test(step), "the accounts step points to Any app and offers no GitHub pick");
-});

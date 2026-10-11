@@ -78,29 +78,3 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   assert.ok(!(await cli("vault.list", {})).data.items.some(x => x.name === "conn-acme-crm"));
   assert.ok((await cli("vault.list", {})).data.items.some(x => x.name === "acme-key"), "the key's own item stays");
 });
-
-test("a Connection whose key the service refused is one Needs-you card that says so, and closes when the key works again (G26)", async t => {
-  const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
-  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  assert.ok(!(await cli("vault.put", { name: "acme-key", kind: "secret", value: "acme-secret-value-123456" })).error);
-  assert.deepEqual((await cli("connectors.connection.create", FORM)).data, { id: "acme-crm", credential: "conn-acme-crm" });
-  const cards = async () => (((await cli("approvals.items")).data || {}).items || []).filter((/** @type {any} */ c) => c.kind === "signin");
-  assert.deepEqual(await cards(), [], "a Connection nobody has found wrong has no card");
-  // the service refuses the key (a 401 on a check or an operation records this on the Connection)
-  const db = d.registry.deps.db;
-  db.prepare("UPDATE connectors_made SET light = 'red', reason = 'the key was refused (401)', form = json_set(form, '$.last', json('{\"class\":\"auth\"}')) WHERE id = 'acme-crm'").run();
-  d.registry.deps.events.emit("connectors", "connectors.connection-checked", { id: "acme-crm", light: "red" });
-  const att = (await cli("connectors.site.attention")).data.sites;
-  assert.deepEqual(att.map((/** @type {any} */ x) => [x.id, x.class, x.key, x.host]), [["acme-crm", "auth", true, "api.acme-crm.invalid"]]);
-  const card = (await cards())[0];
-  assert.equal(card.title, "The key for api.acme-crm.invalid stopped working");
-  assert.match(card.detail || "", /key was refused \(401\)/);
-  assert.equal(card.answer.tool, "connectors.connection.check");
-  // the key works again
-  db.prepare("UPDATE connectors_made SET light = 'green', reason = 'connected', form = json_set(form, '$.last', json('{\"class\":\"ok\"}')) WHERE id = 'acme-crm'").run();
-  d.registry.deps.events.emit("connectors", "connectors.connection-checked", { id: "acme-crm", light: "green" });
-  assert.deepEqual(await cards(), [], "the card closes by itself");
-});

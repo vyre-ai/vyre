@@ -66,11 +66,6 @@ test("seed a session, a teammate in a later session recalls its decision from th
   const added = await ask("work.team.add", { project: proj, role, approved: true }, { ...ownerMeta, kernel_proof: proof });
   assert.ok(!added.error, JSON.stringify(added.error));
   assert.equal(added.data.grants.length, 1);
-  // the teammate works a task in the project (G22: it reaches the project only then)
-  const projUrn = (await ask("work.project.ref", { project: "harlow-legal" })).data.urn;
-  await d.kernel.gateway.records.create(owner, "team-member", { name: "harlow-research", actor: { actor: { kind: "agent", id: "harlow-research.harlow-legal", space } }, kind: "assistant", project: { urn: projUrn } });
-  const task = await ask("tasks.request", { task: { title: "Report on Harlow hosting", output: { kind: "note" }, doer: "harlow-research.harlow-legal", checker: d.kernel.id.owner, project: projUrn } });
-  assert.ok(!task.error, JSON.stringify(task.error));
   const tokenOf = async (/** @type {string} */ agent) => (await d.kernel.surfaces.open(owner, { agent })).token;
   const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("harlow-research.harlow-legal") }, "mcp:thread:t-juno");
   assert.ok(!juno.error, JSON.stringify(juno.error));

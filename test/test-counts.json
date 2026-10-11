@@ -1046,5 +1046,6 @@
  "core/previews/thumb-stop.test.js": 1,
  "core/switchboard/screenshots.test.js": 2,
  "core/models/live-picker.test.js": 1,
- "kernel/gateway/project-reach.test.js": 1
+ "test/journey-assistant-access.test.js": 4,
+ "apps/app/screens/assistants/access-model.test.js": 2
 }

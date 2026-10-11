@@ -584,10 +584,10 @@ test("publish: a folder of ready files builds with the real builder, is checked,
   const made = fs.readdirSync(sitesDir);
   assert.equal(made.length, 1);
   assert.deepEqual(fs.readdirSync(path.join(sitesDir, made[0])), ["index.html"], "only the site's files were written for the box; the .env stayed behind");
-  // a build command runs in the container builder, which is on only where servers are (publish.servers): Publish says so in the builder's words
+  // a build command is for the container builder, which this server does not have: Publish says so in the builder's words
   const { deployment: cmd } = await b.ok("publish.create", { name: "bakery-app", source: { kind: "folder", ref: dir }, build: { image: "static", command: "npm run build", output_dir: "dist" }, project: "bakery" });
   const refused = await b.call("publish.preview", { deployment: cmd.id });
-  assert.match(refused.error.message, /turned off in this test release/);
+  assert.match(refused.error.message, /needs the container builder, which is not installed here yet/);
   // a folder that is not on this server is refused at create, before any draft exists
   const gone = await b.call("publish.create", { name: "ghost", source: { kind: "folder", ref: path.join(b.home, "nope") }, build: { image: "static" } });
   assert.equal(gone.error.code, "not_found");
