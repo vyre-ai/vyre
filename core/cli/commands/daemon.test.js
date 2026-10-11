@@ -67,3 +67,41 @@ test("vyre space: a remembered space is read back, shown by bare `vyre space`, a
   assert.equal(readSpace(root), null);
   assert.equal(JSON.parse((await run(root, ["space", "--json"])).stdout).space, null);
 });
+
+test("vyre status --ready answers when vyred does, and says it is not answering when it is not", async t => {
+  const root = tempHome(t);
+  const none = await run(root, ["status", "--ready"]);
+  assert.notEqual(none.code, 0, "no vyred: not ready");
+  assert.match(none.stdout, /not answering yet/);
+  const { start } = await import("../../daemon/index.js");
+  const { present } = await import("../../../test/helpers.js");
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const up = await run(root, ["status", "--ready"]);
+  assert.equal(up.code, 0, up.stdout);
+  assert.match(up.stdout, /vyred answering/);
+  assert.doesNotMatch(up.stdout, /Search|memory\s/i, "it asks vyred and nothing else (not search, not memory)");
+});
+
+test("vyre status does not wait for search or memory: slow ones print 'starting' and the rest is shown", async t => {
+  const http = await import("node:http");
+  const fs = await import("node:fs");
+  const config = await import("../../config/index.js");
+  const root = tempHome(t);
+  const sock = config.paths(root).socket;
+  fs.mkdirSync(path.dirname(sock), { recursive: true });
+  /** @type {Set<import("node:http").ServerResponse>} */ const hung = new Set();
+  const srv = http.createServer((req, res) => {
+    if (req.url === "/v1/health") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ data: { version: "0.0.0", commit: "abc1234", role: "box", pid: 1, uptime: 5000, modules: { running: 3, failed: 0 } } })); }
+    hung.add(res); // recall.status and memory.stats: no answer, as on a first start
+  });
+  await new Promise(r => srv.listen(sock, () => r(undefined)));
+  t.after(() => { for (const r of hung) r.destroy(); srv.close(); });
+  const t0 = Date.now();
+  const r = await run(root, ["status"]);
+  assert.equal(r.code, 0, r.stdout);
+  assert.ok(Date.now() - t0 < 12_000, `status answered in ${Date.now() - t0} ms`);
+  assert.match(r.stdout, /search index: starting/);
+  assert.match(r.stdout, /memory: starting/);
+  assert.match(r.stdout, /3 modules running/);
+});

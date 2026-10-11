@@ -76,7 +76,7 @@ export function MyCloudCard() {
 
   return (
     <Card className="gap-s2">
-      {offer === "moved" ? (<><Text strong>Personal now lives in My Cloud</Text><Text tone="muted">Your things were moved. Personal is read-only and points there.</Text></>) : null}
+      {offer === "moved" ? (<><Text strong>My Home now lives in My Cloud</Text><Text tone="muted">Your things were moved. My Home is read-only and points there.</Text></>) : null}
       {offer === "setup" ? (<>
         <Text strong>{SET_UP.title}</Text><Text tone="muted">{SET_UP.body}</Text>
         <View className="flex-row"><Button label={SET_UP.action} loading={busy} onPress={() => void setUp()} /></View>
@@ -88,7 +88,7 @@ export function MyCloudCard() {
       {offer === "move" && step.kind === "plan" ? (<>
         <Text strong>{approvalLine(step.plan)}</Text>
         <Text strong>What would move</Text>
-        {planLines(step.plan).length ? planLines(step.plan).map((l, i) => <Text key={i}>{l}</Text>) : <Text tone="muted">There is nothing in Personal to move yet.</Text>}
+        {planLines(step.plan).length ? planLines(step.plan).map((l, i) => <Text key={i}>{l}</Text>) : <Text tone="muted">There is nothing in My Home to move yet.</Text>}
         {blockersOf(step.plan).length ? <Banner tone="warn"><View className="gap-s1"><Text strong>{MOVE.blocked}</Text>{blockersOf(step.plan).map((b, i) => <Text key={i}>{b}</Text>)}</View></Banner> : null}
         <View className="flex-row gap-s2">
           {canMove(step.plan) ? <Button label={MOVE.approve} loading={busy} onPress={() => void move(step.plan)} /> : null}

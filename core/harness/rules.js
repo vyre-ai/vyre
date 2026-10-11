@@ -16,6 +16,7 @@
 //            change, since a rule written there would let later calls skip every question.
 // The Gate (M9) takes over outbound control properly; until then this is the backstop.
 
+import { proposedNameOf } from "../../lib/tool-names.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,7 +48,7 @@ const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "em
  *   own folder, VYRE_HOME/agents/<agent>, is a working place for it, as watchers/ is.
  * @returns {{ decision: "deny"|"ask"|null, reason?: string, rule?: number }}
  */
-export function rules({ tool, input, cwd, home, userHome, agent = null }) {
+export function rules({ tool, input, cwd, home, userHome, agent = null, sessionCli = false }) {
   const vyreHome = path.resolve(home || process.env.VYRE_HOME || path.join(os.homedir(), ".vyre"));
   const vault = path.join(vyreHome, "vault");
 
@@ -84,7 +85,37 @@ export function rules({ tool, input, cwd, home, userHome, agent = null }) {
       return { decision: "ask", rule: 1, reason: `This sends as you, to ${where.slice(0, 200)}. Vyre asks before anything goes out.` };
     }
   }
+  // The one positive answer the floor gives: inside a sandboxed session whose PATH starts with the session's own `vyre` (core/cli/session.js), exactly that command in its three forms is allowed
+  // without a question. What it can do is bounded elsewhere (the session's own socket, the registry's floor, the Gate that holds a send); this only spares the person a question per call.
+  if (sessionCli === true && tool === "Bash" && typeof input.command === "string" && sessionCommand(input.command)) return { decision: "allow", rule: 0, reason: "the session's own vyre: find a tool, describe it, or call it; a send is still held for approval" };
   return { decision: null };
+}
+
+const SESSION_TOOL = /^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/;
+/**
+ * Is this command exactly one of the session CLI's three forms, written plainly? `vyre tools find <words>`, `vyre tools describe <tool>`, `vyre call <tool> [<json>]`, with the bare word `vyre`
+ * first and nothing else around it: no pipe, list, redirection, substitution, variable, assignment or second command. A quoted argument is one word: single quotes hold anything but a quote;
+ * double quotes hold anything but `$`, a backtick or a backslash. Returns the verb, or null.
+ * @param {string} command @returns {"find" | "describe" | "call" | null}
+ */
+export function sessionCommand(command) {
+  const text = String(command);
+  if (text.length > 70_000 || /[\r\0]/.test(text) || text.trim() !== text) return null;
+  /** @type {string[]} */ const argv = [];
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === " ") { i++; continue; }
+    if (c === "'") { const j = text.indexOf("'", i + 1); if (j < 0) return null; argv.push(text.slice(i + 1, j)); i = j + 1; if (i < text.length && text[i] !== " ") return null; continue; }
+    if (c === '"') { let j = i + 1; while (j < text.length && text[j] !== '"') { if (/[$`\\]/.test(text[j])) return null; j++; } if (j >= text.length) return null; argv.push(text.slice(i + 1, j)); i = j + 1; if (i < text.length && text[i] !== " ") return null; continue; }
+    let j = i; while (j < text.length && text[j] !== " ") { if (!/[A-Za-z0-9._:=@+,/-]/.test(text[j])) return null; j++; }
+    argv.push(text.slice(i, j)); i = j;
+  }
+  if (argv[0] !== "vyre") return null;
+  if (argv[1] === "tools" && argv[2] === "find") return argv.length >= 4 && argv.slice(3).join(" ").length <= 300 ? "find" : null;
+  if (argv[1] === "tools" && argv[2] === "describe") return argv.length === 4 && SESSION_TOOL.test(argv[3]) ? "describe" : null;
+  if (argv[1] === "call") return (argv.length === 3 || argv.length === 4) && SESSION_TOOL.test(argv[2]) ? "call" : null;
+  return null;
 }
 
 /** Every string in the input, joined, for substring checks. */
@@ -155,7 +186,7 @@ function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
   if (w.some((x, i) => isVyre(x) && w[i + 1] === "box" && w[i + 2] === "add")) return ask1("This installs Vyre on a server with your SSH login and pairs it with this Mac.");
   // `vyre vault get|read --reveal` prints a value.
   if (w.some(isVyre) && w.includes("vault") && w.some(x => /^(get|read)$/.test(x)) && w.includes("--reveal")) return deny1("Vault values stay off every screen. " + APPROVALS);
-  const named = [...MODEL_NEVER].some(t => flat.includes(t));
+  const named = [...MODEL_NEVER, ...[...MODEL_NEVER].map(t => proposedNameOf(t)).filter(Boolean)].some(t => flat.includes(String(t)));
   if (named && (w.some(isVyre) || /\/v1\/tools\b/.test(flat) || SOCKET_CLIENT.test(flat))) return deny1(APPROVALS);
 
   // A vyre command, or a word the shell fills in, followed by a human-only noun and verb.

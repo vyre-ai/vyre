@@ -56,6 +56,7 @@ export function createKernelMembers(deps) {
   /** Owners as the caller sees them, or null when the caller is below manager and so cannot see everyone. @param {any} k */
   async function owners(k) {
     const list = await m.list(need(k));
+    if (list.some((/** @type {any} */ x) => x.partial)) return null;   // a member sees who is in, not the whole table: nothing to count
     const me = list.length === 1 ? list[0] : null;
     if (me && !roleAtLeast(me.role, "manager")) return null;
     return list.filter((/** @type {any} */ x) => x.role === "owner").length;

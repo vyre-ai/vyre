@@ -4103,6 +4103,34 @@
     }
    }
   },
+  "signin-card": {
+   "title": "Sign in again",
+   "screens": {
+    "full": {
+     "component": "signin-card"
+    },
+    "compact": {
+     "component": "signin-card"
+    },
+    "glance": {
+     "component": "signin-card"
+    }
+   }
+  },
+  "space-computers": {
+   "title": "Where sessions run",
+   "screens": {
+    "full": {
+     "component": "space-computers"
+    },
+    "compact": {
+     "component": "space-computers"
+    },
+    "glance": {
+     "component": "space-computers"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {

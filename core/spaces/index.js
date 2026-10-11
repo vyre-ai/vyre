@@ -64,7 +64,7 @@ import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
-import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson, kernelTeamSpaces } from "./kernel-members.js";
+import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson, kernelTeamSpaces, membersComputers } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { softwareProof, softwareActProof, softwareKey, challengeProblem } from "./presence-signer.js";
@@ -124,7 +124,6 @@ function plainDirectory(e) {
 
 /** The associated data every file drop wrap starts with: the one purpose spaces.identity.unwrap-drop opens. */
 const DROP_AAD_PREFIX = "vyre-drop-wrap\n";
-
 /** @type {((entry: any, meta?: any) => Promise<boolean>) | null} the default entry verifier, made on first use */
 let defaultEntryProof = null;
 
@@ -1133,6 +1132,7 @@ export default {
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         });
       }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOrHome(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
+    tool("spaces.members.computers", "Whether this Space lets its members run their sessions on their own computers, or (an owner or an admin) allow it or stop allowing it. Each member still lends their own computer with their own yes. Input: space, allow (leave it out to read). Answers { space, allowed }.", obj({ space: str, allow: { type: "boolean" } }, ["space"]), async (i, meta) => { const s = me(), row = spaceOrHome(i.space), m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); return membersComputers({ i, meta, row, h: kernelHandle(row.id), caller: await actingPerson(K, meta, /** @type {string} */ (s.id)), self: /** @type {string} */ (s.id), role: m ? m.role : (row.createdBy === s.id ? "owner" : null), kctxOf, answerChallenge, refuse }); });
     tool("spaces.devices.lend.status", "Whether a device of yours is lent to a space, when it was first lent and who allowed it. Only the device's person and the space's owners and admins can ask.", obj({ space: str, device: str }, ["space", "device"]), async (i, meta) => {
       const s = me();
       const row = spaceOrHome(i.space);
@@ -1392,7 +1392,7 @@ export default {
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
     /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */
     const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
-    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
+    const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "My Home" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
       if ((!st0 || !st0.exists || who !== st0.id) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
@@ -1918,8 +1918,8 @@ export default {
     const out = (/** @type {any} */ r) => JSON.parse(JSON.stringify(r));
     const ownerGrant = (/** @type {any} */ i) => Boolean(i && i.role === "owner");
     tool("spaces.members.list", "Everyone in a space with their role, scope and end date, and any warnings (such as a single owner).", obj({ space: str }, ["space"]), async (i, meta) => {
-      const row = spaceOf(i.space);
-      await gate(row.id, undefined, meta);
+      const asId = String(i.space || "").trim().toLowerCase(), row = !spaces.get(asId) && SPACE_ID_RE.test(asId) && kernelHandle(asId) ? { id: asId } : spaceOf(i.space);   // a team Space a box hosts has no row here: the kernel's own Space is named by its id
+      const who = K && kernelHandle(row.id) ? await listCaller(K, meta) : null; if (who) { await notRemoved(row.id, meta); if (!(await membershipOf(row.id, who, meta))) throw refuse("You are not a member of this space.", "not_a_member"); } else await gate(row.id, undefined, meta);   // the list is for the person on the call (a box has no identity of its own), any member
       const m = await members(row.id, meta);
       const rows = [];
       for (const r of await m.list()) rows.push({ ...r, role_label: m.roleLabel(r.role), name: await nameOf(String(r.person)) });

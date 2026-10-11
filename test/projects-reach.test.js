@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, putOnTask } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 
 process.env.VYRE_SEAL_DEV = "1";
@@ -28,17 +28,19 @@ async function boot(/** @type {any} */ t) {
   const home = (/** @type {string} */ n) => { const h = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, `vyre-${n}-`))); t.after(() => fs.rmSync(h, { recursive: true, force: true })); return h; };
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const addAgent = (/** @type {string} */ name) => d.kernel.gateway.grants.addActor(admin, { kind: "agent", id: name, space }, { presence: { method: "stand-in" } });
-  return { d, owner, space, call, home, addAgent, SI_FACTS };
+  return { d, root, owner, space, call, home, addAgent, SI_FACTS };
 }
 const granted = async (/** @type {any} */ call, /** @type {string} */ project, /** @type {string} */ agent) => (await call("projects.access.check", { project, agent })).data.granted;
 
 test("an agent reaches a project only by a kernel grant: deny by default, grant, revoke; no other project and no other agent is reached", { timeout: 180_000 }, async t => {
-  const { call, home } = await boot(t);
+  const { d, root, call, home } = await boot(t);
   for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
   for (const a of ["kit", "other"]) assert.ok(!(await call("agents.create", { name: a, projects: [] })).error, a);
   assert.equal(await granted(call, "northwind", "kit"), false, "deny by default");
   const g = await call("projects.access.grant", { project: "northwind", agent: "kit" });
   assert.ok(!g.error, JSON.stringify(g));
+  assert.equal(await granted(call, "northwind", "kit"), false, "a grant alone reaches nothing: the agent must also be a teammate with a task there (G22)");
+  await putOnTask(d, root, "kit", "northwind");
   const chk = await call("projects.access.check", { project: "northwind", agent: "kit" });
   assert.equal(chk.data.granted, true, JSON.stringify([chk, await call("projects.access.list", {})]));
   assert.equal(await granted(call, "harlow", "kit"), false, "another project is not reached");
@@ -51,9 +53,10 @@ test("an agent reaches a project only by a kernel grant: deny by default, grant,
 });
 
 test("a grant is the person's own act: a call with no person behind it grants nothing; the person's own signed-in call grants with no extra proof (grants.member)", { timeout: 180_000 }, async t => {
-  const { call, home, SI_FACTS } = await boot(t);
+  const { d, root, call, home, SI_FACTS } = await boot(t);
   assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: [] })).error);
+  await putOnTask(d, root, "kit", "northwind", { grant: false });   // a teammate with a task, so only the grant is in question
   const nobody = await call("projects.access.grant", { project: "northwind", agent: "kit" }, {});
   assert.ok(nobody.error, "no person, no grant");
   assert.equal(await granted(call, "northwind", "kit"), false);
@@ -63,10 +66,11 @@ test("a grant is the person's own act: a call with no person behind it grants no
 });
 
 test("an agent's projects list is kept in step with its grants, '*' is one grant on every project (later ones too), and deleting the agent takes them away", { timeout: 180_000 }, async t => {
-  const { call, home } = await boot(t);
+  const { d, root, call, home } = await boot(t);
   for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
   const made = await call("agents.create", { name: "kit", projects: ["northwind"] });
   assert.ok(!made.error, JSON.stringify(made));
+  for (const n of ["northwind", "harlow"]) await putOnTask(d, root, "kit", n, { grant: false });   // a teammate with a task in both, so only the grants are in question (G22)
   assert.equal(await granted(call, "northwind", "kit"), true);
   assert.equal(await granted(call, "harlow", "kit"), false);
   { const r = await call("agents.update", { agent: "kit", projects: ["harlow"] }); assert.ok(!r.error, JSON.stringify(r)); }
@@ -75,16 +79,18 @@ test("an agent's projects list is kept in step with its grants, '*' is one grant
   { const r = await call("agents.update", { agent: "kit", projects: "*" }); assert.ok(!r.error, JSON.stringify(r)); }
   assert.equal(await granted(call, "northwind", "kit"), true);
   assert.ok(!(await call("projects.create", { name: "later", home: home("later") })).error);
+  await putOnTask(d, root, "kit", "later", { grant: false });
   assert.equal(await granted(call, "later", "kit"), true, "a project made after the grant is reached too");
   { const r = await call("agents.delete", { agent: "kit" }); assert.ok(!r.error, JSON.stringify(r)); }
   assert.equal(await granted(call, "harlow", "kit"), false, "a deleted agent reaches nothing");
 });
 
 test("an agent's grants are keyed by its stable id: a deleted agent's name given to a new agent inherits nothing, and a delete with no person is refused", { timeout: 180_000 }, async t => {
-  const { d, call, home, SI_FACTS } = await boot(t);
+  const { d, root, call, home, SI_FACTS } = await boot(t);
   assert.ok(!(await call("projects.create", { name: "northwind", home: home("n") })).error);
   const made = await call("agents.create", { name: "kit", projects: ["northwind"] });
   assert.ok(!made.error, JSON.stringify(made));
+  await putOnTask(d, root, "kit", "northwind", { grant: false });
   const uid = made.data.uid;
   assert.match(uid, /^agt_[0-9a-f-]{36}$/, "a stable id");
   assert.equal(await granted(call, "northwind", "kit"), true);
@@ -104,9 +110,11 @@ test("an agent's grants are keyed by its stable id: a deleted agent's name given
 });
 
 test("what agents could reach before reach became a grant waits for the person's approval, then becomes grants: granted rows restored, an explicit revoke stays revoked, the old rows cleared", { timeout: 180_000 }, async t => {
-  const { d, call, home } = await boot(t);
+  const { d, root, call, home } = await boot(t);
   for (const n of ["northwind", "harlow"]) assert.ok(!(await call("projects.create", { name: n, home: home(n) })).error, n);
   for (const a of ["kit", "other", "later"]) assert.ok(!(await call("agents.create", { name: a, projects: [] })).error, a);
+  // every agent is a teammate with a task in both projects, so only the grants decide (G22)
+  for (const a of ["kit", "other", "later"]) for (const n of ["northwind", "harlow"]) await putOnTask(d, root, a, n, { grant: false });
   // an upgraded box: the old rows came through the migration, held in projects_access_legacy
   const db = d.registry.deps.db;
   const ins = db.prepare("INSERT INTO projects_access_legacy (id, project, agent, status, by, at) VALUES (?,?,?,?,?,1)");

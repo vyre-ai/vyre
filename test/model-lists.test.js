@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { modelListDrivers, MODEL_LISTING_PROVIDERS, namesOf } from "../core/daemon/model-lists.js";
 
 const KEY = "fixture-key-aaaaaaaaaaaaaaaaaaaaaaaa";
-const body = { data: [{ id: "m1" }, { id: "m2" }, { name: "models/m3" }, { id: 5 }, null, "m4"], echo: KEY };
+const body = { data: [{ id: "m1", display_name: "Model One" }, { id: "m2" }, { name: "models/m3" }, { id: 5 }, null, "m4"], echo: KEY };
 const mk = (/** @type {any} */ over = {}) => { /** @type {any[]} */ const asked = []; const d = modelListDrivers({ keyOf: async () => KEY, fetch: async (/** @type {string} */ url, /** @type {any} */ init) => { asked.push({ url, headers: init.headers }); return { ok: true, status: 200, json: async () => body }; }, ...over }); return { d, asked }; };
 
 test("each provider is asked at its own address with its own header, and the answer is names, never the body or the key", async () => {
@@ -15,7 +15,7 @@ test("each provider is asked at its own address with its own header, and the ans
   assert.deepEqual([...MODEL_LISTING_PROVIDERS].sort(), ["claude", "codex", "grok", "openai-compatible"]);
   for (const provider of ["claude", "codex", "grok"]) {
     const names = await d[provider].models({ account: { id: `a-${provider}` } });
-    assert.deepEqual(names, ["m1", "m2", "m3", "m4"], "ids, names and bare strings; a number and a null are not model entries");
+    assert.deepEqual(names, [{ id: "m1", label: "Model One" }, { id: "m2" }, { id: "m3" }, { id: "m4" }], "id and display name; a number and a null are not model entries");
     assert.ok(!JSON.stringify(names).includes(KEY));
   }
   assert.match(asked[0].url, /^https:\/\/api\.anthropic\.com\/v1\/models/);
@@ -39,7 +39,7 @@ test("a refused key, a failure, a missing key, an unsafe address and a missing a
 });
 
 test("namesOf reads data or models, the id or the name, text only, once each", () => {
-  assert.deepEqual(namesOf({ models: [{ name: "models/gemini" }, { id: "a" }, { id: "a" }] }), ["gemini", "a"]);
+  assert.deepEqual(namesOf({ models: [{ name: "models/gemini" }, { id: "a", displayName: "A" }, { id: "a" }] }), [{ id: "gemini" }, { id: "a", label: "A" }]);
   assert.deepEqual(namesOf({}), []);
   assert.deepEqual(namesOf(null), []);
 });

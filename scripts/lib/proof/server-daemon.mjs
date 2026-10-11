@@ -68,9 +68,12 @@ export async function startDaemonServer(o) {
       memberOf: async (/** @type {string} */ space, /** @type {string} */ ownerChain, /** @type {string} */ person) => d.kernel.spaces.hosted(space).gateway.grants.members.get(ownerChain, person),
     },
     async stop() {
+      // The Spaces this server hosts at the end: a team Space made in a journey has a record store (a Twenty stack) whether or not its start line reached the log, and left running it starves the journeys that follow
+      /** @type {string[]} */ let hostedNow = [];
+      try { const l = await d.kernel.spaces.list(); hostedNow = (Array.isArray(l) ? l : []).map((/** @type {any} */ x) => String((x && (x.space || x.id)) || "")).filter(x => /^spc_[a-z2-7]{12}$/.test(x) && x !== d.kernel.id.space); } catch { hostedNow = []; }
       try { await d.stop(); } finally { restore(); await sealer.close().catch(() => {}); }
       // Records start a record store in docker for each space (Twenty). Take away only those this run made, found by the space ids in its own log, so a shared box keeps everything else.
-      const spaces = new Set(logs.map(l => /store for (spc_[a-z2-7]{12}): provisioning/.exec(l)).filter(Boolean).map(m => /** @type {RegExpExecArray} */ (m)[1]));
+      const spaces = new Set([...logs.map(l => /store for (spc_[a-z2-7]{12}): provisioning/.exec(l)).filter(Boolean).map(m => /** @type {RegExpExecArray} */ (m)[1]), ...hostedNow]);
       for (const sp of spaces) {
         const project = `vyre-${sp.replace(/_/g, "-")}-twenty`;
         const sh = (/** @type {string} */ c) => spawnSync("sh", ["-c", c], { stdio: "ignore" });

@@ -49,12 +49,16 @@ for ref in "${refs[@]}"; do
   git config user.name "$(git log -1 --format=%an "$sha")"; git config user.email "$(git log -1 --format=%ae "$sha")"
   if ! git merge -q --no-ff --no-edit -m "merge: $ref into $TARGET" "$sha" >/dev/null 2>&1; then
     { echo "### $ref: merge conflict, not landed"; git diff --name-only --diff-filter=U | sed 's/^/- /'; echo "Re-base on the current $TARGET and queue again."; } | tee -a "$SUM"
+    echo "::error title=$ref was not landed::merge conflict in $(git diff --name-only --diff-filter=U | tr '\n' ' ')"
     git merge --abort 2>/dev/null; drop "$ref"; refused=$((refused+1)); continue
   fi
   base=$(git rev-parse "origin/$TARGET")
   if git diff --name-only "$base" HEAD | grep -qE '(^|/)package-lock\.json$'; then npm ci --no-audit --no-fund >/dev/null 2>&1; (cd apps/app && npm ci --ignore-scripts --no-audit --no-fund >/dev/null 2>&1); fi
   if ! node scripts/team/preflight.mjs --ci --base "$base" > preflight.log 2>&1; then
     { echo "### $ref: preflight red, not landed"; echo '```'; grep -aE "^FAIL " preflight.log | head -10; echo "..."; grep -aE "^(not ok|✖)|AssertionError|Error:|actual:|expected:" preflight.log | head -40; echo "..."; tail -40 preflight.log; echo '```'; } | tee -a "$SUM"
+    # the reason in the job LOG as an annotation line too (the summary page is not where people read a drop): the FAIL lines of preflight, one line each
+    echo "::error title=$ref was not landed::$(grep -aE '^FAIL ' preflight.log | head -5 | tr '\n' ' ' | cut -c1-600)"
+    grep -aE "^FAIL |^        " preflight.log | head -40
     drop "$ref"; refused=$((refused+1)); continue
   fi
   node scripts/team/regen.mjs >/dev/null 2>&1

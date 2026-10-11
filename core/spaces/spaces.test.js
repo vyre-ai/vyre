@@ -824,6 +824,70 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
 });
 
 
+test("on a box with no identity of its own, every member sees who is in a Space and in what role; the owner is not told to choose a name; a stranger sees nothing (J9)", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa", OWNER = "per_" + "o".repeat(26), KIT = "per_" + "k".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
+  /** @type {any} */ let K = null, handle = null;
+  const real = m => (handle ||= K.kernelFor(m));
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
+  const d = await device(t, { kernelFor });
+  K = await createKernel({ space: KSPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: { check: async () => null }, hasPresenceSession: () => true });
+  const chainOf = person => K.chains.fromFacts({ kind: "device", device_key_id: "d-" + person.slice(4, 8), person, path: "direct", session: "s" });
+  for (const person of [KIT, BOB]) await K.gateway.grants.setRole(chainOf(OWNER), { person, role: "member" }, { presence: { method: "stand-in" } });
+  const as = async (person, input) => d.call("spaces.members.list", input, "cli", { token: (await K.surfaces.open(chainOf(person))).token });
+  for (const person of [OWNER, KIT, BOB]) {
+    const r = await as(person, { space: KSPACE });
+    assert.ok(!r.error, `${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
+    assert.deepEqual(r.data.members.map(m => [m.person, m.role]).sort(), [[BOB, "member"], [KIT, "member"], [OWNER, "owner"]].sort(), "everyone sees who is in, and the role");
+  }
+  const kit = (await as(KIT, { space: KSPACE })).data.members;
+  assert.ok(kit.find(m => m.person === OWNER).scope == null, "another person's scope and end date stay with managers");
+  assert.equal((await as(EVE, { space: KSPACE })).error?.code, "not_a_member", "a person who is not in the Space sees nothing");
+});
+
+
+
+test("kernel mode: the Space's allow for its members' own computers: an owner reads and sets it (spaces.members.computers), a member cannot, and taking it back ends it", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null;
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const real = m => (handle ||= K.kernelFor(m));
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
+  const d = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const { token } = await K.surfaces.open(K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }));
+  const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  const space = s.space;
+  assert.equal((await d.ok("spaces.members.computers", { space }, "cli", { token })).allowed, false, "off until an owner allows it");
+  // a member (not the home's person) cannot set it, whatever they ask
+  const KIT = "per_" + "k".repeat(26);
+  assert.ok(!(await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token })).error);
+  const kitToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-kit", person: KIT, path: "direct", session: "k1" }))).token;
+  const denied = await d.call("spaces.members.computers", { space, allow: true }, "cli", { token: kitToken });
+  assert.equal(denied.error?.code, "forbidden", JSON.stringify(denied.error));
+  assert.equal(K.gateway.grants.offers.find({ side: "space_allows", member: "*", device: null }), null, "nothing was made");
+  // the owner allows it under their own yes, and the Space says so
+  const on = await d.call("spaces.members.computers", { space, allow: true }, "cli", { token, kernel_proof: sign("offer", { side: "space_allows", member: "*", device: null }) });
+  assert.deepEqual(on.data, { space, allowed: true }, JSON.stringify(on.error));
+  const offer = K.gateway.grants.offers.find({ side: "space_allows", member: "*", device: null });
+  assert.ok(offer, "one Offer for every member");
+  assert.equal(K.gateway.grants.offers.active({ member: KIT, device: "dev_kit" }).spaceAllows, true, "and a member's own computer is allowed by the Space");
+  assert.equal((await d.ok("spaces.members.computers", { space }, "cli", { token })).allowed, true);
+  // allowing twice makes no second Offer, and taking it back ends it
+  assert.equal((await d.call("spaces.members.computers", { space, allow: true }, "cli", { token })).data?.allowed, true);
+  const off = await d.call("spaces.members.computers", { space, allow: false }, "cli", { token, kernel_proof: sign("unoffer", offer.id) });
+  assert.deepEqual(off.data, { space, allowed: false }, JSON.stringify(off.error));
+  assert.equal(K.gateway.grants.offers.active({ member: KIT, device: "dev_kit" }).spaceAllows, false);
+});
+
 test("kernel mode: an invite is the Space kernel's: the link carries its id and the pin, the card comes from the kernel, and the invitee joins with their own proof", async t => {
   const { createKernel } = await import("../../kernel/index.js");
   const { payloadHash } = await import("../../kernel/seal/wire.js");
@@ -1626,7 +1690,7 @@ test("a fresh home: the person's own space is listed with a label, a display nam
   const HOME = "spc_hhhhhhhhhhhh";
   /** @type {any} */ let ownerId = null;
   const kernelFor = () => ({ space: HOME, get owner() { return ownerId; }, membership: async () => ({ member: true, role: "owner" }), for: () => { throw new Error("not here"); } });
-  for (const [machine, tier, display, host] of [[undefined, "basic", "Personal", null], ["server", "cloud", "My Cloud", HOME]]) {
+  for (const [machine, tier, display, host] of [[undefined, "basic", "My Home", null], ["server", "cloud", "My Cloud", HOME]]) {
     const d = await device(t, { kernelFor, ...(machine ? { machine } : {}) });
     ownerId = (await d.ok("spaces.identity.create", { name: machine ? "sam" : "alex" })).id;
     const row = (await d.ok("spaces.list")).find(x => x.id === HOME);

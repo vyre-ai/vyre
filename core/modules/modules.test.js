@@ -1361,13 +1361,13 @@ test("modules: a module that failed only because the record store was still star
   const flag = path.join(tempHome(t), "store-ready");
   const waits = `import fs from "node:fs";
 export default { async start(ctx) {
-  if (!fs.existsSync(${JSON.stringify(flag)})) throw Object.assign(new Error("the record store for this space is not available yet"), { code: "unavailable" });
+  if (!fs.existsSync(${JSON.stringify(flag)})) throw Object.assign(new Error("the record store for this space is not available yet"), { name: "StoreError", code: "unavailable" });
   ctx.tool("notes.add", { effect: "read", input: { type: "object", properties: {} }, run: async () => ({ ok: true }) });
   return { async stop() {} };
 } };`;
   const broken = `export default { async start() { throw new Error("broken for its own reason"); } };`;
   const reg = await registry(t, [["notes", good, waits], ["other", { name: "other", version: "0.1.0" }, broken]], { builtIn: true });
-  assert.equal(reg.modules.get("notes").state, "failed");
+  assert.equal(reg.modules.get("notes").state, "waiting", "only the store was away: it waits (and reports running) rather than failing the start");
   assert.equal(reg.modules.get("other").state, "failed");
   fs.writeFileSync(flag, "");
   await reg.startStoreWaiting();

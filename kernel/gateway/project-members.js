@@ -14,9 +14,11 @@ export function projectOracle({ space, chains, records, tasks }) {
     const r = records();
     if (!r) return null;
     try {
-      const rec = await r.get(svc(), "project", project);
+      let rec = await r.get(svc(), "project", project).catch(() => null);
+      // an address that names the project by its short name (older grants do) is the same project
+      if (!rec) { rec = (await r.query(svc(), "project", { filter: { field: "slug", op: "eq", value: project }, page: { limit: 1 } })).rows[0] || null; if (rec) project = rec.id; }
       const rows = (await r.query(svc(), "team-member", { filter: { field: "project", op: "eq", value: { urn: `vyre://${space}/project/${project}` } }, page: { limit: 500 } })).rows;
-      return { owner: rec && idOf(rec.data.owner), rows: rows.map((/** @type {any} */ x) => ({ kind: x.data.actor && x.data.actor.actor ? x.data.actor.actor.kind : null, id: idOf(x.data.actor) })) };
+      return { id: project, owner: rec && idOf(rec.data.owner), rows: rows.map((/** @type {any} */ x) => ({ kind: x.data.actor && x.data.actor.actor ? x.data.actor.actor.kind : null, id: idOf(x.data.actor) })) };
     } catch { return null; }
   }
   return Object.freeze({
@@ -27,7 +29,7 @@ export function projectOracle({ space, chains, records, tasks }) {
       if (agent === "assistant") return true;
       const t = await team(project);
       if (!t || !t.rows.some((/** @type {any} */ x) => x.kind === "agent" && x.id === agent) || !tasks) return false;
-      try { return (await tasks.list(svc(), { doer: agent, state: WORKING })).some((/** @type {any} */ x) => String(x.project || "").endsWith(`/${project}`) || x.project === project); } catch { return false; }
+      try { return (await tasks.list(svc(), { doer: agent, state: WORKING })).some((/** @type {any} */ x) => String(x.project || "").endsWith(`/${t.id}`) || x.project === t.id); } catch { return false; }
     },
   });
 }

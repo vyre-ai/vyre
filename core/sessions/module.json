@@ -239,7 +239,7 @@
   "shows": {
     "cli": []
   },
-  "needs": {},
+  "needs": { "kernel": { "actions": [] } },
   "teaches": {
     "tips": [
       {

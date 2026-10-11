@@ -178,7 +178,7 @@ const remembered = new Map();
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
- *   takesImages?: boolean, mcpBarrier?: string, mcpBarrierMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
+ *   takesImages?: boolean, floorRefusalAsOutput?: boolean, mcpBarrier?: string, mcpBarrierMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -438,6 +438,15 @@ function runAcp(entry, known, o) {
             { label: "Revise", description: "Stay in plan mode; say what to change in your next message" }] }] } } });
         return;
       }
+    }
+    // Grok Build ends the WHOLE turn when a command is refused at the question ("User rejected the execution", stopReason cancelled; measured live, 6 of 8 turns where it shelled around the finder), but
+    // carries on when the same command comes back from terminal/create as one that ran and failed. So for an entry that says so (`floorRefusalAsOutput`), a shell command the floor denies is allowed at the
+    // question and refused where it would run: nothing executes (terminal/create asks the same floor and answers exit 126 with the reason). Only kind "execute", only the floor's own denial: a command the
+    // floor lets through is still asked of the person, and the person's "no" is still a rejection. Proven on the real binary (foreground, background, a subagent, the retry): the file never existed.
+    if (entry.floorRefusalAsOutput && tc.kind === "execute" && tc.rawInput && typeof tc.rawInput.command === "string" && floor) {
+      const v = floor({ tool: "Bash", input: { command: tc.rawInput.command }, cwd });
+      const once = (Array.isArray(p.options) ? p.options : []).find(x => x && x.kind === "allow_once");
+      if (v && v.decision === "deny" && once) { announce(tc); respond(m.id, { outcome: { outcome: "selected", optionId: once.optionId } }); return; }
     }
     announce(tc);
     const a = askFor(tc);

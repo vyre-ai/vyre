@@ -22,6 +22,7 @@ const good = {
   "participant-left": { who: "person:alex" },
   "reaction": { message: "m", emoji: "x", on: true },
   "pin": { message: "m", on: true },
+  "reply-mode": { mode: "mention" },
   "mention": { message: "m", who: ["assistant:kit"] },
   "fanout": { group: "g", message: "q", members: [{ who: "model:a", message: "a1" }, { who: "model:b", message: "a2" }] },
   "fanout-keep": { group: "g", keep: "a1" },
@@ -38,7 +39,7 @@ test("protocol: every kind validates with its data and is refused without it", (
     assert.equal(f.corr, "3");
     assert.equal(validate({ ...f, data: {} }).ok, false, `${k} with empty data`);
   }
-  assert.equal(KINDS.length, 22);
+  assert.equal(KINDS.length, 23);
 });
 
 test("protocol: a hidden stub keeps a cursor and holds nothing", () => {

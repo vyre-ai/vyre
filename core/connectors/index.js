@@ -272,6 +272,10 @@ export default {
         const opts = PEOPLE.includes(caller) ? { as: caller } : undefined;
         const r = await ctx.call("vault.request", { credential: credentialName(id), operation: op, input: input.input && typeof input.input === "object" ? input.input : {} }, opts);
         if (r.error) throw fail(r.error.message, r.error.code || "failed");
+        // a key the service refuses is a Connection that needs the person (the Needs you card "the key for <host> stopped working"); a good answer puts it right again
+        const st = Number(r.data && r.data.status);
+        if (rec.transport !== "site" && (st === 401 || st === 403)) { made.touch(id, "red", st === 401 ? "the key was refused (401)" : "the key is not allowed to do that (403)", "auth"); ctx.events.emit("connectors.connection-checked", { id, light: "red" }); }
+        else if (rec.transport !== "site" && st >= 200 && st < 300 && rec.light === "red") { made.touch(id, "green", "connected", "ok"); ctx.events.emit("connectors.connection-checked", { id, light: "green" }); }
         return r.data;
       },
     });
