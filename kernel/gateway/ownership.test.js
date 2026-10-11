@@ -115,12 +115,11 @@ test("ordinary work is untouched: a member makes a task for herself, a contact-l
   assert.ok(await R.create(chains.fay, "memo", { body: "a note" }), "a type the rule does not name");
 });
 
-test("kernel attributes on create: a member names no other owner, no sensitivity, and files nothing under a project she is not on (any type)", async () => {
+test("kernel attributes on create: a member names no other owner, and files nothing under a project she is not on (any type)", async () => {
   const { R, chains, p1, p2 } = await rig();
   await refused(R.create(chains.bob, "memo", { body: "into the other project" }, { attrs: { project: p2.id } }), /project you are on/);
   await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { project: p1.id } }), /project you are on/);
   await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { owner: BOB } }), /yours/);
-  await refused(R.create(chains.fay, "memo", { body: "x" }, { attrs: { sensitivity: "privileged" } }), /sensitivity/);
   assert.ok(await R.create(chains.eve, "memo", { body: "on her own project" }, { attrs: { project: p1.id } }), "under a project she is on");
   assert.ok(await R.create(chains.fay, "memo", { body: "hers" }, { attrs: { owner: FAY } }), "owner herself");
   assert.ok(await R.create(chains.owner, "memo", { body: "owner may" }, { attrs: { project: p2.id, sensitivity: "privileged" } }), "the owner may");
@@ -163,5 +162,7 @@ test("project fields: a team member changes only the plain ones; the owner every
   await refused(R.update(chains.bob, "project", p1.id, { memory_scope: "other" }, await cur()), /files, memory or credentials/);
   await refused(R.update(chains.bob, "project", p1.id, { slug: "renamed" }, await cur()), /owner or admin/);
   await refused(R.create(chains.fay, "project", { name: "n", slug: "n9", drive_path: "/etc" }), /owner or admin/);
+  await refused(R.create(chains.fay, "project", { name: "n", slug: "n9", memory_scope: "project:one" }), /owner or admin/);
+  assert.ok(await R.create(chains.fay, "project", { name: "n", slug: "n9", memory_scope: "project:n9" }), "a new project gets its own memory scope");
   assert.ok(await R.update(chains.admin, "project", p1.id, { drive_path: "Projects/one" }, await cur()), "an admin may");
 });

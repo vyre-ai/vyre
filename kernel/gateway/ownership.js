@@ -57,7 +57,8 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   if (type === "project") {
     if (ctx.op === "create") {
       if (p.owner !== undefined && p.owner !== null && idOf(p.owner) !== person) throw no("a project you make is yours: leave the owner out or name yourself. An owner or admin makes one for someone else.");
-      const bad = PROJECT_TRUSTED_FIELDS.find(k => k !== "slug" && p[k] !== undefined && p[k] !== null && p[k] !== "");
+      // slug is hers to choose, and the hub gives a new project its own memory scope (project:<slug>); nothing else in the list is set by a member making a project
+      const bad = PROJECT_TRUSTED_FIELDS.find(k => k !== "slug" && p[k] !== undefined && p[k] !== null && p[k] !== "" && !(k === "memory_scope" && p.slug && p[k] === `project:${p.slug}`));
       if (bad) throw no(`${bad} is set by Vyre or an owner or admin, not by a member making a project. Leave it out.`);
       return true;
     }
@@ -124,14 +125,13 @@ export const projectTeamOf = (store, urn) => async (/** @type {string} */ ref) =
 };
 
 /**
- * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner, raise or lower sensitivity, or file a record under a
+ * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner or file a record under a
  * project she is not on. @param {any} chain @param {any} attrs @param {{ trusted: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null> }} ctx
  */
 export async function mayAttrs(chain, attrs, ctx) {
   if (ctx.trusted || !attrs || typeof attrs !== "object") return true;
   const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
   const person = me ? String(me.id) : "";
-  if (attrs.sensitivity !== undefined) throw no("a record's sensitivity is set by an owner or admin. Leave it out.");
   if (attrs.owner !== undefined && idOf(attrs.owner) !== person) throw no("a record you make is yours: leave the owner out or name yourself.");
   if (attrs.project !== undefined && attrs.project !== null) {
     const pr = await ctx.project(String(refOf(attrs.project) || attrs.project));
