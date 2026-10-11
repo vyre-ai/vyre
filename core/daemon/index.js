@@ -264,7 +264,7 @@ async function startLocked(opts, root, p, release) {
     if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; basicDevice = true; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true, ...(opts.recordsStore && typeof opts.recordsStore === "object" ? opts.recordsStore : {}) });   // `recordsStore`: a test's own preflight/runner, so no test depends on whether this machine can run Twenty
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
