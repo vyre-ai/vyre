@@ -332,3 +332,15 @@ test("documents.send and send-signed take the signer from a Contact: its address
   assert.equal((await code(r.run("documents.send", { template_id: 12, contact: "c-404" }))).code, "not_found");
   assert.equal(seen.length, before, "nothing was asked of the app or sent for a Contact that is not there");
 });
+
+test("generate gives every template the Space's brand profile as `brand`, unless the caller passes their own", async () => {
+  const r = rig({ call: async (/** @type {string} */ tool) => tool === "brand.resolve" ? { data: { names: { name: "Harlow Legal", legalName: "Harlow Legal LLP", address: null, phone: "555-0100" } } } : { error: { code: "no_such_tool", message: "x" } } });
+  await r.run("documents.template.add", { name: "Header", base64: b64(docx(["{brand.legalName} ({brand.name}), tel {brand.phone}"])) });
+  const out = await r.run("documents.generate", { template: "Header" });
+  assert.deepEqual(out.used.sort(), ["brand.legalName", "brand.name", "brand.phone"]);
+  const own = await r.run("documents.generate", { template: "Header", values: { brand: { legalName: "Own LLP", name: "Own", phone: "1" } }, name: "Header own" });
+  assert.ok(own.used.includes("brand.legalName"));
+  const none = rig({});
+  await none.run("documents.template.add", { name: "Header", base64: b64(docx(["{brand.name}"])) });
+  assert.equal((await code(none.run("documents.generate", { template: "Header" }))).code, "missing_values", "with no brand profile the name is missing, said by name");
+});

@@ -86,6 +86,12 @@ export function registerDocuments(ctx) {
         if (!rec) throw refuse(`${alias}: the record is not there, or is not yours to see`, "not_found");
         values[alias] = rec.data || {};
       }
+      // The Space's brand profile is there for every template as `brand` ({brand.name}, {brand.legalName}, {brand.address}, {brand.phone}), unless the caller gave a `brand` of their own.
+      if (values.brand === undefined) {
+        const r = await ctx.call("brand.resolve", {}).catch(() => null);
+        const names = r && !r.error && r.data && r.data.names && typeof r.data.names === "object" ? r.data.names : null;
+        if (names) values.brand = Object.fromEntries(Object.entries(names).filter(([, v]) => typeof v === "string" && v));
+      }
       const { buffer, used } = fill(tbytes, values);
       const format = i.format === "pdf" ? "pdf" : "docx";
       const out = format === "pdf" ? await toPdf(buffer, { url: await converter() }) : buffer;

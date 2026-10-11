@@ -2587,7 +2587,7 @@ Change who may use a connection: { name, scope } where scope is { projects: "*" 
 
 ### `connectors.site.attention`
 
-Website Connections that wait for a person (login out, security check, no browser): { sites: [{ id, host, class, words, agent? }] }.
+Connections waiting on a person: login out, security check, no browser, refused key. { sites: [{ id, host, class, words, key? }] }.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`

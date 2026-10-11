@@ -75,6 +75,6 @@
     { "webhook": "form.completed", "event": "documents.form-completed", "data": { "submission": "data.submission.id", "email": "data.email" } }
   ],
   "screens": [
-    { "id": "documents", "label": "Signatures", "path": "/", "icon": "signature" }
+    { "id": "documents", "label": "Documents", "path": "/", "icon": "signature" }
   ]
 }
