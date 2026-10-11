@@ -8,6 +8,7 @@
 //   "term <command>"   runs it through terminal/create and says its output
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
+//   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
 //   "ctxused <n>"      reports n tokens used of a 258,400 window (usage_update), as Codex does
 //   anything else      echoes "echo: <prompt>"
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
@@ -121,7 +122,8 @@ async function prompt(id, blocks) {
     const k = process.env.FAKE_LEAK || "";
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", toolCallId: "leak-1", title: "Run cat", kind: "execute", status: "pending", rawInput: { command: `cat auth.json # ${k}` } } } });
     say(`the key is ${k}`);
-  } else say("echo: " + t);
+  } else if (/\bwhoami\b/.test(t)) say(`home: ${process.env.HOME || ""} words: ${(t.match(/\b[A-Z]{3,}-\d+\b/g) || []).join(",")}`);
+  else say("echo: " + t);
   // FAKE_ACP_USAGE=acp: the standard ACP usage on the response (Codex); =grok: the same names in _meta (Grok Build), no usage_update either way.
   const used = process.env.FAKE_ACP_USAGE === "acp" ? { usage: { totalTokens: 120, inputTokens: 100, cachedReadTokens: 30, outputTokens: 20, thoughtTokens: 5 } }
     : process.env.FAKE_ACP_USAGE === "grok" ? { _meta: { modelId: "grok-x", totalTokens: 120, inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, reasoningTokens: 5, usage: { inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, cacheCreationTokens: 0, reasoningTokens: 5, costUsdTicks: 113859200 } } } : {};

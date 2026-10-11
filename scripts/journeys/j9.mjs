@@ -9,6 +9,7 @@ import { createApp } from "../lib/proof/app.mjs";
 import { bringUp } from "./lib/world.mjs";
 import { stepper } from "./lib/journey.mjs";
 import { whenStoreIsUp } from "./lib/store.mjs";
+import { sharedChatSteps } from "./lib/shared-chat.mjs";
 
 const NAMES = ["Ada Lovelace", "Grace Hopper", "Edith Clarke"];
 /** A piece that is not built: the step fails by name, owner included. @param {string} what @param {string} owner */
@@ -120,7 +121,7 @@ export default {
         return `${people.length} members, each in their own chat`;
       }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
-      await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
+      await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       for (const p of people) { try { p.app.close(); } catch { /* closed */ } }
