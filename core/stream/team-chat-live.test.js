@@ -7,6 +7,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { boot } from "../sessions/testing/boot.js";
 import { createRing, holdersOf } from "../../lib/chat-keys.js";
 
@@ -176,7 +177,7 @@ test("a model's files.drive.space.list in a team turn reads the TEAM Space's Dri
   await firm.gateway.drive.put(owner, "Clients/Harlow/retainer.txt", new Uint8Array(Buffer.from("retainer terms")));
   // the owner gives Ada the Drive (a member holds none unless the owner gives it): her model then reads it as her
   const gi = { subject: { kind: "actor", actor: { kind: "person", id: ADA, space: firm.space } }, actions: ["drive.read"], resource: { prefix: `vyre://${firm.space}/file/*` }, conditions: {}, source: "test" };
-  await firm.gateway.grants.create(owner, gi, { presence: { ...proof(), op: "grant.create" } });
+  await firm.gateway.grants.create(owner, gi, { presence: { op: "grant.create", fields: { resource: `vyre://${firm.space}/grant/new`, input_hash: sha256(canonical({ action: "grants.create", input: gi })) }, n: Math.random() } });
   await as(ADA, "reply-mode", { chat: made.chat, mode: "every" });
   const said = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text)).join(" || ");
   await as(ADA, "send", { chat: made.chat, text: "vyre files.drive.space.list {}" });
