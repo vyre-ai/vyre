@@ -46,6 +46,19 @@ test("the lender's last whole turn becomes the chat's own transcript here, and t
   assert.equal(w.said[0][0], "runner.resumed");
 });
 
+test("a provider that keeps its own session file: the file the computer's agent wrote is the chat's transcript here, not the lines its program printed", async t => {
+  // a real Claude prints stream events on stdout (those are the lent transcript lines); its session file is another thing, and it is the only thing a resumed Claude can read ("No conversation found" otherwise)
+  const own = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"the word is PINEAPPLE\"}}\n{\"type\":\"assistant\"}\n";
+  const w = await world(t, { whole: 4, extra: 0, files: {} });
+  const store = w.lentView;
+  const remote = `agent/claude/projects/-work/${NATIVE}.jsonl`;
+  const bytes = Buffer.from(own);
+  const view = { ...store, checkpoint: async () => ({ ...(await store.checkpoint()), manifest: { [remote]: { hash: crypto.createHash("sha256").update(own).digest("hex"), version: 1, len: bytes.length } } }), file: async (/** @type {string} */ rel, /** @type {number} */ v) => (rel === remote && v === 1 ? bytes : store.file(rel, v)) };
+  const r = await w.go({ view });
+  assert.equal(r.resumed, true);
+  assert.equal(fs.readFileSync(w.file, "utf8"), own, "the provider's own session file, whole");
+});
+
 test("a chat with no whole turn acknowledged has nothing to carry: the file is not made", async t => {
   const w = await world(t, { whole: 0, extra: 3 });
   const r = await w.go();
