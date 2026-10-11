@@ -574,8 +574,11 @@ async function startLocked(opts, root, p, release) {
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
-      const person = await personChainFor(q.asker || kernel.id.owner);
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      // A chat thread with nobody's turn in flight has no authority at all: with no verified asker (the hop back after a one-turn account, a resumed or restored thread) no session is opened, so the socket answers no_session
+      // and nothing is written to the durable turns. It is never the home owner's by default: a member's lingering process would be stamped as the owner. The owner's own thread, in no chat, keeps its own session.
+      if (chat && !q.asker) return null;
+      const person = await personChainFor(q.asker || kernel.id.owner);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person

@@ -2241,6 +2241,7 @@ export class Switchboard {
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
+    if (!lead) { const k = this.ksCur.get(id); if (k && k.turn) void this.endKernelSession(id); }   // queued words with no chat turn do not ride the finished turn's session
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
@@ -2430,6 +2431,7 @@ export class Switchboard {
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
     }
+    else { const k = this.ksCur.get(id), run = this.live.get(id); if (k && k.turn && !(run && run.turn)) await this.endKernelSession(id); }   // words that carry no chat turn never ride a finished turn's lingering session (they are nobody's turn)
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
@@ -2449,6 +2451,8 @@ export class Switchboard {
       if (rec.agent) {
         const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
         if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
+        // the agents module launched it with no chat turn: this turn's asker opens the session now, before any word is written (a chat thread has no session of its own)
+        if (kernelTurn && this.live.has(id)) await this.renewKernelSession(id, this.must(id), kernelTurn);
       } else await this.launch({ resume: id, ...(kernelTurn ? { kernelTurn } : {}) }); // a dormant thread comes back with THIS turn's chat and asker, never the thread's default session
     }
     given();
