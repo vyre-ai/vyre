@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentReturn, lentOfferedFor, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -392,4 +392,23 @@ test("the owner's next turn asks for the chat back; when the computer is not rea
   assert.ok(said.length === 1 && /runs on the server/.test(said[0]), "said once: " + said.join("|"));
   assert.equal(await lentReturn(sb({ moved: true }), SESSION, {}, null), false, "no person, no offer");
   assert.equal(await lentReturn(sb({ moved: true }), SESSION, { turn: "t:1" }, BOB), false, "never while a turn runs");
+});
+
+test("on the real home: the owner writes while another person's hand-over is waiting for the computer: the ask is withdrawn, the computer's release is refused, and the owner's turn is never frozen by it", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const kernel = { owner: OWNER, id: { space: SPACE, owner: OWNER }, runnerHost: () => ({ space: SPACE, lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => r.home.spawn(i), placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => r.home.placeNew(i),
+    placements: { spaces: () => [SPACE], find: (/** @type {string} */ _s, /** @type {string} */ id) => r.home.book.find(id) || null, askRelease: (/** @type {string} */ _s, /** @type {string} */ id, /** @type {string} */ reason, /** @type {string} */ person) => r.home.book.askRelease(id, reason, person), cancelRelease: (/** @type {string} */ _s, /** @type {string} */ id, /** @type {string} */ person) => r.home.book.cancelAsk(id, person) } }) };
+  assert.ok(await lentSpawnFor(kernel, { thread: SESSION, chat: "chat_bob", native: SESSION, fresh: true, asker: BOB }));
+  await c.spec({ session: SESSION });
+  r.home.book.askRelease(SESSION, "another-person", BOB);
+  assert.equal(r.home.book.directives("dev_laptop").length, 1, "the computer is asked to hand the chat over");
+  assert.equal(lentSteadyFor(kernel, { thread: SESSION, chat: "chat_bob", native: SESSION, person: CAROL }), false, "another person cannot withdraw it");
+  assert.equal(lentSteadyFor(kernel, { thread: SESSION, chat: "chat_bob", native: SESSION, person: BOB }), true, "the owner's own turn withdraws it");
+  assert.equal(r.home.book.directives("dev_laptop").length, 0, "the computer is no longer asked");
+  const rel = await c.release({ session: SESSION, reason: "another-person" });
+  assert.equal(rel.moved, false, "a computer that was already on its way is told no: " + JSON.stringify(rel));
+  assert.equal(r.home.book.get(SESSION)?.where, "mac", "the chat stayed on the computer");
 });

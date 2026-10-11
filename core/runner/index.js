@@ -327,7 +327,8 @@ export default {
     ctx.tool("runner.seal-now", {
       description: "Save a chat's finished turns on this server now. Internal: the daemon, before it moves a chat to a computer. Input: session. Answers { sealed }.", internal: true, callers: ["module"],
       input: obj({ session: str }, ["session"]),
-      run: async ({ session }) => {
+      run: async ({ session }, meta) => {
+        if (!meta || meta.caller !== DAEMON) throw Object.assign(new Error("only the daemon saves a chat's turns before it moves: move the chat from its screen"), { code: "denied" });
         const o = ownServerOf(); if (!o) return { sealed: false };
         const r = await o.resolve({ payload: { session } }); if (!r) return { sealed: false };
         const { key, seal } = sealFor(o, r);
