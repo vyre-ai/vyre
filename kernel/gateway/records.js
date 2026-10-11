@@ -607,13 +607,7 @@ export function createRecords(cfg) {
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
     if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
     // a type a module KEEPS is changed or removed only by its keeper (the module's own one-hop service chain) or an owner or admin: a chain that merely ends in the keeper's service hop (a person's chain with the service appended) does not pass
-    if (op !== "create" && KEEPERS[type] && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or the service that keeps it, changes a ${type}`);
-    if (op !== "create" && !KEEPERS[type] && await isProtectedType(type) && !keeperOk(chain, type)) {
-      const last = chain.hops[chain.hops.length - 1].actor, made = (kattrs.get(u) || {}).created_by;
-      const person = chain.hops.length === 1 && last.kind === "person" ? last : null;
-      const role = person && members && typeof members.membership === "function" ? (members.membership(person) || {}).role : undefined;
-      if (made !== `${last.kind}:${last.id}` && role !== "owner" && role !== "admin") throw new KernelError("not_allowed", `only whoever made this ${type} or an admin changes it`);
-    }
+    if (op !== "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or the service that keeps it, changes a ${type}`);
     const lim = await limitsOf(chain, type, d);
     /** @type {any[]} */ let linkFields = [];
     if (op === "create" || op === "update") {
