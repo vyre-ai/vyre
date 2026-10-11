@@ -26,6 +26,7 @@ import { fit } from "../../lib/harness-caps.js";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
+import { createMemberSkills } from "./member-service.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -284,6 +285,7 @@ export default {
         if (r && r.error) throw err(r.error.code || "unavailable", r.error.message || "the hook could not run");
         return { ...r.data, declared: hook.network || [] };
       } });
-    return { async stop() {} };
+    // A team member's own skills on the team's server: the member door's service (kernel/remote/wire.js CALLS.skills, core/skills/member-service.js).
+    return { async stop() {}, peerService: (/** @type {{ space: string, kernel: any }} */ o) => createMemberSkills({ ...o, library: lib, entriesOf, shown, vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre"), homeSpace: () => String(ctx.kernel && ctx.kernel.space || "") }) };
   },
 };
