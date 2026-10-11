@@ -287,6 +287,7 @@ export default {
       internal: true, callers: ["module"],
       input: obj({ call: { type: "string", enum: MEMBER_STREAM }, input: { type: "object" } }, ["call"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!ctx.kernel || !ctx.kernel.chats) throw Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
         if (!meta || !meta.in_space_chain || !meta.in_space) throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
         const run = MEMBER_STREAM.includes(String(i.call)) ? memberRuns.get(String(i.call)) : null;
         if (!run) throw Object.assign(new Error(`call is ${MEMBER_STREAM.join(", ")}`), { code: "bad_input" });
