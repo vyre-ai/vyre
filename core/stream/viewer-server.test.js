@@ -8,6 +8,7 @@ import http from "node:http";
 import { SessionLog } from "./log.js";
 import { serve, serveSSE } from "./server.js";
 import { forViewer } from "./viewer.js";
+import { holds } from "./testkit.js";
 import { createAdapter, pipe } from "./adapter.js";
 
 const SECRET_REF = "seal:abc-9f31", SECRET_VALUE = "123-45-6789";
@@ -48,7 +49,7 @@ test("C-3: a second viewer's frames hold no value and no ref of a sealed field, 
   const fee = (/** @type {any} */ c) => real(c.got).find(f => f.data.tool_id === "t1").data.result.fields.find((/** @type {any} */ x) => x.name === "fee");
   assert.deepEqual(fee(a).value, { amount: 4200, currency: "USD" });
   assert.deepEqual(fee(m).value, { hidden: "role", kind: "money", present: true });
-  assert.ok(!wire(m.got).includes("4200"), "the member's wire holds no fee");
+  assert.ok(!holds(m.got, 4200), "the member's wire holds no fee");
 });
 
 test("C-3: a viewer who is not cleared for a record gets no frame for it, only its cursor", () => {
@@ -94,7 +95,9 @@ test("C-3: the SSE form is drawn per viewer too", async t => {
     r.on("error", () => resolve(text));
   });
   assert.ok(String(body).includes("chat.hidden"));
-  assert.ok(!String(body).includes(SECRET_REF) && !String(body).includes("settlement floor") && !String(body).includes("4200"));
+  // the fee is searched as a value in the parsed frames: the raw text also holds random ids and times, which contain the digits about one run in a hundred
+  const frames = String(body).split("\n").filter(l => l.startsWith("data:")).flatMap(l => { try { return [JSON.parse(l.slice(5))]; } catch { return []; } }); // the last line may be cut where the test hung up
+  assert.ok(!String(body).includes(SECRET_REF) && !String(body).includes("settlement floor") && !holds(frames, 4200));
 });
 
 test("C-3: forViewer leaves control frames, and other frames, alone", () => {
