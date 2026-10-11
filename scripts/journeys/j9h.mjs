@@ -5,6 +5,8 @@
 // the line turns green by itself when the piece lands. Proof (the transcript) is written to <out>/j9/ and copied to team/0.3.3/proof/team-day/ by whoever signs it off.
 //   VYRE_JOURNEY_BOX=1 node scripts/journeys/run.mjs J9      (a throwaway test box or a CI runner; see scripts/proof-dev-droplet.mjs --journeys J9)
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { createRing, holdersOf } from "../../lib/chat-keys.js";
 import path from "node:path";
 import { createApp } from "../lib/proof/app.mjs";
 import { bringUp } from "./lib/world.mjs";
@@ -123,7 +125,11 @@ export default {
       await J.step("each member has their own session on the server and sees their own Chats", async () => {
         const made = [];
         for (const p of people) {
-          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
+          // the member's device makes the chat's key ring, as the app does (journeys/lib/chat.mjs startChat does the same for the owner): the server has no agreement point for a joined member until their device is opened
+          const dev = crypto.createECDH("prime256v1"); dev.generateKeys();
+          const cid = `chat_${crypto.randomUUID()}`;
+          const ring = createRing(cid, holdersOf([{ device: `dev_${p.name.toLowerCase()}`, agree: dev.getPublicKey().toString("base64url") }]));
+          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes`, id: cid, ring: ring.doc }]);
           assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
           made.push(c.chat);
         }
