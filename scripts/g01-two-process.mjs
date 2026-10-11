@@ -136,24 +136,36 @@ if (role === "server") {
   if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else { assert.match(s, /side=mac /); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "the computer's agent sees both facts after the round trip: " + s); }
 
   { const row = home.book.get(th.id); say(`   the book after the take-back and a turn there: ${JSON.stringify({ where: row && row.where, device: row && row.device, epoch: row && row.epoch })}`); assert.ok(row && row.where === "mac" && row.device === DEVICE, "the server's book says the chat runs on the computer"); }
-  say("4. a teammate writes in the same chat: her turn runs on the server, never on the owner's computer");
-  const macTurnsBefore = fs.existsSync(path.join(BASE, "mac-turns")) ? fs.readFileSync(path.join(BASE, "mac-turns"), "utf8") : "";
-  s = await turn("the teammate's turn", () => as(CAROL, "threads.send", { thread: th.id, text: REAL ? "I am a teammate. What word did the owner ask you to remember? Reply with only the word." : "recall" }));
-  say(`   the book now: ${JSON.stringify(home.book.get(th.id))}; the last events: ${JSON.stringify((await events()).slice(-22).map((e) => e.type + (e.payload && (e.payload.state || e.payload.status) ? ":" + (e.payload.state || e.payload.status) : "")))}`);
-  assert.equal(where(), "server", "the chat is the server's after the teammate's turn");
-  if (REAL) assert.match(s, /pineapple/i); else { assert.match(s, /side=server /, "the teammate's turn ran in the server's process: " + s); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "and it kept the context of every earlier turn, from the computer and from the server: " + s); }
-  say(`   the chat said: ${JSON.stringify((await events()).filter((e) => e.type === "thread.text" && e.payload.notice).map((e) => e.payload.text).slice(-3))}`);
-  void macTurnsBefore;
-  say("5. the owner writes again: the chat stays on the server (a teammate's turn took it there and nothing offered it back), and the owner can bring it to the computer once more");
-  const ASK = REAL ? "What were the word and the colour I told you? Reply exactly as: word=<word> colour=<colour>" : "recall";
-  s = await turn("the owner's turn after the teammate's", () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
-  assert.equal(where(), "server", "still the server's: the owner brings it back, nothing moves it behind their back");
-  if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else assert.match(s, /side=server /);
+  // 4. A teammate writes in the owner's chat, twice over: her turn runs on the server with the owner's last turn in its history, and the owner's NEXT turn is back on their own computer by itself.
+  const ASK = REAL ? "What were the word and the colour I told you, and what number did the owner give for each round so far? Reply exactly as: word=<word> colour=<colour> numbers=<n,n>" : "recall";
+  const known = (/** @type {string} */ r, /** @type {number[]} */ ns) => { if (REAL) { assert.match(r, /pineapple/i); assert.match(r, /teal/i); for (const n of ns) assert.ok(r.includes(String(n)), `the number ${n} is in the history: ${r}`); } else { assert.ok(r.includes("PINEAPPLE") && r.includes("TEAL"), r); for (const n of ns) assert.ok(r.includes(`owner round ${n}`), `the owner's round ${n} is in the history: ${r}`); } };
+  for (const round of [1, 2]) {
+    say(`4.${round} round ${round}: the owner speaks on the computer, the teammate asks on the server, the owner's next turn is back on the computer with no move by hand`);
+    s = await turn(`the owner's round ${round}`, () => as(ownerId, "threads.send", { thread: th.id, text: REAL ? `Round ${round}: the owner's number is ${round * 111}. Reply with only the word: ok.` : `owner round ${round}` }));
+    assert.equal(where(), "mac", "the owner's turn ran on the owner's computer");
+    s = await turn(`the teammate's round ${round}`, () => as(CAROL, "threads.send", { thread: th.id, text: ASK }));
+    assert.equal(where(), "server", "the chat is the server's after the teammate's turn");
+    if (!REAL) assert.match(s, /side=server /, "the teammate's turn ran in the server's process: " + s);
+    known(s, Array.from({ length: round }, (_, k) => (REAL ? (k + 1) * 111 : k + 1)));   // the owner's last finished turn is in the history the server answered from
+    s = await turn(`the owner's next turn after round ${round}`, () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
+    assert.equal(where(), "mac", "the owner's next turn is back on their own computer, no hand needed");
+    if (!REAL) assert.match(s, /side=mac /, "and ran there: " + s);
+    known(s, Array.from({ length: round }, (_, k) => (REAL ? (k + 1) * 111 : k + 1)));
+  }
+  // 5. A hand-over the owner made themself stays where they put it, through a teammate's turn, until they take it back.
+  say("5. the owner hands the chat to the server themself: a teammate's turn and the owner's next turn both stay on the server until the owner takes it back");
+  await ok("runner.move", { thread: chatId, to: "server" });
+  await until(async () => where() === "server", "the chat is the server's", 120_000);
+  s = await turn("the teammate's turn after the hand-over", () => as(CAROL, "threads.send", { thread: th.id, text: ASK }));
+  s = await turn("the owner's turn after their own hand-over", () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
+  assert.equal(where(), "server", "their own hand-over stays until they take it back");
+  if (!REAL) assert.match(s, /side=server /);
   await ok("runner.move", { thread: chatId, to: "mac" });
   await until(async () => where() === "mac", "the chat is on the computer again", 120_000);
   s = await turn("the owner's turn back on the computer", () => as(ownerId, "threads.send", { thread: th.id, text: ASK }));
   assert.equal(where(), "mac");
-  if (REAL) { assert.match(s, /pineapple/i); assert.match(s, /teal/i); } else { assert.match(s, /side=mac /); assert.ok(s.includes("PINEAPPLE") && s.includes("TEAL"), "after a teammate's turn and a second trip the computer's agent still sees every earlier turn: " + s); }
+  if (!REAL) assert.match(s, /side=mac /);
+  known(s, [1, 2]);
   fs.writeFileSync(path.join(BASE, "done"), "1");
   say("PASS: the walk is complete");
   await d.stop().catch(() => {});
