@@ -34,13 +34,13 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   const agent = String(process.env.G01_CLAUDE);
   const TOKEN = fs.readFileSync(String(process.env.G01_TOKEN_FILE), "utf8").trim();   // never printed
   const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
-  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, HOME: process.env.HOME, VYRE_LENT_AGENT_DEV: process.env.VYRE_LENT_AGENT_DEV, VYRE_LENT_AGENT: process.env.VYRE_LENT_AGENT, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN };
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, HOME: process.env.HOME, VYRE_ALLOW_REAL_TRANSCRIPTS: process.env.VYRE_ALLOW_REAL_TRANSCRIPTS, VYRE_LENT_AGENT_DEV: process.env.VYRE_LENT_AGENT_DEV, VYRE_LENT_AGENT: process.env.VYRE_LENT_AGENT, VYRE_SEAL_DEV: process.env.VYRE_SEAL_DEV, VYRE_KERNEL_PATH_RULE: process.env.VYRE_KERNEL_PATH_RULE, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF, CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN };
   delete process.env.CLAUDE_CODE_OAUTH_TOKEN;   // the token comes from the vault, as it does for a person; no environment hands it to anything
   const root = tempHome(t);
   const walkHome = path.join(root, "walk-home");
   const transcripts = path.join(walkHome, ".claude", "projects");
   fs.mkdirSync(transcripts, { recursive: true });
-  Object.assign(process.env, { VYRE_LENT_AGENT_DEV: "1", VYRE_LENT_AGENT: agent, VYRE_CLAUDE_BIN: agent, VYRE_SESSIONS_DRIVER: "cli", HOME: walkHome, VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1" });
+  Object.assign(process.env, { VYRE_ALLOW_REAL_TRANSCRIPTS: "1" /* the walk home is private: its .claude folder is the walk's, not a person's */, VYRE_LENT_AGENT_DEV: "1", VYRE_LENT_AGENT: agent, VYRE_CLAUDE_BIN: agent, VYRE_SESSIONS_DRIVER: "cli", HOME: walkHome, VYRE_SEAL_DEV: "1", VYRE_KERNEL_PATH_RULE: "1", VYRE_SESSION_SANDBOX_OFF: "1" });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 
   // the home: a real vyred, kernel on, with a development sealing process (the lease's sealer), the real vault and the real lent service of the home
