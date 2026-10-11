@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { revertSettled, runQueuedOver } from "./asker-account.js";
 import { Switchboard } from "./index.js";
 
+const LOCK = Symbol("lock");
+
 test("revertSettled: true with no hop back, true once it finishes (or fails), false when it is still held open after the wait", async () => {
   const sb = /** @type {any} */ ({ reverting: new Map(), revertWaitMs: 40 });
   assert.equal(await revertSettled(sb, "t"), true, "nothing reverting");
@@ -33,14 +35,14 @@ test("runQueuedOver: a hop that cannot start says so in words, tells the stream 
 test("a write that throws while a queued turn is handed over releases the drain lock, and the row behind it still runs", async () => {
   /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }), deps: { log() {} },
     write() { throw new Error("lent: the words may not go into a process on a computer"); },
     dropQueuedChatTurn: (/** @type {string} */ id) => drained.push("notice"),   // the room is told the words were not sent
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
-  Switchboard.prototype.drainRun.call(sb, "t", null, [{ id: 1, text: "x", surface: "s", uuid: "u", at: 1 }], null);   // (logged and told, not thrown into whatever ended the turn)
+  Switchboard.prototype.drainRun.call(sb, "t", null, [{ id: 1, text: "x", surface: "s", uuid: "u", at: 1 }], null, LOCK);   // (logged and told, not thrown into whatever ended the turn)
   assert.equal(sb.draining.has("t"), false, "the lock is released");
   assert.deepEqual(drained, ["notice", "t"], "the room is told, and the rows behind it are drained again");
 });
@@ -49,13 +51,13 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
   /** @type {any[]} */ const drained = [];
   const st = { turn: null, stopping: false };
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", st]]),
+    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", st]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => { /* the hop's whole turn ran and ended here: its turnEnded returned at the lock */ },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
-  runQueuedOver(sb, "t", [{ id: 2, text: "A-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_ada", over: { provider: "claude", account: "x", person: "per_ada" } }, () => ({ changes: 1 }), 1);
+  runQueuedOver(sb, "t", [{ id: 2, text: "A-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_ada", over: { provider: "claude", account: "x", person: "per_ada" } }, () => ({ changes: 1 }), 1, LOCK);
   await new Promise(r => setTimeout(r, 30));
   assert.equal(sb.draining.has("t"), false);
   assert.deepEqual(drained, ["t"], "the thread is idle with no hop pending, so the next row is drained");
@@ -64,13 +66,13 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
 test("runQueuedOver past the revert wait puts the row back instead of judging it on the hop's state", async () => {
   /** @type {any[]} */ const ran = []; /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null }]]),
+    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: (/** @type {any[]} */ ...a) => { ran.push([q.slice(0, 90), a]); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
-  runQueuedOver(sb, "t", [{ id: 3, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 1 }), 1);
+  runQueuedOver(sb, "t", [{ id: 3, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 1 }), 1, LOCK);
   await new Promise(r => setTimeout(r, 120));
   assert.ok(ran.some(r => /delivered_at = NULL/.test(r[0])), "the row is put back in the queue");
   assert.deepEqual(drained, [], "and nothing is drained or run on the wrong base");
@@ -95,14 +97,14 @@ test("a revert whose switch throws still drains the put-back row", async () => {
   /** @type {any[]} */ const drained = []; /** @type {any[]} */ const sql = [];
   const revert = new Promise(r => setTimeout(r, 60));   // (turnEnded's promise has its .catch: it settles even when the switch threw)
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 50)); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
   });
   sb.drainDone = Switchboard.prototype.drainDone;
   void revert.finally(() => sb.reverting.delete("t"));   // turnEnded's own cleanup runs first
-  runQueuedOver(sb, "t", [{ id: 9, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 1 }), 1);
+  runQueuedOver(sb, "t", [{ id: 9, text: "B-TWO", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_bob", over: { provider: "claude", account: "y", person: "per_bob" } }, () => ({ changes: 1 }), 1, LOCK);
   await new Promise(r => setTimeout(r, 40));
   assert.deepEqual(drained, [], "past the wait and the revert still going: nothing runs");
   await new Promise(r => setTimeout(r, 80));
@@ -112,14 +114,14 @@ test("a revert whose switch throws still drains the put-back row", async () => {
 test("a queued row whose hop needs no move (sendOnce answers null) still delivers its words, under their asker", async () => {
   /** @type {any[]} */ const calls = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", Symbol("x")]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => null,
     deliverRow: async (/** @type {string} */ id, /** @type {any} */ r, /** @type {any} */ kt) => { calls.push([id, r.text, kt.asker]); },
     drainQueued() {}, reverting_: 0,
   });
   sb.drainDone = Switchboard.prototype.drainDone;
-  runQueuedOver(sb, "t", [{ id: 4, text: "C-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_carol", over: { provider: "claude", account: "same", person: "per_carol" } }, () => ({ changes: 1 }), 1);
+  runQueuedOver(sb, "t", [{ id: 4, text: "C-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_carol", over: { provider: "claude", account: "same", person: "per_carol" } }, () => ({ changes: 1 }), 1, LOCK);
   await new Promise(r => setTimeout(r, 30));
   assert.deepEqual(calls, [["t", "C-ONE", "per_carol"]], "the words are delivered, not swallowed");
 });
