@@ -19,6 +19,7 @@ import { createKernel } from "../../kernel/index.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 import { connect, wsDuplex } from "./client.js";
+import { holds } from "./testkit.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
@@ -310,7 +311,7 @@ test("a room of more than one person: an assistant's field value is dropped (aga
   await w.idle();
   const f = w.frames(room.chat.id);
   assert.ok(f.some((/** @type {any} */ x) => x.type === "chat.text-done" && x.author === "assistant:kit"), "the reply itself is shown");
-  assert.ok(!JSON.stringify(f).includes("4200"), "no field value reached the group's log");
+  assert.ok(!holds(f, 4200), "no field value reached the group's log");
   assert.deepEqual(f.find((/** @type {any} */ x) => x.type === "chat.text-done").data.blocks, [{ block: "text", text: "see below" }]);
   // the kernel's room view for the same chat: more than one person, and a sealed field is never a value for the room
   const tok = (await w.k.surfaces.open(w.chains.bob, { chat: room.chat.id })).token;
