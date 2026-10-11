@@ -1050,5 +1050,6 @@
  "core/models/live-picker.test.js": 1,
  "test/journey-space-computers.test.js": 1,
  "test/journey-assistant-access.test.js": 6,
- "apps/app/screens/assistants/access-model.test.js": 2
+ "apps/app/screens/assistants/access-model.test.js": 2,
+ "core/work/member-projects.test.js": 11
 }
