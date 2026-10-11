@@ -8,7 +8,7 @@ import { boot } from "./team-fixture.js";
 
 test("a teammate filled by an agent with a picked sign-in launches on that sign-in; a teammate with no filler launches as before", { timeout: 120_000 }, async t => {
   const { tool, project, launches } = await boot(t);
-  await tool("vault.put", { name: "teammate-oauth", kind: "secret", fields: { value: "sk-ant-oat01-test-teammate" } });
+  await tool("vault.put", { name: "teammate-oauth", kind: "secret", fields: { value: "stand-in-teammate-sign-in-value" } });
   await tool("vault.grant", { name: "teammate-oauth", module: "agents" });
   await tool("agents.create", { name: "filler", kind: "agent", projects: [project.slug], auth: { vault: "teammate-oauth" } });
   const tm = await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
