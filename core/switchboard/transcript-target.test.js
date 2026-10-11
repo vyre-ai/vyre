@@ -43,6 +43,8 @@ test("a transcript is placed only in the chat of the person it is for", { timeou
   await until(async () => (await d.registry.call("threads.get", { thread: th2.id, limit: 50 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the second thread's turn", 60_000);
   assert.ok((await ask({ thread: th2.id, person: liar })).error, "the person a caller named is not the thread's person");
   assert.ok((await ask({ thread: th2.id, person: ownerId })).data, "the chat turn's asker is");
+  // a one-turn provider switch by another member does not rewrite the thread's person (the switch keeps its own field)
+  { const row = /** @type {any} */ (d.registry.deps.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(th.id)); const opts = JSON.parse(row.opts); assert.equal(opts.person, ownerId, "the thread's person is the asker of the turn that made it"); assert.equal(opts.switchPerson, undefined, "and a switch has not touched it"); }
   // a thread started with no chat turn has no person and is refused for a transcript
   const bare = await d.registry.call("threads.start", { cwd: work, prompt: "bare", surface: "cli" }, "cli");
   if (bare.data && bare.data.id) { await until(async () => (await d.registry.call("threads.get", { thread: bare.data.id, limit: 50 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the bare turn", 60_000); assert.ok((await ask({ thread: bare.data.id, person: ownerId })).error, "no person recorded, nothing is placed"); }
