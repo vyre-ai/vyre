@@ -120,7 +120,7 @@ export default {
         return `${first.name}: ${started.tasks_made} tasks`;
       }, { needs: [T], owner: "projects-flows" });
       await heavy("the project's timeline begins with where it started from", async () => {
-        const tl = await w.call("work.timeline", { project: project.project });
+        const tl = await w.call("work.timeline", { project: project.slug || project.project });
         assert.match(JSON.stringify(tl), /Started from/i);
       }, { needs: [P], owner: "projects-flows" });
       await heavy("a Flow from the template is installed, healthy, and has run", async () => {
