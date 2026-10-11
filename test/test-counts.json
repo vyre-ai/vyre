@@ -548,7 +548,7 @@
  "core/wink/storage/s3.test.js": 4,
  "core/work/capture.test.js": 2,
  "core/work/e2e-estate.test.js": 5,
- "core/work/member-files.test.js": 7,
+ "core/work/member-files.test.js": 8,
  "core/work/member-projects.test.js": 11,
  "core/work/memory/engine.test.js": 13,
  "core/work/native/components.test.js": 10,

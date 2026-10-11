@@ -4,12 +4,14 @@
 // (the project's owner and team, measured in core/work/member-projects.test.js), not this code:
 //   - the folder is BUILT here from the project record (`Projects/<record id>/files/`), never taken from her input; the project is named by its record id or its short name;
 //   - a file is named by a plain name: no separator, no `..`, no leading dot; there are no sub-folders, so nothing outside `files/` (the `.project` marker included) is reachable;
-//   - a file is at most MAX_BYTES and a project holds at most MAX_FILES, refused in words;
+//   - a file is at most MAX_BYTES up (MAX_READ_BYTES down: what the door carries) and a project holds at most MAX_FILES, refused in words;
 //   - no versions, restore, links, shares, delete or move: a member on a team gets those later (team/BACKLOG.md rc.3).
 
 import { KernelError } from "../../kernel/core/errors.js";
 
-export const MAX_BYTES = 10 * 1024 * 1024;
+// The door carries a request of at most 256 KB and an answer of at most 2 MB (kernel/remote/wire.js MAX_REQUEST_BYTES / MAX_RESPONSE_BYTES), and a file travels as base64 (a third larger): so what fits is 150 KB up and 1.4 MB down. A bigger file is not a member call yet (chunks: team/BACKLOG.md rc.3).
+export const MAX_BYTES = 150 * 1024;
+export const MAX_READ_BYTES = 1_400_000;
 export const MAX_FILES = 200;
 /** The keys each call takes (the door drops others; these also refuse a bad value in words). */
 export const KEYS = Object.freeze({ "files-list": ["project"], "files-read": ["project", "name"], "files-upload": ["project", "name", "data"] });
@@ -57,16 +59,18 @@ export function createMemberFiles(o) {
       const i = clean("files-read", input);
       const name = fileName(i.name);
       const folder = await folderOf(chain, i.project);
-      const bytes = await o.kernel().drive.get(chain, `${folder}/${name}`, { maxBytes: MAX_BYTES });
+      /** @type {Uint8Array} */ let bytes;
+      try { bytes = await o.kernel().drive.get(chain, `${folder}/${name}`, { maxBytes: MAX_READ_BYTES }); }
+      catch (e) { if (e && /** @type {any} */ (e).code === "too_large") throw new KernelError("too_large", "That file is too big to open from the app (over 1.4 MB). Ask the owner to open it."); throw e; }
       return { name, size: bytes.length, data: Buffer.from(bytes).toString("base64") };
     },
     "files-upload": async (/** @type {any} */ chain, /** @type {any} */ input) => {
       const i = clean("files-upload", input);
       const name = fileName(i.name);
       if (typeof i.data !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(i.data)) throw new KernelError("bad_input", "The file's content is sent as base64 text.");
-      if (i.data.length > Math.ceil(MAX_BYTES / 3) * 4 + 4) throw new KernelError("too_large", `A file here is at most ${MAX_BYTES / 1024 / 1024} MB. Send a smaller one.`);
+      if (i.data.length > Math.ceil(MAX_BYTES / 3) * 4 + 4) throw new KernelError("too_large", `A file sent from the app is at most ${MAX_BYTES / 1024} KB for now. Send a smaller one, or ask the owner to add it.`);
       const bytes = new Uint8Array(Buffer.from(i.data, "base64"));
-      if (bytes.length > MAX_BYTES) throw new KernelError("too_large", `A file here is at most ${MAX_BYTES / 1024 / 1024} MB. Send a smaller one.`);
+      if (bytes.length > MAX_BYTES) throw new KernelError("too_large", `A file sent from the app is at most ${MAX_BYTES / 1024} KB for now. Send a smaller one, or ask the owner to add it.`);
       const folder = await folderOf(chain, i.project);
       const have = await names(chain, folder);
       if (!have.some((/** @type {any} */ e) => e.path === `${folder}/${name}`) && have.length >= maxFiles) throw new KernelError("not_allowed", `A project holds at most ${maxFiles} files here. Remove one from the project's owner side, or ask the owner.`);
