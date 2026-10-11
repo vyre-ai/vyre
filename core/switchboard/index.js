@@ -2241,7 +2241,7 @@ export class Switchboard {
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
     // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
     for (const r of all) r.kturn = this.canonTurn(r.kturn);
-    const lead = all[0].kturn || null; const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })(); { if (lentBlocks(this, id, st, kt0 && kt0.asker ? kt0.asker : null)) { void lentYield(this, id, st, kt0 && kt0.asker ? kt0.asker : null).catch(() => {}); return; } }
+    const askerOf = (/** @type {any} */ r) => { try { return r.kturn ? JSON.parse(r.kturn).asker || null : null; } catch { return null; } };   const free = all.filter(r => !lentBlocks(this, id, st, askerOf(r)));   if (!free.length) { const other = all.find(r => askerOf(r)); if (other) void lentYield(this, id, st, askerOf(other)).catch(() => {}); return; }   all.splice(0, all.length, ...free);   const lead = all[0].kturn || null; const kt0 = (() => { try { return lead ? JSON.parse(lead) : null; } catch { return null; } })();
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     // The asker is asked after again now: a person who left the chat while their row waited gets no turn (and none without their token), the row is dropped with the words they would have had at send time.
     if (kt0 && kt0.chat && this.deps.kernelSession) {
@@ -2723,7 +2723,7 @@ export class Switchboard {
       } else await this.launch({ resume: id });
     }
     const st = this.live.get(id);
-    const rec = this.must(id);   if (lentBlocks(this, id, st, null)) { void lentYield(this, id, st, null).catch(() => {}); return this.queue(id, text, from, null, { owned: true, kind, request }); }
+    const rec = this.must(id);   if (lentBlocks(this, id, st, null)) return this.queue(id, text, from, null, { owned: true, kind, request });   // a module's words wait: they never pull a chat off a person's computer
     if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind, request });
     const w = this.write(id, text, { askedBy: null });
     this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind, ...(request ? { request } : {}) }, id, rec.project);

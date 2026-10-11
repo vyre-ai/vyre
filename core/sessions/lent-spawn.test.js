@@ -347,7 +347,8 @@ test("the last door and every writer: nothing reaches a process on a computer un
   const { Switchboard } = await import("../switchboard/index.js");
   const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
   const proc = () => ({ where: undefined, write() { throw new Error("reached the process"); } });
-  const base = () => ({ live: new Map([[SESSION, { turn: null, proc: proc() }]]), turnAsker: new Map([[SESSION, BOB]]), deps: { lentRow: () => row, lentTakeBack: async () => "taken" }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ provider: "claude", project: null, status: "idle" }), must: () => ({ provider: "claude", project: null, status: "idle" }), canonTurn: (/** @type {any} */ x) => x });
+  let taken = 0;
+  const base = () => ({ live: new Map([[SESSION, { turn: null, proc: proc() }]]), turnAsker: new Map([[SESSION, BOB]]), deps: { lentRow: () => row, lentTakeBack: async () => { taken++; return "taken"; } }, chatOf: () => "chat_bob", nativeOf: () => SESSION, record: () => ({ provider: "claude", project: null, status: "idle" }), must: () => ({ provider: "claude", project: null, status: "idle" }), canonTurn: (/** @type {any} */ x) => x });
   // write: the asker is named by the caller; the last chat turn's asker is no default (here it is Bob's, and the call still names nobody)
   for (const asker of [undefined, null, CAROL]) assert.throws(() => Switchboard.prototype.write.call(base(), SESSION, "hello", { askedBy: asker }), (/** @type {any} */ e) => e.code === "held" && /waits/.test(e.message), `askedBy ${String(asker)}`);
   assert.throws(() => Switchboard.prototype.write.call(base(), SESSION, "hello"), (/** @type {any} */ e) => e.code === "held", "no asker named at all");
@@ -357,6 +358,7 @@ test("the last door and every writer: nothing reaches a process on a computer un
   const t1 = { ...base(), queue: (/** @type {any[]} */ ...a) => { queued.push(a); return { queued: true }; }, write: Switchboard.prototype.write, emit() {} };
   const r1 = await Switchboard.prototype.post.call(t1, SESSION, "a result", "agent", "k", undefined);
   assert.equal(r1.queued, true); assert.equal(queued.length, 1, "queued, and the process was never reached");
+  await new Promise(r => setTimeout(r, 20)); assert.equal(taken, 0, "and a module's words never pull the chat off the person's computer");
   // sendNow: a queued row is judged by its own asker and stays queued when it may not go in
   /** @type {string[]} */ const ran = [];
   const t2 = { ...base(), db: { prepare: (/** @type {string} */ sql) => ({ get: () => ({ id: 1, text: "x", surface: "s", uuid: "u", images: null, request: null, note: null, kturn: JSON.stringify({ chat: "chat_bob", asker: CAROL }) }), run: () => { ran.push(sql); return { changes: 1 }; } }) }, write: Switchboard.prototype.write, emit() {} };
