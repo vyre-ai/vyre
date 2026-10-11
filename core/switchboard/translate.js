@@ -192,7 +192,7 @@ export function translate(m) {
     // Deltas carry no message id; message_start does, and the runner keeps it for what follows.
     if (m.parent_tool_use_id) return out;
     if (e.type === "message_start" && e.message && e.message.id) out.message = String(e.message.id);
-    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) { out.delta = String(e.delta.text); if (typeof e.index === "number") out.block = e.index; }
+    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) { out.delta = String(e.delta.text); if (typeof e.index === "number") out.block = e.index; if (typeof m.message_id === "string" && m.message_id) out.message = m.message_id; }   // (an ACP agent has no message_start: its driver names the turn's message on each delta)
     // Thinking as it grows (the thinking display): its own delta, kind "reasoning".
     if (e.type === "content_block_delta" && e.delta && e.delta.type === "thinking_delta" && e.delta.thinking) { out.reasoning = String(e.delta.thinking); if (typeof e.index === "number") out.block = e.index; }
     // A steered message Claude Code folded into the running turn is stamped on the first frame after it.

@@ -445,8 +445,9 @@ function viaLocal(t, port, gatePort = port) {
 }
 
 test("computers: egress is off by default, and status says the sidecar does not answer on a closed port", async t => {
-  viaLocal(t, await closedPort());
   const s = await boot(t);
+  // The port is freed and named only now: booting takes seconds on a busy runner, and another test file's server can take a port freed that long ago (the sidecar then "answers").
+  viaLocal(t, await closedPort());
   const r = await s.cli("computers.egress.status");
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.equal(r.data.enabled, false);
