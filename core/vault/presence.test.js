@@ -18,7 +18,7 @@ import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.provider.set", "vault.provider.remove", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
-  "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
+  "vault.backup", "vault.restore", "vault.autobackup.enrol", "vault.autobackup.run", "vault.autobackup.drill", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
   "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native", "vault.breach.check", "vault.update",
@@ -36,6 +36,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.session.close", "vault.session.status", "vault.state", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
   "vault.agent.grants", "vault.agent.revoke", "vault.mcp.pass.list", "vault.mcp.items", "vault.mcp.pass.revoke", "vault.mcp.reveal.clear", "vault.uses", "vault.remind.run", "vault.rotation",
   "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list", "vault.need",
+  "vault.autobackup.status",
   "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",
   "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed",
   // a module asks whether it holds a grant: a boolean about its own grant, no value (module-only)
