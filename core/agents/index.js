@@ -698,8 +698,9 @@ export default {
         const a = must(i.agent);
         if (a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
         const pick = worksetOf(String(i.project), a.name);
-        // The pick is valid only if it serves the person who gave the task: resolve with their id refuses anyone else's account.
-        const who = i.person;
+        // The credential is picked FOR THE AGENT (its own pick, else the project's default) by a person, and runs with that person as its owner: resolve with the picker's id refuses any account that is not theirs.
+        // With no pick the task's giver is the person. The agent never sees the credential, and no other member or Space can use it.
+        const who = pick.account && pick.person ? String(pick.person) : i.person;
         const attention = (/** @type {string} */ kind, /** @type {string} */ why) => Object.assign(new Error(`person:${who} kind:${kind} ${pick.account ? `the AI account picked for agent work in ${i.project}` : "the AI account"} cannot be used (${why})`), { code: "account_attention" });
         let acct;
         if (pick.account) {

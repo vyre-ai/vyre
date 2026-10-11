@@ -62,6 +62,7 @@ test("the brief names the task and the way to answer", () => {
 function rig(/** @type {{ report?: number | null, say?: any, lead?: string, others?: any[], limit?: number, now?: () => number, root?: string, ledgerState?: any, agentsWork?: (i: any) => Promise<any>, task?: any, onTeam?: boolean, reply?: string }} */ o = {}) {
   const calls = /** @type {string[]} */ ([]);
   const fixes = /** @type {string[]} */ ([]);
+  const prompts = /** @type {string[]} */ ([]);
   const handlers = /** @type {Record<string, (e: any) => any>} */ ({});
   const task = o.task || { id: "tsk_1", state: "ready", title: "Write the letter", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
   const gw = {
@@ -86,7 +87,7 @@ function rig(/** @type {{ report?: number | null, say?: any, lead?: string, othe
       if (tool === "work.project.ref") return { id: "p1id", slug: "p1", name: "P One", urn: "vyre://spc_a/project/p1" };
       if (tool === "agents.list") return [{ uid: "agt_kit", name: "kit" }, { uid: "agt_dana", name: "dana" }];
       if (tool === "agents.work.setting") return { daily_limit: o.limit || null, report_hours: o.report === undefined ? null : o.report };
-      if (tool === "agents.work") { calls.push(`work ${input.person} owner=${input.owner}`); return o.agentsWork ? o.agentsWork(input) : { agent: "kit", thread: "th_1" }; }
+      if (tool === "agents.work") { calls.push(`work ${input.person} owner=${input.owner}`); prompts.push(String(input.prompt)); return o.agentsWork ? o.agentsWork(input) : { agent: "kit", thread: "th_1" }; }
       throw new Error(`unexpected ${tool}`);
     },
   });
@@ -96,7 +97,7 @@ function rig(/** @type {{ report?: number | null, say?: any, lead?: string, othe
     ...(o.say ? { say: o.say } : {}), gw, chains: { fromFacts: (/** @type {any} */ f) => ({ facts: f }) }, ownerChain: () => ({}), ownerId: () => "per_owner", grantWork: { make: async (a, t) => { calls.push(`grant ${a} ${t}`); }, end: async t => { calls.push(`end ${t}`); } }, subscribe: cb => { push = cb; return () => {}; } });
   const ready = (/** @type {string} */ type = "task.created") => push({ type, data: { state: "ready", task } });
   const finish = async (/** @type {string} */ text, /** @type {any} */ fin = {}) => { handlers["thread.text"]({ thread: "th_1", payload: { text, done: true } }); handlers["thread.finished"]({ thread: "th_1", payload: fin }); await new Promise(r => setTimeout(r, 20)); await h.idle(); };
-  return { opts: o, raw: calls, fixes, notes, root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
+  return { prompts, opts: o, raw: calls, fixes, notes, root: o.root, calls: new Proxy(calls, { get: (a, k) => (k === "at" ? (i) => a.filter(c => !c.startsWith("end ")).at(i) : k === "filter" ? (f) => a.filter(c => !c.startsWith("end ")).filter(f) : k === "length" ? a.filter(c => !c.startsWith("end ")).length : Reflect.get(a, k)) }), task, h, ready, finish };
 }
 
 test("one task is woken once, the turn runs on the assigner's account, and the reply is the result", async () => {
@@ -417,4 +418,18 @@ test("the project lead's message is the daemon's alone, for the project's flagge
   assert.equal(none.data.posted, false, "no chat: the words stay as the task's result");
   const sayAs = await d.registry.call("threads.say-as", { thread: "nope", agent: "kit", text: "x" }, "module:vyred");
   assert.equal(sayAs.error && sayAs.error.code, "denied", "and the thread line can only be written by the work module");
+});
+
+test("tasks no one could be given are named to the lead, so it can flag them to the person", async () => {
+  const plan = { id: "tsk_plan", state: "ready", title: "Plan P One", note: "Plan it.\nNot made, no one holds the role: Draft the trust (no teammate holds the role drafter); Sign (no teammate holds the role notary)", doer: { kind: "agent", id: "agt_kit" }, assigned_by: { kind: "person", id: "per_bob" }, project: "vyre://spc_a/project/p1" };
+  const r = rig({ lead: "kit", task: plan });
+  let prompt = "";
+  const orig = r.h;
+  void orig;
+  r.ready(); await r.h.idle();
+  // the brief handed to agents.work carries them
+  prompt = r.prompts.at(-1);
+  assert.match(prompt, /could not be made because no one on the team has the role/);
+  assert.match(prompt, /Draft the trust/);
+  assert.match(prompt, /Sign/);
 });

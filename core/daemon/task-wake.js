@@ -158,7 +158,8 @@ export function createTaskWakeHost(o) {
       const named = new Map(roster.map((/** @type {any} */ m) => [m.actor.id, m.agent]));
       const tasks = all.slice(0, 60).map((/** @type {any} */ x, /** @type {number} */ i) => ({ n: i + 1, id: String(x.id), title: String(x.title), who: x.doer && x.doer.kind === "agent" ? (named.get(x.doer.id) || "an agent") : "a person", state: String(x.state), ...(x.stuck && x.stuck.reason ? { why: String(x.stuck.reason) } : {}), times: (ledger.get(x.id) || {}).stuckTimes || (x.state === "stuck" ? 1 : 0) }));
       ledger.set(t.id, { lead: kind, map: tasks.map(x => ({ n: x.n, id: x.id })) });
-      return leadBrief({ kind, project: r.name, roster: roster.map((/** @type {any} */ m) => ({ agent: m.agent, role: m.role })), tasks });
+      const miss = /^Not made, no one holds the role: (.+)$/m.exec(String(t.note || ""));
+      return leadBrief({ kind, project: r.name, ...(miss ? { skipped: miss[1].split("; ").slice(0, 20) } : {}), roster: roster.map((/** @type {any} */ m) => ({ agent: m.agent, role: m.role })), tasks });
     }
 
     /** Check a lead's picks and turn each into a recommendation for the person: only a stuck task, only to another teammate of this project whose role the lead named, and not one that has been stuck twice. Nothing is moved here. Returns the plain-words lines for the message. @param {any} t @param {{ slug: string, name: string, agent: string, urn: string, id: string }} r @param {{ task: number, to: string }[]} picks */
