@@ -1581,6 +1581,9 @@ test("a member who joined through the kernel invite is found by the key-agreemen
   assert.equal(JSON.parse(String(/** @type {any} */ (row).value)), "dana", "the evidence kept her confirmed name");
   d.db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify("casey"), `person-name/${dana.id}`);
   assert.equal(await sees(casey, dana), 0, "the kept name now belongs to another id: nothing is answered");
+  // and a kept name that now belongs to nobody (released): the directory does not resolve it, and nothing is answered
+  d.db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify("nobodyhasthisname"), `person-name/${dana.id}`);
+  assert.equal(await sees(casey, dana), 0, "the kept name resolves to no one: nothing is answered");
   void DatabaseSync; void K.membership;
 });
 
