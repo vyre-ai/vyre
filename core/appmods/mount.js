@@ -54,3 +54,8 @@ export function rewriteJs(js) {
   }
   return out;
 }
+
+/** A `Link:` header (preloads) names root-relative files too. @param {string} value */
+export function mountLinkHeader(value) {
+  return value.replace(/<\/(?!\/|sign\/_\/)/g, `<${MOUNT}/`);
+}

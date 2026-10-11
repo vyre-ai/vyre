@@ -10,7 +10,7 @@ import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
 import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS, SIGNED, checkLink, EXPIRED_HTML, filePaths } from "./signing.js";
-import { MOUNT, toApp, mountLocation, rewriteHtml, rewriteCss, rewriteJson, rewriteJs } from "./mount.js";
+import { MOUNT, toApp, mountLocation, rewriteHtml, rewriteCss, rewriteJson, rewriteJs, mountLinkHeader } from "./mount.js";
 
 export const ENTER = "/__vyre/enter";
 export const COOKIE = "vyre_app";
@@ -284,6 +284,7 @@ export function createHostProxy(o) {
       const r = await once(false);
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
+      if (mounted) for (const k of Object.keys(out)) if (k.toLowerCase() === "link") out[k] = [].concat(/** @type {any} */ (out[k])).map(mountLinkHeader).join(", ");
       if (typeof out.location === "string") out.location = mounted ? mountLocation(rewriteLocation(out.location, app.origins, here)) : rewriteLocation(out.location, app.origins, here);
       // an open server's cookies stay on its own host: a Domain attribute would reach the other apps' hosts and Vyre's own
       if (wide && out["set-cookie"]) out["set-cookie"] = [].concat(/** @type {any} */ (out["set-cookie"])).map(handOn);
