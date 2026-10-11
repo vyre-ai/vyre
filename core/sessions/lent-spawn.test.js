@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, personOfMeta, personOfChain, modelForAsker, hopPersonOf, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -572,4 +572,24 @@ test("the usage-limit fallback and the hop back are the holder's own act on a se
   const stub = { live: new Map([[SESSION, { turn: null, proc: { where: "lent", stop: async () => { throw new Error("reached the stop"); } } }]]), deps: { lentRow: () => row, providers: new Map() }, chatOf: () => "chat_bob", nativeOf: () => SESSION, must: () => ({ project: null, provider: "claude" }), record: () => ({ provider: "claude" }), canon: (/** @type {string} */ x) => x };
   for (const reason of ["limit", "back"]) await assert.rejects(Switchboard.prototype.doSwitchProvider.call(stub, SESSION, { provider: "claude", reason }), (/** @type {any} */ e) => e.code !== "denied", `${reason}: not refused as a stranger's`);
   await assert.rejects(Switchboard.prototype.doSwitchProvider.call(stub, SESSION, { provider: "claude", reason: "asked", person: CAROL }), (/** @type {any} */ e) => e.code === "denied", "another member's asked switch is refused");
+});
+
+test("the holder's own asked switch from his terminal passes, another member's and an unnamed one do not; a hop resolves the asker's model; a pending hop's person survives a restart", async () => {
+  const { Switchboard } = await import("../switchboard/index.js");
+  const row = { where: "mac", session: SESSION, chat: "chat_bob", person: BOB };
+  const stub = { live: new Map([[SESSION, { turn: null, proc: { where: "lent", stop: async () => { throw new Error("reached the stop"); } } }]]), deps: { lentRow: () => row, providers: new Map() }, chatOf: () => "chat_bob", nativeOf: () => SESSION, must: () => ({ project: null, provider: "claude" }), record: () => ({ provider: "claude" }), canon: (/** @type {string} */ x) => x };
+  const sw = (/** @type {any} */ by) => Switchboard.prototype.doSwitchProvider.call(stub, SESSION, { provider: "claude", reason: "asked", by });
+  await assert.rejects(sw(BOB), (/** @type {any} */ e) => e.code !== "denied", "the holder's own switch gets past the door");
+  for (const by of [CAROL, null, undefined]) await assert.rejects(sw(by), (/** @type {any} */ e) => e.code === "denied", `by ${String(by)}`);
+  // the model the asker chose for the provider
+  /** @type {any[]} */ const asked = [];
+  const sb = { deps: { call: async (/** @type {string} */ t, /** @type {any} */ i) => { asked.push([t, i]); return { data: { model: i.person === CAROL ? "sonnet" : "opus" } }; } } };
+  assert.equal(await modelForAsker(sb, { purpose: "chat", project: null }, "claude", CAROL), "sonnet");
+  assert.deepEqual(asked[0][1], { purpose: "chat", person: CAROL }, "asked for the person, not the thread's starter");
+  assert.equal(await modelForAsker(sb, { purpose: "chat" }, "codex", CAROL), null, "the models table is Claude's");
+  assert.equal(await modelForAsker(sb, { purpose: "chat" }, "claude", null), null);
+  // a restart in the middle of a hop: the pending hop's person is on the record
+  const db = (/** @type {any} */ opts) => ({ prepare: () => ({ get: () => ({ opts: JSON.stringify(opts) }) }) });
+  assert.equal(hopPersonOf({ db: db({ person: BOB, switchPerson: CAROL }) }, SESSION), CAROL);
+  assert.equal(hopPersonOf({ db: db({ person: BOB }) }, SESSION), null, "no hop pending");
 });
