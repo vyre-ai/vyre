@@ -124,3 +124,26 @@ test("confine-probe.sh: a non-root listener on 127.0.0.11 is still reported (onl
   const text = String(await new Promise(res => { let o = ""; const c = nodeSpawn(PROBE, ["allow", work]); c.stdout.on("data", d => o += d); c.on("close", () => res(o)); }));
   assert.match(text, new RegExp(`^listen ${port}$`, "m"));
 });
+
+test("ownListeners: the UDP socket of a program vyred started and names is its own; the same program unnamed, a grandchild and a stranger are not", { skip: process.platform !== "linux" }, async t => {
+  const bind = `const s=require("dgram").createSocket("udp4");s.bind(0,"127.0.0.1",()=>console.log(JSON.stringify({port:s.address().port,pid:process.pid})));setInterval(()=>{},1000)`;
+  const start = (/** @type {string[]} */ args) => new Promise((res, rej) => { const c = nodeSpawn(process.execPath, args, { stdio: ["ignore", "pipe", "ignore"] }); t.after(() => c.kill()); let o = ""; c.stdout.on("data", d => { o += d; try { const j = JSON.parse(o.split("\n")[0]); res({ c, ...j }); } catch { /* more to come */ } }); c.once("error", rej); });
+  const child = /** @type {any} */ (await start(["-e", bind]));
+  assert.ok(ownListeners().udp.includes(child.port) === false, "not named: a listener of another process is not vyred's own");
+  assert.ok(ownListeners("/proc", { children: [child.c.pid] }).udp.includes(child.port), "named: the program vyred started");
+  // a grandchild is not vyred's child, so naming it counts for nothing
+  const outer = /** @type {any} */ (await start(["-e", `const {spawn}=require("child_process");const g=spawn(process.execPath,["-e",${JSON.stringify(bind)}],{stdio:["ignore","pipe","ignore"]});g.stdout.on("data",d=>process.stdout.write(d));setInterval(()=>{},1000)`]));
+  assert.ok(!ownListeners("/proc", { children: [outer.pid] }).udp.includes(outer.port), "a grandchild's socket is not trusted, even named");
+  assert.ok(!ownListeners("/proc", { children: [1] }).udp.includes(child.port), "naming a stranger adds nothing");
+  // a program vyred started whose parent has since gone (it was reparented) is a stranger now, even named
+  const orphan = /** @type {any} */ (await new Promise((res, rej) => { const c = nodeSpawn("sh", ["-c", `${JSON.stringify(process.execPath)} -e ${JSON.stringify(bind)} & wait`], { stdio: ["ignore", "pipe", "ignore"] }); t.after(() => c.kill()); let o = ""; c.stdout.on("data", d => { o += d; try { res(JSON.parse(o.split("\n")[0])); } catch { /* more */ } }); c.once("error", rej); }));
+  t.after(() => { try { process.kill(orphan.pid); } catch { /* gone */ } });
+  assert.ok(!ownListeners("/proc", { children: [orphan.pid] }).udp.includes(orphan.port), "a named pid whose parent is not vyred adds nothing");
+  // the self-test: the named program's port passes, the same port with the program unnamed still refuses the start, and so does any other port
+  const a = tmp(); t.after(() => fs.rmSync(a, { recursive: true, force: true }));
+  const probe = (/** @type {number[]} */ allow, /** @type {number} */ port) => confineSelfTest({ workdirs: [a], vyreUid: 1000, out: [], refuseListen: true, allowListen: allow, spawn: /** @type {any} */ (saying(`uid 2001\nproject rw\nudp ${port}\n`)) });
+  const named = ownListeners("/proc", { children: [child.c.pid] });
+  assert.deepEqual((await probe(named.udp, child.port)).failures, [], "Wink's own socket does not refuse the start");
+  assert.match((await probe(ownListeners().udp, child.port)).failures[0], new RegExp(`UDP port ${child.port}`), "the same socket of an unnamed program still does");
+  assert.match((await probe(named.udp, child.port + 1)).failures[0], /UDP port/, "and any other port still does");
+});
