@@ -91,7 +91,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 /**
  * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, step?: { id: string, kinds: Map<string, number>, tools: number, failed: number } | null, stepNo?: number, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
- *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
+ *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, inTurn?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, mode?: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
  */
 
@@ -478,13 +478,17 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if (s.kind === "status") {
           const st = s.data && s.data.state;
           if (st === "working") m.running = true;
-          else if (st) { await endTurn(m); if (st !== "starting") m.running = false; } // a turn ends when the thread leaves working (for waiting, done, failed, stopped); "starting" is not its end
+          else if (st) {
+            await endTurn(m);
+            // a turn ends when the thread leaves working (for waiting, done, failed, stopped); "starting" is not its end
+            if (st !== "starting") { m.running = false; m.inTurn = false; }
+          }
           continue;
         }
         // A queued message's turn begins (the Switchboard's thread.sent via "turn"): from here the replies belong to ITS asker and answer id, and the waiting message shows as taken up.
         if (s.kind === "turn-start") { startQueued(m, s.queued); continue; }
         if (SKIP.has(s.kind)) continue;
-        if ((s.kind === "text-delta" || s.kind === "text-done") && s.data && s.data.notice === true && !m.running) { noticeToRoom(m, s); continue; }
+        if ((s.kind === "text-delta" || s.kind === "text-done") && s.data && s.data.notice === true && (!m.running || !m.inTurn)) { noticeToRoom(m, s); continue; }   // Vyre's own line with no person's turn in flight (a process starting for none, the line after a hop back) belongs to the room, never to a reply under the previous asker
         if (s.kind === "text-delta" || s.kind === "text-done") await reply(m, s); else await activity(m, s);
       }
     }).catch(err => { log(`projecting ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); });
@@ -497,7 +501,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   function startQueued(m, queued) {
     const w = m.queuedTurns && m.queuedTurns.get(queued); if (!w) return;
     m.queuedTurns.delete(queued);
-    m.asker = w.asker; m.answer = w.answer; m.msgs = new Map(); m.dead = false; m.running = true; save(m);
+    m.asker = w.asker; m.answer = w.answer; m.msgs = new Map(); m.dead = false; m.running = true; m.inTurn = true; save(m);
     shown(w.grp, w.message, "picked-up", w.text, w.asker, queued);
   }
   /** The state of a person's message, as the viewers fold it (the latest user-message frame of a message wins). @param {string} grp @param {string} message @param {string} state @param {string} text @param {string} author @param {number} [queuedId] */
@@ -826,7 +830,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     // not touched for a message that may queue; it is set when the Switchboard says the message went in at once, or when the queued turn begins (thread.sent via "turn").
     const mayQueue = viaKs() && m.running && m.asker && m.asker !== asker;
     const prev = { asker: m.asker, answer: m.answer, msgs: m.msgs, dead: m.dead, running: m.running };
-    const take = () => { m.asker = asker; m.answer = String(row.answer); m.msgs = new Map(); m.dead = false; m.running = true; save(m); };
+    const take = () => { m.asker = asker; m.answer = String(row.answer); m.msgs = new Map(); m.dead = false; m.running = true; m.inTurn = true; save(m); };
     if (!mayQueue) take();
     let r;
     try { r = await sendTurn(m, row, asker); }
