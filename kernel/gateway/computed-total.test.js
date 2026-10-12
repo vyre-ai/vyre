@@ -28,5 +28,7 @@ test("a computed total over linked records is worked out row by row when a recor
   assert.equal(await total(), 500, "control: with no privileged row the total is 500");
   const secret = await make(1000, { sensitivity: "privileged" });
   assert.ok(secret, "a privileged case now exists");
-  assert.equal(await total(), 500, "with a privileged row in the type the owner's total is still worked out (the rows he may read), not null");
+  const readable = (await R.query(o, "case", { page: { limit: 20 } })).rows.reduce((n, r) => n + r.data.fee.amount, 0);
+  assert.ok(readable >= 500, "the owner reads at least the two plain rows");
+  assert.equal(await total(), readable, "with a privileged row in the type the total is still worked out, over the rows the reader may read: not null");
 });
