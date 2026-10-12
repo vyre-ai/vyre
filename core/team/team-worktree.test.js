@@ -25,15 +25,16 @@ testHooks.wall = OPEN_WALL;
 import { until, boot, git, GIT_ENV, bootGit, realSession, plantHook, commitOnDesign, setTestCommand, recordOf } from "./team-fixture.js";
 
 test("a vyre restart while a request is running fails it with a reason, frees the teammate, and runs the next queued one", async t => {
-  const { tool, stop, root, project } = await boot(t);
+  const { tool, stop, root, project, d } = await boot(t);
+  const owner = d.kernel.id.owner;
   const agent = `design-${project.slug}`;
   await tool("team.add", { project: project.record, role: "design" });
   await stop();
-  // What a restart leaves behind: one request "running" for a teammate marked working, and one queued behind it.
+  // What a restart leaves behind (each request carries the person who asked, as team.ask records it): one request "running" for a teammate marked working, and one queued behind it.
   const db = openStore(paths(root).db);
   const now = Date.now();
-  const ins = (id, state) => db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, via, text, refs, priority, state, attempt, created_at, started_at)
-    VALUES (?,?,?,'person','cli','[]',?,'[]','normal',?,1,?,?)`).run(id, agent, project.slug, 'vyre team.done {"result":"second ok","notes":"unchanged","reason":"test"}', state, now, state === "running" ? now : null);
+  const ins = (id, state) => db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, via, text, refs, priority, state, attempt, created_at, started_at, asker)
+    VALUES (?,?,?,'person','cli','[]',?,'[]','normal',?,1,?,?,?)`).run(id, agent, project.slug, 'vyre team.done {"result":"second ok","notes":"unchanged","reason":"test"}', state, now, state === "running" ? now : null, owner);
   ins("r_stuck001", "running");
   ins("r_next0002", "queued");
   db.prepare("UPDATE team_teammates SET current_request = 'r_stuck001', state = 'working' WHERE agent = ?").run(agent);
