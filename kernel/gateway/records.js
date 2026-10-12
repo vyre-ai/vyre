@@ -208,7 +208,7 @@ export function createRecords(cfg) {
   if (typeof rawDefine === "function" && !rawDefine.__typesHook) { const hooked = async function (/** @type {any[]} */ ...a) { typesChanged(); try { return await rawDefine.apply(store, a); } finally { typesChanged(); } }; hooked.__typesHook = true; try { store.define = hooked; } catch { /* a sealed store: the gateway's own define still resets */ } }
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
-    while (!protectedTypes) { const g = typesGen; try { const set = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (g === typesGen) protectedTypes = set; } catch { return false; } }
+    while (!protectedTypes) { const g = typesGen; try { const set = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (g === typesGen) protectedTypes = set; } catch { return typeof store.types === "function"; } }   // definitions that cannot be read: every type counts as protected (owner, admin and keeper pass as ever), nothing is remembered
     return protectedTypes.has(type);
   };
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
