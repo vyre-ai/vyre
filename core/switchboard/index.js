@@ -1145,7 +1145,7 @@ export class Switchboard {
       } });
       // vyred began stopping while this socket opened: stopAll has closed the others already, so this one closes now instead of keeping the process alive
       if (sock && this.closing) { await this.endKernelSession(id); await sock.close(); return; }
-      if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id); await sock.close(); } });
+      if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id, "its thread's socket closed"); await sock.close(); } });
       else await this.endKernelSession(id);
     } catch (e) {
       this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
@@ -1169,7 +1169,9 @@ export class Switchboard {
    */
   async renewKernelSession(id, rec, turn) {
     if (!this.deps.kernelSession) return true;
+    const t0 = Date.now();
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    this.deps.log(`threads: kernel session for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space); } else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
@@ -1214,7 +1216,8 @@ export class Switchboard {
     const first = await Promise.race([renewing, new Promise(r => { timer = setTimeout(() => r("capped"), ms); })]);
     clearTimeout(timer);
     if (first !== "capped") return Boolean(first);
-    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id); });
+    this.deps.log(`threads: kernel session for ${String(id).slice(0, 8)} not open after ${ms} ms for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}: the row is dropped and a late session is ended`);
+    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id, "it opened after the 10 s bound"); });
     return false;
   }
 
@@ -1227,9 +1230,10 @@ export class Switchboard {
   }
 
   /** @param {string} id */
-  async endKernelSession(id) {
+  async endKernelSession(id, why = "") {
     const k = this.ksCur.get(id);
     this.ksCur.delete(id);
+    if (k) this.deps.log(`threads: ending the kernel session of ${String(id).slice(0, 8)} (${k.asker ? String(k.asker).slice(-6) : "no turn"})${why ? `: ${why}` : ""}`);
     // vyred is stopping (a restart for an update is graceful): the open turn is NOT forgotten, so the next start reopens it for its person or says it could not. The daemon revokes the tokens at its own stop.
     if (k && !this.closing) await k.end().catch(() => {});
   }
@@ -1314,7 +1318,7 @@ export class Switchboard {
   closeSocket(id) {
     const rel = this.releases.get(id); if (rel) { this.releases.delete(id); rel().catch(() => {}); }   // the session's egress proxy goes with its socket
     const sock = this.socks.get(id);
-    if (!sock) { void this.endKernelSession(id); return; }
+    if (!sock) { void this.endKernelSession(id, "its thread's socket closed"); return; }
     this.socks.delete(id);
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
@@ -2287,7 +2291,7 @@ export class Switchboard {
     this.resumeTried.delete(id);
     this.turnAsker.delete(id);
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
-    { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id); }, 30_000); t.unref?.(); } }
+    { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
     if (this.live.get(id) !== st || st.stopping) return;
     // One turn on another provider is over: the session goes back to its own, and carries what was said.
