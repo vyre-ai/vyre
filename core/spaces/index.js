@@ -2343,7 +2343,8 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.agree ? { agree: e.agree } : {}) })) };
+      // the same fields spaces.identity.lookup returns: the door that admits a device reads this list (identityEntry), and a passkey's alg and rp and a held key's `held` decide whether its hello is taken at all
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {

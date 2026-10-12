@@ -123,7 +123,7 @@ test("door.open honors a held chain only when it is exactly one person's, for th
   const opened = await door.open({}, { in_space: w.space, in_space_chain: chain });
   assert.equal(opened.chain, chain, "a one-person chain for this Space is the call's chain");
   const hop = { actor: { kind: "agent", id: "kit", space: w.space } };
-  for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["a chain for another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }]]) {
+  for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["a chain for another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }], ["a viewer chain", { ...chain, viewer: true }], ["a delegated chain", { ...chain, delegated: true }]]) {
     assert.equal(await code(door.open({}, { in_space: w.space, in_space_chain: bad })), "denied", what);
   }
   assert.equal(await code(door.open({}, { in_space: "spc_zzzzzzzzzzzz", in_space_chain: { ...chain, space: "spc_zzzzzzzzzzzz" } })), "not_found", "a Space this server does not host");

@@ -12,6 +12,7 @@ import { tempHome } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
+const per_x = () => "per_" + "x".repeat(26);
 const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26), DAVE = "per_" + "d".repeat(26);
 const CONTACT = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "status", kind: "text", label: "Status" }] };
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 50)); } };
@@ -98,6 +99,8 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const brun = await until(async () => { const r = (await svc.runs(bob, { id: bd.id })).find((/** @type {any} */ x) => x.state !== "running" && x.state !== "queued"); return r || null; }, "her Flow's run to finish");
   const full = await svc.run(bob, { run: brun.id });
   assert.ok(!full.run.hidden_for && JSON.stringify(full).includes("Dana Reyes private"), "her own run is shown whole, data included");
+  // hide_for is the door's own word: a member cannot send it (it is in no row's keys), so it changes nothing
+  assert.ok(JSON.stringify(await svc.run(bob, { run: brun.id, hide_for: per_x() })).includes("Dana Reyes private"), "a hide_for sent by a member is dropped at the door");
   assert.equal(full.run.approver.id, BOB, "it ran as HER: she is its approver, so its authority is her role's, never the owner's");
 
   // any trigger: an unattended Flow of hers is hers to approve, and she is told in words what it will do and on whose allowance
@@ -141,12 +144,25 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   const bobApproves = await svc.approve(bob, { id: bd.id, version: cv2.version, hash: cv2.hash });
   assert.equal(bobApproves.approver.id, BOB, "bob approves carol's version: it now runs on bob's authority");
   assert.equal((await host().flows.store.active(bd.id)).version, cv2.version);
+  // new Flows nobody has approved are capped per member (50), with a next step
+  let waiting = 0;
+  for (const r of await host().flows.store.list()) if (r.active === null) { const row = await host().flows.store.flowRow(r.id); if (row.versions[0].by.id === CAROL) waiting++; }
+  for (let n = waiting; n < 50; n++) { const x = await svc.define(carolMember, { flow: find("cap_flow_" + n) }); assert.ok(x.ok, JSON.stringify(x)); }
+  assert.match(await words(svc.define(carolMember, { flow: find("one_new_flow_too_many") })), /50 new Flows waiting.*Approve or remove/s, "the 51st unapproved new Flow is refused, with a next step");
   // the Flow record types are protected: a member's records.* sees none of them and can write none (she could otherwise create an approval naming the owner, or set a version active by hand)
   const seen = await d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
   assert.equal(seen, 0, "a second member reads no Flow state through Records");
   const seenDefs = await d.kernel.gateway.records.query(carolMember, "def-flow", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);
   assert.equal(seenDefs, 0, "nor Flow definitions");
   assert.ok(await words(d.kernel.gateway.records.create(carolMember, "flow-approval", { flow_id: bd.id, version: 1, hash: bd.hash, approver: "person:" + owner, at: 1 })), "and cannot write an approval naming the owner");
+
+  // a chain that is a member with the Flows service hop appended is not the Flows service: it changes or removes no Flow row (the two-hop case)
+  const twoHop = d.kernel.chains.appendService(carolMember, "flows", true);
+  const stateRow = (await d.kernel.gateway.records.query(chainOf(owner), "flow-state", { page: { limit: 1 } })).rows[0];
+  assert.ok(stateRow, "there is a Flow state row to try");
+  assert.ok(await words(d.kernel.gateway.records.update(twoHop, "flow-state", stateRow.id, { status: "disabled" }, stateRow.version)), "[member, flows service] cannot change a Flow's state");
+  assert.ok(await words(d.kernel.gateway.records.remove(twoHop, "flow-state", stateRow.id, stateRow.version)), "nor remove it");
+  assert.equal((await d.kernel.gateway.records.get(chainOf(owner), "flow-state", stateRow.id)).data.status, stateRow.data.status, "and the row is as it was");
 
   // a Flow of hers that runs by itself stops when she is removed from the Space, and the owner sees it
   const sched = await svc.define(bob, { flow: find("bobs_morning", { on: "time", cron: "* * * * *" }, {}) });

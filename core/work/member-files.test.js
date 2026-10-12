@@ -9,7 +9,7 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 import { createMemberTools, MEMBER_TOOLS } from "./member-tools.js";
-import { createMemberFiles, fileName, MAX_BYTES, MAX_FILES } from "./member-files.js";
+import { createMemberFiles, fileName, MAX_BYTES, MAX_FILES, MAX_READ_BYTES } from "./member-files.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -80,7 +80,7 @@ test("nothing outside files/ is reachable, and a name must be a plain name", { t
 test("a file over the size cap and a project over the count cap are refused in words; a non-member gets nothing", { timeout: 150_000 }, async t => {
   const w = await world(t);
   const p = await w.work(ANA, "project-create", { name: "Ana's caps" });
-  await assert.rejects(w.files(ANA, "upload", { project: p.slug, name: "big.bin", data: Buffer.alloc(MAX_BYTES + 1).toString("base64") }), /at most 10 MB/);
+  await assert.rejects(w.files(ANA, "upload", { project: p.slug, name: "big.bin", data: Buffer.alloc(MAX_BYTES + 1).toString("base64") }), /at most 150 KB/);
   await assert.rejects(w.files(ANA, "upload", { project: p.slug, name: "bad.bin", data: "not base64!!" }), /base64/);
   await assert.rejects(w.files(ZED, "list", { project: p.slug }), /not found/i, "a person who is not a member gets nothing");
 });
@@ -98,4 +98,30 @@ test("a project holds at most 200 files here: the 201st new name is refused in w
   await assert.rejects(ops["files-upload"](chain, { project: "p1", name: "d.txt", data: b64("x") }), /holds at most 3 files/);
   await ops["files-upload"](chain, { project: "p1", name: "a.txt", data: b64("y") });
   assert.equal(MAX_FILES, 200);
+});
+
+test("every row that targets a project refuses a member who is not on it (the table test's exception for the key `project`)", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const p = await w.work(ANA, "project-create", { name: "Ana's targeted" });
+  const rows = Object.entries(MEMBER_TOOLS).filter(([, r]) => r.target === "project");
+  assert.deepEqual(rows.map(([k]) => k).sort(), ["files.list", "files.read", "files.upload"].sort(), "the rows that name a project");
+  const tools = createMemberTools({ space: w.space, kernel: w.d.kernel, registry: w.d.registry });
+  for (const [door] of rows) {
+    const [group, call] = [door.slice(0, door.indexOf(".")), door.slice(door.indexOf(".") + 1)];
+    await assert.rejects(tools[group][call](w.chainOf(BEN), { project: p.slug, name: "x.txt", data: b64("x") }), undefined, `${door} refuses a member who is not on the project`);
+  }
+  await w.files(ANA, "upload", { project: p.slug, name: "x.txt", data: b64("x") });   // and her own call goes through
+});
+
+test("the ceilings are what the door carries: 150 KB up, 1.4 MB down, said in words; a file she cannot open from the app is refused, not cut", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const p = await w.work(ANA, "project-create", { name: "Ana's ceilings" });
+  assert.equal(MAX_BYTES, 150 * 1024);
+  const up = await w.files(ANA, "upload", { project: p.slug, name: "edge.bin", data: Buffer.alloc(MAX_BYTES).toString("base64") });
+  assert.equal(up.size, MAX_BYTES, "a file at the ceiling goes up");
+  assert.ok(Math.ceil(MAX_BYTES / 3) * 4 + 1024 < 256 * 1024, "and its request fits the door's 256 KB");
+  // a bigger file put some other way (the owner's tools) cannot be opened from the app
+  const row = (await w.d.kernel.gateway.records.query(w.chainOf(ANA), "project", { filter: { field: "slug", op: "eq", value: p.slug }, page: { limit: 1 } })).rows[0];
+  await w.d.kernel.gateway.drive.put(w.chainOf(ANA), `${row.data.drive_path}/files/huge.bin`, new Uint8Array(MAX_READ_BYTES + 1));
+  await assert.rejects(w.files(ANA, "read", { project: p.slug, name: "huge.bin" }), /too big to open from the app.*Ask the owner/);
 });
