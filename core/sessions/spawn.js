@@ -53,7 +53,12 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
 export function takeCredentialForFd(env) {
   for (const [name, via] of /** @type {const} */ ([["ANTHROPIC_API_KEY", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"], ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"]])) {
     const v = env[name];
-    if (v) { delete env[name]; env[via] = "3"; return String(v); }
+    if (v) {
+      delete env[name]; env[via] = "3";
+      // Only one value rides descriptor 3. A launch that also holds the other credential must not leave it in the environment, where a tool of the session prints it: it is dropped, and the one that moved is used.
+      for (const [other, otherVia] of /** @type {const} */ ([["ANTHROPIC_API_KEY", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"], ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"]])) if (other !== name) { delete env[other]; delete env[otherVia]; }
+      return String(v);
+    }
   }
   return undefined;
 }

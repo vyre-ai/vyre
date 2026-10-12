@@ -33,6 +33,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
 /**
  * @typedef {object} HomeOpts
  * @property {"darwin"|"linux"} platform
+ * @property {boolean} [noLoginCopy] the machine's own login file is not copied into the session's config folder (a person's own account run)
  * @property {string} command      absolute path of the agent
  * @property {string[]} [args]
  * @property {Record<string,string>} [env]
@@ -142,7 +143,10 @@ export function seedConfig(o) {
   if (!o.temp) throw new Error("a private agent config needs the session's temp folder");
   const dir = path.join(real(o.temp), "agent-config");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  for (const f of p.credentialFiles) {
+  // The machine's own login file is NOT copied in when a picked credential comes on the pipe (a tool of the session would read the owner's login beside it), nor when the session is a person's own account run.
+  // A copy left by an earlier start of this session (it ran on the login before) goes too.
+  if (o.secret || o.noLoginCopy) for (const f of p.credentialFiles) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch {} }
+  for (const f of (o.secret || o.noLoginCopy) ? [] : p.credentialFiles) {
     if (/[\\/]/.test(f) || f.startsWith("..")) throw new Error("a credential file is a name inside the agent's folder");
     const src = path.join(p.from, f);
     try { if (fs.lstatSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f)); fs.chmodSync(path.join(dir, f), 0o600); } catch {}

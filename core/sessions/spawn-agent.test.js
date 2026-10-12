@@ -94,3 +94,11 @@ test("a terminal's environment holds no credential and no descriptor variable, o
   spawnSession("/bin/sh", ["-c", "true"], { env, terminal: true, sandboxSpawn: (c, a, e, cwd, opts) => { seen.push(opts); return { pid: 1 }; } });
   assert.equal(seen[0] && seen[0].terminal, true, "the sandbox is told it is a terminal");
 });
+
+test("a launch holding both an API key and a setup token moves one onto descriptor 3 and leaves the other in no variable", async () => {
+  const { takeCredentialForFd } = await import("./spawn.js");
+  const env = /** @type {Record<string, string>} */ ({ ANTHROPIC_API_KEY: "sk-ant-api03-a", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-b", PATH: "/usr/bin" });
+  const moved = takeCredentialForFd(env);
+  assert.equal(moved, "sk-ant-api03-a");
+  assert.deepEqual(Object.keys(env).sort(), ["CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR", "PATH"], "no credential left in the environment: " + Object.keys(env).join(","));
+});
