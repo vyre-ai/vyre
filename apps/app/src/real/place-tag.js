@@ -12,3 +12,6 @@ export function tagFor(cards, of, showing) {
     : list.find((c) => c.id === of);
   return card && card.tag ? card.tag : null;
 }
+
+/** The space id an address names (vyre://<space>/<type>/<id>), or "" for anything else. @param {unknown} urn */
+export const spaceOfUrn = (urn) => { const m = /^vyre:\/\/(spc_[a-z2-7]{12})\//.exec(String(urn || "")); return m ? m[1] : ""; };
