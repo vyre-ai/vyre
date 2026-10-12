@@ -190,6 +190,7 @@ export function libraryPerson(sb, rec, o) {
 /** The words the room sees when a person's hop onto their own account could not start: one fixed sentence per cause and the next step, never the lookup's own message (it can carry one person's account id). @param {string | undefined} code */
 export function hopRefusal(code) {
   if (code === "busy") return "The chat is busy with another turn. Nothing was sent. Send the message again in a moment.";
+  if (code === "no_session") return "The team's chat could not be opened for you just now, so your message was not sent. Nothing was written. Send it again in a minute.";
   if (code === "denied" || code === "account_required") return "That sign-in is not yours to use here. Nothing was sent. Pick your own account, or add one under AI accounts.";
   if (code === "account_unavailable" || code === "account_removed" || code === "not_found" || code === "unavailable") return "Your sign-in for that AI is not available right now. Nothing was sent. Open AI accounts to sign in again, then send the message again.";
   return "Your message could not run on your own account. Nothing was sent. Send it again, or pick another account.";
