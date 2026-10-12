@@ -22,7 +22,7 @@ test("memory.prompt for a person's thread in a project: owner, admin, the projec
   for (const [p, role] of [[ANA, "member"], [BEN, "member"], [ADM, "admin"]]) await K.gateway.grants.setRole(ownerChain, { person: p, role }, { presence: proof() });
   const R = K.gateway.records;
   await R.create(ownerChain, "project", { name: "Owners matter", slug: "owners-matter", status: "active", memory_scope: "project:owners-matter", owner: person(OWNER, SPACE) });
-  const ask = (/** @type {string | null} */ who) => d.registry.call("memory.prompt", { prompt: "what is the plan", first: true, thread: "t1", person: true, project: "owners-matter", ...(who ? { for_person: who } : {}) }, "module:switchboard");
+  const ask = (/** @type {string | null} */ who) => d.registry.call("memory.prompt", { prompt: "what is the plan", first: true, thread: "t1", person: true, project: "owners-matter", ...(who ? { for_person: who } : {}) }, "module:switchboard", { firstParty: true });
   const text = async (/** @type {string | null} */ who) => { const r = await ask(who); assert.ok(!r.error, JSON.stringify(r.error)); return String(r.data.text); };
   const withProject = await text(OWNER);
   assert.match(withProject, /in this project/, "control: the owner's thread in the project gets its room line: " + withProject.slice(0, 200));
