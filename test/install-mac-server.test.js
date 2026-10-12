@@ -309,6 +309,49 @@ test("install-mac-server.sh: a Docker Desktop already there is untouched and no 
   assert.equal(fs.readFileSync(path.join(app, "Info.plist"), "utf8"), "docker desktop");
 });
 
+test("install-mac-server.sh: --login-only with the app's bundled Node (VYRE_NODE_URL) and no node on PATH installs from the tarball", t => {
+  const m = noBrew(t);
+  fs.rmSync(path.join(m.base, "tools", "node"));
+  const nd = path.join(m.base, "nodepkg", "node-v0"); fs.mkdirSync(path.join(nd, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  const tgz = path.join(m.base, "node.tgz");
+  execFileSync("tar", ["-czf", tgz, "-C", path.dirname(nd), "node-v0"]);
+  const env = { ...m.env, VYRE_NODE_URL: `file://${tgz}`, VYRE_NODE_SHA256: sha(fs.readFileSync(tgz)) };
+  const r = run(env, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/needs Node 22\.5/.test(r.stderr), "never asks the person to install Node");
+  assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "node-dist", "bin", "node")), "the bundled Node lands in Vyre's own folder");
+  // a tarball that does not match its checksum installs nothing
+  const bad = run({ ...env, VYRE_NODE_SHA256: sha("other") }, ["--yes", "--from", m.src]);
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /pinned checksum/);
+});
+
+test("install-mac-server.sh: a disk with too little room stops before anything is installed, in plain words", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_FREE_KB: "300000" }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /only 292 MB free and Vyre needs about 4096 MB/);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was written");
+  assert.ok(!/did not finish/.test(r.stderr) || /Nothing was left/.test(r.stderr), "no leftovers claimed");
+});
+
+test("install-mac-server.sh: an install that stops half way says what it left and the one line that removes it, and leaves the person's own folders out of it", t => {
+  const m = noBrew(t);
+  // the release cannot be read, after Vyre's own folder exists
+  const env = { ...m.env, VYRE_BOX_URL: `file://${m.base}/nowhere/`, VYRE_NODE_URL: "", VYRE_FREE_KB: "99999999" };
+  const r = run(env, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /the install did not finish/);
+  assert.ok(r.stderr.includes(`rm -rf '${m.env.VYRE_SERVER_DIR}'`), r.stderr);
+  assert.match(r.stderr, /run this one line/);
+  // a folder that was already there is not claimed
+  fs.mkdirSync(m.env.VYRE_HOME, { recursive: true });
+  fs.rmSync(m.env.VYRE_SERVER_DIR, { recursive: true, force: true });
+  const r2 = run(env, ["--yes"]);
+  assert.ok(!r2.stderr.includes(`rm -rf '${m.env.VYRE_HOME}'`), "the person's own data folder is never in the removal line");
+});
+
 // ---------------------------------------------------------------------------------------------
 // The default mode: the system service (ADR 0040 phase 4). The root installer is a fake that acts
 // like the real one where the script can see it: it prints the enrolment line last, writes core.json
