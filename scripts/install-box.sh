@@ -183,17 +183,19 @@ finish() {
     say "  $BOLD${BONE}Vyre is running on this server.$RESET"
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
+    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
+    RECORDS_NOTE="  Records is still setting up and can take several minutes; the app shows when it is ready."
     if [ "$LINK_ONLY" = 1 ]; then
       say "  Whether it is paired went to stdout for the program that asked."
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
+    elif [ -n "$CODE" ]; then
+      say "  Go back to the Vyre app to finish."
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
     else
-      if [ -n "$CODE" ]; then
-        say "  Go back to the Vyre app to finish."
-      elif ! show_space_code; then
-        say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
-      fi
+      # The space code is the last thing on the screen, so the Records note goes before it.
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
+      show_space_code || say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
     fi
-    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
-    if [ "$STORE_CHOICE" != sqlite ]; then say "  Records is still setting up and can take several minutes; the app shows when it is ready."; fi
   fi
   say ""
 }
