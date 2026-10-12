@@ -33,6 +33,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
 /**
  * @typedef {object} HomeOpts
  * @property {"darwin"|"linux"} platform
+ * @property {"terminal-config"} [configName] a terminal shell's own, login-free config folder
  * @property {boolean} [noLoginCopy] the machine's own login file is not copied into the session's config folder (a person's own account run)
  * @property {string} command      absolute path of the agent
  * @property {string[]} [args]
@@ -141,7 +142,8 @@ function settingsPlan(o) {
 export function seedConfig(o) {
   const p = o.agent?.private; if (!p) return null;
   if (!o.temp) throw new Error("a private agent config needs the session's temp folder");
-  const dir = path.join(real(o.temp), "agent-config");
+  // A terminal shell the CLI asks for has a config folder of its own, with no login in it: the CLI's folder (and its login) is not the terminal's to read.
+  const dir = path.join(real(o.temp), o.configName === "terminal-config" ? "terminal-config" : "agent-config");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   // The machine's own login file is NOT copied in when a picked credential comes on the pipe (a tool of the session would read the owner's login beside it), nor when the session is a person's own account run.
   // A copy left by an earlier start of this session (it ran on the login before) goes too.
@@ -290,8 +292,8 @@ export function planHome(o) {
 /** Throw the session's private config folder away when the session ends (the copy of the credential goes with it). @param {HomeOpts} o */
 export function discardConfig(o) {
   if (!o.temp) return false;
-  const dir = path.join(real(o.temp), "agent-config");
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { return false; }
+  const dir = path.join(real(o.temp), "agent-config"), tdir = path.join(real(o.temp), "terminal-config");
+  try { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(tdir, { recursive: true, force: true }); } catch { return false; }
   return !fs.existsSync(dir);
 }
 
