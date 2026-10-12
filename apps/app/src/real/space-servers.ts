@@ -1,7 +1,7 @@
 // Which paired server hosts which Space, for a device paired to more than one (the phone, the browser, Windows): the map is built from what each server says it hosts (its own spaces.list), and the call that
 // asks (src/real/box.ts tool) routes by it (server-route.js). With one pairing there is nothing to route, so the map is empty and every call goes where it always went. A server that did not answer keeps what
 // was known of it, so one server being offline never loses the other's Spaces.
-import { chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
+import { approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 
 type Rows = Array<{ id?: unknown; member?: unknown } | null>;
 
@@ -12,12 +12,15 @@ let boxes: string[] | null = null;
 let chatMap: Record<string, string> = {};
 /** The Space each item id was seen in (from a list, or the call that made it), for actions that name an item by its id alone. */
 let itemMap: Record<string, string> = {};
+/** Which server holds each held act in the approvals inbox. */
+let approvalMap: Record<string, string> = {};
+let missed: string[] = [];
 let watching = false;
 
 /** What this file asks of the device: its pairings and one call to a named server. The app's own are loaded when none are set; a Node test sets fakes. */
 export type Ports = { listPairings: () => Promise<Array<{ box: string }>>; subscribePairings: (cb: () => void) => () => void; peerCall: <T = unknown>(tool: string, input: Record<string, unknown>, box?: string) => Promise<T> };
 let ports: Ports | null = null;
-export function setPorts(p: Ports | null): void { ports = p; map = {}; known = {}; boxes = null; chatMap = {}; itemMap = {}; offline = []; watching = false; }
+export function setPorts(p: Ports | null): void { ports = p; map = {}; known = {}; boxes = null; chatMap = {}; itemMap = {}; approvalMap = {}; missed = []; offline = []; watching = false; }
 const io = async (): Promise<Ports> => ports ?? { ...(await import("../api/relay")), peerCall: (await import("./peer")).peerCall };
 
 async function pairedBoxes(): Promise<string[]> {
@@ -74,6 +77,43 @@ export async function listAllChats(input: Record<string, unknown>): Promise<{ ch
   return { chats };
 }
 
+/** The held acts of an approvals answer: a bare list, or { approvals, groups } as approvals.pending answers. */
+const approvalRows = (v: any): any[] => (Array.isArray(v) ? v : Array.isArray(v?.approvals) ? v.approvals : []);
+
+/**
+ * The approvals inbox of every server as one answer, each held act tagged with its server (the same shape the screens already read: a bare list stays a list, { approvals, groups } stays that); null with fewer than
+ * two servers. A server that did not answer keeps what was known of it.
+ */
+export async function listAllApprovals(tool: string, input: Record<string, unknown>): Promise<any | null> {
+  const ids = await pairedBoxes();
+  if (ids.length < 2) return null;
+  const { peerCall } = await io();
+  const got = await Promise.allSettled(ids.map((id) => peerCall<any>(tool, input, id)));
+  const answers: Record<string, any> = {};
+  ids.forEach((id, n) => { const r = got[n]; if (r.status === "fulfilled" && r.value && typeof r.value === "object") answers[id] = r.value; });
+  if (!Object.keys(answers).length) { const bad = got.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined; throw bad?.reason ?? new Error("No server answered."); }
+  const lists = Object.fromEntries(Object.entries(answers).map(([b, v]) => [b, approvalRows(v)]));
+  approvalMap = { ...Object.fromEntries(Object.entries(approvalMap).filter(([, b]) => !(b in lists))), ...approvalServersFrom(lists) };
+  const rows: Array<Record<string, any>> = [];
+  for (const [box, list] of Object.entries(lists)) for (const r of list) if (r && typeof r === "object") rows.push({ ...r, server: box });
+  if (Object.values(answers).every(Array.isArray)) return rows;
+  const groups = Object.values(answers).flatMap((v: any) => (Array.isArray(v?.groups) ? v.groups : []));
+  return { ...Object.values(answers).find((v) => !Array.isArray(v)), approvals: rows, groups };
+}
+
+/** A call that must reach EVERY paired server (the phone's push token): made to each; answers the first answer, and names the servers that did not get it (pushMissed) so the screen can say so. Throws only when none did. */
+export async function callEvery<T = unknown>(tool: string, input: Record<string, unknown>): Promise<T> {
+  const ids = await pairedBoxes();
+  const { peerCall } = await io();
+  const got = await Promise.allSettled(ids.map((id) => peerCall<T>(tool, input, id)));
+  missed = ids.filter((_, n) => got[n].status === "rejected");
+  const ok = got.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<T> | undefined;
+  if (!ok) throw (got[0] as PromiseRejectedResult).reason;
+  return ok.value;
+}
+/** The servers the last every-server call did not reach. */
+export const pushMissed = (): string[] => missed;
+
 /** Remember the ids an answer shows with the Space the call was for. Bounded: a long list keeps its newest. */
 export function noteItems(answer: unknown, space: string | undefined): void {
   const got = itemSpacesFrom(answer, space);
@@ -92,7 +132,7 @@ export async function routeCall(o: { tool?: string; input: Record<string, unknow
   const paired = await pairedBoxes();
   if (paired.length < 2 && !o.server) return { box: undefined };
   if (paired.length >= 2 && !Object.keys(map).length) await refreshSpaceServers().catch(() => {});
-  const ask = () => serverFor({ tool: o.tool, explicit: o.server, input: o.input, showing: o.showing, spaceServers: map, paired, chatServers: chatMap, itemSpaces: itemMap });
+  const ask = () => serverFor({ tool: o.tool, explicit: o.server, input: o.input, showing: o.showing, spaceServers: map, paired, chatServers: chatMap, itemSpaces: itemMap, approvalServers: approvalMap });
   const r = ask();
   // a chat not known yet: ask every server which chats it holds, once, then decide; still unknown stays refused
   if (r.error?.code === "chat_unknown_server") { await learnChats().catch(() => {}); return ask(); }

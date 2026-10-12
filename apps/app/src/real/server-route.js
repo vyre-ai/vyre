@@ -13,7 +13,12 @@ const NOT_PAIRED = "This device is not paired to that server. Add it in Settings
  * What is NOT routed or refused: the device's own tools (pairing, relay, presence, identity, approvals, push, onboarding), the tools about Spaces themselves (a Space they name is still followed), and a server's own settings
  * and meta. Everything else, including any family added later, is treated as acting inside a Space: it follows the Space showing and is refused under All spaces when several servers are paired.
  */
-const ALLOW = ["relay.", "wink.", "presence.", "identity.", "spaces.", "approvals.", "push.", "names.", "onboard.", "settings.", "appearance.", "sidebar.", "update.", "system.", "spend.", "about.", "tips.", "commands.", "events.", "providers.", "statusline.", "vyre.", "releases."];
+const ALLOW = ["relay.", "wink.", "presence.", "identity.", "spaces.", "push.", "names.", "settings.", "appearance.", "sidebar.", "about.", "tips.", "commands.", "statusline.", "vyre.", "releases."];
+/** What a server owns by itself (who is signed in on it, its sessions) is allowed as a family but these are routed: they act on one server. */
+const ROUTED_EXACT = ["presence.person.start", "presence.person.sessions", "presence.person.revoke", "presence.person.locked", "presence.person.renew-allow", "presence.person.end-paired"];
+/** Tools that go to EVERY paired server (the phone's push token must reach each one that may need it), and the inbox lists that are every server's. */
+export const EVERY_SERVER = Object.freeze(["push.subscribe", "push.unsubscribe", "push.settings", "push.seen"]);
+export const APPROVAL_LISTS = Object.freeze(["approvals.pending", "approvals.items"]);
 /** A plain read of many (or of status) carries nothing private: under All spaces it is the active server's, as it always was. The vault has no such exemption: even its list names what a person keeps. */
 const PLAIN_READ = /\.(list|types|me|actors|library|events|status|catalog|catalogue|accounts|agenda|holders|serve|serve-create|serve-update|serve-request|serve-work)$/;
 /** The inputs that name an item by an id alone. */
@@ -22,14 +27,14 @@ const ID_KEYS = ["id", "task", "project", "template", "thread"];
 /** Must the Space (and with it the server) be known for this tool? Yes unless it is on the allow-list or is a plain read; the vault is always yes. @param {string | undefined} tool */
 export const needsSpace = (tool) => {
   if (!tool) return false;
-  if (tool.startsWith("vault.")) return true;
+  if (tool.startsWith("vault.") || ROUTED_EXACT.includes(tool)) return true;
   if (PLAIN_READ.test(tool) || ALLOW.some((p) => tool.startsWith(p))) return false;
   return true;
 };
 
 /**
  * A chat goes to the server that holds it, whatever is showing, and one whose server is not known is refused (a message for one server's chat must never land on another). A record address (`urn`) names its Space.
- * @param {{ tool?: string, explicit?: string, input?: Record<string, unknown>, showing?: string, spaceServers: Record<string, string>, paired: string[], chatServers?: Record<string, string>, itemSpaces?: Record<string, string> }} o
+ * @param {{ tool?: string, explicit?: string, input?: Record<string, unknown>, showing?: string, spaceServers: Record<string, string>, paired: string[], chatServers?: Record<string, string>, itemSpaces?: Record<string, string>, approvalServers?: Record<string, string> }} o
  * @returns {{ box?: string, space?: string, error?: { code: string, message: string } }}
  */
 export function serverFor(o) {
@@ -40,6 +45,17 @@ export function serverFor(o) {
     const at = (o.chatServers ?? {})[chat];
     if (!at) return { error: { code: "chat_unknown_server", message: "Vyre does not know which server this chat is on yet. Open Chats to refresh the list, then try again. Nothing was sent." } };
     return o.paired.includes(at) ? { box: at } : refuse();
+  }
+  // An approval is judged on the server that holds the held act: by the id (or the ids of a group), whichever server is active.
+  if (o.paired.length > 1 && o.tool && o.tool.startsWith("approvals.") && !(o.input && typeof o.input.space === "string" && o.input.space)) {
+    const ids = [o.input?.id, ...(Array.isArray(o.input?.decisions) ? o.input.decisions.map((/** @type {any} */ d) => d && d.id) : [])].filter((v) => typeof v === "string" && v);
+    if (ids.length) {
+      const at = new Set(ids.map((id) => (o.approvalServers ?? {})[/** @type {string} */ (id)]));
+      if (at.has(undefined)) return { error: { code: "approval_unknown_server", message: "Vyre does not know which server holds this approval. Open Approvals to refresh the list, then try again. Nothing was answered." } };
+      if (at.size > 1) return { error: { code: "approval_mixed_servers", message: "These approvals are on different servers. Answer them one server at a time. Nothing was answered." } };
+      const box = [...at][0];
+      return o.paired.includes(/** @type {string} */ (box)) ? { box } : refuse();
+    }
   }
   // An action that names an item by its id alone goes to the Space the id was seen in (a list, or the call that made it), whatever is showing. An id never seen is refused when several servers are paired.
   if (o.paired.length > 1 && needsSpace(o.tool) && !(o.input && typeof o.input.space === "string" && o.input.space) && !(o.input && typeof o.input.urn === "string")) {
@@ -127,5 +143,16 @@ export function itemSpacesFrom(answer, space) {
     const last = typeof r.urn === "string" ? r.urn.split("/").pop() : "";
     for (const id of [r.id, r.slug, r.task, last]) if (typeof id === "string" && id) out[id] = sp;
   }
+  return out;
+}
+
+/**
+ * The approvals inbox's held acts by the server that listed them. An id listed by two servers stays with the first.
+ * @param {Record<string, any>} lists by box id (arrays of rows)
+ * @returns {Record<string, string>}
+ */
+export function approvalServersFrom(lists) {
+  /** @type {Record<string, string>} */ const out = {};
+  for (const [box, rows] of Object.entries(lists)) for (const r of Array.isArray(rows) ? rows : []) if (r && typeof r.id === "string" && r.id && !out[r.id]) out[r.id] = box;
   return out;
 }
