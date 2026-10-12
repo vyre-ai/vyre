@@ -106,8 +106,15 @@ jobs:
           echo '{"private":true}' > package.json
           npm i --no-audit --no-fund --no-package-lock playwright@1
           npx playwright install --with-deps chromium
-      - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server)"
-        run: node scripts/two-server-proof.mjs --dist dist
+      - name: "No fake wire in the release export (the proof's stand-in for the peer wire is compiled out unless the build is made for the proof)"
+        run: |
+          if grep -rl "vyre-peer-fake-enabled" dist; then echo "the release export carries the proof's fake wire"; exit 1; fi
+          echo "release export: no fake wire"
+      - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server), on its own export made for the proof"
+        run: |
+          EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof
+          grep -rl "vyre-peer-fake-enabled" dist-proof > /dev/null || { echo "the proof export has no fake wire, so the proof cannot run"; exit 1; }
+          node scripts/two-server-proof.mjs --dist dist-proof
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock

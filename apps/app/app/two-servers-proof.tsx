@@ -30,7 +30,12 @@ function world() {
   };
 }
 
-export default function TwoServersProof() {
+/** Draws nothing unless this build was made for the proof (EXPO_PUBLIC_VYRE_PROOF=1): a release bundle has the route but not a working page, and setPeerFake does nothing in it. */
+export default function TwoServersProofRoute() {
+  return process.env.EXPO_PUBLIC_VYRE_PROOF === "1" ? <TwoServersProof /> : null;
+}
+
+function TwoServersProof() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const [ready, setReady] = useState(false);
   const [out, setOut] = useState("");

@@ -53,7 +53,16 @@ export async function openPeer(box?: string): Promise<Peer> {
  * (tool, input, box id) after the box id is resolved, so a call that reaches the wrong server is seen.
  */
 let fake: ((tool: string, input: Record<string, unknown>, box: string) => Promise<unknown>) | null = null;
-export function setPeerFake(f: typeof fake): void { fake = f; }
+/**
+ * Only a build made for the proof (EXPO_PUBLIC_VYRE_PROOF=1, which `npx expo export` writes into the bundle as a constant) can set it. In every other build the test is a constant `false`, the minifier drops the
+ * body, and the marker string below is not in the bundle (the app workflow greps a release export for it). `peerFakeActive` is for the test that shows a plain build ignores the call.
+ */
+export function setPeerFake(f: typeof fake): void {
+  if (process.env.EXPO_PUBLIC_VYRE_PROOF !== "1") return;
+  fake = f;
+  (globalThis as { __vyrePeerFake?: string }).__vyrePeerFake = "vyre-peer-fake-enabled";
+}
+export const peerFakeActive = (): boolean => fake !== null;
 
 /** One tool call over the peer wire, to the server named (its box id) or the active one. Resolves the tool's data; rejects with { code, message } in the server's words. */
 export const peerCall = <T = unknown>(tool: string, input: Record<string, unknown> = {}, box?: string): Promise<T> => peerCallOnce<T>(tool, input, box);
