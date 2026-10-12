@@ -17,9 +17,9 @@ const ADMIN = "per_" + "cdefghijklmnopqrstuvwxyzab";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
 /** A team server: the owner, a member and an admin, each with a model session token. @param {any} t @param {boolean} team */
-async function rig(t, team = true) {
+async function rig(t, team = true, extra = {}) {
   const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...extra });
   t.after(() => d.stop());
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
@@ -176,24 +176,68 @@ test("an outward tool is on a member's list only with a reason: whose yes her ac
 });
 
 const SIGN_IN = ["presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.status", "wink.server.adopt", "wink.server.pair.answer", "wink.phone.wait", "wink.phone.pair.answer", "wink.phone.pairing"];
+const DEVICE = "device:bcdefghijklmnopq";
+const HEX64 = "b".repeat(64);
 
-test("the sign-in and pairing tools on a member's list are reachable for a device with no proof, and each does nothing without its own proof", { timeout: 200_000 }, async t => {
+test("the sign-in and pairing tools on a member's list are reachable for a device with no proof, and each refuses a wrong or missing proof with its own code and changes nothing", { timeout: 200_000 }, async t => {
   const { d, as } = await rig(t);
   for (const tool of SIGN_IN) assert.ok(MEMBER_MAY.has(tool), `${tool} is on MEMBER_MAY`);
   assert.ok(OWNER_ONLY.has("presence.person.locked") && !MEMBER_MAY.has("presence.person.locked"), "presence.person.locked is the owner's");
-  const locked = await as("member", "presence.person.locked", {}, "device:bcdefghijklmnopq", "");
+  const locked = await as("member", "presence.person.locked", {}, DEVICE, "");
   assert.equal(locked.error && locked.error.message, refusal("presence.person.locked"));
+  const OWNER = d.kernel.id.owner;
+  const peer = { kind: "device", stableId: DEVICE.slice(7) };
   const db = d.registry.deps.db;
-  const rows = () => db.prepare("SELECT COUNT(*) AS n FROM relay_devices").get().n;
-  const before = rows();
-  for (const tool of SIGN_IN) {
-    const r = await as("member", tool, {}, "device:bcdefghijklmnopq", "");
-    assert.ok(!(r.error && r.error.message === refusal(tool)), `${tool}: reachable, not refused by the gate: ${JSON.stringify(r).slice(0, 200)}`);
-    // useless without its own proof: an error (a passkey, a signature, a code or a ticket is asked for), or the one plain answer that says nothing is signed in
-    if (tool === "presence.person.status") assert.deepEqual(r, { data: { signed: false } }, `${tool}: says only that nobody is signed in`);
-    else assert.ok(r.error && !r.data, `${tool}: asks for its own proof and hands over nothing: ${JSON.stringify(r).slice(0, 200)}`);
+  const count = (/** @type {string} */ table) => db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
+  const state = () => ({ sessions: count("presence_people"), grants: count("presence_pair_grants"), devices: count("wink_devices"), relay: count("relay_devices"), meta: count("wink_meta") });
+  const before = state();
+  // a well-formed input with a wrong or missing proof: the proof's own code, never bad_input, never the gate's words
+  const cases = /** @type {[string, any, string, any, string[]][]} */ ([
+    ["presence.person.start", {}, DEVICE, { proof: { op: "stand-in", fields: {}, n: 1 } }, ["presence_required"]],
+    ["presence.person.start", {}, "deck", {}, ["presence_required"]],
+    ["presence.person.start-paired", { sig: "AAAA" }, DEVICE, { peer }, ["denied"]],
+    ["wink.server.adopt", { owner: { kind: "identity", id: OWNER } }, DEVICE, { peer }, ["denied_no_proof"]],
+    ["wink.server.adopt", { owner: { kind: "identity", id: MEMBER }, pairing: { commit: HEX64 } }, DEVICE, { peer }, ["denied_no_proof"]],
+    ["wink.server.pair.answer", { yes: true, pick: 1 }, DEVICE, {}, ["person_session_required"]],
+    ["wink.phone.wait", { commit: HEX64, name: "Ben's phone" }, DEVICE, { peer }, ["denied"]],
+    ["wink.phone.pair.answer", { yes: true, pick: 1 }, DEVICE, {}, ["person_session_required"]],
+    ["wink.phone.pair.answer", { yes: true, pick: 1 }, "deck", {}, ["presence_required"]],
+  ]);
+  for (const [tool, input, caller, extra, codes] of cases) {
+    const r = await d.registry.call(tool, input, caller, { thread: "t1", ...extra });
+    assert.ok(r.error && codes.includes(r.error.code), `${tool} as ${caller}: the proof's own code ${codes.join("/")}, got ${JSON.stringify(r).slice(0, 220)}`);
+    assert.notEqual(r.error.message, refusal(tool), `${tool}: reachable, not turned away by the gate`);
+    assert.ok(!r.data, `${tool}: hands over nothing`);
   }
-  assert.equal(rows(), before, "no device row was made by a call with no proof");
+  // with no pairing waiting, a yes at the server answers nothing and opens nothing
+  const idle = await d.registry.call("wink.server.pair.answer", { yes: true, pick: 1 }, "deck", { thread: "t1" });
+  assert.deepEqual(idle, { data: { answered: false } });
+  for (const tool of ["presence.person.pair-challenge", "presence.person.status", "wink.phone.pairing"]) {
+    const r = await as("member", tool, {}, DEVICE, "");
+    assert.ok(!(r.error && r.error.message === refusal(tool)), `${tool}: reachable`);
+    assert.ok(!(r.data && (r.data.token || r.data.challenge)), `${tool}: no token or challenge to a device with no grant`);
+  }
+  assert.deepEqual(state(), before, "no person session, grant, device row, relay device or owner was made by any of these calls");
+});
+
+test("the proof still works where the gate lets the call through: a right presence proof signs a person in, a wrong one does not, and the owner's own surface passes the pairing tools' person check", { timeout: 200_000 }, async t => {
+  // a stand-in presence layer that accepts exactly one proof
+  const presence = { required: (/** @type {string} */ _t, /** @type {any} */ def) => Boolean(def && def.presence), verify: async (/** @type {any} */ a) => (a.proof && a.proof.n === 7 ? { ok: true, method: "passkey", keyId: "k" } : { ok: false, code: "presence_required", message: "that proof does not stand", methods: [] }), challenge: async () => ({ error: { code: "bad_input", message: "x" } }), summary: async () => "", covered: () => false, coverage: () => ({ covered: false }), enrolled: [], enroll() { return { id: "kh" }; } };
+  const { d } = await rig(t, true, { presence });
+  const db = d.registry.deps.db;
+  const sessions = () => db.prepare("SELECT COUNT(*) AS n FROM presence_people").get().n;
+  const peer = { kind: "tailnet", stableId: "n_browser" };
+  const wrong = await d.registry.call("presence.person.start", {}, "deck", { thread: "t1", peer, proof: { op: "stand-in", fields: {}, n: 1 } });
+  assert.equal(wrong.error && wrong.error.code, "presence_required");
+  assert.equal(sessions(), 0, "a wrong proof makes no session");
+  const right = await d.registry.call("presence.person.start", {}, "deck", { thread: "t1", peer, proof: { op: "stand-in", fields: {}, n: 7 } });
+  assert.ok(right.data && right.data.kind === "cookie" && typeof right.data.token === "string", `the right proof signs in: ${JSON.stringify(right).slice(0, 200)}`);
+  assert.equal(sessions(), 1);
+  // the owner's own surface is not turned away by the person check the member's device meets
+  const own = await d.registry.call("wink.server.pair.answer", { yes: false }, "cli", {});
+  assert.deepEqual(own, { data: { answered: false } });
+  const mine = await d.registry.call("wink.server.pair.answer", { yes: false }, DEVICE, {});
+  assert.equal(mine.error && mine.error.code, "person_session_required");
 });
 
 test("the tools that still show other people's matter are refused to a member, in words that name a next step, until each is scoped to her", { timeout: 200_000 }, async t => {
