@@ -37,14 +37,14 @@ test("memory.prompt: a person's thread gets the project's room only if she may u
   const { prompt, asked } = await rig(t, i => (i.person === OWNER ? true : i.person === "per_" + "e".repeat(26) ? "error" : false));
   const none = await prompt({ project: undefined, project_cwds: undefined, for_person: MEMBER });
   const owner = await prompt({ for_person: OWNER });
-  assert.match(owner, /netlify/, "control: the owner's thread in the project gets its memory");
+  assert.match(owner, /Lately in this project/, "control: the owner's thread in the project gets its memory");
   const member = await prompt({ for_person: MEMBER });
-  assert.ok(!/netlify|harlow/i.test(member), "a member who is not on the project gets none of its memory: " + member.slice(0, 160));
+  assert.ok(!/Lately in this project/.test(member), "a member who is not on the project gets none of its memory: " + member.slice(0, 200));
   assert.equal(member, none, "her prompt is the one a chat with no project gets");
-  assert.ok(!/netlify|harlow/i.test(await prompt({ for_person: "per_" + "e".repeat(26) })), "when work cannot answer, the room is left out");
+  assert.ok(!/Lately in this project/.test(await prompt({ for_person: "per_" + "e".repeat(26) })), "when work cannot answer, the room is left out");
   assert.deepEqual(asked.map(a => [a.project, a.person]).slice(0, 2), [["harlow-site", OWNER], ["harlow-site", MEMBER]], "the question names the thread's project and its person");
   // a caller that names no person (the owner's own terminal) is as before: nothing is asked
   const before = asked.length;
-  assert.match(await prompt({}), /netlify/, "no for_person: unchanged");
+  assert.match(await prompt({}), /Lately in this project/, "no for_person: unchanged");
   assert.equal(asked.length, before, "and work is not asked");
 });
