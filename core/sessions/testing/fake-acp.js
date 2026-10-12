@@ -9,6 +9,7 @@
 //   "walk-term:<command>"  the same, on the last line of the prompt (earlier lines of a seed are history), and says the exit code too
 //   "walk-mcp:<tool> <json>"  calls a Vyre tool the way a real ACP agent does: through the MCP server the client handed it in session/new (mcpServers); says exit=0, or exit=1 when the tool refused
 //   "walk-mcp-bg:<seconds> <tool> <json>"  starts a detached job that makes that call after the delay and writes the answer to ./bg-mcp-<seconds>.out (a job a turn leaves behind)
+//   "walk-env"         says CODEX_HOME and the skill names under it (what a launched session was handed)
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
 //   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
@@ -106,6 +107,10 @@ async function prompt(id, blocks) {
       say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
       await call("terminal/release", { sessionId: session, terminalId });
     } catch (e) { say("term failed: " + e.message); }
+  } else if (/walk-env\s*$/.test(String(t).trimEnd().split("\n").pop() || "")) {
+    let names = "none";
+    try { const ch = process.env.CODEX_HOME || ""; const dir = path.join(ch, "skills"); names = ch ? fs.readdirSync(dir).join(",") || "empty" : "no CODEX_HOME"; } catch (e) { names = "unreadable: " + /** @type {any} */ (e).code; }
+    say(`walk-env exit=0: CODEX_HOME=${(process.env.CODEX_HOME || "").replace(/^.*\/(\.codex-lib\/)/, "$1")} skills=${names}`);
   } else if ((m = /walk-mcp-bg:(\d+) (\S+)(?: (.*))?$/.exec(String(t).trimEnd().split("\n").pop() || ""))) {
     const out = path.join(process.cwd(), `bg-mcp-${m[1]}.out`);
     spawn(process.execPath, [fileURLToPath(new URL("./walk-mcp-call.mjs", import.meta.url)), JSON.stringify(mcpServers[0] || {}), m[2], m[3] || "{}", out, m[1]], { detached: true, stdio: "ignore", cwd: process.cwd() }).unref();

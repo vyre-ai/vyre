@@ -342,7 +342,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
   const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
   await J.step(WC, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp|env)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
@@ -375,27 +375,26 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     const drafted = await w.call("skills.draft", { name: "walk-owner-private", level: "personal", body, kind: "skill" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
     const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal", version: Number((drafted.draft && drafted.draft.version) || drafted.version || 1) }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp|env)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
-    // what a launched session is handed (the person's approved skills as files in her account's home; a bare MCP session lists only the built-in five): count the owner's skill file in each person's turn
+    // what a launched session is handed: the stand-in reports its own CODEX_HOME and the skill names under it (a bare MCP session lists only the built-in five); the owner's launch has the owner's approved skill, a member's does not
     const counts = /** @type {Record<string, string>} */ ({});
-    for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, `timeout 25 find "$HOME" -maxdepth 8 -name SKILL.md 2>/dev/null | grep -c walk-owner-private; timeout 25 find "$HOME" -maxdepth 8 -name SKILL.md 2>/dev/null | wc -l`);
+    for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, "walk-env");
     said.skills = JSON.stringify(counts).slice(0, 600);
-    for (const [who, out] of Object.entries(counts)) assert.ok(/walk-term exit=0/.test(out), `${who}'s command ran: ${out.slice(0, 200)}`);
-    const nums = (/** @type {string} */ t) => (t.split(":").slice(1).join(":").match(/\d+/g) || []).map(Number);
-    for (const who of [grace.name, edith.name]) assert.equal(nums(counts[who])[0], 0, `${who}'s launched session does not have the owner's personal skill: ${counts[who].slice(0, 200)}`);
-    if (!(approved && approved.error)) assert.ok(nums(counts.owner)[0] >= 1, `the owner's launched session has the owner's own approved skill as a file: ${counts.owner.slice(0, 200)}`);
-    return `owner skill files (own skill, all): ${JSON.stringify(counts).slice(0, 400)} | draft/approve: ${JSON.stringify(approved).slice(0, 100)}`;
+    for (const [who, out] of Object.entries(counts)) assert.ok(/walk-env exit=0/.test(out), `${who}'s launched session answered: ${out.slice(0, 200)}`);
+    for (const who of [grace.name, edith.name]) assert.ok(!counts[who].includes("walk-owner-private"), `${who}'s launched session does not have the owner's personal skill: ${counts[who].slice(0, 200)}`);
+    if (!(approved && approved.error)) assert.ok(counts.owner.includes("walk-owner-private"), `the owner's launched session has the owner's own approved skill: ${counts.owner.slice(0, 200)}`);
+    return `launched sessions: ${JSON.stringify(counts).slice(0, 500)}`;
   }, { needs: [H], owner: "chat" });
 
   const WE = "a job a member's turn leaves behind calls the tool CLI after the turn: while her session still stands it has hers, after it is gone the call fails; the owner's turn between them gets none of it";
   await J.step(WE, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp|env)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
