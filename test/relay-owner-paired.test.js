@@ -107,3 +107,22 @@ test("marking: a device that came in by a bearer code is the owner's only after 
   assert.ok(!ok.error, JSON.stringify(ok.error));
   await check(w, bearer.device, true, "marked");
 });
+
+test("a home with a member: the owner's own device reaches the owner's vault, a device that redeemed a bearer code does not", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const K = w.d.kernel;
+  const first = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  const bearer = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  // somebody besides the owner is in the home: the vault now keeps a stranger out (with the owner alone it has nobody to keep out and answers anyone)
+  const oc = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: K.id.owner, path: "direct", session: "s" });
+  await K.gateway.grants.setRole(oc, { person: "per_" + "c".repeat(26), role: "member" }, { presence: { op: "stand-in", fields: {}, n: Math.random() } });
+  const vaultList = (/** @type {string} */ id) => new Promise(resolve => {
+    const srv = http.createServer((req, res) => w.d.registry.deps.handler({})(req, res, `device:${id}`, { kind: "device", stableId: id }));
+    srv.listen(0, "127.0.0.1", () => {
+      const rq = http.request({ port: /** @type {any} */ (srv.address()).port, host: "127.0.0.1", path: "/v1/tools/vault.list", method: "POST", headers: { "content-type": "application/json" } }, x => { x.resume(); x.on("end", () => { srv.close(); resolve(x.statusCode); }); });
+      rq.end("{}");
+    });
+  });
+  assert.equal(await vaultList(first.device), 200, "the owner's first device");
+  assert.equal(await vaultList(bearer.device), 403, "a device that redeemed the classic code is not the owner's");
+});
