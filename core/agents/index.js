@@ -396,6 +396,16 @@ export default {
     };
     /** What a member sees of an agent: who it is and whether it is busy. Never its instructions, tools, projects, computer, credentials' mode, thread or uid. @param {any} r */
     const rosterRow = r => ({ id: r.id, name: r.name, kind: r.kind, ...(r.role ? { role: r.role } : {}), model: r.model, status: r.status });
+    /** The person on the call's chain, or null (the owner's surfaces, a call whose chain cannot be read). @param {any} meta @returns {Promise<string | null>} */
+    const chainPerson = async meta => { if (!K) return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
+    /** May this call change or stop this agent: the owner, an admin and the owner's surfaces always; a member only an agent she made (the row's owner is its maker). @param {any} meta @param {any} a */
+    const mayChange = async (meta, a) => {
+      if (await seesFull(meta)) return true;
+      const me = await chainPerson(meta);
+      const canon = K && typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+      return Boolean(me && a && a.owner && canon(me) === canon(String(a.owner)));
+    };
+    const notYours = (/** @type {string} */ what) => Object.assign(new Error(`Only the owner, an admin or the person who made this agent ${what}. Ask one of them.`), { code: "denied" });
     const ownerOnly = (/** @type {string} */ what) => Object.assign(new Error(`Only the owner or an admin ${what}. Ask them, or use the roster (agents.list) for who is here.`), { code: "denied" });
     const versionsOf = name => db.prepare("SELECT * FROM agents_versions WHERE agent = ? ORDER BY n DESC").all(name);
     /** Write the new field values, and the version that says what they were and are. */
@@ -505,7 +515,6 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (i, meta) => {
         const { caller } = meta;
-        if (!(await seesFull(meta))) throw ownerOnly("adds an agent to the Space");
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -540,7 +549,6 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
       run: async (i, meta) => {
         const { caller } = meta;
-        if (!(await seesFull(meta))) throw ownerOnly("changes an agent");
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           // A model never edits an agent: it proposes, and the agent's owner says yes on one card (R031-09).
           throw Object.assign(new Error('changing agents is the person\'s; to ask for a change, propose it: flows.propose { what: "agent", agent: "<name>", patch: { instructions?, skills?, model?, effort?, tags? } }. Its owner approves; each approved change is a version you can roll back'), { code: "denied" });
@@ -549,6 +557,7 @@ export default {
         const who = i.name ?? i.agent;
         if (who === undefined) throw new Error("say which agent: name is required");
         const a = must(who);
+        if (!(await mayChange(meta, a))) throw notYours("changes it");
         // A built-in agent keeps its shape: only its words, model and effort change.
         if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
@@ -799,8 +808,8 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ agent, id }, meta) => {
-        if (!(await seesFull(meta))) throw ownerOnly("removes an agent");
         const a = must(agent);
+        if (!(await mayChange(meta, a))) throw notYours("removes it");
         if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id (agents.list shows them; leave id out to go by name)`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays; agents.stop stops its threads instead`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
@@ -853,10 +862,9 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
       run: async ({ agent }, meta0) => {
         const { caller, ...meta } = meta0;
-        if (!(await seesFull(meta0))) throw ownerOnly("stops an agent");
         guard(caller, "stop agents");
         if (!modelMay({ caller, ...meta })) throw Object.assign(new Error("stopping an agent is the assistant's or the person's, not another session's"), { code: "denied" });
-        must(agent);
+        if (!(await mayChange(meta0, must(agent)))) throw notYours("stops it");
         const ts = await use("threads.list", { agent });
         const stopped = [];
         for (const t of ts) if (t.status !== "stopped") { await use("threads.stop", { thread: t.id }); stopped.push(t.id); }
@@ -874,8 +882,8 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
       run: async ({ agent, thread }, meta0) => {
         const { caller } = meta0;
-        if (!(await seesFull(meta0))) throw ownerOnly("resumes an agent");
         const a = must(agent);
+        if (!(await mayChange(meta0, a))) throw notYours("resumes it");
         if (String(caller || "").startsWith("module:")) {
           if (!thread) throw new Error("thread is required");
           return launch(a, { resume: thread });
