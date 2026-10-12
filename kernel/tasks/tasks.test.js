@@ -52,7 +52,7 @@ function rig(over = {}) {
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
   const tasks = createTasks({
-    space: SPACE, authorizer, log, presence, chains, clock,
+    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}),
     members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
@@ -790,4 +790,32 @@ test("tasks: a task names its project as a link to a Project record of this Spac
   assert.equal((await r.tasks.list(owner(), { project: P1 })).length, 2);
   assert.equal((await r.tasks.edit(owner(), b.id, { project: null })).project, undefined);
   await assert.rejects(() => r.tasks.edit(owner(), b.id, { project: "vyre://spc_bbbbbbbbbbbb/project/p1" }), { code: "bad_input" });
+});
+
+test("who reads a task (class 3): the checker reads the task she checks and decides it; a person who is not the doer, the giver, a checker or on its project reads none, by get, list or card", async () => {
+  const { mayReadTask } = await import("../gateway/ownership.js");
+  const r = rig({ mayReadTask: (chain, t, checkers) => mayReadTask(chain, t, { checkers, staff: false, project: async () => null }) });
+  const t = await toNeedsCheck(r);   // doer: the intake assistant, giver: the owner, checker: Alice
+  assert.ok(await r.tasks.get(alice(), t.id), "the checker reads it through get");
+  assert.ok((await r.tasks.list(alice())).some(x => x.id === t.id), "and through list");
+  assert.ok(await r.tasks.card(alice(), t.id), "and its card");
+  assert.ok(await r.tasks.get(owner(), t.id), "the giver reads it");
+  assert.equal(await r.tasks.get(bob(), t.id), null, "a stranger does not, through get");
+  assert.ok(!(await r.tasks.list(bob())).some(x => x.id === t.id), "nor through list");
+  await assert.rejects(() => r.tasks.card(bob(), t.id), { code: "not_found" }, "nor its card");
+  const done = await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  assert.ok(done, "and the checker decides it, end to end");
+  await assert.rejects(() => r.tasks.start(alice(), t.id), { code: "not_allowed" }, "a checker still cannot do what only the doer does");
+});
+
+test("who reads a task: only the chain's PERSON counts, never a later hop; an assistant acting for a person reads what she reads", async () => {
+  const { mayReadTask } = await import("../gateway/ownership.js");
+  const ctx = { staff: false, project: async () => null };
+  const withAssistant = chains.fromFacts({ kind: "agent_session", vouched: true, person: ALICE, agent: "intake", session: "s" });
+  assert.equal(await mayReadTask(withAssistant, { doer: actor("agent", "intake") }, ctx), false, "a task whose doer is the assistant is not Alice's to read");
+  assert.equal(await mayReadTask(withAssistant, { doer: actor("person", ALICE) }, ctx), true, "hers is");
+  assert.equal(await mayReadTask(withAssistant, { doer: actor("person", BOB), assigned_by: actor("person", ALICE) }, ctx), true, "one she gave is");
+  assert.equal(await mayReadTask(withAssistant, { doer: actor("person", BOB) }, ctx), false, "Bob's is not");
+  assert.equal(await mayReadTask(withAssistant, { doer: actor("person", BOB) }, { ...ctx, checkers: [actor("person", ALICE)] }), true, "one she checks is");
+  assert.equal(await mayReadTask(chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { doer: actor("person", BOB) }, ctx), true, "a chain with no person is not judged");
 });

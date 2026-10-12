@@ -46,11 +46,13 @@ test("attachments.get answers the file, its preview, or no preview, and only for
   const big = png(900, 900);
   /** @type {Record<string, Uint8Array>} */ const files = { [`${folder}/att_aaaaaaaaaaaaaaaaaaaaaa-pic.png`]: big, [`${folder}/att_bbbbbbbbbbbbbbbbbbbbbb-note.pdf`]: new Uint8Array([37, 80, 68, 70]), [`${folder}/att_cccccccccccccccccccccc-shot.jpg`]: new Uint8Array(SMALL_BYTES + 5) };
   const gateway = {
+    chats: { read: async () => {} },
+    serviceChain: () => ({ hops: [{ actor: { kind: "service", id: "work" } }] }),   // a chat record is read under the module's own chain
     records: { query: async () => ({ rows: [{ data: { drive: "proj" } }] }) },
     drive: { list: async () => Object.entries(files).map(([path, b]) => ({ path, size: b.length })), get: async (/** @type {any} */ _c, /** @type {string} */ p) => files[p] },
   };
   /** @type {Record<string, any>} */ const tools = {};
-  registerAttachments({ tool: (/** @type {string} */ n, /** @type {any} */ d) => { tools[n] = d; }, events: { emit() {} } }, { door: { open: async () => ({ gateway, chain: {} }) } });
+  registerAttachments({ tool: (/** @type {string} */ n, /** @type {any} */ d) => { tools[n] = d; }, events: { emit() {} }, call: async () => ({ data: { root: "proj" } }) }, { door: { open: async () => ({ gateway, chain: {} }) } });
   const get = (/** @type {any} */ i) => tools["attachments.get"].run({ thread: "c1", ...i }, {});
   const full = await get({ id: "att_aaaaaaaaaaaaaaaaaaaaaa" });
   assert.equal(full.thumb, false);
