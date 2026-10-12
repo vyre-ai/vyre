@@ -67,7 +67,7 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
     go("inf.pick");
   };
   return (
-    <FlowStep steps={steps} onBack={back} title="Only you know it" lead="If you forget your master password, your vault cannot be opened, and Vyre cannot reset it."
+    <FlowStep steps={steps} onBack={back} title="Only you know it" lead="If you forget your master password, your recovery kit can set a new one. If you lose both, your vault cannot be opened, and Vyre cannot get it back."
       failure={say || undefined}
       primary={{ label: "Open my vault", disabled: !ok || busy, loading: busy, onPress: () => { void open(); } }}>
       <Card>
@@ -76,7 +76,7 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
           <Switch label="I understand that a forgotten master password cannot be reset" on={ok} onChange={setOk} />
         </Stack>
       </Card>
-      <Text size="caption" tone="label">Write it down and keep it with your recovery code, or use a password manager you trust.</Text>
+      <Text size="caption" tone="label">Keep your recovery kit somewhere safe, apart from this password.</Text>
     </FlowStep>
   );
 }

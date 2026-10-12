@@ -79,20 +79,13 @@ export async function claimNewName(raw: string): Promise<Outcome<{ name: string;
 }
 
 /**
- * Sign in on a new device with what the existing add-a-device pairing already does: the other device (Devices, Add a device) shows a code; this device types it, shows the three words, and
- * the other device says yes. `onWords` gets the three words, `onAck` the code to type back there. Resolves the name this device now holds.
+ * Sign in on a new device by name: this device asks, a device that is already signed in shows three words and the person approves there. The old typed pairing code is gone and is not
+ * accepted here. NOT BUILT on the server side: no relay or directory call takes a request by name yet, so this says so and points at the recovery kit. In MOCK the prototype answers.
+ * `onWords` gets the three words to match, `onAck` is kept for the approving device's confirmation. Resolves the name this device now holds.
  */
-export async function signInWithCode(o: { code: string; onWords: (w: string[]) => void; onAck: (c: string) => void; signal?: AbortSignal }): Promise<Outcome<{ name: string }>> {
-  if (MOCK) { o.onWords(SIGNIN_WORDS); await slow(900); return { ok: true, name: "alex" }; }
-  try {
-    const { addDeviceToName, addSay } = await import("../../src/identity/add-device");
-    const text = o.code.trim();
-    const typed = /^wink-/i.test(text);
-    try {
-      const r = await addDeviceToName({ ...(typed ? { code: text.toUpperCase() } : { payload: text }), deviceLabel: deviceLabel(), onWords: (w) => o.onWords(w.split(/\s+/).filter(Boolean)), onAck: o.onAck, ...(o.signal ? { signal: o.signal } : {}) });
-      return { ok: true, name: r.name };
-    } catch (e) { return { ok: false, say: addSay(code(e)) }; }
-  } catch { return { ok: false, say: "Vyre could not start adding this device. Nothing was added. Try again." }; }
+export async function requestSignIn(o: { name: string; onWords: (w: string[]) => void; signal?: AbortSignal }): Promise<Outcome<{ name: string }>> {
+  if (MOCK) { o.onWords(SIGNIN_WORDS); await slow(900); return { ok: true, name: nameOf(o.name) || "alex" }; }
+  return { ok: false, say: "Approving from your other device is not available in this build yet. Nothing was added. Use your recovery kit to sign in." };
 }
 
 /** Sign in with the recovery code from the kit: the form is checked first, then the existing recovery (restore.ts), which puts this device's key on the name's list. */

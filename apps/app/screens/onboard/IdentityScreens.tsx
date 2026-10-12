@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Banner, Button, ChoiceList, CodeDisplay, CodeField, Field, FlowStep, MatchWords, Stack, Switch, Text, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { DEMO, SIGNIN_WORDS } from "./flow-model.js";
-import { claimNewName, dropKit, holdKit, kitText, nameExists, nameState, readKit, recoverWithKit, saveKit, signInWithCode } from "./real-identity";
+import { claimNewName, dropKit, holdKit, kitText, nameExists, nameState, readKit, recoverWithKit, requestSignIn, saveKit } from "./real-identity";
 import type { ScreenProps } from "./types";
 
 const HINT = "Prototype hint";
@@ -45,34 +45,29 @@ export function IdSignin({ ctx, set, go, back, steps }: ScreenProps) {
   );
 }
 
-/** The real sign-in: the other device shows a code (Devices, Add a device); this one types it, shows the three words, and the other device says yes. */
-function IdApproveReal({ set, go, back, steps }: ScreenProps) {
-  const [code, setCode] = useState("");
-  const [state, setState] = useState<"ask" | "waiting" | "failed">("ask");
+/** The real sign-in: this device asks by name, the other signed-in device shows three words and the person approves there. No code is typed. */
+function IdApproveReal({ ctx, set, go, back, steps }: ScreenProps) {
+  const [state, setState] = useState<"waiting" | "failed">("waiting");
   const [words, setWords] = useState<string[]>([]);
-  const [ack, setAck] = useState("");
   const [say, setSay] = useState("");
   const run = useRef<AbortController | null>(null);
-  useEffect(() => () => run.current?.abort(), []);
   const start = () => {
     run.current?.abort();
     const ctl = new AbortController();
     run.current = ctl;
-    setState("waiting"); setSay(""); setWords([]); setAck("");
-    void signInWithCode({ code, onWords: setWords, onAck: setAck, signal: ctl.signal }).then((r) => {
+    setState("waiting"); setSay(""); setWords([]);
+    void requestSignIn({ name: ctx.name, onWords: setWords, signal: ctl.signal }).then((r) => {
       if (ctl.signal.aborted) return;
       if (r.ok) { set({ name: r.name, reset: false }); go("master.enter"); } else { setSay(r.say); setState("failed"); }
     });
   };
-  const waiting = state === "waiting";
+  useEffect(() => { start(); return () => run.current?.abort(); }, []);
   return (
-    <FlowStep mark={waiting ? "working" : undefined} steps={steps} onBack={back} title="Approve on your other device" lead="On a device where you are already signed in, choose Devices, then Add a device. Type the code it shows here, then check the three words match."
+    <FlowStep mark={state === "waiting" ? "working" : undefined} steps={steps} onBack={back} title="Approve on your other device" lead="On a device where you are already signed in, Vyre asks Sign in on this device. Check the three words match, then tap Approve."
       failure={state === "failed" ? say : undefined}
-      primary={waiting ? { label: "Waiting for approval", disabled: true, loading: true, onPress: () => {} } : { label: state === "failed" ? "Try again" : "Continue", disabled: !/^WINK-\w{4}-\w{4}$/i.test(code.trim()), onPress: start }}
+      primary={state === "failed" ? { label: "Ask again", onPress: start } : { label: "Waiting for approval", disabled: true, loading: true, onPress: () => {} }}
       secondary={{ label: "Use my recovery kit instead", onPress: () => { run.current?.abort(); go("id.recover"); } }}>
-      <CodeField label="Code on your other device" prefix="WINK" groups={[4, 4]} value={code} onChangeText={(v) => { setCode(v); if (state === "failed") setState("ask"); }} help="It looks like WINK-7K4Q-M2XD." />
       {words.length ? <MatchWords label="Words on both screens" words={words} note="If the words differ, tap Deny on the other device." /> : null}
-      {ack ? <CodeDisplay label="Type this on your other device" code={ack} note="It confirms this is you." /> : null}
     </FlowStep>
   );
 }
@@ -88,7 +83,6 @@ function IdApproveMock({ set, go, back, steps }: ScreenProps) {
       failure={state === "denied" ? "Your other device did not approve this sign-in. Ask again, or use your recovery kit." : undefined}
       primary={state === "denied" ? { label: "Ask again", onPress: () => setState("waiting") } : { label: "Prototype: approve on the other device", onPress: () => { set({ reset: false }); go("master.enter"); } }}
       secondary={{ label: "Use my recovery kit instead", onPress: () => go("id.recover") }}>
-      <CodeDisplay label="Your sign-in code" code={DEMO.signInCode} note="Good for 10 min. It is only a backup if the prompt does not arrive." />
       <MatchWords label="Words on both screens" words={SIGNIN_WORDS} note="If the words differ, tap Deny on the other device." />
       {state === "waiting" ? (
         <Stack gap={2} align="start">
