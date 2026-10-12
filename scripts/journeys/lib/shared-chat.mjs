@@ -279,31 +279,6 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return out.join(" | ");
   }, { needs: [H], owner: "chat" });
 
-  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
-  await J.step(WB, async () => {
-    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
-    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
-    await sleep(3000);
-    await speak(grace.name, "whoami walkBq1");
-    await sleep(500);
-    await speak(edith.name, "whoami walkBq2");
-    await sleep(500);
-    await speak("owner", "whoami walkBq3");
-    const got = [];
-    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
-      const a = await untilAnswerTo(grace, chat, tag);
-      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
-      const uid = await uidOf(who);
-      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
-      got.push(tag);
-    }
-    const ms = await seen(grace, chat);
-    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
-    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
-    void sleeper;
-    return got.join(", ");
-  }, { needs: [H], owner: "chat" });
-
   const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
   await J.step(WC, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
@@ -381,6 +356,31 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const hit = all.match(/.{0,60}capsule.{0,60}/i);
     assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
     return `scanned ${all.length} characters in ${seenText.length} views`;
+  }, { needs: [H], owner: "chat" });
+
+  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
+  await J.step(WB, async () => {
+    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
+    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
+    await sleep(3000);
+    await speak(grace.name, "whoami walkBq1");
+    await sleep(500);
+    await speak(edith.name, "whoami walkBq2");
+    await sleep(500);
+    await speak("owner", "whoami walkBq3");
+    const got = [];
+    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
+      const a = await untilAnswerTo(grace, chat, tag);
+      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
+      const uid = await uidOf(who);
+      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
+      got.push(tag);
+    }
+    const ms = await seen(grace, chat);
+    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
+    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
+    void sleeper;
+    return got.join(", ");
   }, { needs: [H], owner: "chat" });
 
   const WM = "catchup is what others said since you last read: a member's catchup holds the others' messages and the answers and not her own, and on the stream every person's message is followed by its answer in order";
