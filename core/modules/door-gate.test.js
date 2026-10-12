@@ -123,3 +123,41 @@ test("a device or node with no proof on a team server is a member's; the moment 
   const after = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
   assert.ok(!(after.error && after.error.message === refusal("mail.accounts")), "the owner is served after the second person joins");
 });
+
+test("a session's call relayed into a team Space as module:vyred is judged as the session's, by the chain the daemon built from its token; the member door's own relays are not", { timeout: 200_000 }, async t => {
+  const { d } = await rig(t, false);
+  const OWNER = d.kernel.id.owner;
+  const firm = await d.kernel.spaces.host({ owner: OWNER, name: "Harlow Legal" });
+  const ownerIn = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await firm.gateway.grants.setRole(ownerIn, { person: MEMBER, role: "member" }, { presence: proof() });
+  const memberIn = firm.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: MEMBER, path: "direct", session: "s" });
+  const chainOf = async (/** @type {any} */ c) => (await firm.kernel.surfaces.open(c, { agent: "assistant" })).token;
+  const mTok = await chainOf(memberIn), oTok = await chainOf(ownerIn);
+  const relay = async (/** @type {string} */ tool, /** @type {string} */ token, /** @type {string} */ origin) => d.registry.callInSpace({ name: "vyred" }, firm.space, { gateway: firm.gateway }, tool, {}, await firm.surfaces.chainFor(token), origin);
+  const gated = (/** @type {any} */ r, /** @type {string} */ tool) => Boolean(r && r.error && r.error.message === refusal(tool));
+  // a crossSpace tool no member may call from a session: refused for her, served (not refused by the gate) for the owner
+  const tool = "work.template.define-in-space";
+  assert.ok(gated(await relay(tool, mTok, "mcp:thread:t1"), tool), "a member's session, relayed as module:vyred, meets the gate");
+  assert.ok(!gated(await relay(tool, oTok, "mcp:thread:t1"), tool), "the owner's session does not");
+  // her own tools in a team chat still answer
+  for (const own of ["work.chat.list", "memory.space.recall"]) assert.ok(!gated(await relay(own, mTok, "mcp:thread:t1"), own), `${own}: a member's own tool answers`);
+  // the member door relays with no session label on the call: not this gate's
+  assert.ok(!gated(await relay(tool, mTok, "space:person@team"), tool), "the member door's relay is judged by its own table");
+});
+
+test("a member's sign-in tools see only her accounts and cannot bind, sign in or remove the owner's, with an owner account present", { timeout: 200_000 }, async t => {
+  const { d, as } = await rig(t);
+  const OWNER = d.kernel.id.owner;
+  const db = d.registry.deps.db;
+  const made = await d.registry.call("sessions.accounts.add", { provider: "codex", label: "Owner's Codex", kind: "login" }, "deck", { token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" }), {})).token });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, person = ? WHERE id = ?").run(Date.now(), OWNER, made.data.id);
+  const ownerAcct = made.data.id;
+  const list = await as("member", "sessions.accounts.list", {}, "deck");
+  assert.ok(!list.error && !JSON.stringify(list.data).includes(ownerAcct), "her list does not carry the owner's account: " + JSON.stringify(list).slice(0, 200));
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["sessions.accounts.bind", { id: ownerAcct, is_default: true }], ["sessions.accounts.signin", { id: ownerAcct }], ["sessions.accounts.remove", { id: ownerAcct }]])) {
+    const r = await as("member", tool, input, "deck");
+    assert.ok(r.error, `${tool}: naming the owner's account gets her an error, got ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  assert.ok(db.prepare("SELECT 1 FROM sessions_accounts WHERE id = ?").get(ownerAcct), "and the owner's account is still there");
+});

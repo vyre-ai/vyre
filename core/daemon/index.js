@@ -791,11 +791,13 @@ async function startLocked(opts, root, p, release) {
     // One gate for a member's own session at the registry's entry (core/modules/door-gate.js): the person is the kernel's verified chain's first person hop, never the caller's label.
     if (kernel.grants && typeof kernel.kernelFor === "function") {
       const doorKernel = kernel.kernelFor({ name: "door-gate" });
+      // the grants of the Space a chain is for: this home's own, or a hosted team Space's (a session's call relayed into it carries that Space's chain)
+      const spaceOf = (/** @type {string | undefined} */ space) => { if (!space || space === kernel.id.space) return kernel; try { const h = kernel.spaces && kernel.spaces.for(space); return h && h.hosted === true && h.kernel ? h.kernel : null; } catch { return null; } };
       registry.deps.doorGate = createDoorGate({
         chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
         // the role from the person's membership: the same source the gateway's staff statement reads, so the swap to it is a rename
-        roleOf: (/** @type {any} */ a) => { const m = kernel.grants.members.membership(a); return m ? m.role : null; },
-        othersExist: async () => kernel.grants.hasOtherMembers(kernel.id.owner),
+        roleOf: (/** @type {any} */ a) => { const k = spaceOf(a && a.space); const m = k ? k.grants.members.membership(a) : null; return m ? m.role : null; },
+        othersExist: async (/** @type {string | undefined} */ space) => { const k = spaceOf(space); return k ? k.grants.hasOtherMembers(k.id.owner) : true; },
       });
     }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;

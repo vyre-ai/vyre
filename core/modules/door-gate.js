@@ -13,6 +13,14 @@ import { roleAtLeast } from "../../lib/spaces/members.js";
  */
 const UNPROVEN_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:|device:|tailnet|space:|deck|mobile)/;
 
+/**
+ * A session's own call that the daemon relays into a team Space as `module:vyred` (core/daemon/index.js, a model's tool call in a team chat): the call began as the session's, so it is judged as the session's, the
+ * person read from the chain the daemon built from the verified token (`in_space_chain`, which only callInSpace can set; the registry drops any other). The member door's own relays carry no session label.
+ * @param {string} caller @param {any} m
+ */
+const SESSION_ORIGIN = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:)/;
+const isRelay = (caller, m) => caller === "module:vyred" && typeof m.origin === "string" && SESSION_ORIGIN.test(m.origin) && Boolean(m.in_space_chain && Array.isArray(m.in_space_chain.hops));
+
 /** A plain noun for what a refused tool is about, by its module; a tool in a module not named here is "That". */
 const NOUN = Object.freeze({
   mail: "mail", google: "Google account", github: "GitHub account", connectors: "connected services", publish: "publishing", documents: "document signing", mcp: "connected tools",
@@ -23,27 +31,28 @@ const NOUN = Object.freeze({
 /** What a refused member is told: what it is, whose it is, whom to ask. Never a tool name. @param {string} tool */
 export const refusal = (tool) => {
   const noun = /** @type {Record<string, string>} */ (NOUN)[tool.split(".")[0]];
-  return `${noun ? `The Space's ${noun}` : "That"} is the owner's. Ask the owner or an admin to do it for you, or to give you access.`;
+  return `${noun ? `This is the owner's: the Space's ${noun}.` : "That is the owner's."} Ask the owner or an admin to do it for you, or to give you access.`;
 };
 
 /**
- * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: () => Promise<boolean> }} k
+ * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: (space?: string) => Promise<boolean> }} k
  * @returns {((tool: string, caller: string, meta: any) => Promise<{ error: { code: string, message: string } } | null>) & { hides: (caller: string, meta: any) => Promise<"member" | "pass"> }}
  */
 export function createDoorGate(k) {
   /** Is this call a MEMBER's own session? "member" or "pass". @param {string} caller @param {any} meta @returns {Promise<"member" | "pass">} */
   const judge = async (caller, meta) => {
-    let others = true;
-    try { others = (await k.othersExist()) === true; } catch { others = true; }
-    if (!others) return "pass";
     const m = meta || {};
-    const claims = typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
+    let others = true;
+    try { others = (await k.othersExist(isRelay(caller, m) && m.in_space_chain ? m.in_space_chain.space : undefined)) === true; } catch { others = true; }
+    if (!others) return "pass";
+    const relayed = isRelay(caller, m);
+    const claims = relayed || typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
     /** @type {any} */ let first = null;
     if (!claims) {
       if (!UNPROVEN_LABEL.test(String(caller))) return "pass";
     } else {
       try {
-        const c = await k.chainOf(m);
+        const c = relayed ? m.in_space_chain : await k.chainOf(m);
         const hop = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
         if (!hop) return "pass";
         first = hop.actor;
