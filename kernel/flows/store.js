@@ -294,10 +294,19 @@ export class RecordsFlowStore {
   async list() {
     const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
     const rows = r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
-    // a Flow has a state row only once it is approved; a draft nobody has approved is still a Flow of the Space (Flows belong to the Space: every member sees it, and the cap on a member's new Flows counts it)
-    const known = new Set(rows.map((/** @type {any} */ x) => x.id));
+    // Every row carries the Flow's NAME and label, from its newest version's definition (a Flow has a state row only once it is approved, and a screen must never show an id where a name belongs).
     const defs = await this.k.records.query(this.chain, "def-flow", { page: { limit: 5000 } });
-    for (const d of defs.rows) { const id = String(d.data.flow_id); if (!known.has(id)) { known.add(id); rows.push({ id, status: "draft", active: null, paused: null }); } }
+    /** @type {Map<string, { version: number, name: string, label: string }>} */ const newest = new Map();
+    for (const d of defs.rows) {
+      const id = String(d.data.flow_id), version = Number(d.data.version) || 0, prev = newest.get(id);
+      if (prev && prev.version >= version) continue;
+      let label = ""; try { label = String(JSON.parse(d.data.body).label || ""); } catch { /* the name stands */ }
+      newest.set(id, { version, name: String(d.data.name || ""), label: label || String(d.data.name || "") });
+    }
+    for (const x of rows) { const n = newest.get(x.id); if (n) Object.assign(x, { name: n.name, label: n.label }); }
+    // a draft nobody has approved is still a Flow of the Space (Flows belong to the Space: every member sees it, and the cap on a member's new Flows counts it)
+    const known = new Set(rows.map((/** @type {any} */ x) => x.id));
+    for (const [id, n] of newest) if (!known.has(id)) { known.add(id); rows.push({ id, status: "draft", active: null, paused: null, name: n.name, label: n.label }); }
     return rows;
   }
 
