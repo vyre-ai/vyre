@@ -75,12 +75,15 @@ async function scan(o) {
   child.stdout?.on("data", () => {}); child.stderr?.on("data", () => {});
   await Promise.race([new Promise(r => child.on("exit", r)), new Promise(r => setTimeout(() => { try { child.kill("SIGKILL"); } catch {} r(null); }, 90_000))]);
   api.server.close();
+  // what the real CLI actually SENT: the credential it found (on the pipe, in the env or in the file) as the fake API saw it in the request's auth headers
+  const sent = api.log.flatMap(l => [l.headers && l.headers["x-api-key"], l.headers && String(l.headers.authorization || "").replace(/^Bearer /i, "")]).filter(Boolean);
+  const authenticated = sent.includes(SECRET);
   const text = api.log.flatMap(l => (l.body.messages || []).flatMap((/** @type {any} */ m) => Array.isArray(m.content) ? m.content : [])).filter((/** @type {any} */ c) => c.type === "tool_result").map((/** @type {any} */ c) => typeof c.content === "string" ? c.content : JSON.stringify(c.content)).join("\n");
   fs.rmSync(dir, { recursive: true, force: true });
   /** @type {Record<string, string>} */ const out = {};
   for (const m of text.matchAll(/SCAN (\w+) (\S+)/g)) out[m[1]] = m[2];
   assert.equal(out.done !== undefined || /SCAN done/.test(text), true, "the scan ran inside the session's Bash (the control: a session that never ran it proves nothing): " + text.slice(0, 200));
-  return { env: Number(out.env), environ: Number(out.environ), cmdline: Number(out.cmdline), fd: Number(out.fd), config: Number(out.config), mem: out.mem === "refused" ? "refused" : Number(out.mem) };
+  return { env: Number(out.env), environ: Number(out.environ), cmdline: Number(out.cmdline), fd: Number(out.fd), config: Number(out.config), mem: out.mem === "refused" ? "refused" : Number(out.mem), authenticated };
 }
 const clean = (/** @type {any} */ r) => r.env === 0 && r.environ === 0 && r.cmdline === 0 && r.fd === 0 && r.config === 0 && (r.mem === "refused" || r.mem === 0);
 
@@ -91,6 +94,8 @@ test("KNOWN: an API key in the environment is printed by the session's Bash and 
 });
 test("an API key on file descriptor 3 (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR, as core/sessions/spawn.js hands it) is found nowhere a tool can look", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: "3" }, fd3: SECRET });
+  assert.equal(r.authenticated, true, "the real CLI read the credential off its descriptor and SENT it (the fake API saw it in the auth header): " + JSON.stringify(r));
+  assert.equal(r.authenticated, true, "the real CLI read the key off the pipe and sent it: " + JSON.stringify(r));
   assert.ok(clean(r) || (r.mem !== "refused" && YAMA === 0), JSON.stringify(r));   // with ptrace_scope 0 the memory of a same-user process is readable: see the Yama test below
 });
 test("KNOWN: a setup token in the environment is not in the Bash environment, but IS in the parent's /proc/<pid>/environ", { skip: SKIP, timeout: 150_000 }, async () => {
@@ -100,6 +105,7 @@ test("KNOWN: a setup token in the environment is not in the Bash environment, bu
 });
 test("a setup token on file descriptor 3 (CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR) is found nowhere a tool can look", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3" }, fd3: SECRET });
+  assert.equal(r.authenticated, true, "the real CLI read the credential off its descriptor and SENT it (the fake API saw it in the auth header): " + JSON.stringify(r));
   assert.ok(clean(r) || (r.mem !== "refused" && YAMA === 0), JSON.stringify(r));
 });
 test("KNOWN: a signed-in login file in the session's config folder is readable by its tools (by design: the session sees that copy)", { skip: SKIP, timeout: 150_000 }, async () => {
@@ -115,6 +121,7 @@ test("the memory of the claude process is closed to its tools only where Yama pt
 // ---- THROUGH VYRE'S OWN LAUNCH (core/sessions/spawn.js, the packaged box's path) --------------------------------------------------------------------------------------------------------------------------
 test("Vyre's launch hands an API key over unreadable (spawnSession: file descriptor 3)", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { ANTHROPIC_API_KEY: SECRET }, viaSpawnSession: true });
+  assert.equal(r.authenticated, true, "the real CLI read the credential off its descriptor and SENT it (the fake API saw it in the auth header): " + JSON.stringify(r));
   assert.equal(r.env, 0, JSON.stringify(r)); assert.equal(r.environ, 0, JSON.stringify(r)); assert.equal(r.fd, 0, JSON.stringify(r));
 });
 test("KNOWN: Vyre's launch hands a setup token over in the environment, so a tool reads it from the parent's environ", { skip: SKIP, timeout: 150_000 }, async () => {
@@ -124,6 +131,7 @@ test("KNOWN: Vyre's launch hands a setup token over in the environment, so a too
 // THE BAR: when this passes, a setup token may be used for a turn somebody else drives (not before)
 test("BAR: Vyre's launch hands a setup token over where no tool of the session can read it", { skip: SKIP, todo: "rc2-own-compute's fd delivery of the setup token (work/rc2/sealed-credential)", timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true });
+  assert.equal(r.authenticated, true, "the real CLI read the credential off its descriptor and SENT it (the fake API saw it in the auth header): " + JSON.stringify(r));
   assert.ok(clean(r), JSON.stringify(r));
 });
 
