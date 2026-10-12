@@ -5,12 +5,18 @@
 /** The person on a chain (its first person hop), or "". @param {any} c */
 export const personOf = (c) => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor.kind === "person") : null; return h ? String(h.actor.id) : ""; };
 
+const inChat = (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ chat) => { try { k.chats.read(chain, chat); return true; } catch { return false; } };
+
 /** @param {any} k the kernel handle of the Space the call runs in @param {any} hub that Space's hub */
 export function readers(k, hub) {
   const viewable = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec, /** @type {"mayViewChat" | "mayViewShare"} */ may) => {
     const me = personOf(chain); if (!me) return [];
     const out = [];
-    for (const r of (await k.records.query(k.serviceChain("work"), type, spec)).rows || []) if (await hub[may](me, r)) out.push(r);
+    for (const r of (await k.records.query(k.serviceChain("work"), type, spec)).rows || []) {
+      // the record's own people lag the kernel's chat for a moment (a person just added): the kernel's membership is the truth, so someone in the chat reads its record and the shares in its folders
+      const chat = type === "chat-record" ? r.data.chat : (/^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(String(r.data.path)) || [])[1];
+      if ((await hub[may](me, r)) || (chat && inChat(k, chain, String(chat)))) out.push(r);
+    }
     return out;
   };
   return {
@@ -20,7 +26,6 @@ export function readers(k, hub) {
 }
 
 const err = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const inChat = (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ chat) => { try { k.chats.read(chain, chat); return true; } catch { return false; } };
 
 /** Share one file of a chat the caller is in with the chat's project. @param {any} k @param {any} hub @param {any} chain @param {{ path: string }} i */
 export async function shareFile(k, hub, chain, i) {

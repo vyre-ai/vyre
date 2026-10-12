@@ -76,6 +76,11 @@ test("a chat and a file share: a member reads and changes none she is not part o
   const teamSees = async (/** @type {string} */ p) => (await titles(p)).some((/** @type {string} */ x) => /ANA-ONLY-TITLE/.test(x));
   assert.equal(await teamSees(ZED), true, "a member on the project's team sees a chat filed under it");
   assert.equal(await teamSees(BEN), false, "a member not on the project's team still does not see it");
+  // the record's own people lag the kernel's chat for a moment (a person just added): the kernel's membership is the truth, so Ana keeps her own chat even with the record's people emptied
+  const lag = (await gw.records.query(gw.serviceChain("work"), "chat-record", { filter: { field: "chat", op: "eq", value: anaOnly }, page: { limit: 1 } })).rows[0];
+  await gw.records.update(gw.serviceChain("work"), "chat-record", lag.id, { people: "" }, lag.version);
+  assert.ok((await titles(ANA)).some((/** @type {string} */ x) => /ANA-ONLY-TITLE/.test(x)), "a person in the kernel's chat lists it though the record's people do not name her yet");
+  assert.ok(!(await titles(BEN)).some((/** @type {string} */ x) => /ANA-ONLY-TITLE/.test(x)), "and someone who is not in the kernel's chat still does not");
 
   // a file share: made by the work module for the sharer (created_for), invisible on the raw routes to every member, kept for her and the owner
   const path = `Projects/${proj.id}/chat/${anaOnly}/SHARED-FILE.txt`;
