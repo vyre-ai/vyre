@@ -15,7 +15,7 @@ import { createGroups } from "./group.js";
 import { serve } from "./server.js";
 import { connect } from "./client.js";
 import { prng, Sched, makeLink } from "./testkit.js";
-import { holds } from "../../test/holds.js";
+import { holds, leaks } from "../../test/holds.js";
 import { createFakeKernel } from "./fake-reply-port.js";
 
 const PORTS = ["fake appendOpen port", "stand-in port"];
@@ -337,8 +337,8 @@ test("a field value in a closing text frame is dropped when the room grew after 
   kitM.ad = { event: () => [{ kind: "text-done", data: { message: "m9", blocks: [{ block: "text", text: "see below" }, FEE] } }] };
   r.say(r.threadOf("q5", "assistant:kit"), "x", { done: true });
   await r.groups.idle();
-  assert.ok(!JSON.stringify(bob.frames).includes("4200"), "no field value reached the group");
-  assert.ok(!JSON.stringify(r.fk.replies).includes("4200"), "and none reached the handle");
+  assert.ok(!leaks(bob.frames, "4200"), "no field value reached the group");
+  assert.ok(!leaks(r.fk.replies, "4200"), "and none reached the handle");
 });
 
 test("no frame of a kernel group chat reaches the log by any path but the reply handle (a content-free status aside)", async t => {

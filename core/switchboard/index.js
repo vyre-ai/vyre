@@ -34,6 +34,7 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { prepareSandbox, sessionCliEnv, pickedFirst } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
+import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -1013,7 +1014,7 @@ export class Switchboard {
     at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o), lentSpawn: await lentOf(this, id, rec) };
     at("skill library");
-    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o) };
+    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o, id) };
     at("spawn");
     // A thread rolled over and not yet written to has a fresh native session waiting for its first message, and the seed that rides with it: a restart in between must not try
     // to resume a session that never began, and must not lose the seed.
@@ -1414,14 +1415,55 @@ export class Switchboard {
    * skills module. Null for a job or lean thread that names its own plugins, for another provider's thread (it is given the same library in its own layout), or when nothing is approved.
    * @param {any} rec @param {any} o
    */
-  async libraryPlugin(rec, o) {
+  async libraryPlugin(rec, o, id) {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
       const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project && await projectMay(this, rec, o) ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
-      return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+      const there = dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+      return there && id ? this.libraryForSandbox(id, there, o) : there;
     } catch { return null; }
+  }
+
+  /**
+   * A confined session cannot see Vyre's home, where the skills module writes the library, and the project's other accounts must not read one person's set, so the session is given a private copy: in its own
+   * temp folder (the one the sandbox allows it), or, for a session under its own account's uid, seeded into that account's HOME by the spawner (`.vyre-skills/<content id>/`, 0600, her uid only; the seed
+   * rides on `libSeed`). A session with no sandbox reads the original, except Grok's, whose file tools refuse Vyre's home. The folder is named by the library's content id.
+   * @param {string} id @param {string} dir @param {any} o
+   */
+  libraryForSandbox(id, dir, o) {
+    const cfg = this.deps.sandbox;
+    if (!this.libSeed) this.libSeed = new Map();
+    this.libSeed.delete(id);
+    const acct = Boolean(o && o.accountRun && o.accountRun.uid != null);
+    if (acct && cfg && cfg.uid && o.accountRun.home) {
+      try {
+        const seed = /** @type {Record<string, string>} */ ({}); let total = 0;
+        const sid = path.basename(dir);
+        for (const rel of fs.readdirSync(dir, { recursive: true, withFileTypes: false }).map(String).sort()) {
+          const full = path.join(dir, rel);
+          if (!fs.lstatSync(full).isFile()) continue;
+          const key = `${SKILLS_PREFIX}${sid}/${rel.split(path.sep).join("/")}`;
+          const text = fs.readFileSync(full, "utf8");
+          // a file the spawner would refuse (an odd name, too deep, too big) is left out with a line in the log: one such file must not stop the session starting
+          if (!skillsKeyOk(key) || Buffer.byteLength(text) > SKILLS_CAPS.file) { this.deps.log(`threads: ${rel} in the skills set for ${String(id).slice(0, 8)} is left out (a name or size the account's folder does not take)`); continue; }
+          total += Buffer.byteLength(text); seed[key] = text;
+        }
+        if (!Object.keys(seed).length || Object.keys(seed).length > SKILLS_CAPS.files || total > SKILLS_CAPS.total) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the session starts without it`); return dir; }
+        this.libSeed.set(id, seed);
+        return path.join(String(o.accountRun.home), ".vyre-skills", sid);
+      } catch (e) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} could not be read for the account: ${/** @type {Error} */ (e).message}`); return dir; }
+    }
+    if (acct) return dir;
+    if ((!cfg || cfg.off) && (o && o.provider || "claude") !== "grok") return dir;
+    try {
+      const to = path.join(this.sessionTemp(id), "library", path.basename(dir));
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 });
+      fs.cpSync(dir, to, { recursive: true });
+      return to;
+    } catch { return dir; }
   }
 
   spawn(id, o) {
@@ -1507,7 +1549,7 @@ export class Switchboard {
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
-    const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
+    const how = { ...foreignOpts, ...(this.libSeed && this.libSeed.get(id) ? { librarySeed: this.libSeed.get(id) } : {}), ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
@@ -2206,7 +2248,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 

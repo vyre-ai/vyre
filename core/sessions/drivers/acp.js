@@ -240,7 +240,8 @@ function runAcp(entry, known, o) {
   const cwd = o.cwd || process.cwd();
   // Files the entry has Vyre put in the account's HOME at every start (a provider's own config: the
   // agent could otherwise have edited what it reads), written as the account's uid, mode 0600.
-  const seed = typeof entry.seed === "function" ? entry.seed(o) : entry.seed || undefined;
+  const ownSeed = typeof entry.seed === "function" ? entry.seed(o) : entry.seed || undefined;
+  const seed = o.librarySeed ? { ...(ownSeed || {}), ...o.librarySeed } : ownSeed;
   // The provider's key is the CLI's own; the shells it asks Vyre to run (terminal/create) never get it.
   const secretEnv = new Set(typeof entry.secretEnv === "function" ? entry.secretEnv(o) : entry.secretEnv || []);
   /** Anything that leaves for a person or a transcript (an error, the agent's stderr tail) is stripped of credential shapes and of this run's own secret values. */
