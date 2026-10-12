@@ -195,3 +195,19 @@ test("a model's files.drive.space.list in a team turn reads the TEAM Space's Dri
   await until(async () => { mine = ((await as(ANA, "catchup", { chat: m.chat })).messages || []).filter((/** @type {any} */ x) => /^assistant:/.test(String(x.author))).map((/** @type {any} */ x) => String(x.text)).join(" || "); return mine.length > 0; }, "the member's model's answer").catch(e => { throw new Error(`${e.message} :: ${mine.slice(0, 400)}`); });
   assert.ok(!mine.includes("retainer.txt"), `a member's model lists none of the Drive: ${mine.slice(0, 200)}`);
 });
+
+// 12 Oct 2026 (walk-9a): a message queued behind another person's running turn in a TEAM Space chat hops onto its sender's own account; the hop's kernel session must be opened in the TEAM Space (the turn's space), or the reply
+// finds no session ("no session came back; the reply was dropped") and the message is never answered.
+test("a member's message queued behind another member's running turn in a team chat is answered (the queued hop opens its session in the team Space)", { timeout: 250_000 }, async t => {
+  process.env.FAKE_CLAUDE_DELTA_MS = "20"; t.after(() => { delete process.env.FAKE_CLAUDE_DELTA_MS; });
+  const { as } = await world(t);
+  const made = await as(ANA, "create", { title: "Queue huddle", people: [BEN], agents: ["assistant"] });
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
+  const long = "SECRET " + Array(500).fill("word").join(" ");
+  await as(ANA, "send", { chat: made.chat, text: long });
+  await sleep(2500);   // her reply is streaming
+  await as(BEN, "send", { chat: made.chat, text: "B-QUEUED question" });
+  const said = async () => ((await as(ANA, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
+  let last = [];
+  await until(async () => { last = await said(); return last.some((/** @type {string} */ x) => /B-QUEUED/.test(x)); }, "Ben's queued message to be answered", 120_000).catch(e => { throw new Error(`${e.message}; the assistant said: ${JSON.stringify(last.map((/** @type {string} */ x) => x.slice(0, 60)))}`); });
+});
