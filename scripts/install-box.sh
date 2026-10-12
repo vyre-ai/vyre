@@ -173,6 +173,8 @@ finish() {
         say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
       fi
     fi
+    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
+    if [ "$STORE_CHOICE" != sqlite ]; then say "  Records is still setting up and can take several minutes; the app shows when it is ready."; fi
   fi
   say ""
 }
@@ -552,7 +554,7 @@ write_env() {
     # laid out (docker: "unable to prepare context"), or build an old tree and call it the new release. The .env is the person's, so it is not rewritten: the install stops here, before
     # anything is started, and says what to do.
     if [ -z "$FROM" ] && [ "$TGZ" != 1 ] && grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
-      die "$DIR/.env is from an earlier install that built Vyre from source (it names compose.build.yml), and this install pulls Vyre's signed image instead. Nothing was started. Move it aside and run the same line again: sudo mv $DIR/.env $DIR/.env.old (anything of yours in it, such as COMPOSE_PROFILES, can be copied back into the new .env afterwards)."
+      die "$DIR/.env is from an earlier install that built Vyre from source, and this install pulls Vyre's signed image instead. Nothing was started. Move it aside and run the same line again: sudo mv $DIR/.env $DIR/.env.old (anything of yours in it, such as COMPOSE_PROFILES, can be copied back into the new .env afterwards)."
     fi
     return 0
   fi

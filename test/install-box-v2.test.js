@@ -117,6 +117,7 @@ test("install-box.sh v2: with a code the terminal ends on the plain line", t => 
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Go back to the Vyre app to finish\./);
+  assert.match(r.stdout, /Records is still setting up and can take several minutes; the app shows when it is ready\./);
 });
 
 test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
