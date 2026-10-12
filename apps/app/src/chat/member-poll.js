@@ -3,7 +3,10 @@
 // with the chat); it asks for the frames after its cursor every POLL_MS while the screen is visible, hands each to the client once, in order, and says "heartbeat" when the log has nothing new so the client's idle timer
 // stays quiet. A full page is followed at once (history from the start comes in 200-frame pages). Answers arrive in POLL_MS steps, a whole message or its text so far: nothing here pushes. No frame is invented: what
 // comes back is what the door drew for her (her join floor, the kernel's say per frame).
-import { heartbeatFrame, resetFrame } from "../../../../core/stream/protocol.js";
+// The two control frames the client reads (core/stream/protocol.js heartbeatFrame, resetFrame), built here: that file pulls node:crypto in, which the app's bundle cannot resolve.
+const control = (/** @type {string} */ kind, /** @type {string} */ session, /** @type {any} */ data) => ({ v: 1, id: `${kind}-${Date.now()}`, cur: 0, session, turn: null, type: `chat.${kind}`, time: Date.now(), corr: null, data });
+const heartbeatFrame = (/** @type {string} */ session, /** @type {number} */ head) => control("heartbeat", session, { head });
+const resetFrame = (/** @type {string} */ session, /** @type {string} */ reason, /** @type {number} */ head) => control("reset", session, { reason, ...(head !== undefined ? { head } : {}) });
 
 export const POLL_MS = 3500;
 export const PAGE = 200;
