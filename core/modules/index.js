@@ -35,7 +35,7 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
-import { failure, requiresFailure, reported, stubTools, startWaiting } from "./store-waiting.js";
+import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -862,7 +862,7 @@ export class Registry {
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      if (rec.state === "waiting") stubTools(this, m, rec.error);
+      if (rec.state === "waiting") { stubTools(this, m, rec.error); armWaiting(this); }
       this.deps.log(`module ${m.name} ${rec.state === "waiting" ? "is waiting for the records" : "failed to start"}: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
@@ -2013,7 +2013,7 @@ export class Registry {
     return r.error ? { error: r.error } : { data: r };
   }
 
-  async stop() {
+  async stop() { this.stopping = true; if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
     for (const d of /** @type {Map<string, any>} */ (this.spaceDbs || new Map()).values()) { try { d.close(); } catch { /* closed */ } }
     this.spaceDbs = null;
     for (const [name, r] of [...this.modules.entries()].reverse()) {

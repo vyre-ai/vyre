@@ -62,13 +62,13 @@ export default [
       if (json()) {
         return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem && personal ? { memory: personal } : {}), ...(slow(memRes) ? { memory_note: "starting" } : {}), ...(readSpace() ? { space: readSpace() } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
           { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
-          { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
+          { label: "Modules", value: `${d.modules.running} running${d.modules.waiting ? `, ${d.modules.waiting} waiting for Records (they start by themselves)` : ""}${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
           ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
       }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       if (d.finishing === "waiting") out(`  ${beacon("Finishing the update")} ${dim("· the signed module list is on its way; the modules start by themselves")}`);
       else if (d.finishing === "gave_up") out(`  ${beacon("The update did not finish")} ${dim("· the signed module list never arrived, so no module is running. Run: vyre update")}`);
-      out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
+      out(`  ${d.modules.running} modules running${d.modules.waiting ? dim(` · ${d.modules.waiting} waiting for Records, they start by themselves`) : ""}${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (d.kernel_note) out(dim(`  ${d.kernel_note}`));
       if (readSpace()) out(`  acting in ${readSpace()} ${dim("· vyre space use --clear to go back to the home's own space")}`);
       if (d.records_store) { const rs = d.records_store; out(`  records: ${rs.store === "twenty" ? "Records" : rs.store === "builtin" ? "built-in store" : rs.store === "none" ? "none" : rs.store} ${dim(`· ${rs.from === "VYRE_STORE" ? "VYRE_STORE" : "default"}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}`)}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
