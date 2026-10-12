@@ -11,7 +11,7 @@ import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { NOT_FOR_MEMBERS_YET, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
+import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
@@ -72,16 +72,18 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     // With several servers paired, the call goes to the one that hosts its Space (or the one it names); one pairing goes where it always went.
-    const { routeCall, listAllSpaces, listAllChats, noteChat } = await import("./space-servers");
+    const { routeCall, listAllSpaces, listAllChats, noteChat, noteItems } = await import("./space-servers");
     // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
     if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
-    const route = await routeCall({ tool: name, input, showing: useSpaces.getState().space, server: opts.server });
+    const route = await routeCall({ tool: name, input: given, showing: useSpaces.getState().space, server: opts.server });
     if (route.error) throw new BoxError(route.error.code, route.error.message);
     const to = route.box;
+    // an id-only action goes with the Space its id was seen in, not the one that happens to be showing
+    if (route.space && SPACE_TOOLS.has(name)) input = { ...input, space: route.space };
     // The chats list is every server's under All spaces. A new chat belongs to a Space on one server, so with several servers it is made only when a Space is showing (never guessed onto the active one).
     if (name === "work.chat.list" && !to && !opts.server) { const all = await listAllChats(input); if (all) return all as T; }
     if (name === "work.chat.create" && !to && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) throw new BoxError("pick_a_space", "Pick the Space this chat is for first, then start it. A chat belongs to one Space on one server. Nothing was made.");
-    try { const out = await peerCall<T>(name, input, to); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); return out; }
+    try { const out = await peerCall<T>(name, input, to); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); else noteItems(out, typeof input.space === "string" ? input.space : undefined); return out; }
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
