@@ -13,9 +13,9 @@ export function readers(k, hub) {
     const me = personOf(chain); if (!me) return [];
     const out = [];
     for (const r of (await k.records.query(k.serviceChain("work"), type, spec)).rows || []) {
-      // the record's own people lag the kernel's chat for a moment (a person just added): the kernel's membership is the truth, so someone in the chat reads its record and the shares in its folders
+      // the record's own people lag the kernel's chat for a moment (a person just added or removed): the kernel's membership is the truth both ways, so someone in the chat reads its record and the shares in its folders, and the record's people alone open nothing
       const chat = type === "chat-record" ? r.data.chat : (/^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(String(r.data.path)) || [])[1];
-      if ((await hub[may](me, r)) || (chat && inChat(k, chain, String(chat)))) out.push(r);
+      if ((chat && inChat(k, chain, String(chat))) || (await hub[may](me, r, false))) out.push(r);
     }
     return out;
   };
@@ -31,8 +31,8 @@ const err = (/** @type {string} */ message, /** @type {string} */ code) => Objec
 export async function shareFile(k, hub, chain, i) {
   const { chatRows } = readers(k, hub), m = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\/./.exec(String(i.path));
   // only a chat's own people can share its files: a chat that is not theirs is not there for them
-  const row = m ? (await chatRows(chain, { filter: { field: "chat", op: "eq", value: m[1] }, page: { limit: 1 } }))[0] : null, me = personOf(chain);
-  if (!row || !String(row.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(me)) throw err("that file is not in a chat of yours (work.file.list shows the files of a chat you are in)", "not_found");
+  const row = m ? (await chatRows(chain, { filter: { field: "chat", op: "eq", value: m[1] }, page: { limit: 1 } }))[0] : null;
+  if (!row || !inChat(k, chain, String(m && m[1]))) throw err("that file is not in a chat of yours (work.file.list shows the files of a chat you are in)", "not_found");
   const r = await k.records.create(k.serviceChain("work"), "file-share", { path: String(i.path) }, { on_behalf: chain });
   return { shared: true, id: r.id };
 }

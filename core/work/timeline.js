@@ -83,7 +83,8 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
         const who = me(chain);
         for (const r of (await k.records.query(k.serviceChain("work"), "file-share", { page: { limit: 200 } })).rows || []) {
           const path = String(r.data.path || "");
-          if (!(who && await hub().mayViewShare(who, r))) continue;
+          const chatId = (/^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(path) || [])[1];
+          if (!(who && ((chatId && inChat(chain, chatId)) || await hub().mayViewShare(who, r, false)))) continue;
           if (path.startsWith(`${root}/`)) out.push({ type: "file-share", kind: "file", id: r.id, urn: r.urn, title: path.split("/").pop() || path, line: `File shared: ${path.split("/").pop() || path}`, at: Number(r.updated_at || 0) });
         }
       }

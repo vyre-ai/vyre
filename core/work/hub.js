@@ -189,26 +189,26 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /**
    * May this PERSON read or change a chat's record: the people in the chat, the Space's owner or an admin, or the owner or team of the project it is filed under (class 3: the raw Records route to a chat
    * is the owner's and the admins'; everyone else reads it through the work module, which asks here for each record).
-   * @param {string} person @param {any} rec
+   * @param {string} person @param {any} rec @param {boolean} [byPeople] false: leave the record's own `people` out (the kernel's chat is the truth, the caller asks it)
    */
-  async function mayViewChat(person, rec) {
+  async function mayViewChat(person, rec, byPeople = true) {
     if (!person || !rec) return false;
     const d = data(rec) || {};
-    if (String(d.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
+    if (byPeople && String(d.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
     if (await isStaff(person)) return true;
     const urn = d.project && d.project.urn;
     return urn ? mayUseProject(person, String(urn)).catch(() => false) : false;
   }
   /**
    * May this PERSON see a file share: the owner or an admin, someone in the chat the file is in, or the owner or team of the project whose folder holds it (the share is what opens that one file to them).
-   * @param {string} person @param {any} rec
+   * @param {string} person @param {any} rec @param {boolean} [byPeople] false: leave the chat record's `people` out (the caller asks the kernel's chat)
    */
-  async function mayViewShare(person, rec) {
+  async function mayViewShare(person, rec, byPeople = true) {
     const path = String(((data(rec) || {}).path) || ""), m = /^Projects\/([^/]+)\/(?:chat|made)\/([^/]+)\//.exec(path);
     if (!person || !m) return false;
     if (await isStaff(person)) return true;
     const chatRec = await findChat(m[2]);
-    if (chatRec && String((data(chatRec) || {}).people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
+    if (byPeople && chatRec && String((data(chatRec) || {}).people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
     return mayUseProject(person, `vyre://${kernel.space}/${PROJECT}/${m[1]}`).catch(() => false);
   }
 
