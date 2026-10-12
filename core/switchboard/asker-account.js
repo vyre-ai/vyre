@@ -248,3 +248,11 @@ export async function checkLaunch(sb, i, chain, owner, origin) {
   await agentLaunchGuard(sb, i, who, owner);
   return who || (typeof i.for_person === "string" && i.for_person && i.for_person !== "automation" ? i.for_person : null);
 }
+
+/**
+ * Has the thread left the base a one-turn hop started from? By provider, or by ACCOUNT (a hop onto another person's account of the same provider moves nothing else): then the hop must be reverted.
+ * @param {{ provider?: string | null, account?: string | null }} at the thread's record now @param {{ provider: string, account?: string | null }} back where the hop started
+ */
+export function hopMovedAway(at, back) {
+  return (at.provider || "claude") !== back.provider || (at.account || null) !== (back.account || null);
+}

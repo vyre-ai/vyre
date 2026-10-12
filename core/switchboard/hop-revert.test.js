@@ -140,7 +140,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
   /** @type {any[]} */ const events = []; /** @type {any[]} */ const sql = []; /** @type {string[]} */ const resumed = []; /** @type {boolean[]} */ const liveAtResume = []; let stops = 0, tries = 0;
   const hopProcess = { writes: [] };
   const sb = /** @type {any} */ ({
-    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
+    endHop: Switchboard.prototype.endHop, once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
     live: new Map([["t", { turn: null, stopping: false, hopProcess }]]), deps: { log() {} },
     record: () => ({ project: null, provider: "codex", account: "carols" }),
     db: { prepare: (/** @type {string} */ q) => ({ get: () => ({ opts: JSON.stringify({ account: "carols", person: "per_carol", origin: "x" }) }), run: (/** @type {any[]} */ ...a) => { sql.push([q.slice(0, 40), a]); return { changes: 1 }; } }) },
@@ -174,7 +174,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
 test("a switch back that can never succeed (account removed) is not retried: straight to the dormant path", async () => {
   let tries = 0; /** @type {any[]} */ const events = [];
   const sb = /** @type {any} */ ({
-    once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: true,
+    endHop: Switchboard.prototype.endHop, once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: true,
     live: new Map(), deps: { log() {} }, record: () => ({ project: null }),
     db: { prepare: () => ({ get: () => ({ opts: "{}" }), run: () => ({ changes: 1 }) }) },
     emit: (/** @type {string} */ type) => events.push(type), stop: async () => {},
