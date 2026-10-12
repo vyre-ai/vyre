@@ -276,7 +276,7 @@ export function createApp(o) {
   /**
    * The owner's side of a team invite, as the app does it (apps/app/src/real/team-invite.js over kernel-wire.js on the paired peer stream): the server holds no identity, so the home's kernel asks THIS
    * app's key for its yes. `signPresence` is that key (the walk hands in the development sealing process's software signer; a release server wants a hardware key).
-   * @param {{ space: string, name: string, to: string, signPresence: (card: any) => Promise<any> }} a
+   * @param {{ space: string, name: string, to: string, role?: string, signPresence: (card: any) => Promise<any> }} a
    */
   async function makeTeamInvite(a) {
     if (!me || !pairing) throw new Error("this app has no identity or no server yet");
@@ -284,7 +284,7 @@ export function createApp(o) {
     const peer = await openServerPeer(conn);
     const wire = kernelWire(peer, a.space, { person: me.id, signPresence: a.signPresence });
     const dir = { wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory };
-    const made = await createTeamInvite(dir, { space: a.space, name: a.name, role: "member", to: a.to });
+    const made = await createTeamInvite(dir, { space: a.space, name: a.name, role: a.role || "member", to: a.to });
     const rows = await listTeamInvites(dir);
     return { ...made, rows, close() { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } } };
   }
