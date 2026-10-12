@@ -1564,13 +1564,9 @@ shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.loc
   assert.equal(res.data.ops.at(-1).by, pc.eid, "signed by the passkey");
 });
 
-shardTest("a member reads a team chat in the app's own code path: the real callTeam/homeSession session, the pollDuplex poller and core/stream's client against a real paired server; the owner's words arrive in order once each, a member added later gets nothing from before her floor, and a member not in the chat is refused in words", { timeout: 200_000 }, async t => {
-  const { openInvite, homeSession } = await import("../apps/app/src/real/join-team.js");
-  const { pollDuplex } = await import("../apps/app/src/chat/member-poll.js");
-  const { connect: connectStream } = await import("../core/stream/client.js");
-  const { WORDS } = await import("../relay/client/words.js");
-  const { ident, f, made, hosted, ownerChain, linkFor, sealSigner, ROUTE } = await teamRig(t);
-  const joinAs = async (/** @type {string} */ name) => {
+/** Joins a named identity to the rig's team Space as a member the way the app does (openInvite, accept) and gives back what it needs to call the team: its deps and the row it keeps. */
+function memberJoiner({ ident, hosted, linkFor, sealSigner, made, openInvite, WORDS }) {
+  return async (/** @type {string} */ name) => {
     const who = await ident.another(name);
     const signer = sealSigner(who.id);
     const invChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: who.id, vouched: true });
@@ -1583,8 +1579,17 @@ shardTest("a member reads a team chat in the app's own code path: the real callT
     };
     const inv = await openInvite(deps, (await linkFor(who.id)).link);
     await inv.accept(); inv.close();
-    return { who, deps, rows };
+    return { who, deps, rows, space: made.space };
   };
+}
+
+shardTest("a member reads a team chat in the app's own code path: the real callTeam/homeSession session, the pollDuplex poller and core/stream's client against a real paired server; the owner's words arrive in order once each, a member added later gets nothing from before her floor, and a member not in the chat is refused in words", { timeout: 200_000 }, async t => {
+  const { openInvite, homeSession } = await import("../apps/app/src/real/join-team.js");
+  const { pollDuplex } = await import("../apps/app/src/chat/member-poll.js");
+  const { connect: connectStream } = await import("../core/stream/client.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealSigner, ROUTE } = await teamRig(t);
+  const joinAs = memberJoiner({ ident, hosted, linkFor, sealSigner, made, openInvite, WORDS });
   const ana = await joinAs("ana"), ben = await joinAs("ben");
   const handle = /** @type {any} */ (f.w.d.registry.modules.get("work")).handle;
   const svc = handle.peerService({ space: made.space, kernel: hosted.kernel, registry: f.w.d.registry });
@@ -1617,4 +1622,71 @@ shardTest("a member reads a team chat in the app's own code path: the real callT
   await open(ben, chat.chat, benFrames);
   await until(() => textsOf(benFrames).includes("owner: after ben joined"), "ben reads what came after his join");
   assert.ok(!textsOf(benFrames).some(x => /first words|second words/.test(x)), "nothing from before his floor");
+});
+
+shardTest("a member's Store shows the team: through the app's real store route, shared door session, event poll and gateway adapter against a real paired server, Ana lists the team's contact, none of the owner's hidden note, her own project and task, sees a change within seconds, one door session carried it all, and a refused write reaches her in the door's words", { timeout: 200_000 }, async t => {
+  const { openInvite, homeSession } = await import("../apps/app/src/real/join-team.js");
+  const { createSharedSessions } = await import("../apps/app/src/real/team-session.js");
+  const { createStoreRoute } = await import("../apps/app/src/real/store-route.js");
+  const { startEventPoll } = await import("../apps/app/src/real/event-poll.js");
+  const { createGatewayStore, storeError } = await import("../apps/app/src/store-core/gateway-adapter.js");
+  const { memberChatWire, NOT_FOR_MEMBERS_YET } = await import("../apps/app/src/real/with-space.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealSigner } = await teamRig(t);
+  const ana = await memberJoiner({ ident, hosted, linkFor, sealSigner, made, openInvite, WORDS })("ana");
+  const gw = hosted.gateway;
+  const mk = async (type, data) => gw.records.create(ownerChain, type, data);
+  const contact = await mk("contact", { name: "Pat Contact MARKcontact" });
+  await mk("note", { text: "owner private note MARKnote" }).catch(() => null);
+  const ownerProject = await mk("project", { name: "Owner only project", owner: { actor: { kind: "person", id: f.owner.id, space: made.space } } });
+  let opened = 0;
+  const shared = createSharedSessions({ open: async () => { opened++; return homeSession(ana.deps, ana.rows.get(`member-of/${made.space}`).channel, made.space, "member"); } });
+  t.after(() => shared.closeAll());
+  // the route exactly as store-link.ts builds it, with the app's own tool() replaced by its door step (real/box.ts: the member map's call name, the space dropped from the input)
+  const routed = createStoreRoute({
+    joinedSpace: async () => made.space, wired: (n) => memberChatWire(n) !== null, notYet: NOT_FOR_MEMBERS_YET,
+    fail: (e) => storeError({ code: e.code, message: e.message }),
+    door: (name, input) => { const { space: _s, ...rest } = input; return shared.call(made.space, memberChatWire(name), [rest]); },
+    plain: { read: async () => { throw new Error("her own home was asked"); }, write: async () => { throw new Error("her own home was asked"); } },
+  });
+  const heard = []; let looks = 0;
+  const stopPoll = startEventPoll({ spaceNow: async () => made.space, ask: (space, input) => shared.call(space, "records.events", [input]).then((r) => { looks++; return r; }), onEvent: (e) => heard.push(e), pollMs: 700, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+  t.after(stopPoll);
+  for (let i = 0; i < 40 && looks < 1; i++) await new Promise((r) => setTimeout(r, 250));
+  assert.ok(looks >= 1, "the poll made its first look (it learns where the log is and fires nothing)");
+  const store = createGatewayStore({ rpc: /** @type {any} */ ({ read: routed.read, write: routed.write, events: () => () => {} }) });
+  const names = (rows) => rows.map((r) => JSON.stringify(r.data ?? r));
+  // the team's contact is hers to read; the owner's note and project are not
+  const contacts = await store.list("contact");
+  assert.ok(names(contacts).some((x) => /MARKcontact/.test(x)), "Ana's Store lists the team's contact");
+  const notes = await store.list("note").catch(() => []);
+  assert.ok(!names(notes).some((x) => /MARKnote/.test(x)), "the owner's private note is not hers");
+  const projects = await store.list("project").catch(() => []);
+  // KNOWN OPEN (rc1-a's mayView read predicate, team/0.3.4/MEMBER-SPACE-plan.md): only WRITES are judged by the ownership rule today, so records.list and records.get still show a project owned by someone else to
+  // any member. This block pins what is true, out loud, so the day the predicate lands it is changed to "not listed, cannot open".
+  const leakedList = names(projects).some((x) => /Owner only project/.test(x));
+  const leakedGet = Boolean(await store.get(`vyre://${made.space}/project/${ownerProject.id}`).then((r) => r, () => null));
+  console.log(`# KNOWN OPEN: another person's project is listed to a member: ${leakedList}; opens for a member: ${leakedGet}`);
+  // what she makes herself is hers
+  const mine = await store.create("project", { name: "Ana's own project" });
+  assert.ok(mine && mine.id, "she can make a project");
+  assert.ok(names(await store.list("project")).some((x) => /Ana's own project/.test(x)), "and sees it");
+  // a task asked of her shows in her Store
+  const task = await gw.ask.request(ownerChain, { title: "Ana please review MARKtask", doer: { kind: "person", id: ana.who.id, space: made.space }, output: { kind: "note" }, source: "manual" });
+  const tasks = await store.tasks({});
+  assert.ok(names(tasks).some((x) => /MARKtask/.test(x)), "her task is in her Store");
+  // the team changes while she looks: the poll tells her within seconds
+  const before = heard.length;
+  await mk("contact", { name: "Newcomer MARKnew" });
+  for (let i = 0; i < 40 && heard.length === before; i++) await new Promise((r) => setTimeout(r, 300));
+  assert.ok(heard.length > before, "a new event was heard by the poll");
+  assert.ok(names(await store.list("contact")).some((x) => /MARKnew/.test(x)), "and the refetch shows the new contact");
+  // a refused write comes back in the door's own words
+  const theirs = await gw.ask.request(ownerChain, { title: "Owner only task MARKowner", doer: { kind: "person", id: f.owner.id, space: made.space }, output: { kind: "note" }, source: "manual" });
+  const taskId = theirs.id ?? theirs.task?.id;
+  const refused = await store.move(taskId, "working").then(() => null, (e) => String(e.message));
+  assert.ok(refused && !/did not work|something went wrong/i.test(refused), `a task that is not hers is refused in the door's words: ${refused}`);
+  await assert.rejects(() => store.addField("contact", { label: "Court", kind: "text" }), (e) => /owner's for now|owner|role|allowed/i.test(e.message));
+  assert.equal(opened, 1, "every call of the whole load went over ONE door session");
+  void ownerProject; void task;
 });
