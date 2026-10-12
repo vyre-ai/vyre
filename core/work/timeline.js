@@ -94,6 +94,25 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
     return { entries: out.slice(0, limit), truncated: Boolean(truncated) };
   }
 
+  /**
+   * A project's story is its team's: for a project (or a record that sits in one) a person who is not the owner or an admin needs a seat on the project, else it is "no such project", the same words as a wrong
+   * name. Staff and a call with no person pass. A record in no project keeps what the kernel lets the caller read. @param {any} chain @param {string} urn
+   */
+  async function seatOn(chain, urn) {
+    const person = (chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null);
+    if (!person) return;
+    const [, , , type, id] = urn.split("/");
+    let project = type === "project" ? urn : null;
+    if (!project) {
+      const rec = await kernelOf().records.get(chain, type, id).catch(() => null);
+      const link = rec && rec.data && rec.data.project;
+      project = link && typeof link === "object" && typeof link.urn === "string" ? link.urn : null;
+    }
+    if (!project) return;
+    const may = await hub().mayUseProject(String(person.actor.id), project).catch(() => false);
+    if (!may) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
+  }
+
   /** @param {any} chain @param {{ record?: string, project?: string, limit?: number }} i */
   async function timeline(chain, i) {
     const k = kernelOf();
@@ -104,6 +123,7 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
       urn = p.urn;
     }
     if (!URN.test(urn)) throw Object.assign(new Error("name a record (its urn) or a project"), { code: "bad_input" });
+    await seatOn(chain, urn);
     return { record: urn, ...(await entries(chain, urn, Math.min(Number(i.limit) || 100, 200))) };
   }
 
