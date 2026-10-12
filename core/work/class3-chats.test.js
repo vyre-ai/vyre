@@ -9,6 +9,8 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { WIRE_VERSION } from "../../kernel/remote/wire.js";
+import { createHub } from "./hub.js";
+import { shareFile, unshareFile, readers } from "./shares.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", ZED = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -86,4 +88,31 @@ test("a chat and a file share: a member reads and changes none she is not part o
     assert.ok(!(await door(who, "records.remove", "file-share", sh.id, sh.version)).ok, `${who.slice(4, 8)}: door remove of a share`);
   }
   assert.equal((await gw.records.query(ownerChain, "file-share", { page: { limit: 50 } })).rows.length, 1, "the owner reads the share");
+
+  // through the work module's own share and unshare (shares.js), as the app's tools run them, on this Space's kernel and hub
+  const WK = K.kernelFor({ name: "work", needs: { kernel: { membership: true, work: true, attrs: true, actions: ["records.read", "records.create", "records.update", "records.remove"] } } });   // the work module's own handle on this Space
+  const hub = createHub({ kernel: WK, call: async () => null, log: () => {} });
+  const { shareRows } = readers(WK, hub);
+  const sharedPath = `Projects/${proj.id}/chat/${shared}/BY-WORK.txt`;
+  const made = await shareFile(WK, hub, chainOf(ANA), { path: sharedPath });   // Ana is in the chat she shares with Ben
+  assert.equal(made.shared, true, "Ana shares a file of her chat");
+  await assert.rejects(shareFile(WK, hub, chainOf(ZED), { path: sharedPath }), /not in a chat of yours/, "an outsider cannot share a file of a chat she is not in");
+  const seesShare = async (/** @type {string} */ p) => (await shareRows(chainOf(p), { page: { limit: 50 } })).some((/** @type {any} */ r) => String(r.data.path) === sharedPath);
+  assert.equal(await seesShare(ANA), true, "the sharer sees her share");
+  assert.equal(await seesShare(BEN), true, "a person in the chat sees it");
+  assert.equal(await seesShare(ZED), true, "a member on the project's team sees it");
+  assert.equal((await shareRows(chainOf(ZED), { page: { limit: 50 } })).some((/** @type {any} */ r) => String(r.data.path) === path), true, "and the share in the project's other chat too (the team of the project in its path)");
+  // a share is the sharer's to take back: another person in the chat cannot, an outsider cannot, the sharer and the owner can
+  assert.equal((await unshareFile(WK, hub, chainOf(BEN), { path: sharedPath })).unshared, 0, "another person in the chat cannot take her share back");
+  assert.equal((await unshareFile(WK, hub, chainOf(ZED), { path: sharedPath })).unshared, 0, "a team member cannot");
+  assert.equal(await seesShare(ANA), true, "and the share is still there");
+  assert.equal((await unshareFile(WK, hub, chainOf(ANA), { path: sharedPath })).unshared, 1, "the sharer takes it back");
+  const again = await shareFile(WK, hub, chainOf(ANA), { path: sharedPath });
+  assert.ok(again.id);
+  assert.equal((await unshareFile(WK, hub, ownerChain, { path: sharedPath })).unshared, 1, "the owner takes any share back");
+
+  // link reads: the owner still reads a project's chats through a link, a member reads none through one
+  const linkedChats = async (/** @type {any} */ chain) => (await gw.records.linked(chain, proj.urn, { type: "chat-record", limit: 50 })).rows;
+  assert.ok((await linkedChats(ownerChain)).length >= 1, "the owner reads the project's chats through a link");
+  assert.equal((await linkedChats(chainOf(ZED))).length, 0, "a member reads none of them through a link");
 });

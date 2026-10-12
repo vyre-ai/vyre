@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { readers, personOf as personOfChain, shareFile, unshareFile } from "./shares.js";
 import { createTimeline } from "./timeline.js";
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
@@ -103,17 +104,10 @@ export default {
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
     /** @type {any} */ let hub = null;
     const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
-    // Chats and shares are the work module's to serve (kernel/gateway/records.js KEEPERS): a person has no raw Records route to them unless she is the owner or an admin, so each read here runs under the module's own chain
-    // and keeps the records this person may see (hub.mayViewChat, hub.mayViewShare). A call with no person on its chain sees none.
-    const personOf = (/** @type {any} */ c) => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor.kind === "person") : null; return h ? String(h.actor.id) : ""; };
-    const viewable = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec, /** @type {"mayViewChat" | "mayViewShare"} */ may) => {
-      const me = personOf(chain); if (!me) return [];
-      const k = kernelOf(), out = [];
-      for (const r of (await k.records.query(k.serviceChain("work"), type, spec)).rows || []) if (await hubOf()[may](me, r)) out.push(r);
-      return out;
-    };
-    const chatRows = (/** @type {any} */ chain, /** @type {any} */ spec) => viewable(chain, "chat-record", spec, "mayViewChat");
-    const shareRows = (/** @type {any} */ chain, /** @type {any} */ spec) => viewable(chain, "file-share", spec, "mayViewShare");
+    const readersOf = () => readers(kernelOf(), hubOf());
+    const chatRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().chatRows(chain, spec);
+    const shareRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().shareRows(chain, spec);
+    const personOf = personOfChain;
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
       // a project made through the old project list (the CLI, the app) gets its record
@@ -224,27 +218,9 @@ export default {
         return { root, files };
       } });
     ctx.tool("work.file.share", { description: "Share one file of a chat you are in with that chat's project: its members open that one file and nothing else. Give the file's path (Projects/<project>/chat/<chat>/<name>).",
-      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-        const k = kernelOf(), chain = await chainOf(extra), m = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\/./.exec(String(i.path));
-        // only a chat's own people can share its files: a chat that is not theirs is not there for them
-        const row = m ? (await chatRows(chain, { filter: { field: "chat", op: "eq", value: m[1] }, page: { limit: 1 } }))[0] : null, me = chain.hops[0] && chain.hops[0].actor.id;
-        if (!row || !String(row.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(me)) throw Object.assign(new Error("that file is not in a chat of yours (work.file.list shows the files of a chat you are in)"), { code: "not_found" });
-        const r = await k.records.create(k.serviceChain("work"), "file-share", { path: String(i.path) }, { on_behalf: chain }); return { shared: true, id: r.id };
-      } });
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => shareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
-      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-        const k = kernelOf(), chain = await chainOf(extra);
-        // a share is its sharer's to take back, and an owner's or an admin's: the sharer is the person the work module wrote it for (`created_for`), and the record itself is the module's own to remove
-        const rows = await shareRows(chain, { filter: { field: "path", op: "eq", value: String(i.path) }, page: { limit: 50 } });
-        const me = personOf(chain), staff = me ? await hubOf().isStaff(me) : false;
-        let removed = 0;
-        for (const r of rows) {
-          const at = (await k.records.attrsOf(r.urn)) || {}, sharer = String(at.created_for || at.created_by || "");
-          if (!(staff || (me && sharer === `person:${me}`))) continue;
-          try { await k.records.remove(k.serviceChain("work"), "file-share", r.id, r.version); removed++; } catch { /* already gone */ }
-        }
-        return { unshared: removed };
-      } });
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => unshareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
     ctx.tool("work.project.create", {
