@@ -28,7 +28,7 @@ test("space helper: a generator that dies says its exit code and a clean, capped
   assert.match(st.message, /^[\x20-\x7e]*$/, "plain printable ASCII, one line");
   assert.ok(st.message.length <= 240, st.message.length + "");
   assert.ok(st.message.length > 100, "the line is kept, not dropped");
-  assert.deepEqual(fs.readdirSync(priv).filter(n => /^gen-err\./.test(n)), [], "no error file is left in root's folder");
+  assert.deepEqual(fs.readdirSync(priv).filter(n => /^gen-(err|rc)\./.test(n)), [], "no error file is left in root's folder");
 });
 
 test("space helper: with no valid image id recorded the failure says so", opts, async t => {
@@ -40,4 +40,21 @@ test("space helper: with no valid image id recorded the failure says so", opts, 
   const st = r.status(id);
   assert.notEqual(st.state, "ok");
   assert.match(st.message, /the compose file could not be regenerated: no valid image id is recorded yet/);
+});
+
+test("space helper: the generator's stderr is kept in root's folder only, with a size limit, and nothing is written in /tmp", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.flag("gen-fails", "x".repeat(400_000));
+  r.flag("gen-exit", "1");
+  const before = new Set(fs.readdirSync("/tmp"));
+  const id = r.ask("up harlow\n");
+  await r.helper();
+  const st = r.status(id);
+  assert.match(st.message, /^the compose file could not be regenerated: /);
+  assert.ok(st.message.length <= 240);
+  assert.deepEqual(fs.readdirSync("/tmp").filter(n => !before.has(n) && /\.rc$|gen-err|gen-rc/.test(n)), [], "no file at a name derived from another in /tmp");
+  const src = fs.readFileSync(new URL("../box/vyre", import.meta.url), "utf8");
+  assert.ok(!/mktemp "\$SP_PRIV\/gen-err\.XXXXXX" 2>\/dev\/null \|\| mktemp\)/.test(src), "no shared-folder fallback");
+  assert.match(src, /head -c 4096 >"\$ge"/, "the stderr file is size-limited");
 });
