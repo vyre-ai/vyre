@@ -323,3 +323,28 @@ test("rc.3: attempt 1 fails, the opener attaches later: store-state.json is gone
   assert.ok((await st.types()).some((x) => x.name === "task_x"), "the definition made while the store was away was applied");
   assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false);
 });
+
+test("rc.3: when the first open finishes late and attach() then throws, the failure is recorded again and retried, not left as an unhandled rejection with the record already removed", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  const real = createMemoryStore({});
+  real.define = async () => { throw new Error("define broke during the replay"); };
+  const unhandled = [];
+  const onUnhandled = (/** @type {any} */ e) => unhandled.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const f = createStoreFor({ home, mode: "twenty", degrade: true, startWaitMs: 5, retryBaseMs: 60_000, log: () => {}, helper: false, rotate: /** @type {any} */ (async () => ({})),
+      preflight: async () => { await new Promise((r) => setTimeout(r, 60)); return { ok: true, reasons: [] }; },
+      provision: async () => ({ url: "http://127.0.0.1:1", keyFile: "x", webhookSecretFile: "y" }), makeStore: () => real });
+    const st = await f(SP, { personal: true });          // the open is slow: the deferred store comes back first
+    await st.define({ add_types: [{ name: "task_x", fields: [] }] });   // queued, replayed on attach
+    f.bootDone();
+    const t0 = Date.now();
+    while (!fs.existsSync(path.join(dir, "store-state.json")) && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 10));
+    const state = JSON.parse(fs.readFileSync(path.join(dir, "store-state.json"), "utf8"));
+    assert.equal(state.state, "unavailable");
+    assert.match(state.reason, /define broke during the replay/);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(unhandled, [], "no unhandled rejection");
+  } finally { process.off("unhandledRejection", onUnhandled); }
+});

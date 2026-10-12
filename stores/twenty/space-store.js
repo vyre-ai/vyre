@@ -247,7 +247,8 @@ export function createStoreFor(cfg) {
         waiting.delete(space);
         try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
         log(`store for ${space}: Records are available now`);
-      }, (e) => {
+      }).catch((e) => {
+        // A failed open AND an attach() that throws after it come here (a second argument to then() would not catch the attach): the record was removed when the store opened, so it is written again.
         w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
         const wait = backoff(w.attempts);
         writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
