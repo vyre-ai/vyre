@@ -15,6 +15,7 @@ function fakeKernel() {
   const person = { hops: [{ actor: { kind: "person", id: "per_x" } }] };
   return {
     person, files,
+    chats: { read: async () => {} },
     serviceChain: () => ({ hops: [{ actor: { kind: "service", id: "work" } }] }),   // a chat record is read under the module's own chain
     records: {
       query: async (/** @type {any} */ _c, /** @type {string} */ type) => ({ rows: type === "chat-record" ? [{ data: { drive: "Projects/p", chat: "c1" } }] : [] }),
