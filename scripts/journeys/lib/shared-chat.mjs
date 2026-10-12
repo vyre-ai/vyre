@@ -383,7 +383,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     };
     // what a launched session is handed (the person's approved skills as files in her account's home; a bare MCP session lists only the built-in five): count the owner's skill file in each person's turn
     const counts = /** @type {Record<string, string>} */ ({});
-    for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, `find "$HOME" "\${CODEX_HOME:-$HOME}" -path '*walk-owner-private*' -name SKILL.md 2>/dev/null | wc -l; find "$HOME" "\${CODEX_HOME:-$HOME}" -name SKILL.md 2>/dev/null | wc -l`);
+    for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, `timeout 25 find "$HOME" -maxdepth 8 -name SKILL.md 2>/dev/null | grep -c walk-owner-private; timeout 25 find "$HOME" -maxdepth 8 -name SKILL.md 2>/dev/null | wc -l`);
     said.skills = JSON.stringify(counts).slice(0, 600);
     for (const [who, out] of Object.entries(counts)) assert.ok(/walk-term exit=0/.test(out), `${who}'s command ran: ${out.slice(0, 200)}`);
     const nums = (/** @type {string} */ t) => (t.split(":").slice(1).join(":").match(/\d+/g) || []).map(Number);
