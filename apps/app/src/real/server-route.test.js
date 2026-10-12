@@ -155,3 +155,29 @@ test("needsSpace: the actions that belong to a Space, and not the reads or the t
   for (const t of ["records.create", "records.update", "tasks.decide", "rules.define", "flows.run", "work.project.rename", "work.start-project", "files.drive.upload"]) assert.equal(needsSpace(t), true, t);
   for (const t of ["records.list", "tasks.list", "flows.list", "spaces.list", "projects.list", "work.chat.list", "stream.send", "records.me", "settings.get", "files.drive.list"]) assert.equal(needsSpace(t), false, t);
 });
+
+// The vault holds secrets: a team's credential must never be written to, or read from, the other server's vault. Every vault tool, reads included, needs the Space; the same goes for what else holds a Space's private data.
+test("route: vault.put and vault.list reach B only when B is showing and A is active; under All spaces both are refused and nothing is sent", () => {
+  for (const tool of ["vault.put", "vault.list", "vault.reveal", "vault.item", "vault.search", "vault.items.names", "vault.copy"]) {
+    assert.deepEqual(go({ tool, input: {}, showing: B }), { box: "boxb" }, `${tool} follows the Space showing`);
+    const r = go({ tool, input: {}, showing: "all" });
+    assert.equal(r.error?.code, "pick_a_space", `${tool} under All spaces`);
+    assert.equal(r.box, undefined);
+  }
+});
+
+test("route: the families that hold a Space's private data are refused under All spaces; a plain list or status is not", () => {
+  for (const tool of ["memory.ask", "memory.search", "agents.create", "skills.draft", "planner.add", "publish.create", "connectors.connect", "mail.compose", "mail.read", "google.api", "artifacts.create", "threads.get", "team.add", "documents.generate", "work.call"]) {
+    assert.equal(needsSpace(tool), true, tool);
+    assert.equal(go({ tool, input: {}, showing: "all" }).error?.code, "pick_a_space", tool);
+    assert.deepEqual(go({ tool, input: {}, showing: A }), { box: "boxa" }, tool);
+  }
+  for (const tool of ["memory.backup.status", "agents.list", "skills.list", "planner.agenda", "connectors.catalog", "mail.accounts", "google.accounts", "artifacts.list"]) assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, `${tool} is not refused`);
+});
+
+test("route: server settings follow the Space showing but are not refused under All spaces; the device's own tools are never routed", () => {
+  for (const tool of ["settings.get", "appearance.presets", "spend.summary", "update.status"]) {
+    assert.equal(needsSpace(tool), false, tool);
+    assert.deepEqual(go({ tool, input: {}, showing: "all" }), { box: undefined }, tool);
+  }
+});

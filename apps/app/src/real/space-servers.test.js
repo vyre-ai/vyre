@@ -57,6 +57,21 @@ test("a record of B edited while A is active reaches B only; creating with no Sp
   m.setPorts(null);
 });
 
+test("two servers, A active and B showing: vault.put and vault.list reach B only; under All spaces they are refused and nothing is sent", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  m.setPorts(/** @type {any} */ ({ ...w.ports, peerCall: async (/** @type {string} */ t, /** @type {any} */ i, /** @type {string | undefined} */ b) => { if (t === "spaces.list") return b === "boxa" ? [{ id: "spc_aaaaaaaaaaaa" }] : [{ id: "spc_bbbbbbbbbbbb" }]; return w.ports.peerCall(t, i, b); } }));
+  for (const tool of ["vault.put", "vault.list"]) {
+    const route = await m.routeCall({ tool, input: {}, showing: "spc_bbbbbbbbbbbb" });
+    assert.deepEqual(route, { box: "boxb" }, tool);
+    await w.ports.peerCall(tool, {}, route.box);
+  }
+  assert.deepEqual(w.sent.filter((x) => x[1].startsWith("vault.")).map((x) => x[0]), ["boxb", "boxb"], "B only, never A");
+  for (const tool of ["vault.put", "vault.list"]) assert.equal((await m.routeCall({ tool, input: {}, showing: "all" })).error?.code, "pick_a_space", tool);
+  assert.equal(w.sent.filter((x) => x[1].startsWith("vault.")).length, 2, "nothing was sent under All spaces");
+  m.setPorts(null);
+});
+
 test("a chat nobody holds is refused in words and nothing is sent to any server", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({ boxa: ["chat_a"], boxb: ["chat_b"] });
