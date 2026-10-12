@@ -8,6 +8,8 @@ import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
 import { showingJoined } from "../../src/real/team-join";
 import { usePlaceText } from "../../src/real/PlaceTag";
+import { pickFiles } from "../../src/chat/attach-pick";
+import { ADD_WORDS, OPEN_WORDS, checkUpload, openedView } from "./files-model.js";
 import { treeOf, type Body } from "../templates/model";
 
 type Chat = { chat: string; title?: string; status?: string; last_active?: string };
@@ -30,27 +32,69 @@ export function ChatsPane({ slug }: { slug: string }) {
   );
 }
 
-/** The project's own files (Projects/<id>/files): sealed at rest, opened only by the project's members. Opening one is the Drive's job. */
+/** The project's own files (Projects/<id>/files): sealed at rest, opened only by the project's members. For a member of a joined team: the files through the team's door, open a text file and add one, within the limits the door carries (said first). */
 export function FilesPane({ id }: { id: string }) {
   const fileTag = usePlaceText("showing");
   const router = useRouter();
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
+  const [member, setMember] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [opened, setOpened] = useState<{ name: string; text?: string; words?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [n, setN] = useState(0);
   // a member of a joined team lists the project's files through the team's door (files.list: the owner's and team's only); her own Drive screens are her home's
   useEffect(() => {
     void showingJoined().catch(() => false).then(async (joined) => {
+      setMember(joined);
       if (!joined) return spaceList(undefined, `Projects/${id}/files`).then((r) => r.entries);
       const r = await callT<{ files?: { name: string }[] }>("files.list", { project: id });
-      if (r.error) throw new Error(r.error.message);
+      if (r.error) { setProblem(r.error.message); return []; }
+      setProblem("");
       return (r.data?.files ?? []).map((f) => ({ name: f.name, path: `Projects/${id}/files/${f.name}` }));
     }).then(setRows).catch(() => setRows([]));
-  }, [id]);
+  }, [id, n]);
+  const open = async (name: string) => {
+    setProblem(""); setBusy(true);
+    const r = await callT<{ name: string; size?: number; data?: string }>("files.read", { project: id, name });
+    setBusy(false);
+    if (r.error) { setProblem(r.error.message); return; }
+    setOpened(openedView(r.data as { name: string; data?: string }));
+  };
+  const add = async () => {
+    setProblem(""); setBusy(true);
+    try {
+      const picked = await pickFiles(false);
+      for (const f of picked) {
+        const ok = checkUpload(f);
+        if ("error" in ok) { setProblem(ok.error); break; }
+        const r = await callT("files.upload", { project: id, name: ok.name, data: ok.data });
+        if (r.error) { setProblem(r.error.message); break; }
+      }
+      setN((x) => x + 1);
+    } catch (e) { setProblem(e instanceof Error ? e.message : "That file could not be added."); }
+    setBusy(false);
+  };
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Drive" onPress={() => router.push("/u/drive" as never)} /></View>
+      <View className="flex-row flex-wrap items-center gap-s2">
+        {member ? <Button size="sm" label={busy ? "Working" : "Add a file"} disabled={busy} onPress={() => void add()} /> : null}
+        <Button kind="ghost" size="sm" label="Open in Drive" onPress={() => router.push("/u/drive" as never)} />
+      </View>
+      {member ? <Text size="caption" tone="label">{`${ADD_WORDS} ${OPEN_WORDS}`}</Text> : null}
+      {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
-        <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}</Card>
+        <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} onPress={member && f.name ? () => void open(String(f.name)) : undefined} /></View>))}</Card>
       )}
+      {opened ? (
+        <Card>
+          <View className="gap-s2">
+            <Text strong>{opened.name}</Text>
+            {opened.text !== undefined ? <Text mono>{opened.text}</Text> : <Text tone="muted">{opened.words}</Text>}
+            <View className="flex-row"><Button kind="ghost" size="sm" label="Close" onPress={() => setOpened(null)} /></View>
+          </View>
+        </Card>
+      ) : null}
     </View>
   );
 }
