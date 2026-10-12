@@ -60,6 +60,16 @@ public enum FirstRun {
         case nil: return vyredUp ? .nothing : .openApp(boxless: true)
         }
     }
+
+    /// Opening the app again (Dock, `open`): the setup window comes back when this Mac was set to run Vyre itself, vyred is down, and the window is closed.
+    public static func showsSetupOnReopen(vyredUp: Bool, remembered: FirstRunChoice?, windowOpen: Bool) -> Bool {
+        remembered == .here && !vyredUp && !windowOpen
+    }
+
+    /// The last lines a setup said, for the failure window: the newest `count` lines that are not empty, oldest first.
+    public static func lastLines(_ lines: [String], count: Int = 6) -> [String] {
+        Array(lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.suffix(count))
+    }
 }
 
 /// The window's words (ui-ux, setup-prototype.html, the Mac column, rows 4 to 4d). Pure, so the tests hold them.

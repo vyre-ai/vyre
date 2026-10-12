@@ -166,6 +166,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     /// `open Vyre.app` while it runs opens the Capsule: a way in that needs no hot key at all.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !headless, firstRun.reopen() { return false }
         panel.toggle()
         return false
     }

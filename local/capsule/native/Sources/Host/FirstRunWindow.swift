@@ -28,6 +28,9 @@ final class FirstRunController: ObservableObject {
     private var window: NSWindow?
     private var watch: AnyCancellable?
     private var decided = false
+    private var vyredUp = false
+    /// What the last setup said, shown under a failure so "Try again" never leaves the person with only a sentence.
+    @Published private(set) var lastSaid: [String] = []
 
     init(model: CapsuleModel, home: String) {
         self.model = model
@@ -36,6 +39,7 @@ final class FirstRunController: ObservableObject {
 
     /// The first look at vyred said `up`: do what the kept choice, or the lack of one, says. Later changes only matter while setting up.
     func vyredChanged(up: Bool) {
+        vyredUp = up
         if !decided {
             decided = true
             switch FirstRun.decide(vyredUp: up, remembered: store.load()) {
@@ -47,6 +51,13 @@ final class FirstRunController: ObservableObject {
             return
         }
         if up, phase == .settingUp { openApp(boxless: false) }
+    }
+
+    /// The app was opened again while it runs. True when the setup window came back (so the Capsule panel is not toggled as well).
+    func reopen() -> Bool {
+        guard FirstRun.showsSetupOnReopen(vyredUp: vyredUp, remembered: store.load(), windowOpen: window != nil) else { return false }
+        show()
+        return true
     }
 
     func show() {
@@ -113,7 +124,12 @@ final class FirstRunController: ObservableObject {
     /// Say what went wrong in plain words, when the setup has finished badly.
     func checkRun(_ run: CommandRun?) {
         guard phase == .settingUp, let run, !run.running else { return }
-        if let said = FirstRunView.failure(of: run) { phase = .failed(FirstRunWords.failure(said)) }
+        if let said = FirstRunView.failure(of: run) {
+            var lines: [String] = []
+            for v in run.views { if case .text(let l) = v { lines += l } }
+            lastSaid = FirstRun.lastLines(lines)
+            phase = .failed(FirstRunWords.failure(said))
+        }
     }
 
     private func openApp(boxless: Bool) {
@@ -198,6 +214,13 @@ struct FirstRunView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(why.title).font(.system(size: 22, weight: .semibold))
             Text(why.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !controller.lastSaid.isEmpty {
+                Text(controller.lastSaid.joined(separator: "\n"))
+                    .font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.12)))
+                    .accessibilityIdentifier("first-run-last-lines")
+            }
             HStack {
                 Button("Try again") { controller.chooseHere() }.keyboardShortcut(.defaultAction)
                 Button("Choose a server instead") { controller.chooseServer() }

@@ -15,6 +15,12 @@ let firstRunSuite = Suite("first run") { t in
         t.eq(FirstRun.decide(vyredUp: false, remembered: .here), .startHere)
         t.eq(FirstRun.decide(vyredUp: false, remembered: .server), .openApp(boxless: true))
         t.eq(FirstRun.decide(vyredUp: true, remembered: .server), .openApp(boxless: true))
+        t.ok(FirstRun.showsSetupOnReopen(vyredUp: false, remembered: .here, windowOpen: false), "reopened with vyred down and no window: the setup comes back")
+        t.ok(!FirstRun.showsSetupOnReopen(vyredUp: true, remembered: .here, windowOpen: false), "vyred is up: the panel toggles as before")
+        t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: .here, windowOpen: true), "the window is already open")
+        t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: .server, windowOpen: false), "a server Mac has no local setup")
+        t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: nil, windowOpen: false), "a client Mac has no local setup")
+        t.eq(FirstRun.lastLines(["a", "", "b", "  ", "c"], count: 2), ["b", "c"])
     }
 
     t.test("the choice is kept in the home, read back, and forgotten") {
