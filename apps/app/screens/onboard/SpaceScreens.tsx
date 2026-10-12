@@ -347,17 +347,13 @@ function CreateConfirmLive({ go, back, steps }: ScreenProps) {
   );
 }
 
-function CreateVaultLive({ ctx, set, go, back, steps }: ScreenProps) {
+function CreateVaultLive({ set, go, back, steps }: ScreenProps) {
   const pair = usePair();
   return (
     <FlowStep steps={steps} onBack={back} title="Set the space's master password" lead="This locks the space's shared passwords and accounts. You are the owner, and you can hand ownership to another member later."
       failure={pair.failure}
       primary={{ label: "Create the space", disabled: !pair.ready, onPress: () => { if (pair.check()) { holdMaster(pair.value); set({ created: true }); go("create.setup"); } } }}>
       {pair.fields}
-      <ChoiceList label="Can members use their own computers?" value={ctx.allowed ? "allow" : "server"} onChange={(v) => set({ allowed: v === "allow" })} options={[
-        { value: "allow", title: "Allow members to use their own computers", sub: "Each member still chooses for themselves when to lend one.", icon: "laptop" },
-        { value: "server", title: "Always use the server", sub: "Every session in the space runs on the server. You can change this later in the space's settings.", icon: "server" },
-      ]} />
     </FlowStep>
   );
 }
