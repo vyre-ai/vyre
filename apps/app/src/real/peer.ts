@@ -3,6 +3,11 @@
 // and `usePeer(true)` marks it as the way this device reaches its server; a device with a box of its own (a Mac, the box's own origin) never sets it.
 
 import type { Peer } from "@vyre/relay-client/peerclient.js";
+import { withTimeout } from "./with-timeout.js";
+import { multiServers } from "./space-servers";
+
+/** How long a call to one of several servers waits before that server is called offline. */
+const ANSWER_MS = 60_000;
 
 const FLAG = "vyre.peer";
 /** One open peer per server this device is paired to, by the server's box id (Pairing.box). */
@@ -79,18 +84,21 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
   const id = (await pairingOf(box)).box;
   if (fake) return (await fake(tool, input, id)) as T;
   let p = await openPeer(id);
-  try { return (await p.call(tool, input)) as T; }
+  // With several servers paired one that is stopped or offline must not hang a screen: the call waits a set time, then is refused in words, and the stuck connection is dropped so the next call opens a fresh one.
+  const sent = async (peer: Peer) => (multiServers() ? await withTimeout(peer.call(tool, input), ANSWER_MS) : await peer.call(tool, input)) as T;
+  try { return await sent(p); }
   catch (e) {
     const code = (e as { code?: string })?.code;
+    if (code === "server_offline") { try { p.close(); } catch { /* closed */ } peers.delete(id); throw e; }
     // the relay says the owner removed this device: it forgets everything it held and pairs again (a refused sign-in or an unreachable server never does this)
     if (code === "relay_removed") { await (await import("../identity/removed")).ifRemoved(code); throw e; }
     // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
-    if (code === "person_session_required" && (await renewSession(id))) { p = await openPeer(id); return (await p.call(tool, input)) as T; }
+    if (code === "person_session_required" && (await renewSession(id))) { p = await openPeer(id); return await sent(p); }
     // a closed connection is reopened once; anything the server answered is the answer
     if (code !== "unreachable") throw e;
     peers.delete(id);
     p = await openPeer(id);
-    return (await p.call(tool, input)) as T;
+    return await sent(p);
   }
 }
 
