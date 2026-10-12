@@ -46,6 +46,8 @@ execFileSync("tar", ["-xzf", path.join(site, "vyre.tgz"), "-C", unpacked, "--str
 const counter = execFileSync("node", [path.join(scripts, "release-counter.mjs"), version], { encoding: "utf8" }).trim();
 execFileSync("node", [path.join(scripts, "modules-manifest.mjs"), unpacked, "--counter", counter, "--release", version, "--out", path.join(site, "modules.json")]);
 fs.rmSync(unpacked, { recursive: true, force: true });
+// The network node program is a first-party file of a real release (listed in SHA256SUMS like every file). The test release carries a stand-in so the installer's path for it is walked.
+for (const arch of ["arm64", "amd64"]) fs.writeFileSync(path.join(site, `wink-forwarder-darwin-${arch}`), "#!/bin/sh\necho wink-forwarder stand-in\n", { mode: 0o755 });
 // The same signing code the release's sign job runs, with the throwaway key instead of the pinned one.
 signRelease({ dir: site, version, channel: "test", pem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(), key: spki });
 fs.writeFileSync(path.join(out, "release-key.pub"), spki); // the public half only, for the patched script copy
