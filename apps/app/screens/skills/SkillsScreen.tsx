@@ -38,7 +38,7 @@ export default function SkillsScreen() {
   const propose = async () => {
     setProblem(""); setSaid("");
     const ok = checkProposal({ ...form, level });
-    if ("error" in ok) { setProblem(ok.error); return; }
+    if ("error" in ok) { setProblem(String(ok.error)); return; }
     setBusy(true);
     const drafted = await callT<{ version?: number }>("skills.draft", ok.input);
     if (drafted.error) { setBusy(false); setProblem(drafted.error.message); return; }

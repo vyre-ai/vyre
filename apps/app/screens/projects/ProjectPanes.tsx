@@ -66,7 +66,7 @@ export function FilesPane({ id }: { id: string }) {
       const picked = await pickFiles(false);
       for (const f of picked) {
         const ok = checkUpload(f);
-        if ("error" in ok) { setProblem(ok.error); break; }
+        if ("error" in ok) { setProblem(String(ok.error)); break; }
         const r = await callT("files.upload", { project: id, name: ok.name, data: ok.data });
         if (r.error) { setProblem(r.error.message); break; }
       }
