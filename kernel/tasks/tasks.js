@@ -356,7 +356,9 @@ export function createTasks(cfg) {
     async get(/** @type {any} */ chain, /** @type {string} */ id) {
       try { await gate(chain, "tasks.read", urnOf(cfg.space, id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       const t = tasks.get(id);
-      return t ? overlay(t) : null;
+      if (!t) return null;
+      const v = await overlay(t);
+      return !cfg.mayReadTask || await cfg.mayReadTask(chain, v, checkersOf(t)) ? v : null;
     },
 
     /**
@@ -378,7 +380,9 @@ export function createTasks(cfg) {
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
-        out.push(await overlay(t));
+        const v = await overlay(t);
+        if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, v, checkersOf(t)))) continue;   // a task is for its doer, its giver, its checkers, its project's people and staff
+        out.push(v);
       }
       return out;
     },

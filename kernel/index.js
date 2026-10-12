@@ -96,6 +96,17 @@ export async function createKernel(cfg) {
     records: store,
     // who may change a task (kernel/gateway/ownership.js): the same rule the records write path applies, for every route that writes a task
     mayWriteTask: async (/** @type {any} */ chain, /** @type {any} */ t, /** @type {any} */ patch, /** @type {"create"|"update"|"remove"} */ op, /** @type {any} */ doer) => { const w = judgeWriter(chain, t ? t.doer : doer, (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null), cfg.space); return mayWrite(chain, "task", t ? { id: t.id, data: {} } : null, patch, { op, ...w, project: projectTeamOf(store, (/** @type {string} */ ty, /** @type {string} */ id) => `vyre://${cfg.space}/${ty}/${id}`, (/** @type {string} */ u) => gateway.records.attrsOf(u)), task: async () => (t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null } : null) }); },
+    // who may READ a task: its doer, whoever gave it, its checkers, its project's owner and team, an owner or an admin; a call with no person on its chain (a module's own) as before
+    mayReadTask: async (/** @type {any} */ chain, /** @type {any} */ t, /** @type {any[]} */ checkers) => {
+      const people = chain.hops.filter((/** @type {any} */ h) => h.actor.kind === "person").map((/** @type {any} */ h) => h.actor);
+      if (!people.length) return true;
+      if (people.some((/** @type {any} */ a) => { const r = grantsStore ? grantsStore.roleOf(a) : null; return r === "owner" || r === "admin"; })) return true;
+      const me = String(people[0].id), acting = chain.hops.map((/** @type {any} */ h) => h.actor), is = (/** @type {any} */ a) => Boolean(a) && acting.some((/** @type {any} */ x) => x.kind === a.kind && x.id === a.id);
+      if (is(t.doer) || is(t.assigned_by) || (checkers || []).some((/** @type {any} */ c) => c && c.id === me)) return true;
+      if (!t.project) return false;
+      const pr = await projectTeamOf(store, (/** @type {string} */ ty, /** @type {string} */ id) => `vyre://${cfg.space}/${ty}/${id}`, (/** @type {string} */ u) => gateway.records.attrsOf(u))(String(t.project)).catch(() => null);
+      return Boolean(pr && (pr.owner === me || pr.team.includes(me)));
+    },
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).

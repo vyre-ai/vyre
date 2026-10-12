@@ -110,6 +110,14 @@ test("communication and team-member: a member reads her own mail and her project
   assert.ok((await taskTitles(ANA)).includes("ANA-OWN-TASK"), "Ana reads the task she made");
   assert.ok(!(await taskTitles(BEN)).includes("ANA-OWN-TASK") && !(await taskTitles(BEN)).includes("PROJECT-TASK"), "Ben reads neither");
   assert.ok((await gw.records.query(ownerChain, "task", { page: { limit: 50 } })).rows.length >= 3, "staff read every task");
+  // the tasks service (tasks.list, tasks.get: the Store's Now and Tasks) follows the same people
+  const askTitles = async (/** @type {string} */ p) => (await gw.ask.list(chainOf(p))).map((/** @type {any} */ x) => x.title).sort();
+  assert.ok((await askTitles(ANA)).includes("ANA-OWN-TASK") && !(await askTitles(ANA)).includes("OWNER-ONLY-TASK") && !(await askTitles(ANA)).includes("PROJECT-TASK"), "tasks.list: Ana lists her own task and neither the owner's own nor a project she is not on");
+  assert.ok((await askTitles(ZED)).includes("PROJECT-TASK") && !(await askTitles(ZED)).includes("ANA-OWN-TASK"), "tasks.list: Zed lists the task of the project she is on, not Ana's");
+  assert.deepEqual((await gw.ask.list(ownerChain)).map((/** @type {any} */ x) => x.title).sort(), ["ANA-OWN-TASK", "OWNER-ONLY-TASK", "PROJECT-TASK"], "tasks.list: staff list every task");
+  const ownerTask = (await gw.ask.list(ownerChain)).find((/** @type {any} */ x) => x.title === "OWNER-ONLY-TASK");
+  assert.equal(await gw.ask.get(chainOf(ANA), ownerTask.id), null, "tasks.get: Ana cannot open the owner's own task");
+  assert.ok(await gw.ask.get(ownerChain, ownerTask.id), "and the owner can");
 
   // a file's events (written, read, moved, deleted) are judged like the file: someone who may not open it learns nothing of it, not its path, size or who touched it. Events read from the start of the log, on both routes.
   const secretPath = `Projects/${proj.id}/FILE-EVENT-SECRET.txt`, anaPath = `Projects/${anaProj.id}/ANA-FILE.txt`;
