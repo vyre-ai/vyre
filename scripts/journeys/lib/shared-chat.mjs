@@ -123,7 +123,7 @@ async function untilAnswerTo(person, chat, said) {
  */
 export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
   // J9_SHORT=1: the chat steps only, without the scan and the catchup rule (J9 skips the project steps)
-  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message|each message a person typed/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
+  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "3" ? !/each person.s turn lists|a job a member|from a member.s session/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has|five turns)/.test(name) : process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message|each message a person typed/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
   setOwnerView(async () => (await w.call("stream.catchup", { chat, space: team.space })).messages || []);
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
