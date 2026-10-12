@@ -1,5 +1,5 @@
 // Lessons' calls on a real vyred, over an injected `call` (the app's box connection, or a fake box in a test): learn.lessons, learn.stats, learn.skills to read;
-// learn.accept, learn.retire, learn.relax, learn.edit, learn.skill-install, learn.skill_retire to act. The acts that loosen or start something need the person:
+// learn.accept, learn.retire, learn.relax, learn.edit, learn.skill-install, learn.skill-dismiss to act. The acts that loosen or start something need the person:
 // the app's call answers the presence proof itself, so a refusal that reaches here is a real one.
 import { listOf, type Lesson, type Skill } from "./lessons-model.ts";
 
@@ -24,6 +24,7 @@ export function lessonsSource(call: Call) {
     /** Tighten or reword only; a loosening comes back refused. Only the changed fields are sent. */
     edit: (id: number | string, change: { rule?: string; when?: string }) => ask("learn.edit", { id, ...change }),
     skillInstall: (id: number | string) => ask("learn.skill-install", { id }),
-    skillDismiss: (id: number | string) => ask("learn.skill_retire", { id }),
+    /** Say no to a proposed skill: it is not proposed again (learn.skill-dismiss; learn.skill-retire is removing an installed one and needs presence). */
+    skillDismiss: (id: number | string) => ask("learn.skill-dismiss", { id }),
   };
 }

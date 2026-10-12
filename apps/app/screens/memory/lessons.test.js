@@ -54,7 +54,7 @@ test("acts: tool names and inputs", { skip: !strip }, async () => {
   await s.accept(2); await s.retire(2); await s.relax(1, "ask"); await s.edit(1, { rule: "Never push to main or master" }); await s.skillInstall(9); await s.skillDismiss(9);
   assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [
     ["learn.accept", { id: 2 }], ["learn.retire", { id: 2 }], ["learn.relax", { id: 1, level: "ask" }],
-    ["learn.edit", { id: 1, rule: "Never push to main or master" }], ["learn.skill-install", { id: 9 }], ["learn.skill_retire", { id: 9 }]]);
+    ["learn.edit", { id: 1, rule: "Never push to main or master" }], ["learn.skill-install", { id: 9 }], ["learn.skill-dismiss", { id: 9 }]]);
 });
 
 test("a refused act keeps its code so the screen can say it needs the person", { skip: !strip }, async () => {

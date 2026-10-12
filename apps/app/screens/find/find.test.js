@@ -44,7 +44,7 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.deepEqual([none.agents, none.assistant], [[], null]);
 });
 
-test("search: five tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
+test("search: four tools per query (the Drive search waits for its tool), only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
   const { findSource } = await import("./source.ts");
   const b = box();
   const s = findSource(b.call, "web");
@@ -54,7 +54,7 @@ test("search: five tools per query, only from two characters, the files tool sen
   assert.equal(b.seen.length, 0);
   s.search("juniper", on);
   await new Promise((r) => setTimeout(r, 5));
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "juniper", limit: 20 }], ["files.search", { q: "juniper", limit: 20 }], ["memory.relevant", { text: "juniper", limit: 5 }], ["mentions.search", { q: "juniper", limit: 8 }], ["files.drive.space.search", { q: "juniper", limit: 20 }]]);
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "juniper", limit: 20 }], ["files.search", { q: "juniper", limit: 20 }], ["memory.relevant", { text: "juniper", limit: 5 }], ["mentions.search", { q: "juniper", limit: 8 }]], "four tools are called; the Space's Drive names are not searched until the server has files.drive.space.search");
   assert.deepEqual(got.sort(), ["d", "f", "m", "r", "x"]);
   await s.preview("/a/b.txt", "mac"); await s.preview("/a/c.txt", "other");
   assert.deepEqual(b.seen.slice(-2).map((x) => x.input), [{ path: "/a/b.txt", source: "mac" }, { path: "/a/c.txt" }]);
