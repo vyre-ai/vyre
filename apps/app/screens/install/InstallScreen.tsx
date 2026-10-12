@@ -317,7 +317,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     // Upgrade to My Cloud (Settings has the same card): what a server unlocks, the two choices, the install line, the words, then the move.
     body = (
       <Page title="My Cloud" sub="Add a server and move what you have onto it.">
-        <MyCloudCard />
+        <MyCloudCard firstRun={first} onDone={finish} />
         {first ? <Button kind="ghost" label="Skip for now" onPress={finish} /> : null}
       </Page>
     );

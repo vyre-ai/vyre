@@ -44,6 +44,13 @@ test("my cloud: the offer follows the rows: setup, then move, then done", () => 
   assert.equal(offerFor(cloudState([personal, cloud]), false), "move");
   assert.equal(offerFor(cloudState([{ ...personal, upgraded_to: "spc_c" }, cloud]), true), "moved");
   assert.equal(offerFor(cloudState([{ id: "spc_t", tier: "cloud", displayName: "Northwind" }]), true), "none", "a team space is not My Cloud and there is no Personal row");
+  // The first-run "Add a server" page on a Mac whose Vyre runs on a server (no Personal space): it offers the server, then the space on it.
+  assert.equal(offerFor(cloudState([]), false, true), "add");
+  assert.equal(offerFor(cloudState([]), true, true), "setup");
+  assert.equal(offerFor(cloudState([{ id: "spc_t", tier: "cloud", displayName: "Northwind" }]), false, true), "add", "a team space is not My Cloud");
+  assert.equal(offerFor(cloudState([{ id: "spc_c", tier: "cloud", displayName: "My Cloud" }]), true, true), "none", "My Cloud already exists");
+  assert.equal(offerFor(cloudState([]), false, false), "none", "Settings keeps its old behaviour");
+  assert.equal(offerFor(cloudState([personal]), false, true), "add", "a Mac with a Personal space is unchanged");
 });
 
 test("my cloud: only the paired servers spaces.servers lists can host it", () => {

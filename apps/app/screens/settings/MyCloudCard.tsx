@@ -17,7 +17,7 @@ type Step = { kind: "idle" } | { kind: "plan"; plan: any } | { kind: "report"; r
  * Set up My Cloud on the person's paired server, then move Personal into it: the plan first (what moves, what stays), blockers hide the button, one approval bound to that plan, then the report. The words and rules are
  * my-cloud.js; the approval is the same device signature as every yes (Face ID on the phone, the passkey in a browser).
  */
-export function MyCloudCard() {
+export function MyCloudCard({ firstRun = false, onDone }: { firstRun?: boolean; onDone?: () => void } = {}) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [servers, setServers] = useState<{ id: string; name: string }[]>([]);
   const [step, setStep] = useState<Step>({ kind: "idle" });
@@ -29,7 +29,7 @@ export function MyCloudCard() {
   };
   useEffect(load, []);
   const state = cloudState(rows ?? []);
-  const offer = offerFor(state, servers.length > 0);
+  const offer = offerFor(state, servers.length > 0, firstRun);
   const guard = async (go: () => Promise<void>) => { setBusy(true); setProblem(""); try { await go(); } catch (e) { setProblem(refusalLine(e) || said(e)); } finally { setBusy(false); } };
   if (rows === null || offer === "none") return null;
   // The server just joined: make My Cloud on it and show what would move, so the person's next press is the one approval (the card carries the rest as it always has).
@@ -40,6 +40,8 @@ export function MyCloudCard() {
     const made = await createSpace(setupInput(list[0]));
     if (made.state === "failed") throw new Error(made.say);
     load();
+    // No Personal space on this Mac: nothing to move, so the space on the server is all there is to make.
+    if (!state.personal) { showToast("My Cloud is set up."); onDone?.(); return; }
     setStep({ kind: "plan", plan: await tool("spaces.upgrade.plan", { to: made.id }) });
   });
   if (offer === "add") return <AddServerCard onDone={() => void onPaired()} />;
@@ -48,6 +50,7 @@ export function MyCloudCard() {
     const made = await createSpace(setupInput(servers[0]));
     if (made.state === "failed") throw new Error(made.say);
     showToast("My Cloud is set up."); load();
+    if (!state.personal) onDone?.();
   });
   const look = () => guard(async () => { setStep({ kind: "plan", plan: await tool("spaces.upgrade.plan", { to: String(state.cloud?.id) }) }); });
   const move = (plan: any) => guard(async () => {
