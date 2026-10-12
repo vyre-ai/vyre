@@ -208,16 +208,16 @@ export function createApp(o) {
     const res = await session.conn.fetch(url, { method: "GET", headers: { authorization: `Vyre ${session.token}`, "x-vyre-proof": proof }, signal: ac.signal });
     let text = "";
     if (res.status !== 200 || !res.body) { return { status: res.status, text: await res.text().catch(() => "") }; }
-    const reader = res.body.getReader(), dec = new TextDecoder();
+    const dec = new TextDecoder();
     const timer = setTimeout(() => ac.abort(), ms);
     try {
       const doing = during().catch(() => {});
-      for (;;) {
-        const r = await reader.read().catch(() => ({ done: true, value: undefined }));
-        if (r.done) break;
-        text += dec.decode(r.value, { stream: true });
-        if (stopWhen(text)) break;
-      }
+      try {
+        for await (const chunk of /** @type {AsyncIterable<Uint8Array>} */ (res.body)) {   // the router's response body is an async iterable of chunks (relay/client/client.js)
+          text += dec.decode(chunk, { stream: true });
+          if (stopWhen(text)) break;
+        }
+      } catch { /* aborted at the deadline */ }
       await doing;
     } finally { clearTimeout(timer); try { ac.abort(); } catch { /* closed */ } }
     return { status: res.status, text };
