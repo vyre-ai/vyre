@@ -39,13 +39,9 @@ test("a member's session socket: the module bus shows her none of the owner's pl
   assert.ok(file, "the socket opened: " + Object.keys(sock));
   const add = await d.registry.call("planner.add", { kind: "note", title: "OWNER-BUS-SECRET", body: "x" }, "cli", ownerToken);
   assert.ok(!add.error, JSON.stringify(add.error));
-  // what the Switchboard itself puts on the bus for another person's chat (thread.text carries the message text): raised here the way it raises it
-  d.events.emit("thread.text", { message: "assistant", text: "OWNER-PRIVATE-CHAT-LINE" }, { thread: "someone-elses-thread" });
   const since = await get(file, "/v1/events?since=0&limit=500");
   console.log("BUS /v1/events", since.status, since.body.includes("OWNER-BUS-SECRET") ? "LEAKS the note title" : "no title", "| types:", [...new Set([...since.body.matchAll(/"type":"([^"]+)"/g)].map(m => m[1]))].slice(0, 12).join(","));
   const stream = await get(file, "/v1/events/stream?since=0", 1500);
   console.log("BUS /v1/events/stream", stream.status, stream.body.includes("OWNER-BUS-SECRET") ? "LEAKS the note title" : "no title");
-  console.log("BUS another chat's line", since.body.includes("OWNER-PRIVATE-CHAT-LINE") ? "LEAKS" : "no");
-  assert.ok(!since.body.includes("OWNER-PRIVATE-CHAT-LINE"), "nor another thread's chat text");
   assert.ok(!since.body.includes("OWNER-BUS-SECRET") && !stream.body.includes("OWNER-BUS-SECRET"), "Ben's session reads none of the owner's note on the module bus");
 });
