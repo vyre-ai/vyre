@@ -5,6 +5,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { leaks } from "../../test/holds.js";
 import path from "node:path";
 import { open } from "../store/index.js";
 import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
@@ -144,7 +145,7 @@ test("b. the one-time scan reports what memory already holds, by table and class
   assert.deepEqual(direct.map(d => [d.table, d.column, d.rows, d.classes]), [["memory_me_told", "text", 1, { "us-ssn": 1 }]]);
   const r = await w.call("memory.sealscan", {}, "deck", await w.session("per_alex"));
   assert.deepEqual(r.data.found, direct);
-  assert.doesNotMatch(JSON.stringify(r.data), /123-45|6789/);
+  assert.doesNotMatch(JSON.stringify(r.data), /123-45/); assert.ok(!leaks(r.data, "6789"));
   assert.equal(JSON.stringify(w.db.prepare("SELECT * FROM memory_me_told ORDER BY id").all()), before, "reported, not deleted");
 });
 
