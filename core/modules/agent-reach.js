@@ -25,6 +25,8 @@ export const PERSON_ONLY = new Map([
   ["runner.settings", "the person's own computer's limits for running sessions: the person's own view (the assistant reads them with settings.get)"],
   ["stream.typing", "says the person is typing in a chat they are in: the person's own surface"],
   ["stream.catchup", "what the person missed in a chat they are in: the person's own surface reads it"],
+  ["stream.answer", "answering a question raised by the person's own turn: the person's own surface"],
+  ["stream.stop", "stopping the person's own turns in a chat: the person's own surface"],
   ["stream.read", "the frames of a chat they are in, drawn for them: the person's own surface (a team member's app) reads it"],
   ["threads.roll", "rolls the person's own session over to a fresh window: the person's own act"],
   ["threads.rolls", "lists the person's own session rollovers: the person's own view"],

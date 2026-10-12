@@ -17,7 +17,7 @@ import { KernelError } from "../../kernel/core/errors.js";
 const CALLS = Object.freeze(/** @type {Record<string, [string, string]>} */ ({
   persistent: ["work.chat.serve", "persistent"], pin: ["work.chat.serve", "pin"], list: ["work.chat.serve", "list"], get: ["work.chat.serve", "get"], create: ["work.chat.serve", "create"],
   send: ["stream.serve", "send"], catchup: ["stream.serve", "catchup"], typing: ["stream.serve", "typing"], react: ["stream.serve", "react"], "pin-message": ["stream.serve", "pin"],
-  "reply-mode": ["stream.serve", "reply-mode"], "mark-read": ["stream.serve", "mark-read"], read: ["stream.serve", "read"],
+  "reply-mode": ["stream.serve", "reply-mode"], "mark-read": ["stream.serve", "mark-read"], read: ["stream.serve", "read"], answer: ["stream.serve", "answer"], stop: ["stream.serve", "stop"],
 }));
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_declared: "not_found" });
 

@@ -32,7 +32,7 @@ async function world(t) {
 }
 
 test("chat is a group of the Space kernel's remote calls", () => {
-  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read"]);
+  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read", "answer", "stop"]);
 });
 
 test("a member starts their own chat and sees it; another member does not see it", { timeout: 90_000 }, async t => {
@@ -125,4 +125,17 @@ test("a member reads a chat's frames over the door (chat.read): the other member
   await assert.rejects(svc.read(chainOf(ZED), { chat: made.chat, from: 0 }), /not found/i, "a person who is not a member");
   // the door passes only the keys it names: a viewer or a person she tries to name is dropped
   assert.equal((await as(BEN, "read", { chat: made.chat, from: 0, as: `person:${ANA}`, viewer: ANA })).viewer, `person:${BEN}`, "drawn for Ben, whoever she names");
+});
+
+test("chat.answer and chat.stop on the member door: a question that is not in the chat is not found in words, always is refused, a person who is not a member or not in the chat gets the plain refusal; stop answers who it stopped", { timeout: 90_000 }, async t => {
+  const { as, svc, chainOf } = await world(t);
+  const made = await as(ANA, "create", { title: "Huddle", people: [BEN] });
+  await assert.rejects(as(ANA, "answer", { chat: made.chat, ask: "nosuchask", decision: "allow" }), /no such question|not_found|not found/i);
+  await assert.rejects(as(ANA, "answer", { chat: made.chat, ask: "nosuchask", decision: "always" }), /allow, deny|decision/i, "always is not on offer to a member");
+  const lone = await as(BEN, "create", { title: "Ben alone" });
+  await assert.rejects(as(ANA, "answer", { chat: lone.chat, ask: "x", decision: "allow" }), /no such|not_found|not found/i, "Ana is not in Ben's own chat");
+  await assert.rejects(as(ANA, "stop", { chat: lone.chat }), /no such|not_found|not found/i);
+  await assert.rejects(svc.answer(chainOf(ZED), { chat: made.chat, ask: "x", decision: "allow" }), /not found/i, "a person who is not a member");
+  const stopped = await as(ANA, "stop", { chat: made.chat });
+  assert.deepEqual(stopped.stopped, [], "nothing of hers is running");
 });

@@ -58,6 +58,16 @@
         "effect": "write"
       },
       {
+        "name": "threads.serve-answer",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "threads.serve-stop",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "threads.chat-of",
         "reach": "anyone",
         "effect": "read"

@@ -21,6 +21,7 @@ import { createAccess } from "./access.js";
 import { forViewerAsync, hiddenFrame } from "./viewer.js";
 import { kindOf, startOf } from "./frame.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { createDoor } from "../../lib/gateway-door.js";
 
 export { SessionLog, Logs } from "./log.js";
 export { serve, serveSSE, serveWS, HEARTBEAT_MS } from "./server.js";
@@ -260,7 +261,7 @@ export default {
 
     /** The tools a team member reaches through the Space's remote server (core/work/chat-service.js), by short name: the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
     const memberRuns = new Map();
-    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read"];
+    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read", "answer", "stop"];
     // The Space's owner is in their own team's chats too, and has no member door to them (it is the home): a call that names the team's `space` runs as `stream.serve` in that Space under the chain the caller holds THERE
     // (kernel.chainIn), the same entry a member's call takes, so the Space's own authorize decides.
     const ownerRoute = async (/** @type {string} */ name, /** @type {any} */ i, /** @type {any} */ meta) => {
@@ -332,13 +333,43 @@ export default {
       return { ...base, frames, next: raw.length ? raw[raw.length - 1].cur : from };
     };
     memberRuns.set("read", readRun);
+    // A member answers a question raised by a turn SHE asked, or stops her turns, in a chat she is in (the switchboard checks whose turn it is; staff stop any). The person is the verified chain's, never the input's.
+    const door = createDoor(ctx);
+    const memberOf = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const { chat, who } = await prepare(i, meta);
+      let staff = false;
+      try { const d = await door.open({}, meta); const role = d.gateway.members.roleOf(d.chain.hops[0].actor); staff = role === "owner" || role === "admin"; } catch { staff = false; }
+      return { chat, person: who.id, staff };
+    };
+    const through = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      const r = /** @type {any} */ (await ctx.call(tool, input));
+      if (r && r.error) throw Object.assign(new Error(String(r.error.message || "that did not work")), { code: r.error.code || "failed" });
+      return r ? r.data : null;
+    };
+    memberRuns.set("answer", async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const m = await memberOf(i, meta);
+      return through("threads.serve-answer", { chat: m.chat, ask: String(i.ask || ""), person: m.person, decision: i.decision, ...(i.answers && typeof i.answers === "object" ? { answers: i.answers } : {}) });
+    });
+    memberRuns.set("stop", async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const m = await memberOf(i, meta);
+      return through("threads.serve-stop", { chat: m.chat, person: m.person, staff: m.staff, ...(typeof i.slot === "string" ? { slot: i.slot } : {}) });
+    });
     ctx.tool("stream.read", {
       description: "A chat's frames after cursor from (0 for everything the log holds), drawn for the person asking: their join floor, the kernel's say on each frame, their own authority on cited fields. At most 200 a call; next is the cursor to ask from; reset says the log no longer holds that cursor.",
       input: obj({ chat: str, from: int, limit: int, as: str }, ["chat"]), callers: PEOPLE, run: readRun,
     });
 
+    ctx.tool("stream.answer", {
+      description: "Answer a question (allow or deny) raised by a turn YOU asked in a chat you are in: { chat, ask, decision, answers? }. Another person's turn is theirs to answer; the owner's own surfaces answer any with threads.answer.",
+      input: obj({ chat: str, ask: str, decision: { type: "string", enum: ["allow", "deny"] }, answers: { type: "object", additionalProperties: str }, as: str }, ["chat", "ask", "decision"]), callers: PEOPLE, run: /** @type {any} */ (memberRuns.get("answer")),
+    });
+    ctx.tool("stream.stop", {
+      description: "Stop the turns YOU asked in a chat you are in (an owner or admin: every turn in it): { chat, slot? }. The chat stays and takes the next message.",
+      input: obj({ chat: str, slot: str, as: str }, ["chat"]), callers: PEOPLE, run: /** @type {any} */ (memberRuns.get("stop")),
+    });
+
     ctx.tool("stream.serve", {
-      description: "A team member's own stream call on the team's server: send, catchup, typing, react, pin, reply-mode, mark-read or read, as that member, in that Space. Only the daemon's own door runs it.",
+      description: "A team member's own stream call on the team's server: send, catchup, typing, react, pin, reply-mode, mark-read, read, answer or stop, as that member, in that Space. Only the daemon's own door runs it.",
       internal: true, callers: ["module"],
       input: obj({ call: { type: "string", enum: MEMBER_STREAM }, input: { type: "object" } }, ["call"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

@@ -4796,6 +4796,33 @@ export default {
         for (const r of busy) await sb.interrupt(r.thread, (personOfChain(kchainNow()) || personOfMeta(meta)));
         return { stopped: busy.map(r => r.thread) };
       });
+    // A team member answers a question, or stops a turn, in a chat she is in (the stream module's member door, core/stream/index.js): the stream module has checked the person is in the chat and passes her verified id.
+    // A question belongs to the person whose turn raised it (the verified asker of the thread's current turn, never a caller's word); a turn is stopped by the person who asked it, or by staff.
+    const streamOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:stream" || m.firstParty === false) throw Object.assign(new Error(`${what} is the stream module's alone`), { code: "denied" }); };
+    const bare = (/** @type {any} */ p) => String(p || "").replace(/^person:/, "");
+    const askerOfRun = (/** @type {string} */ thread) => { const ks = /** @type {any} */ (sb.ksCur.get(thread)); const rec = /** @type {any} */ (sb.record(thread)); return bare((ks && ks.asker) || (rec && rec.person) || ""); };
+    tool("threads.serve-answer", "A team member answers a question raised by a turn she asked, in a chat she is in: allow or deny (a question with its answers). Only the stream module's member door runs it.",
+      { type: "object", required: ["chat", "ask", "person", "decision"], properties: { chat: str, ask: str, person: str, decision: { type: "string", enum: ["allow", "deny"] }, answers: { type: "object", additionalProperties: { type: "string" } } } },
+      async (i, meta) => {
+        streamOnly(meta, "answering for a member");
+        const a = /** @type {any} */ (sb.asks.get(String(i.ask)));
+        const rec = a ? /** @type {any} */ (sb.record(a.thread)) : null;
+        if (!a || !rec || String(rec.chat || "") !== String(i.chat)) throw Object.assign(new Error("no such question in this chat: the chat shows the ones that are open"), { code: "not_found" });
+        const asker = askerOfRun(a.thread), person = bare(i.person);
+        if (!asker || asker !== person) throw Object.assign(new Error("that question is for the person whose turn raised it. Ask them, or the owner, to answer it"), { code: "denied" });
+        if (i.decision !== "allow" && i.decision !== "deny") throw Object.assign(new Error("answer allow or deny (always allow is not on offer for members yet)"), { code: "bad_input" });
+        return sb.answer(a.id, i.decision, "member", undefined, i.answers, undefined, null, person);
+      }, ["module"]);
+    tool("threads.serve-stop", "A team member stops the turns she asked in a chat she is in (staff: every turn in it): { stopped: [thread ids], left: how many others keep running }. Only the stream module's member door runs it.",
+      { type: "object", required: ["chat", "person"], properties: { chat: str, person: str, staff: { type: "boolean" }, slot: str } },
+      async (i, meta) => {
+        streamOnly(meta, "stopping a turn for a member");
+        const person = bare(i.person);
+        const busy = sb.ofChat(String(i.chat)).filter((/** @type {any} */ r) => (!i.slot || r.slot === i.slot) && (r.live || ["working", "asking", "waiting", "starting"].includes(String(r.status))));
+        const mine = i.staff === true ? busy : busy.filter((/** @type {any} */ r) => askerOfRun(String(r.thread)) === person);
+        for (const r of mine) await sb.interrupt(r.thread, person);
+        return { stopped: mine.map((/** @type {any} */ r) => r.thread), left: busy.length - mine.length };
+      }, ["module"]);
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "read a run's chat"); const t = sb.record(String(i.thread)); const term = /** @type {any} */ (sb.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(i.thread))); return { chat: (t && t.chat) || (term && term.chat) || null }; }, ["module"]);

@@ -877,3 +877,45 @@ test("RD1: stream.read gives a member in the chat the other person's message and
   assert.ok(!JSON.stringify(late.data.frames).includes("R1-hello"), "ada reads none of what was said before she joined");
   assert.ok(late.data.frames.some((/** @type {any} */ f) => f.type === "chat.hidden"), "she gets cursor-only placeholders for it");
 });
+
+test("AN1: a member answers the question her own turn raised and the room moves on; she cannot answer another person's, an outsider is refused, and stop ends only her turns", { timeout: 200_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  // carol's turn: the fake claude asks permission to run a command
+  const first = await b.as("carol")("stream.send", { chat: chat.id, text: "bash ls", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => b.stream().groups.member(chat.id, "assistant:assistant")?.thread, "the thread");
+  const thread = b.stream().groups.member(chat.id, "assistant:assistant").thread;
+  const openAsks = async () => ((await b.realCall("threads.asks", { thread }, "cli")).data || []);
+  await until(async () => (await openAsks()).some((/** @type {any} */ a) => a.tool === "Bash"), "carol's permission question");
+  const ask = (await openAsks()).find((/** @type {any} */ a) => a.tool === "Bash");
+  // another person in the chat (bob, who did not ask this turn) and a person outside it cannot answer it
+  const bobs = await b.as("bob")("stream.answer", { chat: chat.id, ask: ask.id, decision: "allow" });
+  assert.ok(bobs.error && /whose turn|ask them/i.test(bobs.error.message) || (bobs.error && bobs.error.code === "denied"), `another person's turn: ${JSON.stringify(bobs.error)}`);
+  const out = await b.as("ada")("stream.answer", { chat: chat.id, ask: ask.id, decision: "allow" });
+  assert.ok(out.error && /not_found|no such|chat/i.test(out.error.code + out.error.message), `an outsider: ${JSON.stringify(out.error)}`);
+  const stillOpen = (await openAsks()).some((/** @type {any} */ a) => a.id === ask.id);
+  assert.ok(stillOpen, "neither answer closed it");
+  // a message she sends meanwhile is held; her own answer lets the room move on
+  await b.as("carol")("stream.send", { chat: chat.id, text: "after the question", to: ["assistant:assistant"], cwd: w.work });
+  const mine = await b.as("carol")("stream.answer", { chat: chat.id, ask: ask.id, decision: "allow" });
+  assert.ok(!mine.error, mine.error && mine.error.message);
+  const again = await b.as("carol")("stream.answer", { chat: chat.id, ask: ask.id, decision: "allow" });
+  assert.ok(!again.error, "the same answer again is the first one, not a failure");
+  assert.equal((await openAsks()).some((/** @type {any} */ a) => a.id === ask.id), false, "the question is closed");
+  await until(() => /after the question/.test(textOf(watcher.frames)) || watcher.frames.some((/** @type {any} */ f) => f.type === "chat.user-message" && /after the question/.test(String(f.data.text))), "her queued message to run", 30_000);
+  // always is not on offer to a member; allow or deny only
+  await b.as("carol")("stream.send", { chat: chat.id, text: "bash pwd", to: ["assistant:assistant"], cwd: w.work });
+  await until(async () => (await openAsks()).some((/** @type {any} */ a) => a.tool === "Bash" && a.id !== ask.id), "the second question", 30_000);
+  const ask2 = (await openAsks()).find((/** @type {any} */ a) => a.tool === "Bash" && a.id !== ask.id);
+  const always = await b.as("carol")("stream.answer", { chat: chat.id, ask: ask2.id, decision: "always" });
+  assert.ok(always.error, "always allow is not on offer for a member");
+  // stop: bob (not the one who asked) stops nothing of hers; she stops her own
+  const bobStop = await b.as("bob")("stream.stop", { chat: chat.id });
+  assert.ok(!bobStop.error && Array.isArray(bobStop.data.stopped), JSON.stringify(bobStop));
+  const herStop = await b.as("carol")("stream.stop", { chat: chat.id });
+  assert.ok(!herStop.error && herStop.data.stopped.length >= 1, `she stops her own turn: ${JSON.stringify(herStop)}`);
+  await until(async () => !(await openAsks()).some((/** @type {any} */ a) => a.id === ask2.id), "stopping to close the open question", 15_000);
+});
