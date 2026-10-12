@@ -53,7 +53,7 @@
  "core/sessions/identity.js": 2,
  "core/sessions/index.js": 8,
  "core/sessions/readfile.js": 1,
- "core/sessions/spawn.js": 4,
+ "core/sessions/spawn.js": 3,
  "core/settings/index.js": 4,
  "core/skills/index.js": 1,
  "core/spawner/server.js": 6,
