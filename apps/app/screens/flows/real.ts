@@ -1,6 +1,7 @@
 // Flows against the real vyred: flows.list, flows.graph, flows.get, flows.runs, flows.run, flows.card, flows.approve, flows.pause and flows.resume
 // (core/flows/index.js over kernel/flows). The Flow's own words (trigger, step labels) come from the kernel's canvas data, never composed here.
 import { callT as call } from "../../src/real/call-tool";
+import { rowName } from "./real-model.js";
 
 async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   const r = await call<T>(tool, input);
@@ -18,7 +19,7 @@ export async function listReal(): Promise<RealFlow[]> {
   return Promise.all((Array.isArray(rows) ? rows : []).map(async (r) => {
     const g = await ask<Graph>("flows.graph", { id: r.id }).catch(() => null);
     // the Flow's own words, never its id: flows.list carries the label (the name is the code's)
-    return { id: r.id, name: r.label || r.name || r.id, status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "", level: r.level, line: r.line };
+    return { id: r.id, name: rowName(r), status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "", level: r.level, line: r.line };
   }));
 }
 
