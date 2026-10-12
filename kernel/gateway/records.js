@@ -3,7 +3,7 @@
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
 import { onTypesChanged } from "../store/types-signal.js";
-import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
+import { mayWrite, mayAttrs, mayReadTask, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -230,13 +230,7 @@ export function createRecords(cfg) {
     communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
     "team-member": (me, rec) => onProject(me, rec.data && rec.data.project),
     project: async (me, rec) => (rec.data && rec.data.personal_of ? String(rec.data.personal_of) === me : onProject(me, { urn: rec.urn })),
-    task: async (me, rec, chain) => {
-      const t = await taskFacts(rec.id), acting = isChain(chain) ? chain.hops.map((/** @type {any} */ h) => h.actor) : [];
-      const mine = (/** @type {any} */ a) => { const id = idOfA(a), kind = a && typeof a === "object" ? (a.actor ? a.actor.kind : a.kind) : null; return Boolean(id) && acting.some((/** @type {any} */ x) => x.id === id && (!kind || x.kind === kind)); };
-      if (t && (mine(t.doer) || mine(t.assigned_by))) return true;
-      const ref = (rec.data && rec.data.project) || (t && t.project) || null;
-      return ref ? onProject(me, ref) : false;
-    },
+    task: async (_me, rec, chain) => { const t = await taskFacts(rec.id); return mayReadTask(chain, { doer: t && t.doer, assigned_by: t && t.assigned_by, project: (rec.data && rec.data.project) || (t && t.project) }, { staff: false, project: seatOf, checkers: t && t.checkers }); },
   };
   /** An owner or an admin as a person, whatever the chain's shape: what the chain may do is the authorizer's to narrow, this is only whether the PERSON is staff. @param {string} person */
   const staffPerson = (person) => { if (!members || typeof members.membership !== "function") return false; const r = (members.membership({ kind: "person", id: person, space }) || {}).role; return r === "owner" || r === "admin"; };
