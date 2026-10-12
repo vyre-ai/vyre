@@ -1635,6 +1635,18 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
     return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
+  // The module bus carries every person's planner titles, approvals, project and task events: a paired device reads it only as the home's owner (a member's paired device is a device of this home
+  // too, but callerFacts names no person for it; her app reads through the member door, which filters). The socket and the other listeners are unchanged.
+  if (req.method === "GET" && (url.pathname === "/v1/events" || url.pathname === "/v1/events/stream") && policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
+    let row = null;
+    try {
+      const id = String(policy.caller).slice(7);
+      const r = await registry.call("relay.device.info", { id }, "module:vyred");
+      row = r && r.data ? r.data : null;
+      if (row) { const w = await registry.call("wink.device.record", { id }, "module:vyred"); row = { ...row, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; }
+    } catch { row = null; }
+    if (!callerFacts(String(policy.caller), policy, null, kernelOf(), false, row)) return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; the app reads what it may see through its own door" } });
+  }
   if (req.method === "GET" && url.pathname === "/v1/events") {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
       type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
