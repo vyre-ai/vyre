@@ -48,6 +48,8 @@ export async function bringUp(o) {
     },
     /** A tool call as the server's own operator (the terminal on that machine). @param {string} tool @param {any} [input] */
     operator: (tool, input = {}) => srv.operator(tool, input),
+    /** The app's live event stream for a while. @param {number} [ms] @param {(t: string) => boolean} [stop] @param {() => Promise<void>} [during] */
+    readEvents: (ms, stop, during) => mac.readEvents(ms, stop, during),
     until: mac.until,
     async stop() {
       mac.close();
