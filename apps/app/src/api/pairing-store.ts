@@ -1,8 +1,8 @@
 // The pairing store both platforms share: the list (pairing-list.ts) kept as one text under `vyre.relay.pairings` in whatever keyed store the platform has (the secure store on a phone, localStorage in a
 // browser). A device that was paired before several servers were allowed keeps the single record under `vyre.relay.pairing`: it is read as a list of one, and the first change writes the list and removes the old
 // key. Changes run one at a time (a read-change-write of two saves at once would lose one). A store that throws is an empty list; a save that fails is not an error the person can act on.
-import type { Pairing } from "./pairing";
-import { activePairing, addPairing, listPairings as listOf, pairingFor, readPairings, removePairing, setActive, writePairings, type Pairings } from "./pairing-list";
+import type { Pairing } from "./pairing.ts";
+import { activePairing, addPairing, listPairings as listOf, pairingFor, readPairings, removePairing, setActive, writePairings, type Pairings } from "./pairing-list.ts";
 
 export const LIST_KEY = "vyre.relay.pairings";
 export const OLD_KEY = "vyre.relay.pairing";

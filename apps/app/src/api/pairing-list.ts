@@ -1,7 +1,7 @@
 // The pairings a device keeps: one per server it is paired to, keyed by the server's box id (Pairing.box), with one active. The active one is the fallback for a call that names no server and no Space
 // (every caller that reads "the" pairing still gets one); each call that names a server or a Space is routed by src/real/server-route.js. Pure, so Node tests it; relay.native.ts and relay.web.ts only
 // hold the text (the secure store on a phone, localStorage in a browser).
-import { readPairing, type Pairing } from "./pairing";
+import { readPairing, type Pairing } from "./pairing.ts";
 
 export type Pairings = { v: 2; items: Record<string, Pairing>; active: string | null };
 

@@ -165,7 +165,7 @@ test("Get started goes to the reservation code; there is no question, and My Clo
   assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
   assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
   assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
-  assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
+  assert.match(src, /<AddServerCard onDone=\{\(\) => \{[\s\S]*doMake\("server"/, "a new space on no server runs the same add-a-server piece, then makes the space");
 });
 
 test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {

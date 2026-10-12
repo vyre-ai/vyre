@@ -93,7 +93,7 @@ test("route: a chat whose server is not known is refused in words, never guessed
 });
 
 test("route: a chat on a server that is no longer paired is refused naming the next step", () => {
-  const r = go({ input: { chat: "chat_one" }, chatServers, paired: ["boxa"] });
+  const r = go({ input: { chat: "chat_one" }, chatServers, paired: ["boxa", "boxc"] });
   assert.equal(r.error?.code, "server_not_paired");
   assert.match(r.error?.message ?? "", /Settings, Servers/);
 });
