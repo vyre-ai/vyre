@@ -38,6 +38,13 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
   const seat = (await R.query(ownerChain, "team-member", { filter: { field: "kind", op: "eq", value: "person" }, page: { limit: 20 } })).rows.find((/** @type {any} */ r) => r.data.name === "ana");
   await R.remove(ownerChain, "team-member", seat.id, seat.version);
   assert.equal(await may(ANA), false, "removed from the team: she may not any more");
+  // work.team.doing keeps a follower (a log subscription) per caller and project: only for a record she can read, never for a made-up address
+  const anaToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ana", person: ANA, path: "relay" }), {})).token;
+  const real = (await R.query(ownerChain, "project", { filter: { field: "slug", op: "eq", value: "owners-matter" }, page: { limit: 1 } })).rows[0];
+  const madeUp = await d.registry.call("work.team.doing", { project: `vyre://${SPACE}/project/00000000-0000-4000-8000-00000000dead` }, "cli", { token: anaToken });
+  assert.equal(madeUp.error && madeUp.error.code, "not_found", "a made-up project address starts no follower: " + JSON.stringify(madeUp).slice(0, 160));
+  const ok = await d.registry.call("work.team.doing", { project: real.urn }, "cli", { token: anaToken });
+  assert.ok(!ok.error && ok.data && ok.data.lines, "an existing project does: " + JSON.stringify(ok).slice(0, 160));
   // a member's own memory tools asked for the owner's project room (the room argument) are refused: personal memory is read only by its person
   const benToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "relay" }), {})).token;
   for (const tool of ["memory.relevant", "memory.facts", "memory.context"]) {
