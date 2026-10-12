@@ -3,7 +3,9 @@ import { Banner, Button, Card, ChoiceList, Chip, CodeBlock, CodeDisplay, CodeFie
 import { DEMO, WORDS, addressOf, afterSpace, inviteStatus, spaceCodeStatus, wordsMatch } from "./flow-model.js";
 import { usePair } from "./VaultInferenceScreens";
 import { takeJoin } from "../../src/shell/join-hold.js";
-import { LIVE, beginServerRun, confirmServerWords, denyServerWords, holdMaster, joinCard, joinSpace, keepMadeInvite, lendThisComputer, linkFromInput, makeInvite, confirmInviteWords, pairByCode, readInvite, setUpSpace, stopServerRun, peekMaster, forgetMaster, useActiveSpace, useJoinCard, useMadeInvite, useServerRun, whyNot } from "./real-space";
+import { Linking } from "react-native";
+import * as Clipboard from "expo-clipboard";
+import { LIVE, beginServerRun, confirmServerWords, inviteEmail, denyServerWords, joinCard, joinSpace, keepMadeInvite, lendThisComputer, linkFromInput, makeInvite, confirmInviteWords, pairByCode, readInvite, setUpSpace, stopServerRun, useActiveSpace, useJoinCard, useMadeInvite, useServerRun, whyNot } from "./real-space";
 import type { ScreenProps } from "./types";
 
 const HINT = "Prototype hint";
@@ -298,14 +300,14 @@ function CreateRunLive({ ctx, go, back, steps }: ScreenProps) {
   const stopped = st?.stage === "stopped";
   const failure = failed || (stopped ? st?.error?.message : undefined);
   return (
-    <FlowStep mark="working" steps={steps} onBack={() => { stopServerRun(); back?.(); }} title={ctx.server === "mac" ? "Run this in Terminal on that Mac" : "Run this on your server"} lead="One command installs Vyre. It works once, for one hour. It ends by printing your space code."
+    <FlowStep mark="working" steps={steps} onBack={() => { stopServerRun(); back?.(); }} title={ctx.server === "mac" ? "Run this in Terminal on that Mac" : "Run this on your server"} lead="One command installs Vyre. It works once, for one hour. It needs at least 4 GB of memory, and 8 GB is recommended. It ends by printing your space code."
       failure={failure}
       primary={failure ? { label: "Start again", onPress: () => { setFailed(""); stopServerRun(); beginServerRun(ctx.server).catch((e) => setFailed(whyNot(e))); } } : { label: "I have the code", onPress: () => go("create.code") }}>
       {st?.installLine ? <CodeBlock lang="sh" code={st.installLine} /> : <Text tone="muted">Making your line.</Text>}
       <Stack gap={2}>
         <Text strong>Lost the code?</Text>
         <CodeBlock lang="sh" code="vyre space up" />
-        <Text size="caption" tone="muted">That prints a fresh code at any time. vyre space shows the space's details.</Text>
+        <Text size="caption" tone="muted">That prints a fresh code at any time. If someone else set up the server, ask them for the code: they run vyre space up. Whoever types the code here and confirms the four words becomes the space's owner.</Text>
       </Stack>
     </FlowStep>
   );
@@ -319,7 +321,7 @@ function CreateCodeLive({ go, back, steps }: ScreenProps) {
   useEffect(() => { if (st?.stage === "found") go("create.confirm"); }, [st?.stage]);
   const connect = async () => {
     setFailure("");
-    try { await pairByCode(code, (a) => setAck(a)); go("create.vault"); } catch (e) { setAck(""); setFailure(whyNot(e)); }
+    try { await pairByCode(code, (a) => setAck(a)); go("create.setup"); } catch (e) { setAck(""); setFailure(whyNot(e)); }
   };
   return (
     <FlowStep mark="working" steps={steps} onBack={back} title="Type the space code" lead="It starts with WINK and was printed on your server. If you ran the line from the last screen, this moves on by itself."
@@ -335,7 +337,7 @@ function CreateConfirmLive({ go, back, steps }: ScreenProps) {
   const st = useServerRun();
   const words = st?.box?.words ?? [];
   const [bad, setBad] = useState(false);
-  useEffect(() => { if (st?.stage === "done") go("create.vault"); }, [st?.stage]);
+  useEffect(() => { if (st?.stage === "done") go("create.setup"); }, [st?.stage]);
   const failure = bad ? "The words do not match, so this is not your server. Do not go on. Run vyre space up on your server for a fresh code, then enter it again." : st?.stage === "stopped" ? st.error?.message : undefined;
   const pairing = st?.stage === "pairing";
   return (
@@ -348,17 +350,6 @@ function CreateConfirmLive({ go, back, steps }: ScreenProps) {
   );
 }
 
-function CreateVaultLive({ set, go, back, steps }: ScreenProps) {
-  const pair = usePair();
-  return (
-    <FlowStep steps={steps} onBack={back} title="Set the space's master password" lead="This locks the space's shared passwords and accounts. You are the owner, and you can hand ownership to another member later."
-      failure={pair.failure}
-      primary={{ label: "Create the space", disabled: !pair.ready, onPress: () => { if (pair.check()) { holdMaster(pair.value); set({ created: true }); go("create.setup"); } } }}>
-      {pair.fields}
-    </FlowStep>
-  );
-}
-
 function CreateSetupLive({ ctx, go, back, steps }: ScreenProps) {
   const items = ["Creating the space on your server", "Creating the space vault", "Setting the rule for members' computers"];
   const [done, setDone] = useState(0);
@@ -367,10 +358,8 @@ function CreateSetupLive({ ctx, go, back, steps }: ScreenProps) {
   useEffect(() => {
     let live = true;
     setFailure("");
-    const master = peekMaster();
-    if (!master) { setFailure("The master password was not kept, so the space was not made. Go back and set it again."); return; }
-    setUpSpace({ spaceName: ctx.spaceName, master, membersOwnComputers: ctx.allowed }, (i) => { if (live) setDone(i); })
-      .then(() => { forgetMaster(); if (live) setDone(items.length); })
+    setUpSpace({ spaceName: ctx.spaceName, membersOwnComputers: ctx.allowed }, (i) => { if (live) setDone(i); })
+      .then(() => { if (live) setDone(items.length); })
       .catch((e) => { if (live) setFailure(`${whyNot(e)} Nothing after this step was made. Try again.`); });
     return () => { live = false; };
   }, [attempt]);
@@ -511,6 +500,10 @@ function InviteLinkLive({ ctx, go, back }: ScreenProps) {
       primary={{ label: admin ? "They have the link" : "I sent it", onPress: () => go(admin ? "invite.words" : "invite.done") }}>
       <CodeBlock code={m.link} lang="" />
       {m.code ? <CodeDisplay label="Or read them this code" code={m.code} /> : null}
+      <Stack gap={2}>
+        <Button kind="secondary" size="sm" label="Copy link" onPress={() => { Clipboard.setStringAsync(m.link).catch(() => {}); showToast("Copied"); }} />
+        <Button kind="secondary" size="sm" label="Email it" onPress={() => { void Linking.openURL(inviteEmail(m.link)).catch(() => showToast("Your mail app did not open. Copy the link and send it yourself.")); }} />
+      </Stack>
     </FlowStep>
   );
 }
@@ -537,7 +530,7 @@ function InviteWordsLive({ go, back }: ScreenProps) {
 export const CreateRun = LIVE ? CreateRunLive : CreateRunMock;
 export const CreateCode = LIVE ? CreateCodeLive : CreateCodeMock;
 export const CreateConfirm = LIVE ? CreateConfirmLive : CreateConfirmMock;
-export const CreateVault = LIVE ? CreateVaultLive : CreateVaultMock;
+export const CreateVault = CreateVaultMock;
 export const CreateSetup = LIVE ? CreateSetupLive : CreateSetupMock;
 export const JoinCode = LIVE ? JoinCodeLive : JoinCodeMock;
 export const JoinReview = LIVE ? JoinReviewLive : JoinReviewMock;

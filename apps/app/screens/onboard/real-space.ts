@@ -8,7 +8,7 @@ import { startAddServer, type AddServerState } from "../../src/real/add-server-b
 import { DEFAULT_CHOICE, SERVER_KINDS } from "../../src/real/add-server.js";
 import { addressOf } from "./flow-model.js";
 import { allowedOf, refusal } from "../spaces/computers-model.js";
-import { createInput, madeNote } from "../devices/invite.js";
+import { createInput, emailIt, madeNote } from "../devices/invite.js";
 
 export const LIVE = !MOCK;
 
@@ -59,9 +59,9 @@ export const useActiveSpace = () => active.use();
 
 /**
  * Make the space on the paired server, then its vault, then say whether members may use their own computers.
- * `master` opens the vault the first time (vault.unlock sets the passphrase), then vault.vaults.create makes the space's shared vault with this person as its owner.
+ * The space vault has no password of its own: vault.vaults.create makes the shared vault with this person as its owner, and it opens with their own master password.
  */
-export async function setUpSpace(o: { spaceName: string; master: string; membersOwnComputers: boolean }, onStep: (i: number) => void): Promise<ActiveSpace> {
+export async function setUpSpace(o: { spaceName: string; membersOwnComputers: boolean }, onStep: (i: number) => void): Promise<ActiveSpace> {
   const slug = addressOf(o.spaceName);
   const { makeServerSpace } = await import("../../src/real/install");
   onStep(0);
@@ -69,7 +69,6 @@ export async function setUpSpace(o: { spaceName: string; master: string; members
   const made = { id, slug, name: o.spaceName.trim() };
   active.set(made);
   onStep(1);
-  await tool("vault.unlock", { passphrase: o.master });
   await tool("vault.vaults.create", { name: slug });
   onStep(2);
   await tool("spaces.members.computers", { space: id, allow: o.membersOwnComputers });
@@ -149,13 +148,12 @@ export async function confirmInviteWords(id: string, words: string) {
   return (await t.invitesHere()) ? t.confirmTeamInviteWords(s.id, id, words.trim()) : tool("spaces.invites.confirm", { space: s.id, id, words: words.trim() });
 }
 
-// The master password typed on the vault screen, held until the setup screen has used it, then forgotten.
-let held = "";
-export const holdMaster = (v: string) => { held = v; };
-export const peekMaster = () => held;
-export const forgetMaster = () => { held = ""; };
 
 /** The invite just made, kept from the Invite screen to the screens that show it. */
 const made = store<MadeInvite | null>(null);
 export const useMadeInvite = () => made.use();
 export const keepMadeInvite = (m: MadeInvite | null) => made.set(m);
+
+/** The mail app's ready email for an invite (a mailto link; Vyre sends nothing). */
+export const inviteEmail = (link: string) => emailIt(activeSpaceName(), link).mailto;
+const activeSpaceName = () => active.get()?.name || "the space";
