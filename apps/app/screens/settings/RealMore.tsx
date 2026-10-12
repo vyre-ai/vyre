@@ -1,5 +1,6 @@
 // Updates and Notifications from the real box: update.status, update.check and update.apply; push.settings (which kinds reach you, quiet hours) and push.devices.
 import { useCallback, useEffect, useState } from "react";
+import { ServerLine } from "./ServerLine";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
@@ -18,6 +19,7 @@ export function RealUpdates() {
   const apply = () => { setBusy(true); updateApply().then((r) => { showToast(r.requested === false ? r.reason ?? "Not started." : "Update requested."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
     <Page title="Updates" back="/u/settings">
+      <ServerLine />
       {err ? <Card flush><ErrorState title="Updates did not load" reason={err} retry={load} /></Card> : null}
       {s ? (
         <>
