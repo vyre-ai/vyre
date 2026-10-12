@@ -14,6 +14,14 @@ import { roleAtLeast } from "../../lib/spaces/members.js";
 const UNPROVEN_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:|device:|tailnet|space:|deck|mobile)/;
 
 /**
+ * The labels of a call that comes in from another device or node (not a socket on this machine, not a module): a paired app device, a tailnet node, a visiting Space, an app. Under one of these, with no token and no
+ * facts the daemon proved, the caller is nobody the daemon knows, even on a one-person home: a stranger who redeemed a bearer pairing string is exactly such a caller. The owner's own devices carry facts.
+ */
+const REMOTE_LABEL = /^(?:device:|tailnet|space:|deck|mobile)/;
+/** A remote-label call that carries no token and no facts. @param {string} caller @param {any} m */
+const claimlessRemote = (caller, m) => REMOTE_LABEL.test(String(caller)) && !(m && (typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object"))) && !(m && m.in_space_chain);
+
+/**
  * A session's own call that the daemon relays into a team Space as `module:vyred` (core/daemon/index.js, a model's tool call in a team chat): the call began as the session's, so it is judged as the session's, the
  * person read from the chain the daemon built from the verified token (`in_space_chain`, which only callInSpace can set; the registry drops any other). The member door's own relays carry no session label.
  * @param {string} caller @param {any} m
@@ -24,7 +32,7 @@ const isRelay = (caller, m) => caller === "module:vyred" && typeof m.origin === 
 /** A plain noun for what a refused tool is about, by its module; a tool in a module not named here is "That". */
 const NOUN = Object.freeze({
   mail: "mail", google: "Google account", github: "GitHub account", connectors: "connected services", publish: "publishing", documents: "document signing", mcp: "connected tools",
-  computers: "computer access", computer: "computer access", chrome: "browser control", "hands-desktop": "computer access", glass: "computer access",
+  vault: "vault", computers: "computer access", computer: "computer access", chrome: "browser control", "hands-desktop": "computer access", glass: "computer access",
   settings: "set-up", spend: "spending", artifacts: "artifact library", bridges: "bridges to the owner's other accounts", machine: "set-up", spaces: "Space set-up",
 });
 
@@ -44,7 +52,7 @@ export function createDoorGate(k) {
     const m = meta || {};
     let others = true;
     try { others = (await k.othersExist(isRelay(caller, m) && m.in_space_chain ? m.in_space_chain.space : undefined)) === true; } catch { others = true; }
-    if (!others) return "pass";
+    if (!others && !claimlessRemote(caller, m)) return "pass";
     const relayed = isRelay(caller, m);
     const claims = relayed || typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
     /** @type {any} */ let first = null;
@@ -62,7 +70,10 @@ export function createDoorGate(k) {
     return "member";
   };
   const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
-    if (PLUMBING.has(tool) || MEMBER_MAY.has(tool) || SELF_GATED.has(tool)) return null;
+    if (PLUMBING.has(tool)) return null;
+    // the vault refuses a person in its own words; a call that carries no proof of who it is never reaches it
+    if (SELF_GATED.has(tool)) return claimlessRemote(caller, meta) ? { error: { code: "denied", message: refusal(tool) } } : null;
+    if (MEMBER_MAY.has(tool)) return null;
     return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
   };
   /** Does this caller get a member's tool list (the owner's tools left off)? */

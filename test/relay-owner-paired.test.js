@@ -70,7 +70,7 @@ test("pairing paths: the first device, a confirmed window and a gated ring leave
   const start1 = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
   await check(w, start1.device, false, "start");
   // the window: the redeemer is enrolled only after the screen confirms this exact phone
-  const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" } };
+  const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: w.d.kernel.id.owner, path: "relay" } };   // the owner's own screen: the daemon's edge gives a confirmed device these facts, and the door gate (core/modules/door-gate.js) refuses a device label without them
   const events = []; w.d.events.on("pairing.*", (/** @type {any} */ e) => events.push([e.type, e.payload]));
   const open = (await w.d.registry.call("relay.pair.window.open", {}, SCREEN, A)).data;
   const redeem = pairTicket(fromBase64url(open.ticket), { relay: (await w.d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: w.keys(), timeout: 20_000 });
