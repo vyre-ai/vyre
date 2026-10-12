@@ -41,7 +41,7 @@ export const CALLS = Object.freeze({
   work: ["templates", "project-create", "start-project"],
   // A member's project files (0.3.3; core/work/member-files.js): list, read and upload in one project's files area.
   files: ["list", "read", "upload"],
-  chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
+  chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */

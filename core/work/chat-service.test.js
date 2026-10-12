@@ -32,7 +32,7 @@ async function world(t) {
 }
 
 test("chat is a group of the Space kernel's remote calls", () => {
-  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"]);
+  assert.deepEqual(CALLS.chat, ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read", "read"]);
 });
 
 test("a member starts their own chat and sees it; another member does not see it", { timeout: 90_000 }, async t => {
@@ -106,4 +106,23 @@ test("a member says something in a shared chat and the other member reads it, as
   await assert.rejects(as(ANA, "send", { chat: lone.chat, text: "let me in" }), /no such|not_found|not found/i, "Ana is not in Ben's own chat");
   await assert.rejects(as(ANA, "catchup", { chat: lone.chat }), /no such|not_found|not found/i);
   await assert.rejects(svc.send(chainOf(ZED), { chat: made.chat, text: "hi" }), /not found/i, "a person who is not a member");
+});
+
+test("a member reads a chat's frames over the door (chat.read): the other member's words from the start, in order, bounded; a chat she is not in and a person who is not a member are refused in words", { timeout: 90_000 }, async t => {
+  const { as, svc, chainOf } = await world(t);
+  const made = await as(ANA, "create", { title: "Huddle", people: [BEN] });
+  await as(ANA, "send", { chat: made.chat, text: "hello from Ana, read me" });
+  const r = await as(BEN, "read", { chat: made.chat, from: 0 });
+  assert.ok(Array.isArray(r.frames) && r.frames.length > 0, JSON.stringify(r).slice(0, 200));
+  assert.ok(r.frames.some((/** @type {any} */ f) => f.type === "chat.user-message" && /hello from Ana, read me/.test(String(f.data && f.data.text))), "Ben reads Ana's message");
+  assert.equal(r.viewer, `person:${BEN}`);
+  assert.ok(r.head >= r.next && r.next > 0, "next is the cursor to ask from");
+  assert.equal((await as(BEN, "read", { chat: made.chat, from: r.next })).frames.length, 0, "nothing again");
+  assert.ok((await as(BEN, "read", { chat: made.chat, from: 0, limit: 1 })).frames.length <= 1, "limit holds");
+  assert.ok((await as(BEN, "read", { chat: made.chat, from: 0, limit: 99999 })).frames.length <= 200, "the cap is 200 frames");
+  const lone = await as(BEN, "create", { title: "Ben alone" });
+  await assert.rejects(as(ANA, "read", { chat: lone.chat, from: 0 }), /no such|not_found|not found/i, "Ana is not in Ben's own chat");
+  await assert.rejects(svc.read(chainOf(ZED), { chat: made.chat, from: 0 }), /not found/i, "a person who is not a member");
+  // the door passes only the keys it names: a viewer or a person she tries to name is dropped
+  assert.equal((await as(BEN, "read", { chat: made.chat, from: 0, as: `person:${ANA}`, viewer: ANA })).viewer, `person:${BEN}`, "drawn for Ben, whoever she names");
 });

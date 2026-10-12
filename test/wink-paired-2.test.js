@@ -1563,3 +1563,58 @@ shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.loc
   assert.equal(state.entries.find(e => e.eid === pc.eid).held, undefined, "the PC's entry is a full device, not held");
   assert.equal(res.data.ops.at(-1).by, pc.eid, "signed by the passkey");
 });
+
+shardTest("a member reads a team chat in the app's own code path: the real callTeam/homeSession session, the pollDuplex poller and core/stream's client against a real paired server; the owner's words arrive in order once each, a member added later gets nothing from before her floor, and a member not in the chat is refused in words", { timeout: 200_000 }, async t => {
+  const { openInvite, homeSession } = await import("../apps/app/src/real/join-team.js");
+  const { pollDuplex } = await import("../apps/app/src/chat/member-poll.js");
+  const { connect: connectStream } = await import("../core/stream/client.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealSigner, ROUTE } = await teamRig(t);
+  const joinAs = async (/** @type {string} */ name) => {
+    const who = await ident.another(name);
+    const signer = sealSigner(who.id);
+    const invChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: who.id, vouched: true });
+    const rows = new Map();
+    const deps = {
+      who: { id: who.id, name, eid: who.eid, sign: async (/** @type {Uint8Array} */ m) => new Uint8Array(await who.store.sign(Buffer.from(m))) },
+      fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+      signPresence: async (/** @type {any} */ req) => signer.proof(invChain, req.op, req.fields), presenceKey: async () => signer.enrolment,
+      store: { get: async (/** @type {string} */ k) => rows.get(k), put: async (/** @type {string} */ k, /** @type {any} */ v) => { rows.set(k, v); } },
+    };
+    const inv = await openInvite(deps, (await linkFor(who.id)).link);
+    await inv.accept(); inv.close();
+    return { who, deps, rows };
+  };
+  const ana = await joinAs("ana"), ben = await joinAs("ben");
+  const handle = /** @type {any} */ (f.w.d.registry.modules.get("work")).handle;
+  const svc = handle.peerService({ space: made.space, kernel: hosted.kernel, registry: f.w.d.registry });
+  const chat = await svc.create(ownerChain, { title: "Intake huddle", people: [ana.who.id] });
+  await svc.send(ownerChain, { chat: chat.chat, text: "owner: first words" });
+  // ana's app: the held session and the poller under core/stream's client, exactly as box-stream.ts opens a joined team's chat
+  const open = async (/** @type {any} */ m, /** @type {string} */ chatId, /** @type {any[]} */ into) => {
+    const sess = await homeSession(m.deps, m.rows.get(`member-of/${made.space}`).channel, made.space, "member");
+    const h = connectStream({ from: 0, open: ({ from }) => pollDuplex({ call: (n, a) => sess.call(n, a), chat: chatId, from, pollMs: 300, onEnd: () => sess.close() }), onFrame: (/** @type {any} */ fr) => into.push(fr) });
+    t.after(() => { h.close(); sess.close(); });
+    return h;
+  };
+  const textsOf = (/** @type {any[]} */ fr) => fr.filter(x => x.type === "chat.user-message").map(x => String(x.data.text));
+  const until = async (/** @type {() => boolean} */ fn, /** @type {string} */ what) => { for (let i = 0; i < 200; i++) { if (fn()) return; await new Promise(r => setTimeout(r, 100)); } assert.fail(`timed out: ${what}`); };
+  const anaFrames = /** @type {any[]} */ ([]);
+  await open(ana, chat.chat, anaFrames);
+  await until(() => textsOf(anaFrames).length >= 1, "ana reads the owner's first message");
+  await svc.send(ownerChain, { chat: chat.chat, text: "owner: second words" });
+  await until(() => textsOf(anaFrames).length >= 2, "ana reads the second message");
+  await new Promise(r => setTimeout(r, 900));
+  assert.deepEqual(textsOf(anaFrames), ["owner: first words", "owner: second words"], "in order, once each");
+  // ben is not in the chat: refused in words, sees none of it
+  const sessB = await homeSession(ben.deps, ben.rows.get(`member-of/${made.space}`).channel, made.space, "member");
+  t.after(() => sessB.close());
+  await assert.rejects(() => sessB.call("chat.read", [{ chat: chat.chat, from: 0 }]), e => /no such|not.?found/i.test(String(e.message || e.code)));
+  // ben joins the chat now: what came before his join is not his
+  await hosted.gateway.grants.chats.change(ownerChain, chat.chat, { add_people: [ben.who.id] });
+  await svc.send(ownerChain, { chat: chat.chat, text: "owner: after ben joined" });
+  const benFrames = /** @type {any[]} */ ([]);
+  await open(ben, chat.chat, benFrames);
+  await until(() => textsOf(benFrames).includes("owner: after ben joined"), "ben reads what came after his join");
+  assert.ok(!textsOf(benFrames).some(x => /first words|second words/.test(x)), "nothing from before his floor");
+});

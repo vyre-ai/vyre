@@ -289,3 +289,43 @@ test("deliverRow opens the row's session in the Space of its chat (a team chat's
   await Switchboard.prototype.deliverRow.call(sb, "t", { text: "H-ONE", uuid: "v" }, { chat: "c", asker: "per_ben" });
   assert.deepEqual(turns, [{ chat: "c", asker: "per_ben", space: "spc_team" }, { chat: "c", asker: "per_ben" }], "the Space rides when the turn has one, and only then");
 });
+
+test("a queued chat turn is announced to the stream only after its asker's kernel session is open; one that does not open is never announced and is told once in words", async () => {
+  /** @type {string[]} */ const order = [];
+  const make = (/** @type {any} */ renew) => /** @type {any} */ ({
+    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, record: () => ({ project: null }), deps: { log() {} },
+    emit: (/** @type {string} */ type) => order.push(type), write: () => { order.push("written"); },
+    renewCapped: async () => { order.push("session"); return renew; },
+    dropQueuedChatTurn: (/** @type {any} */ _i, /** @type {any} */ _r, /** @type {any} */ _p, /** @type {boolean} */ slow) => order.push(slow ? "told-slow" : "told"),
+    drainQueued() {}, drainDone() {},
+  });
+  const kt = JSON.stringify({ chat: "c", asker: "per_ada" });
+  const row = { id: 1, text: "x", surface: "s", uuid: "u", at: 1 };
+  Switchboard.prototype.drainRun.call(make(true), "t", kt, [row], null, LOCK);
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(order, ["session", "thread.sent", "written"], "the session is open first, then the turn is announced, then the words go in");
+  order.length = 0;
+  Switchboard.prototype.drainRun.call(make("capped"), "t", kt, [row], null, LOCK);
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(order, ["session", "told-slow"], "a session that did not open in time: nothing announced, nothing written, the person told once");
+});
+
+test("renewCapped: a session that is slow to open past the bound answers capped (not false), so the room can say the records were slow", async () => {
+  const sb = /** @type {any} */ ({ ksCur: new Map(), live: new Map(), deps: { log() {} }, renewKernelSession: () => new Promise(() => {}), endKernelSession() {} });
+  assert.equal(await Switchboard.prototype.renewCapped.call(sb, "t", {}, { chat: "c", asker: "per_ada" }, 20), "capped");
+  const quick = /** @type {any} */ ({ ksCur: new Map(), live: new Map(), deps: { log() {} }, renewKernelSession: async () => true, endKernelSession() {} });
+  assert.equal(await Switchboard.prototype.renewCapped.call(quick, "t", {}, { chat: "c", asker: "per_ada" }, 20), true);
+});
+
+test("a hop is announced only after its launch has opened the asker's session: sendOnce calls onClaim after switchProvider", async () => {
+  /** @type {string[]} */ const order = [];
+  const sb = /** @type {any} */ ({
+    onceTarget: async () => ({ rec: { project: null, account: null, model: null }, provider: "codex", cur: "codex", acct: { id: "a" } }),
+    live: new Map(), leases: { typing: () => ({ ok: true }) }, emit() {}, transferSeed: async () => ({ seed: "" }), once: new Map(),
+    db: { prepare: () => ({ get: () => ({ opts: "{}" }), run: () => ({}) }) }, carry: new Map(),
+    switchProvider: async () => { order.push("launched"); }, send: async () => { order.push("sent"); return { sent: true }; },
+  });
+  await Switchboard.prototype.sendOnce.call(sb, "t", "x", "s", { person: "per_ada" }, { onClaim: () => order.push("announced"), kernelTurn: { chat: "c", asker: "per_ada" } });
+  assert.deepEqual(order, ["launched", "announced", "sent"]);
+});

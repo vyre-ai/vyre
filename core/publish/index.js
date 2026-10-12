@@ -702,7 +702,7 @@ export default {
       return out;
     };
     const tickJobs = async () => { for (const { space, d } of await dueJobs()) { try { await runJob(space, d); } catch (/** @type {any} */ e) { ctx.log.warn(`publish: job ${d.name} did not run: ${e.message}`); } } };
-    const jobTimer = setInterval(() => { tickJobs().catch(() => {}); }, seams.jobTickMs ?? 30_000);
+    const jobTimer = setInterval(() => { tickJobs().catch(() => {}); }, seams.jobTickMs ?? 60_000);
     jobTimer.unref?.();
 
     ctx.tool("publish.job.run", {

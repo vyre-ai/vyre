@@ -2,7 +2,7 @@
 // the hardware key that gives the yes, and a small store for where the joined teams' homes are. A device with no server of its own has nothing else to join with; a name kept in this app has no box to ask.
 
 import { loadIdentity } from "../identity/store";
-import { openInvite, callTeam, type JoinDeps } from "./join-team.js";
+import { openInvite, callTeam, homeSession, type JoinDeps } from "./join-team.js";
 import { WORDS } from "@vyre/relay-client/words.js";
 
 const KEY = "vyre.team.";
@@ -99,6 +99,15 @@ export async function joinedHere(space: string): Promise<boolean> {
 export async function showingJoined(): Promise<boolean> {
   const { useSpaces } = await import("../../screens/shell/state");
   return joinedHere(useSpaces.getState().space ?? "");
+}
+
+/** ONE held session to a team space this device joined: `call(name, args)` any number of times, then `close()`. For a chat open on screen (src/chat/member-poll.js); every other screen still opens one session per call (callTeam). */
+export async function teamSession(space: string) {
+  const d = await joinDeps();
+  if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const row = d.store ? await d.store.get(`member-of/${space}`) : null;
+  if (!row || !row.channel) throw Object.assign(new Error("This device has not joined that space."), { code: "not_a_member" });
+  return homeSession(d, row.channel, space, "member");
 }
 
 /** A call to a team space this device joined, as a member. */
