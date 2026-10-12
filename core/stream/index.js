@@ -18,6 +18,8 @@ import { serve, serveWS } from "./server.js";
 import { createGroups } from "./group.js";
 import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
+import { forViewerAsync, hiddenFrame } from "./viewer.js";
+import { kindOf, startOf } from "./frame.js";
 import { newPrefixedId } from "../../lib/id.js";
 
 export { SessionLog, Logs } from "./log.js";
@@ -258,7 +260,7 @@ export default {
 
     /** The tools a team member reaches through the Space's remote server (core/work/chat-service.js), by short name: the same code the tool runs, once. @type {Map<string, (i: any, meta: any) => Promise<any>>} */
     const memberRuns = new Map();
-    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read"];
+    const MEMBER_STREAM = ["send", "catchup", "typing", "react", "pin", "reply-mode", "mark-read", "read"];
     // The Space's owner is in their own team's chats too, and has no member door to them (it is the home): a call that names the team's `space` runs as `stream.serve` in that Space under the chain the caller holds THERE
     // (kernel.chainIn), the same entry a member's call takes, so the Space's own authorize decides.
     const ownerRoute = async (/** @type {string} */ name, /** @type {any} */ i, /** @type {any} */ meta) => {
@@ -297,8 +299,46 @@ export default {
     tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
 
     // The member door's one entry for the stream (core/work/chat-service.js): only the daemon's own door runs it, in a team Space, under a member's own chain (callInSpace; `in_space_chain` is the registry's alone).
+    // A member's read of a chat over the member door (no WebSocket reaches her): the chat's own frames after cursor `from`, drawn for HER exactly as the connection draws them (core/stream/server.js catchUp):
+    // her join floor (what came before it is a cursor-only placeholder, who joined and left stay quiet), the kernel's per-frame `may`, and each cited field resolved with her own authority. mustBeIn is `prepare`'s
+    // access.read: a person not in the chat is refused there. At most READ_MAX frames a call, `from` a cursor from 0 (a cursor the log no longer holds, or is ahead of it, answers `reset`).
+    const READ_MAX = 200;
+    const readRun = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!groups) throw Object.assign(new Error("the stream has no store here: ask the owner to restart Vyre"), { code: "unavailable" });
+      const { chat, session, who } = await prepare(i, meta);
+      const log = logs.get(session);
+      const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : 0;
+      const limit = Number.isInteger(i.limit) && i.limit >= 0 ? Math.min(i.limit, READ_MAX) : 100;
+      const base = { chat, session, viewer: who.id, head: log.head, floor: log.floor };
+      if (from > log.head) return { ...base, frames: [], next: from, reset: "ahead" };
+      if (from < log.floor) return { ...base, frames: [], next: from, reset: "behind" };
+      if (limit === 0 || from >= log.head) return { ...base, frames: [], next: from };
+      const raw = log.read(from, limit);
+      const fl = Number(who.floor) > 1 ? Number(who.floor) : 0;
+      /** @type {any[]} */ const frames = [];
+      /** @type {null | { from: number, to: number, time: number }} */ let run = null;
+      const flush = () => { if (run) { frames.push(hiddenFrame(session, run.to, run.to - run.from + 1, run.time)); run = null; } };
+      for (const f of raw) {
+        if (fl && f.cur < fl) {
+          const k = kindOf(f);
+          if (k === "participant-joined" || k === "participant-left") { flush(); frames.push({ ...f, data: { ...f.data, quiet: true } }); }
+          else run = run ? { from: run.from, to: f.cur, time: f.time } : { from: startOf(f), to: f.cur, time: f.time };
+          continue;
+        }
+        flush();
+        frames.push(await forViewerAsync(f, who));
+      }
+      flush();
+      return { ...base, frames, next: raw.length ? raw[raw.length - 1].cur : from };
+    };
+    memberRuns.set("read", readRun);
+    ctx.tool("stream.read", {
+      description: "A chat's frames after cursor from (0 for everything the log holds), drawn for the person asking: their join floor, the kernel's say on each frame, their own authority on cited fields. At most 200 a call; next is the cursor to ask from; reset says the log no longer holds that cursor.",
+      input: obj({ chat: str, from: int, limit: int, as: str }, ["chat"]), callers: PEOPLE, run: readRun,
+    });
+
     ctx.tool("stream.serve", {
-      description: "A team member's own stream call on the team's server: send, catchup, typing, react, pin, reply-mode or mark-read, as that member, in that Space. Only the daemon's own door runs it.",
+      description: "A team member's own stream call on the team's server: send, catchup, typing, react, pin, reply-mode, mark-read or read, as that member, in that Space. Only the daemon's own door runs it.",
       internal: true, callers: ["module"],
       input: obj({ call: { type: "string", enum: MEMBER_STREAM }, input: { type: "object" } }, ["call"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
