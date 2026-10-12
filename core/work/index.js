@@ -821,7 +821,9 @@ export default {
           // a task may ask for more of the record's world (form.context_tokens), within the ceiling
           if (asked === undefined && t && t.form && Number.isFinite(t.form.context_tokens)) asked = t.form.context_tokens;
         }
-        const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
+        // only the lines this caller's own followers hold, and for the project asked about (the followers are per caller and project, work.team.doing)
+        const me = String((chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id) || "");
+        const lines = Object.fromEntries([...doing.values()].filter(d => d.who === me && (!input.project || d.project === input.project)).flatMap(d => [...(d.lines || [])]));
         return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), memory: agentOf(chain) ? async (/** @type {string} */ slug) => { const r = await ctx.call("memory.brief", { project: slug, agent: agentOf(chain) }); const d = r && (r.data !== undefined ? r.data : r); return d && typeof d.text === "string" ? d.text : null; } : null, context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await spaceContextTokens(k, chain)))) } : false });
       },
     });
@@ -871,12 +873,14 @@ export default {
       run: async (input, extra) => {
         const k = kernelOf();
         if (!urnOk(input.project)) throw fail("bad_input", "the project is a vyre:// address");
-        let d = doing.get(input.project);
+        // One follower per project AND per caller: the lines are built from the events the subscribing chain may read, so a later caller never gets lines built for someone who may read more.
+        const chain = await chainOf(extra), who = String((chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id) || ""), key = `${input.project}|${who}`;
+        let d = doing.get(key);
         if (!d) {
           const lines = new Map();
           const line = createDoingLine(k, { project: input.project, onLine: (t, l) => { if (l) lines.set(t, l); else lines.delete(t); } });
-          d = { line, lines, off: line.attach(await chainOf(extra)) };
-          doing.set(input.project, d);
+          d = { line, lines, project: input.project, who, off: line.attach(chain) };
+          doing.set(key, d);
         }
         d.line.tick();
         return { lines: Object.fromEntries(d.lines) };
