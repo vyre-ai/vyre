@@ -15,7 +15,7 @@ export default {
     const { mac, ins, srv } = w;
     /** @type {any} */ let team = null, invite = null, bob = null, joined = null;
     const made = [];
-    const T = "the owner makes a team space on the server";
+    const T = "the owner makes the team in the server's own Space (no second Space)";
     await J.step(T, async () => {
       team = await mac.createTeamSpace(`firm${w.person.slice(-5)}`);
       assert.match(team.space, /^spc_/);

@@ -6,7 +6,9 @@
 //   "readfile <path>"  asks the client for fs/read_text_file and says what came back (or the error)
 //   "writefile <path> <text>"  the same through fs/write_text_file
 //   "term <command>"   runs it through terminal/create and says its output
-//   "walk-term:<command>"  the same, found anywhere in the prompt, and says the exit code too
+//   "walk-term:<command>"  the same, on the last line of the prompt (earlier lines of a seed are history), and says the exit code too
+//   "walk-mcp:<tool> <json>"  calls a Vyre tool the way a real ACP agent does: through the MCP server the client handed it in session/new (mcpServers); says exit=0, or exit=1 when the tool refused
+//   "walk-mcp-bg:<seconds> <tool> <json>"  starts a detached job that makes that call after the delay and writes the answer to ./bg-mcp-<seconds>.out (a job a turn leaves behind)
 //   "detach"           starts a setsid-detached `sleep` (its pid to $FAKE_ACP_PIDFILE) and says so
 //   "mode"             says its current mode
 //   "whoami"           says the HOME it runs in (the account's) and the CODEWORD-12 words in what it was handed (a walk's proof of whose account answered, and of what the shared history gave it)
@@ -22,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import readline from "node:readline";
+import { callViaMcp } from "./walk-mcp-call.mjs";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -32,6 +35,7 @@ const store = process.env.FAKE_ACP_STORE ? (process.env.FAKE_ACP_PER_HOME ? path
 if (store) fs.mkdirSync(store, { recursive: true });
 const log = o => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + "\n"); };
 const out = o => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...o }) + "\n");
+let mcpServers = /** @type {any[]} */ ([]);
 let nextId = 1000, session = "", mode = process.env.FAKE_ACP_START_MODE || "default", cancelled = false, clientCaps = /** @type {any} */ ({});
 const waits = new Map();
 const call = (method, params) => new Promise((resolve, reject) => { const id = nextId++; waits.set(id, { resolve, reject }); out({ id, method, params }); });
@@ -102,8 +106,15 @@ async function prompt(id, blocks) {
       say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
       await call("terminal/release", { sessionId: session, terminalId });
     } catch (e) { say("term failed: " + e.message); }
-  } else if ((m = /walk-term:(.+)$/m.exec(t))) {
-    // a walk's command inside the session, found anywhere in what the agent was handed (a seed or catch-up block may come first)
+  } else if ((m = /walk-mcp-bg:(\d+) (\S+)(?: (.*))?$/.exec(String(t).trimEnd().split("\n").pop() || ""))) {
+    const out = path.join(process.cwd(), `bg-mcp-${m[1]}.out`);
+    spawn(process.execPath, [fileURLToPath(new URL("./walk-mcp-call.mjs", import.meta.url)), JSON.stringify(mcpServers[0] || {}), m[2], m[3] || "{}", out, m[1]], { detached: true, stdio: "ignore", cwd: process.cwd() }).unref();
+    say("walk-mcp exit=0: started");
+  } else if ((m = /walk-mcp:(\S+)(?: (.*))?$/.exec(String(t).trimEnd().split("\n").pop() || ""))) {
+    // a Vyre tool through the MCP server the client handed this session (the route a real Codex or Grok uses; its shell is not one)
+    try { say(await callViaMcp(mcpServers[0], m[1], m[2] ? JSON.parse(m[2]) : {})); } catch (e) { say("walk-mcp failed: " + e.message); }
+  } else if ((m = /walk-term:(.+)$/.exec(String(t).trimEnd().split("\n").pop() || ""))) {
+    // a walk's command inside the session: the LAST line of what the agent was handed (a seed or catch-up block may come first, and it may quote earlier walk-term lines, which are not this turn's words)
     try {
       const { terminalId } = await call("terminal/create", { sessionId: session, command: "/bin/sh", args: ["-c", m[1].trim()] });
       const ex = await call("terminal/wait_for_exit", { sessionId: session, terminalId });
@@ -164,6 +175,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   }
   if (m.method === "session/new" && process.env.FAKE_ACP_AUTH && !authed) return out({ id: m.id, error: { code: -32000, message: "Authentication required" } });
   if (m.method === "session/new") {
+    mcpServers = Array.isArray(m.params && m.params.mcpServers) ? m.params.mcpServers : [];
     session = "fake-" + crypto.randomUUID().slice(0, 8);
     if (store) fs.writeFileSync(path.join(store, session), m.params.cwd);
     return out({ id: m.id, result: { sessionId: session, modes: { ...MODES, currentModeId: mode },
