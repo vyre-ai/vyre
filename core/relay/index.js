@@ -1154,7 +1154,11 @@ export default {
     ctx.tool("relay.devices.mark", {
       description: "Mark a paired app of yours as yours. A phone or computer that came in by a code anyone could hold, or one the box has no record of you pairing, is treated as a team member's until you mark it. Needs your presence.",
       input: obj({ id: str }, ["id"]),
-      presence: { summary: async input => `Mark device ${String(input && input.id)} as yours` },
+      presence: { summary: async input => {
+        // The owner approves a card: name the device and when it paired, so an id alone does not stand for a stranger's.
+        const r = /** @type {any} */ (db.prepare("SELECT name, paired_at FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input && input.id)));
+        return r ? `Mark "${r.name || "an unnamed device"}" (paired ${new Date(r.paired_at).toISOString().slice(0, 10)}) as yours` : `Mark device ${String(input && input.id)} as yours`;
+      } },
       run: async (input, meta = {}) => {
         owner(meta.caller, meta, "marking a device as yours");
         // Only the owner's own person: the kernel's chain for this call is exactly one person hop, and she is the home's owner. A member's device gets no chain at all.
