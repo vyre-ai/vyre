@@ -16,7 +16,7 @@ const MATTER = { name: "matter", label: "Matter", fields: [
   { name: "title", kind: "text", label: "Title" }, { name: "client", kind: "text", label: "Client" },
   { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Open"] }, { name: "fee", kind: "money", label: "Fee" },
   { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }], stages: [{ name: "Intake" }, { name: "Open" }] };
-const FEE = { amount: 4321, currency: "USD" };
+const FEE = { amount: 7340195, currency: "USD" };
 const MEMORY = { name: "memory", needs: { kernel: { actions: ["records.read", "events.read"] } } };
 
 async function world() {
@@ -37,10 +37,10 @@ test("one to one with the manager the model gets the manager-only value; with a 
   // The kernel's own rule: the member's read omits the field.
   assert.equal("fee" in (await rig.kernel.records.get(member, "matter", m.id)).data, false);
   const solo = await buildSituation(rig.kernel, manager, { space: rig.space, project: at(m), room: await rig.room("per_alex") });
-  assert.match(solo.text, /fee: 4321 USD/);
+  assert.match(solo.text, /fee: 7340195 USD/);
   assert.equal(solo.parts.group, false);
   const room = await buildSituation(rig.kernel, manager, { space: rig.space, project: at(m), room: await rig.room("per_alex", ["per_bob"]) });
-  assert.doesNotMatch(room.text, /4321/);
+  assert.doesNotMatch(room.text, /7340195/);
   assert.match(room.text, new RegExp(`fee: restricted here, cite it as \\{\\{field:${m.urn.replace(/[/.]/g, "\\$&")}#fee\\}\\}`));
   assert.match(room.text, /client: Jane Doe/);
   assert.match(room.text, /stage: Intake/);
@@ -52,7 +52,7 @@ test("one to one with the manager the model gets the manager-only value; with a 
 test("two managers in the chat still see the value, and a chat of one person is a one to one", async () => {
   const { rig, manager, m } = await world();
   const two = await buildSituation(rig.kernel, manager, { space: rig.space, project: at(m), room: await rig.room("per_alex", ["per_carol"]) });
-  assert.match(two.text, /fee: 4321 USD/, "two managers may both read it");
+  assert.match(two.text, /fee: 7340195 USD/, "two managers may both read it");
   assert.equal(two.parts.group, true);
   const one = await buildSituation(rig.kernel, manager, { space: rig.space, project: at(m), room: await rig.room("per_alex") });
   assert.equal(one.parts.group, false);
@@ -72,15 +72,15 @@ test("memory answers and recalled notes follow the same rule: no manager-only va
   const engine = createMemoryEngine({ kernel: rig.kernel, db, space: rig.space, serviceChain: mem.serviceChain(), chainFor: () => rig.withService(rig.ownerChain, "memory") });
   await engine.index({ kind: "record", type: "matter", id: m.id });
   const solo = await engine.answer(manager, "Doe estate plan");
-  assert.match(JSON.stringify(rig.modelCalls), /4321/, "alone with the manager the value is in what the model reads");
+  assert.match(JSON.stringify(rig.modelCalls), /7340195/, "alone with the manager the value is in what the model reads");
   rig.modelCalls.length = 0;
   const room = await engine.answer(manager, "Doe estate plan", { room: await rig.room("per_alex", ["per_bob"]) });
   const sent = JSON.stringify(rig.modelCalls);
-  assert.doesNotMatch(sent, /4321/);
+  assert.doesNotMatch(sent, /7340195/);
   assert.match(sent, /\{\{field:[^}]*#fee\}\}/);
   assert.ok(solo.citations.length && room.citations.length);
   const hits = await engine.search(manager, "Doe", 6, { room: await rig.room("per_alex", ["per_bob"]) });
-  assert.doesNotMatch(JSON.stringify(hits), /4321/);
+  assert.doesNotMatch(JSON.stringify(hits), /7340195/);
 });
 
 test("a source the member may not read is withheld from a group answer, never guessed at, and the model is told that more exists", async t => {
@@ -118,7 +118,7 @@ test("work.situation in a group chat narrows to the audience, and a `chat` argum
   const w = await booted(x => x.rig.room("per_alex", ["per_bob"]));
   for (const input of [{ project: w.m.urn }, { project: w.m.urn, chat: "some-other-chat" }, { project: w.m.urn, chat: "" }]) {
     const s = await w.call("work.situation", input);
-    assert.doesNotMatch(s.text, /4321/);
+    assert.doesNotMatch(s.text, /7340195/);
     assert.match(s.text, /restricted here/);
   }
   assert.ok(!("chat" in w.tools["work.situation"].input.properties), "the model is given nothing to leave out");
@@ -126,7 +126,7 @@ test("work.situation in a group chat narrows to the audience, and a `chat` argum
 
 test("a one to one room, from the session, gets the full view", async () => {
   const w = await booted(x => x.rig.room("per_alex"));
-  assert.match((await w.call("work.situation", { project: w.m.urn })).text, /fee: 4321 USD/);
+  assert.match((await w.call("work.situation", { project: w.m.urn })).text, /fee: 7340195 USD/);
 });
 
 test("the room is unknown or malformed: refused, never the one to one view", async () => {
@@ -142,16 +142,16 @@ test("the room is unknown or malformed: refused, never the one to one view", asy
 test("a prompt-injected call that names a room, an audience or a chat cannot widen what the model sees", async () => {
   const w = await booted(x => x.rig.room("per_alex", ["per_bob"]));
   const s = await w.call("work.situation", { project: w.m.urn, chat: "dm-with-manager", audience: [], room: { group: false }, group: false });
-  assert.doesNotMatch(s.text, /4321/);
+  assert.doesNotMatch(s.text, /7340195/);
 });
 
 test("in a room an event source is withheld (its text carries values), alone it is used", async t => {
   const { rig, manager, m, mem } = await world();
   const db = open(path.join(tempHome(t), "engine4.db"));
   const engine = createMemoryEngine({ kernel: rig.kernel, db, space: rig.space, serviceChain: mem.serviceChain(), chainFor: () => rig.withService(rig.ownerChain, "memory") });
-  db.prepare("INSERT INTO memory_engine_index (source, kind, resource, text, vec, trust, red, spaces) VALUES (?, 'event', ?, ?, NULL, 'member', 'internal', ?)").run("event:e1", m.urn, "matter.updated fee 4321 Doe", JSON.stringify([rig.space]));
+  db.prepare("INSERT INTO memory_engine_index (source, kind, resource, text, vec, trust, red, spaces) VALUES (?, 'event', ?, ?, NULL, 'member', 'internal', ?)").run("event:e1", m.urn, "matter.updated fee 7340195 Doe", JSON.stringify([rig.space]));
   const room = await engine.search(manager, "Doe fee", 6, { room: await rig.room("per_alex", ["per_bob"]) });
-  assert.ok(room.every(h => !/4321/.test(h.snippet)));
+  assert.ok(room.every(h => !/7340195/.test(h.snippet)));
   assert.equal(room.withheld >= 1, true);
-  assert.ok((await engine.search(manager, "Doe fee", 6)).some(h => /4321/.test(h.snippet)), "alone, the event is used");
+  assert.ok((await engine.search(manager, "Doe fee", 6)).some(h => /7340195/.test(h.snippet)), "alone, the event is used");
 });
