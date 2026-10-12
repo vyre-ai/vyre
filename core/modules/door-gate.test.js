@@ -41,6 +41,7 @@ test("a member's session is refused the owner's mail, services, computers, artif
     ["computers.list", {}], ["computers.pause", { agent: "assistant" }], ["computers.restart", { agent: "assistant" }], ["computers.takeover", { agent: "assistant" }],
     ["artifacts.list", {}], ["artifacts.update", { id: "x" }], ["artifacts.delete", { id: "x" }], ["artifacts.public.set", { on: true }],
     ["flows.run", { id: "x" }], ["flows.attention", {}], ["files.dirs", {}], ["files.search", { q: "a" }], ["sidebar.get", {}], ["projects.context", { project: "x" }], ["team.list", { all: true }], ["skills.versions", {}], ["assistant.glance", {}], ["threads.chat-switch", { chat: "x" }],
+    ["files.drive.upload", { path: "x.txt", base64: "aGk=" }], ["files.deliver", {}], ["files.drive.share", {}],
     ["settings.get", {}], ["settings.set", { key: "x", value: 1 }], ["spend.summary", {}], ["spend.raise", {}], ["publish.create", {}], ["chrome.open", { url: "https://example.com" }],
   ]);
   for (const [tool, input] of calls) {
