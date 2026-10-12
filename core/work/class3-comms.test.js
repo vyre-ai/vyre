@@ -142,4 +142,10 @@ test("communication and team-member: a member reads her own mail and her project
   const owned = await gw.ask.request(ownerChain, { title: "KITS-TASK", doer: kit, output: { kind: "note" } });
   const anaWithKit = K.chains.fromFacts({ kind: "agent_session", vouched: true, person: ANA, agent: "kit", session: "sa" });
   assert.equal(await gw.ask.get(anaWithKit, owned.id), null, "a member's chain with an agent behind it reads as the member, not as the agent's task");
+
+  // a member cannot widen her own view with a grant: only an owner or an admin gives access (the rule for a grant that names a row scope is pinned in records/comms/log.test.js)
+  const grantSpec = (/** @type {string} */ person) => ({ subject: { kind: "actor", actor: { kind: "person", id: person, space: SPACE } }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/communication/*`, where: [{ attr: "project", op: "eq", value: "px" }] }, reason: "class 3 test", conditions: {}, source: "test" });
+  await comm("PX-MAIL", {}, { attrs: { project: "px" } });
+  await assert.rejects(gw.grants.create(chainOf(BEN), grantSpec(BEN), { presence: { n: Math.random() } }), "a member cannot issue a grant to herself");
+  assert.ok(!(await gw.records.query(chainOf(BEN), "communication", { page: { limit: 50 } })).rows.some((/** @type {any} */ r) => r.data.subject === "PX-MAIL"), "and the refused grant opened nothing");
 });

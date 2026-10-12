@@ -62,7 +62,7 @@ export function createGateway(cfg) {
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
+  records = createRecords({ grantOf: (/** @type {string} */ id) => { const gr = wiring.grants || cfg.grants; return gr && gr.get ? gr.get(id) : undefined; }, tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
   // Share to project over a sealed chat: a share record by someone in the chat wraps the file's key into the project's ring, and the last share of a path taken back rotates it (kernel/storage/sealed-drive.js).
   if (cfg.drive && cfg.drive.share) {
     const base = records, has = (/** @type {string} */ path) => base.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 1 } });

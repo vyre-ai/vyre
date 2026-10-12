@@ -233,7 +233,8 @@ export function createRecords(cfg) {
     project: async (me, rec) => (rec.data && rec.data.personal_of ? String(rec.data.personal_of) === me : onProject(me, { urn: rec.urn })),
     task: async (_me, rec, chain) => { const t = await taskFacts(rec.id); return mayReadTask(chain, { doer: t && t.doer, assigned_by: t && t.assigned_by, project: (rec.data && rec.data.project) || (t && t.project) }, { staff: false, project: seatOf, checkers: t && t.checkers }); },
   };
-  /** The one statement of "staff": is the chain's PERSON (its first person hop, never a later hop) an owner or an admin. @param {any} chain */ const staffOfChain = (chain) => { const p = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null; return Boolean(p) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(p.actor) || {}).role), "admin"); };
+  /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
+  /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec) => {
@@ -242,7 +243,12 @@ export function createRecords(cfg) {
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
     if (staffOfChain(chain)) return true;
-    try { return await rule(String(who.actor.id), rec, chain); } catch { return false; }
+    try {
+      if (await rule(String(who.actor.id), rec, chain)) return true;
+      // an explicit grant that names a row scope, given by an owner or an admin (never a delegation), is access to see: the authorizer already matched it to this very row
+      const d = await check(chain, "records.read", rec.urn);
+      return Boolean(d && (d.grants || []).some((/** @type {string} */ id) => { const g = cfg.grantOf && cfg.grantOf(id); return Boolean(g && !g.parent && g.resource && Array.isArray(g.resource.where) && g.resource.where.length && staffActor(g.issuer)); }));
+    } catch { return false; }
   };
   /** @type {Set<string> | null} */ let protectedTypes = null;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
