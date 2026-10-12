@@ -421,6 +421,23 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
 });
 
+test("E1: three people queued behind the owner's turn, and that turn is stopped (it ends abnormally): the queued messages are not dropped, each is answered under its own asker", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  for (const [who, text] of [["carol", "C-E1"], ["ada", "A-E1"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const kit = kitThread(b, chat.id);
+  await sleep(1500);
+  const stopped = await b.reg.call("threads.stop", { thread: kit }, "deck", { token: w.tokens.bob });   // the running turn ends abnormally
+  assert.ok(!stopped.error, stopped.error && stopped.error.message);
+  const c = await answered(w, watcher, "C-E1", 120_000), a = await answered(w, watcher, "A-E1", 120_000);
+  assert.deepEqual([c.who, a.who], [CAROL, ADA]);
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed" && /resume/.test(String(f.data.note))), "nothing says it could not resume");
+});
+
 test("V2t: the queued variant with a tool call in every turn: each tool call is stamped with the session of the person whose turn it is, per message", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);
