@@ -17,6 +17,7 @@
 
 import os from "node:os";
 import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
+import { projectTeamOf } from "../../kernel/gateway/ownership.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat", PERSONAL = "Personal";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
@@ -158,6 +159,25 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
       return await kernel.records.create(chain(), CHAT, { title: String(hints.title || UNTITLED).slice(0, 120), project: { urn: proj.urn }, chat, people: ids(hints.people), agents: ids(hints.agents),
         started: at, last_active: at, status: "idle", drive: rootOf(proj), location: locationOf(proj, chat) });
     } catch (e) { const again = await findChat(chat); if (again) return again; throw e; }
+  }
+
+  /**
+   * May this caller file a chat under the project named in the input? An owner or admin may (as today). A member only under a project she owns or is on the team of (the ownership rule's own test,
+   * kernel/gateway/ownership.js projectTeamOf: one function), and never one that does not exist yet: a chat does not make a project for her, she starts the project first. Called before the chat is made.
+   * @param {any} callerChain @param {string} name the project's short name
+   */
+  async function mayFileChat(callerChain, name) {
+    const hops = callerChain && Array.isArray(callerChain.hops) ? callerChain.hops : [];
+    const me = hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+    if (!me || !SLUG_RE.test(name)) return;
+    const role = typeof kernel.membership === "function" ? (await kernel.membership(String(me.actor.id)).catch(() => null) || {}).role : undefined;
+    if (role === "owner" || role === "admin") return;
+    const refuse = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
+    const rec = await find(PROJECT, "slug", name);
+    if (!rec) throw refuse(`There is no project called ${name} yet. Start the project first, then start the chat in it.`, "not_found");
+    const team = await projectTeamOf({ get: (/** @type {string} */ t, /** @type {string} */ id) => kernel.records.get(chain(), t, id), query: (/** @type {string} */ t, /** @type {any} */ spec) => kernel.records.query(chain(), t, spec) }, (/** @type {string} */ t, /** @type {string} */ id) => `vyre://${kernel.space}/${t}/${id}`)(rec.id);
+    const who = String(me.actor.id);
+    if (!(team && (team.owner === who || team.team.includes(who)))) throw refuse(`You are not on the project ${name}, so a chat cannot be filed in it. Ask the project's owner to add you, or start the chat without a project.`);
   }
 
   /** The kernel's `chat.created`: { chat: { id, people, assistants } }. @param {any} ev */
@@ -430,5 +450,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

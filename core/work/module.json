@@ -505,6 +505,7 @@
   },
   "needs": {
     "kernel": {
+      "membership": true,
       "work": true,
       "attrs": true,
       "actions": [
