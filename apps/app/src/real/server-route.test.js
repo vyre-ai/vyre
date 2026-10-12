@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { urnSpace, approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
+import { urnSpace, approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeAmbiguous, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -52,12 +52,12 @@ test("route: something that is not a Space id in `space` is not looked up", () =
   assert.deepEqual(go({ input: { space: "nope" }, showing: A }), { box: "boxa" });
 });
 
-test("spaceServersFrom: each server's own list names the Spaces it hosts; a joined team's row is not a hosted Space; the first server keeps a Space listed twice", () => {
+test("spaceServersFrom: each server's own list names the Spaces it hosts; a joined team's row is not a hosted Space; a Space listed by two servers is ambiguous", () => {
   const m = spaceServersFrom({
     boxa: [{ id: A }, { id: C, member: true }],
     boxb: [{ id: B }, { id: A }, { id: "junk" }, null],
   });
-  assert.deepEqual(m, { [A]: "boxa", [B]: "boxb" });
+  assert.deepEqual(m, { [A]: "", [B]: "boxb" });
 });
 
 test("spaceServersFrom: a server that answered nothing is simply absent", () => {
@@ -107,12 +107,12 @@ test("route: a record address names its Space, so a record action goes to that S
   assert.deepEqual(go({ input: { urn: `vyre://${A}/contact/01a1` }, showing: B }), { box: "boxa" }, "the address wins over the Space showing");
 });
 
-test("chatServersFrom: each server's chat list names the chats it holds; a chat listed twice stays with the first server", () => {
+test("chatServersFrom: each server's chat list names the chats it holds; a chat listed by two servers is ambiguous", () => {
   const m = chatServersFrom({
     boxa: { chats: [{ chat: "c1" }, { id: "vyre://spc_aaaaaaaaaaaa/chat/c2" }] },
     boxb: { chats: [{ chat: "c3" }, { chat: "c1" }] },
   });
-  assert.deepEqual(m, { c1: "boxa", c2: "boxa", c3: "boxb" });
+  assert.deepEqual(m, { c1: "", c2: "boxa", c3: "boxb" });
   assert.deepEqual(chatServersFrom({ boxa: undefined, boxb: [] }), {});
 });
 
@@ -261,8 +261,8 @@ test("route: one server paired never refuses an approval", () => {
   assert.deepEqual(go({ tool: "approvals.answer", input: { id: "appr_zzz" }, approvalServers: {}, paired: ["boxa"], spaceServers: {} }), { box: undefined });
 });
 
-test("approvalServersFrom: the held acts each server lists, by id, the first server keeping an id listed twice", () => {
-  assert.deepEqual(approvalServersFrom({ boxa: [{ id: "x1" }, { id: "x2" }], boxb: [{ id: "y1" }, { id: "x1" }, null, { id: 3 }] }), { x1: "boxa", x2: "boxa", y1: "boxb" });
+test("approvalServersFrom: the held acts each server lists, by id, an id listed by two servers is ambiguous", () => {
+  assert.deepEqual(approvalServersFrom({ boxa: [{ id: "x1" }, { id: "x2" }], boxb: [{ id: "y1" }, { id: "x1" }, null, { id: 3 }] }), { x1: "", x2: "boxa", y1: "boxb" });
   assert.deepEqual(approvalServersFrom({ boxa: undefined, boxb: "junk" }), {});
 });
 
@@ -271,4 +271,58 @@ test("urnSpace: a record address names the Space the call must carry, so the sho
   assert.equal(urnSpace({ urn: "not an address" }), "");
   assert.equal(urnSpace({}), "");
   assert.equal(urnSpace(undefined), "");
+});
+
+// The same id on two servers is never guessed: a yes from B's row must not go to A because A lists the id first. A bare id that is on more than one server is refused; an item opened from its own Space (an address, a
+// Space named) still goes where it belongs.
+const MANY_TEXT = /more than one server/;
+
+test("ambiguous approval: the same id on A and B is refused, nothing is sent, and a single-server id still routes", () => {
+  const m = approvalServersFrom({ boxa: [{ id: "same" }, { id: "only_a" }], boxb: [{ id: "same" }, { id: "only_b" }] });
+  assert.deepEqual(m, { same: "", only_a: "boxa", only_b: "boxb" });
+  const r = go({ tool: "approvals.answer", input: { id: "same", approve: true }, approvalServers: m, showing: A });
+  assert.equal(r.error?.code, "id_on_many_servers");
+  assert.match(r.error?.message ?? "", MANY_TEXT);
+  assert.equal(r.box, undefined);
+  assert.equal(go({ tool: "approvals.answer-group", input: { decisions: [{ id: "only_b" }, { id: "same" }] }, approvalServers: m, showing: A }).error?.code, "id_on_many_servers");
+  assert.deepEqual(go({ tool: "approvals.answer", input: { id: "only_b" }, approvalServers: m, showing: A }), { box: "boxb" });
+});
+
+test("ambiguous chat: the same chat id on A and B is refused and sent nowhere", () => {
+  const m = chatServersFrom({ boxa: { chats: [{ chat: "same" }, { chat: "a1" }] }, boxb: { chats: [{ chat: "same" }] } });
+  assert.equal(m.same, "");
+  const r = go({ input: { chat: "same", text: "hi" }, chatServers: m, showing: B });
+  assert.equal(r.error?.code, "id_on_many_servers");
+  assert.equal(r.box, undefined);
+  assert.deepEqual(go({ input: { chat: "a1" }, chatServers: m, showing: B }), { box: "boxa" });
+});
+
+test("ambiguous task or record id: seen in two Spaces, a bare id is refused; with its Space named or an address it goes there", () => {
+  const first = itemSpacesFrom({ tasks: [{ id: "same" }, { id: "t_b" }] }, B);
+  const items = mergeAmbiguous(first, itemSpacesFrom({ tasks: [{ id: "same" }, { id: "t_a" }] }, A));
+  assert.deepEqual(items, { same: "", t_b: B, t_a: A });
+  const r = go({ tool: "tasks.decide", input: { id: "same" }, itemSpaces: items, showing: A });
+  assert.equal(r.error?.code, "id_on_many_servers");
+  assert.equal(r.box, undefined);
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "same", space: B }, itemSpaces: items, showing: A }), { box: "boxb" }, "from its own Space");
+  assert.deepEqual(go({ tool: "records.update", input: { urn: `vyre://${B}/contact/same` }, itemSpaces: items, showing: A }), { box: "boxb" }, "by its address");
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "t_b" }, itemSpaces: items, showing: A }), { box: "boxb", space: B });
+});
+
+test("ambiguous Space: a Space two servers both list is refused, never sent to the first", () => {
+  const m = spaceServersFrom({ boxa: [{ id: A }], boxb: [{ id: A }, { id: B }] });
+  assert.equal(m[A], "");
+  const r = go({ tool: "records.create", input: { space: A }, spaceServers: m, showing: "all" });
+  assert.equal(r.error?.code, "id_on_many_servers");
+  assert.deepEqual(go({ tool: "records.create", input: { space: B }, spaceServers: m, showing: "all" }), { box: "boxb" });
+});
+
+test("mergeAmbiguous: an id seen in two places becomes ambiguous and stays so", () => {
+  let m = mergeAmbiguous({}, { x: "boxa" });
+  m = mergeAmbiguous(m, { x: "boxa" });
+  assert.equal(m.x, "boxa", "the same place again changes nothing");
+  m = mergeAmbiguous(m, { x: "boxb" });
+  assert.equal(m.x, "");
+  m = mergeAmbiguous(m, { x: "boxa" });
+  assert.equal(m.x, "", "once ambiguous, always");
 });
