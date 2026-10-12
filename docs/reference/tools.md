@@ -10632,6 +10632,7 @@ On a server: host a new space in THIS home's kernel for its owner (called by the
   - `name` string, required
   - `acceptBuiltinStore` boolean
   - `id` string
+  - `server` string
 - Callers: any caller
 
 ### `spaces.identity.alias`
@@ -11192,11 +11193,12 @@ In the TARGET home: where the SOURCE space's home can be reached, from its publi
 
 ### `spaces.name-here`
 
-On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing.
+On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.
 
 - Input:
   - `name` string, required
   - `done` boolean
+  - `server` string
 - Callers: any caller
 
 ### `spaces.owner.adopt`

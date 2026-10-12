@@ -1284,7 +1284,30 @@ export default {
       if (/^spc_[a-z2-7]{12}$/.test(String(i.id))) await files.keys.discard(String(i.id)).catch(() => {});
       return r;
     }, { presence: { summary: (/** @type {any} */ i) => `Take back the space ${i && i.id} on this server` } });
-    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" } }, ["name"]), async (i, meta) => {
+    /** The name of a server this person paired and still has paired, by its exact id; null for anything else (unknown, removed, someone else's). Never a guess. @param {string} id */
+    const pairedServerName = async id => {
+      let who = null; try { who = identity.status(); } catch { who = null; }
+      if (!who || !who.exists || !who.id) return null;
+      try { const r = await ctx.call("wink.server.paired", { device: id, identity: who.id }); return r && r.data && !r.error && r.data.paired === true ? String(r.data.name || id) : null; } catch { return null; }
+    };
+    /**
+     * `server` on a server-side space tool: this device (the Mac, whose own daemon is the app's door) asks ONE chosen paired server to run the tool, over the owner's paired session; the SERVER's own owner check judges it.
+     * Order matters: the caller is proved the owner HERE first (so a member, an agent or an unproven caller never causes a remote call), then the server is found by exact id among the servers this person still has
+     * paired. A server that is not found is refused with a next step and NEVER falls back to this home's own space (that would name the wrong one). `server` is not forwarded (nothing chains), and only `keys` go.
+     * @param {string} tool @param {Record<string, any>} i @param {any} meta @param {string[]} keys @param {string} who
+     */
+    const onChosenServer = async (tool, i, meta, keys, who) => {
+      if (!K || typeof K.owner !== "string") throw refuse("This home has no kernel of its own to act from; run this on the computer that holds your name.", "unavailable");
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
+      if (!person || person !== K.owner) throw refuse(who, "forbidden");
+      const id = typeof i.server === "string" ? i.server : "";
+      if (!id) throw refuse("Say which server this is for. Pick one in Settings, Servers. Nothing was changed.", "bad_input");
+      if (!(await pairedServerName(id))) throw refuse("That server is not paired with you, or was removed. Add it in Settings, Servers, then try again. Nothing was changed.", "server_not_paired");
+      return remoteCall(id, tool, Object.fromEntries(keys.filter(k => i[k] !== undefined).map(k => [k, i[k]])), meta);
+    };
+    tool("spaces.host-here", "On a server: host a new space in THIS home's kernel for its owner (called by the owner's device over the paired session when a space is made with this server as its home). Answers { space }. Idempotent when given the id. Needs no presence proof: the owner check is the gate.", obj({ name: str, id: str, acceptBuiltinStore: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
+      if (i.server !== undefined) return onChosenServer("spaces.host-here", i, meta, ["name", "id", "acceptBuiltinStore"], "Only this home's owner can have a server host a space.");
       if (!K || !K.spaces || typeof K.spaces.host !== "function" || typeof K.owner !== "string") throw refuse("This home has no kernel to host a space; run this on a server that hosts spaces.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1315,7 +1338,8 @@ export default {
     // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
     // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
     /** @type {Promise<any> | null} */ let homeKeyMaking = null;
-    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing.", obj({ name: str, done: { type: "boolean" } }, ["name"]), async (i, meta) => {
+    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.", obj({ name: str, done: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
+      if (i.server !== undefined) return onChosenServer("spaces.name-here", i, meta, ["name", "done"], "Only this home's owner can name a space on a server.");
       if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
       let person = null;
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; person = h && h.kind === "person" ? String(h.id) : null; } catch { person = null; }
@@ -1748,7 +1772,7 @@ export default {
     tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.", obj(), async () => {
       let who = null; try { who = identity.status(); } catch { who = null; }
       /** @type {any[]} */ let rows = [];
-      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' ORDER BY created, id").all(); } catch { rows = []; }
+      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' AND removed_at IS NULL ORDER BY created, id").all(); } catch { rows = []; }
       void who;
       // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do
       return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name), online: null })) };
