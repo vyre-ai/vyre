@@ -33,7 +33,7 @@ if (check) {
 }
 
 if (check) {
-  // The folders between the work folder and the project's folder are passed through by every member (o+x, never listed unless they already could be): a project at /work/projects/acme needs /work/projects open to
+  // The folders between the work folder and the project's folder are passed through by every member (others get x only: a member who knows a project's path enters it, and cannot list the folder to find the others): a project at /work/projects/acme needs /work/projects open to
   // the people on acme and to nobody's listing. Each must be a real folder of Vyre's, opened without following a link.
   const rel = path.relative(work, folder).split(path.sep).slice(0, -1);
   let cur = work;
@@ -45,7 +45,7 @@ if (check) {
       const st = fs.fstatSync(fd);
       if (!st.isDirectory()) fail(`${cur} is not a folder`);
       if (st.uid !== vyre) fail(`${cur}, which holds the project folder, is owned by uid ${st.uid}, not by Vyre (uid ${vyre})`);
-      if (!verify && (st.mode & 0o001) === 0) fs.chmodSync(via(fd), (st.mode & 0o7777) | 0o001);
+      if (!verify && (st.mode & 0o007) !== 0o001) fs.chmodSync(via(fd), (st.mode & 0o7770) | 0o001);   // others pass through and never list or write: o=x
     } finally { fs.closeSync(fd); }
   }
 }

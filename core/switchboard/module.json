@@ -358,6 +358,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.seats.recheck",
+        "reach": "modules"
+      },
+      {
         "name": "threads.live",
         "reach": "modules"
       }

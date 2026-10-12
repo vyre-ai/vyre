@@ -82,7 +82,9 @@ test("box: the watcher wall: iptables is in the image, NET_ADMIN is the vyre ser
 
 test("box: /work is passed through by any uid and listed only by vyre and the shared group (2711), in the image and for a volume made before; a project's folder is its own group's", () => {
   assert.match(read("box/Dockerfile"), /chown 1000:1002 \/work && chmod 2711 \/work/);
-  assert.match(read("core/spawner/main.js"), /asVyre\("chmod", "2711", WORK\)/);
+  assert.match(read("core/spawner/project-groups.js"), /o\.asVyre\("chmod", "2711", o\.work\)/);
+  assert.match(read("core/spawner/main.js"), /prepareWork\(\{ work: WORK/);
+  assert.match(read("box/Dockerfile"), /chown 1000:1000 \/run\/vyre-threads && chmod 0711 \/run\/vyre-threads/, "the sockets' folder is vyre's own, passed through by anyone, with no group that can create in it");
   assert.match(read("core/spawner/main.js"), /projects\.range\(\)/, "vyred and the box agent join every project group");
 });
 

@@ -43,7 +43,7 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
  * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
- *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, lentSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
+ *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean, projects?: string[] }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, lentSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any, sandboxSpawn?: (command: string, args: string[], env: Record<string, string|undefined>, cwd?: string, opts?: any) => any }} o
  */
 /**
  * The credential a session was handed in its env, taken out of it for the fd 3 pipe: an API key or a setup token never stays in the environment of the process whose tools a person (or a member) drives.
@@ -185,7 +185,7 @@ function viaSpawner(command, args, o) {
   const env = { ...(o.env || {}) };
   // A shell a client terminal runs (o.terminal, acp.js terminal/create) holds no credential at all: none in its environment, none named by a *_FILE_DESCRIPTOR variable, and no descriptor 3.
   const key = o.terminal ? (stripCredentials(env), undefined) : takeCredentialForFd(env);
-  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed && !o.terminal ? { seed: o.seed } : {}), ...(o.terminal ? { role: "terminal" } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
+  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared, ...(o.account.projects ? { projects: o.account.projects } : {}) } : {}), ...(o.seed && !o.terminal ? { seed: o.seed } : {}), ...(o.terminal ? { role: "terminal" } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
     // The spawner starts it detached: it leads a new group and session, both its pid.

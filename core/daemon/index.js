@@ -704,7 +704,7 @@ async function startLocked(opts, root, p, release) {
       const accounts = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", agentHome = process.env.VYRE_AGENT_HOME || "/home/vyre-agent";
       const spawnerSocket = process.env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
       registry.deps.sandbox = { platform: process.platform, home: os.homedir(), vyreHome: root, temp: os.tmpdir(), uid: { confinedBy: "uid",
-        selfTest: (/** @type {{ account?: number | null, shared?: boolean, workdirs: string[], signal?: AbortSignal }} */ o) => {
+        selfTest: (/** @type {{ account?: number | null, shared?: boolean, projects?: string[], workdirs: string[], signal?: AbortSignal }} */ o) => {
           // Another agent's home: the box's one agent for an account's session, and the first other account's for the agent itself.
           let other = agentHome;
           if (o.account == null) { try { other = fs.readdirSync(accounts).map(n => path.join(accounts, n)).find(f => fs.statSync(f).isDirectory()) || ""; } catch { other = ""; } }

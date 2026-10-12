@@ -110,7 +110,7 @@ RUN groupadd -g 1002 vyre-work \
  # found that). vyred reads it through group 1001 (core/spawner/main.js adds it to vyred's groups).
  && chown 1001:1001 /home/vyre-agent && chmod 2750 /home/vyre-agent \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
- && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads \
+ && mkdir -p /run/vyre-threads && chown 1000:1000 /run/vyre-threads && chmod 0711 /run/vyre-threads \
  && mkdir -p /var/lib/vyre-secrets && chown 1000:1000 /var/lib/vyre-secrets && chmod 700 /var/lib/vyre-secrets \
  && install -d -o 1000 -g 1000 -m 0700 /home/vyre/.vyre.sessions
 

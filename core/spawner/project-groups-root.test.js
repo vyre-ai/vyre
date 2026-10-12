@@ -146,6 +146,7 @@ test("project groups, real uids: a project at /work/projects/<slug> is reached t
   await projectGroup("delta", path.join(projects, "delta"), { socket });
   assert.equal(fs.statSync(projects).mode & 0o7777, 0o2771, "the folder holding projects is passed through by anyone");
   assert.equal((await run(socket, A, ["gamma"], path.join(projects, "gamma"), "cat f.txt")).out, "gamma");
+  assert.match((await run(socket, A, ["gamma"], path.join(projects, "gamma"), `ls ${projects}`)).err, /Permission denied/, "a member cannot list the folder to find the other projects");
   const out = await run(socket, A, ["gamma"], path.join(projects, "gamma"), `cat ${projects}/delta/f.txt; ls ${projects}`);
   assert.notEqual(out.code, 0);
   assert.equal(out.out, "", "neither delta's file nor the list of projects");
@@ -166,7 +167,7 @@ test("project groups, real uids: at start /work becomes 2711 and the folders in 
   prepareWork({ work, shared: WORKGID, asVyre });
   assert.equal(mode(work), 0o2711);
   assert.equal(mode(path.join(work, "old-project")), 0o2770, "a folder directly in /work is closed to others");
-  assert.equal(mode(path.join(work, "projects")), 0o2775, "the folder holding projects keeps its traverse bit for others");
+  assert.equal(mode(path.join(work, "projects")), 0o2771, "the folder holding projects is passed through by others, never listed by them");
   assert.equal(mode(path.join(work, "projects", "acme")), 0o2770, "a project folder is closed to others");
   assert.equal(mode(path.join(work, "projects", "acme", "inside")), 0o2775, "what is inside is left alone");
   assert.ok(fs.lstatSync(path.join(work, "to-etc")).isSymbolicLink());

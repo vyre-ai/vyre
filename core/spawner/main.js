@@ -75,7 +75,8 @@ if (!process.getuid || process.getuid() !== 0) {
   const projects = projectGroups({ file: env.VYRE_PROJECT_GIDS || path.join(ACCOUNTS_HOME, ".project-groups.json"), work: WORK, containers: [path.join(WORK, "projects")], vyre: { uid: VYRE, gid: VYRE }, groups: [SHARED], log,
     ...(num(env.VYRE_PROJECT_GID_MIN, 0) ? { min: num(env.VYRE_PROJECT_GID_MIN, 0) } : {}), ...(num(env.VYRE_PROJECT_GID_MAX, 0) ? { max: num(env.VYRE_PROJECT_GID_MAX, 0) } : {}),
     owners: uid => uid === VYRE || uid === AGENT.uid || (uid >= ACCOUNT_UIDS.min && uid <= ACCOUNT_UIDS.max) });
-  AGENT.groups = [SHARED, ...projects.range()];
+  // No session holds the shared group any more: the box agent holds only the project range (and its own gid), so it reaches a project folder once the project has its group, and the folders of every project with it.
+  AGENT.groups = projects.range();
   const grantGroup = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/chmod", "710", dir], { stdio: "ignore" });
   // The watcher wall: pool uids, their folders, and the status the entry script wrote after installing and probing the rule.
   const watcher = { min: num(env.VYRE_WATCH_UID_MIN, POOL.min), max: num(env.VYRE_WATCH_UID_MAX, POOL.max), home: env.VYRE_WATCH_HOME || "/run/vyre-watch",

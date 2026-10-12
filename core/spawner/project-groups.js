@@ -168,6 +168,8 @@ export function prepareWork(o) {
     if ((fs.statSync(o.work).mode & 0o7777) !== 0o2711) { log(`spawner: ${o.work} is now 2711 (passed through, not listed)`); o.asVyre("chmod", "2711", o.work); }
     const held = path.join(o.work, "projects");
     o.asVyre("find", o.work, "-mindepth", "1", "-maxdepth", "1", "!", "-type", "l", "!", "-path", held, "-exec", "chmod", "o-rwx", "{}", "+");
+    // the folder that holds the projects is passed through and never listed: others get x only
+    if (fs.existsSync(held) && !fs.lstatSync(held).isSymbolicLink()) o.asVyre("chmod", "o=x", held);
     if (fs.existsSync(held)) o.asVyre("find", held, "-mindepth", "1", "-maxdepth", "1", "!", "-type", "l", "-exec", "chmod", "o-rwx", "{}", "+");
   } catch (e) { log(`spawner: ${o.work} is not set up for project groups: ${/** @type {Error} */ (e).message}`); }
 }
