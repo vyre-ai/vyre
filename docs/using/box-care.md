@@ -146,9 +146,11 @@ check. Then, in order:
 4. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE` and `VYRE_SOURCE` is
    `/srv/vyre/src`, it swaps in the new `vyre.tgz` and keeps the old one as `/srv/vyre/src.prev`,
    then rebuilds the image with fresh base images. Otherwise it pulls the new image.
-5. It recreates what changed and waits up to a minute for Vyre.
+5. It recreates what changed and waits up to a minute for Vyre. A server that has not answered yet
+   but is still working (its log moved in the last 20 seconds) is waited for, up to ten minutes in
+   all, since setting up the Records types after a restart can take that long.
 
-If Vyre does not come up in that minute, the update undoes itself: the old source, the old image,
+If Vyre does not come up in that time, or goes quiet without answering, the update undoes itself: the old source, the old image,
 the old box files and the database from step 1 all go back, and `vyre update` exits 1 saying it
 rolled back. Store migrations only go forward, which is why the database comes back from the
 backup. Once an update has come up healthy, nothing restores the database on its own, so nothing

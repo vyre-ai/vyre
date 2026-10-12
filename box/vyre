@@ -337,10 +337,14 @@ unpack_src() {
   if [ -f "$tmp/dockerignore" ]; then cp "$tmp/dockerignore" "$SRCDIR.new/.dockerignore"; fi
 }
 
-# Wait for vyred to answer on its socket, up to three minutes (UPDATE_WAIT seconds); a first start with Records on a small server is the slow case.
+# Wait for vyred to answer on its socket, UPDATE_WAIT seconds (a minute in a release; three in the source). A server that is still working is not an unhealthy one: a restart on a box that has
+# Records to set up (the types of every module) can keep vyred from answering for minutes while its log keeps moving. So at the end of the wait, if the container is running and its log has
+# moved in the last 20 s, the wait goes on, 15 s at a time, up to ten times UPDATE_WAIT in all. A log that has gone quiet, or a container that is not running, ends it at once.
 ready() {
   i=0
-  while [ $i -lt "$UPDATE_WAIT" ]; do
+  limit=$UPDATE_WAIT
+  cap=$((UPDATE_WAIT * 10))
+  while [ $i -lt "$limit" ]; do
     # vyred answering is the whole question (`vyre status --ready`): the full status also asks search and memory, which wait for the index and the Records store on a first start.
     compose exec -T vyre vyre status --ready >/dev/null 2>&1 && return 0
     # an image from before `--ready` (a rollback to an older release) does not know the flag: after 30 s the plain status is asked too
@@ -353,11 +357,17 @@ ready() {
         "") what="the container has not appeared" ;;
         *) what="the container is $st" ;;
       esac
-      echo "vyre: still waiting after $((i + 1)) s of $UPDATE_WAIT: $what" >&2
+      echo "vyre: still waiting after $((i + 1)) s of $limit: $what" >&2
     fi
-    i=$((i + 1)); sleep 1
+    i=$((i + 1))
+    if [ "$i" -ge "$limit" ] && [ "$limit" -lt "$cap" ] && [ "$(compose ps --format '{{.State}}' vyre 2>/dev/null | head -n 1)" = running ] \
+       && [ -n "$(compose logs --since 20s --no-log-prefix vyre 2>/dev/null | head -n 1)" ]; then
+      limit=$((limit + 15))
+      echo "vyre: vyred has not answered yet but Vyre is still working (its log moved in the last 20 s); waiting up to $((limit - i)) s more" >&2
+    fi
+    sleep 1
   done
-  echo "vyre: Vyre did not start within $UPDATE_WAIT s; see: vyre logs" >&2
+  echo "vyre: Vyre did not start within $i s; see: vyre logs" >&2
   return 1
 }
 
@@ -765,7 +775,7 @@ update() {
   [ "$JSON" = 0 ] || [ "$CHECK" = 1 ] || die "vyre update: --json goes with --check"
   UPD_FROM=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
   # A server that is busy (or down) cannot say what it runs: the version the last update or install wrote on the host answers instead, so a busy server is never mistaken for an unknown one.
-  if [ -z "$UPD_FROM" ]; then UPD_FROM=$(tr -d ' \r\n' <"$DIR/VERSION" 2>/dev/null || true); fi
+  if [ -z "$UPD_FROM" ] && [ -f "$DIR/VERSION" ]; then UPD_FROM=$(tr -d ' \r\n' <"$DIR/VERSION" 2>/dev/null || true); fi
   if [ "$CHECK" = 0 ]; then stage checking; fi
 
   # A box built from a checkout the person keeps themselves (VYRE_SOURCE is not $DIR/src) is

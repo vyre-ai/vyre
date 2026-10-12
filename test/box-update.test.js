@@ -52,7 +52,11 @@ const count = n => { const f = F + "/" + n; const c = (Number(fs.existsSync(f) ?
 const target = () => fs.readFileSync(process.env.VYRE_DIR + "/.env", "utf8").includes("compose.build.yml") ? "vyre:local" : "ghcr.io/vyre-ai/vyre:latest";
 function vyre(cmd) {
   const [c, a] = cmd;
-  if (c === "status") process.exit(running() && !bad().includes(running()) ? 0 : 1);
+  if (c === "status") {
+    // ready-after N: vyred answers only from the Nth ask on (a server busy setting up its Records types).
+    if (fs.existsSync(F + "/ready-after") && count("asks") < Number(fs.readFileSync(F + "/ready-after", "utf8"))) process.exit(1);
+    process.exit(running() && !bad().includes(running()) ? 0 : 1);
+  }
   if (c === "version") { process.stdout.write((fs.existsSync(F + "/cur") ? fs.readFileSync(F + "/cur", "utf8") : "0.1.0") + "\\n"); process.exit(0); }
   if (c === "backup") { fs.copyFileSync(db, ctr(a)); process.exit(0); }
   if (c === "restore") { fs.copyFileSync(ctr(a), db); process.exit(0); }
@@ -100,6 +104,8 @@ if (args[0] === "compose") {
     if (id !== "orig") fs.writeFileSync(db, "migrated");
     process.exit(0);
   }
+  if (sub === "logs") { if (fs.existsSync(F + "/logs-busy")) console.log("module flows: defining record types"); process.exit(0); }
+  if (sub === "ps") { process.stdout.write(running() ? "running\\n" : ""); process.exit(0); }
   if (sub === "stop") { fs.rmSync(F + "/running", { force: true }); process.exit(0); }
   if (sub === "exec" || sub === "run") {
     let i = 2;
@@ -1266,4 +1272,20 @@ test("box update --check (rc.3): reads and writes nothing, says what would be in
   assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c) || /^compose (exec .*(backup|up))/.test(c)), []);
   assert.ok(!b.hits.some(h => /vyre\.tgz|\/release\.json|\/vyre$/.test(h)), "no release file was downloaded");
   assert.equal((/** @type {any} */ (await b.run(["update", "--json"]))).code, 1, "--json alone is refused");
+});
+
+test("box update (rc.3): a server that is slow to answer but still working is waited for; one that is quiet is rolled back as before", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(b.FAKE, "ready-after"), "6");
+  fs.writeFileSync(path.join(b.FAKE, "logs-busy"), "1");
+  const slow = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(slow.code, 0, slow.out);
+  assert.match(slow.out, /still working/);
+  assert.equal(b.db(), "migrated", "no rollback, no restore");
+  const q = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(q.FAKE, "ready-after"), "6");
+  const quiet = /** @type {any} */ (await q.run(["update"]));
+  assert.equal(quiet.code, 1, quiet.out);
+  assert.match(quiet.out, /rolled back/);
+  assert.doesNotMatch(quiet.out, /still working/);
 });
