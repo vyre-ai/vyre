@@ -93,7 +93,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
   let boxSessions = [];
   if (boxTranscripts) { boxSessions = [path.join(boxRoot, "transcripts")]; writeTranscripts(boxSessions[0], boxTranscripts); }
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: boxName, transcripts: boxSessions, files: { roots: [boxWork] },
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: boxName, transcripts: boxSessions, files: { roots: [boxWork] }, network: { owner: OWNER },
     ...(boxTranscripts ? { recall: { every: 0, vectors: false } } : {}), ...boxConfig }));
   let macSessions = [];
   if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0], Array.isArray(macTranscripts) ? macTranscripts : undefined); }

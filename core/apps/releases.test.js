@@ -31,10 +31,12 @@ async function box(t) {
   fs.writeFileSync(path.join(dir, FILE), unsigned);
   const manifest = { version: "0.4.0", versionCode: 40, sha: "abc1234", sha256: sha(unsigned), size: unsigned.length, minSdk: 26, built: "2026-09-27T00:00:00Z", file: FILE };
   fs.writeFileSync(path.join(dir, "android.json"), JSON.stringify(manifest));
+  // the tailnet's label holds for the verified peer who is the login the home records as its owner
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "test-box", transcripts: [], network: { owner: "alex" } }));
   let d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const handle = () => d.registry.deps.handler({});
-  const server = http.createServer((req, res) => handle()(req, res, String(req.headers["x-test-caller"])));
+  const server = http.createServer((req, res) => { const c = String(req.headers["x-test-caller"]); handle()(req, res, c, /^tailnet:(?!agent:)/.test(c) ? { kind: "device", login: c.slice("tailnet:".length), stableId: "n_alex" } : undefined); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => new Promise(r => server.close(() => r(undefined))));
   const port = /** @type {any} */ (server.address()).port;

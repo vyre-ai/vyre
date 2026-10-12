@@ -236,6 +236,7 @@ export const PERSON_ONLY = new Map([
   ["relay.devices.ask-trust", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.devices.remove", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.devices.trust", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
+  ["relay.devices.mark", "needs the person's Face ID or presence: it decides which paired apps are the owner's own"],
   ["relay.disable", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.enable", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.join", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
