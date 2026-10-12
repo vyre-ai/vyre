@@ -42,10 +42,12 @@ test("a member's chat tools go through the team door: only the five, and only fo
 
 test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
   const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
-  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add", "work.timeline", "previews.log", "previews.stop"]) {
+  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add", "previews.log", "previews.stop"]) {
     assert.ok(isTeamWork(t), `${t} is the team's work`);
     assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
   }
+  assert.equal(memberWire("work.timeline"), "work.timeline", "the timeline has a door row now (seat-filtered by the tool)");
+  assert.ok(!isTeamWork("work.timeline"));
   for (const t of ["work.chat.list", "stream.send", "planner.add", "spaces.list", "sessions.accounts.list", "vault.list", "records.me"]) assert.ok(!isTeamWork(t), `${t} is not refused`);
   assert.match(NOT_FOR_MEMBERS_YET, /Ask the owner/, "it names a next step");
 });

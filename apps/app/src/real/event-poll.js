@@ -30,8 +30,8 @@ export function startEventPoll(o) {
         const events = Array.isArray(r) ? r : Array.isArray(r?.events) ? r.events : [];
         const newest = events.length ? events[events.length - 1] : null;
         if (!mark) { marks.set(space, { seq: newest ? seqOf(newest) : 0, last: newest ? idOf(newest) : "" }); continue; }
-        const at = events.findIndex((e) => idOf(e) === mark.last);
-        const fresh = mark.seq !== null ? events.filter((e) => { const s = seqOf(e); return s === null || s > /** @type {number} */ (mark.seq); }) : at >= 0 ? events.slice(at + 1) : events;
+        const at = events.findIndex((/** @type {any} */ e) => idOf(e) === mark.last);
+        const fresh = mark.seq !== null ? events.filter((/** @type {any} */ e) => { const s = seqOf(e); return s === null || s > /** @type {number} */ (mark.seq); }) : at >= 0 ? events.slice(at + 1) : events;
         if (newest) marks.set(space, { seq: seqOf(newest) ?? mark.seq, last: idOf(newest) });
         for (const e of fresh) { try { o.onEvent(e); } catch { /* a screen's redraw */ } }
       } catch { /* the next look tries again; a refusal in words is shown by the screens' own reads */ }

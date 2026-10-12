@@ -50,5 +50,6 @@ export const MEMBER_ROWS = [
  "tasks.submit",
  "work.project-create",
  "work.start-project",
- "work.templates"
+ "work.templates",
+ "work.timeline"
 ];

@@ -36,7 +36,7 @@ async function world(t) {
 }
 
 test("work is a group of the Space kernel's remote calls, and every call of it is a row of the member door's one table", () => {
-  assert.deepEqual([...CALLS.work].sort(), ["project-create", "start-project", "templates"]);
+  assert.deepEqual([...CALLS.work].sort(), ["project-create", "start-project", "templates", "timeline"]);
   assert.deepEqual(Object.keys(MEMBER_TOOLS).filter(k => k.startsWith("work.")).map(k => k.slice(5)).sort(), [...CALLS.work].sort());
 });
 
@@ -170,4 +170,18 @@ test("a member keeps at most 50 live projects of her own: the next one is refuse
   const under = createMemberProjects({ liveOf: async () => MAX_LIVE - 1, templates: /** @type {any} */ ({}), hub, reader: () => ({ service: {}, read: {} }) });
   await under["create-project"](chain, { name: "The 50th" });
   assert.equal(made, 1);
+});
+
+test("work.timeline on the door: a member reads the timeline of her own project; a project she is not on is not found; no project named is bad input; she cannot name another person", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const mine = await w.as(ANA, "project-create", { name: "Ana's matter" });
+  const own = await w.as(ANA, "timeline", { project: mine.slug, limit: 50 });
+  assert.ok(Array.isArray(own.entries), JSON.stringify(own).slice(0, 200));
+  const theirs = await w.as(BEN, "project-create", { name: "Ben's matter" });
+  const err = await w.as(ANA, "timeline", { project: theirs.slug }).then(() => null, (/** @type {any} */ e) => e);
+  assert.ok(err && err.code === "not_found", `a project she is not on: ${err && err.code}`);
+  const none = await w.as(ANA, "timeline", {}).then(() => null, (/** @type {any} */ e) => e);
+  assert.ok(none && none.code === "bad_input", `no project or record named: ${none && none.code}`);
+  const named = await w.as(ANA, "timeline", { project: mine.slug, person: BEN, as: BEN }).then((/** @type {any} */ r) => r, (/** @type {any} */ e) => e);
+  assert.ok(Array.isArray(named.entries), "extra keys are dropped; it is still her timeline");
 });
