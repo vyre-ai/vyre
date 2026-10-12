@@ -50,7 +50,7 @@ export async function projectsFor(sb, run, want = {}) {
     // (the kernel refuses its writes, kernel/core/folders.js). The seat's level comes with the seat (work.project.seat).
     const seats = await Promise.all(mapped.map(async p => {
       const s = await seatOn(sb, p.slug, person);
-      return Boolean(s && s.exists && (s.owner || s.team) && s.level !== "viewer");
+      return Boolean(s && s.exists && (s.owner || s.team) && (s.level === "lead" || s.level === "contributor"));   // a missing or unknown level is no group, never read-write
     }));
     mine = mapped.filter((_p, i) => seats[i]).map(p => p.slug);
   }

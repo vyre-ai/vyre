@@ -183,3 +183,12 @@ test("a chat message from a viewer of the chat's project is refused in words; a 
   await ask({ project: "gamma" }, "vik");
   await ask({}, "vik");
 });
+
+test("a seat made read-only stops the session that joined the project's group; a seat with no known level is no group", async () => {
+  // vik joined alpha when it was a contributor seat; alpha is a viewer seat now (SEATS), so the session is stopped
+  const live = new Map([["t-vik", { launch: { accountRun: { person: "vik", uid: 2000, projects: ["alpha", "beta"] } } }]]);
+  const stopped = /** @type {string[]} */ ([]);
+  assert.deepEqual(await stopLostSeats(sb({ live, recs: { "t-vik": { cwd: "/work/projects/beta" } } }), { stop: async (id) => { stopped.push(id); } }), ["t-vik"]);
+  const odd = { zed: { alpha: { team: true, level: "boss" } } };
+  assert.deepEqual(await projectsFor(sb({ seats: odd }), { person: "zed" }), [], "an unknown level never gets the read-write group");
+});
