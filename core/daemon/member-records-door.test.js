@@ -229,7 +229,7 @@ test("a member's kernel attributes (opts.attrs: project, owner) cannot put a rec
   const purn = proj.v.urn || `vyre://${w.SPACE}/project/${proj.v.id}`;
   // Ben is not on it: his records may not carry its project, nor the owner as their owner
   // (a task is made by the task service, which takes no kernel attributes from the wire: it is judged by its own rule, not here)
-  for (const [type, data] of [["contact", { name: "BEN" }], ["organization", { name: "BEN" }], ["note", { title: "BEN", state: "open" }]]) {
+  for (const [type, data] of [["contact", { name: "BEN" }], ["organization", { name: "BEN" }], ["event", { title: "BEN", starts_at: "2027-01-01T10:00:00Z" }]]) {
     assert.ok((await B("records.create", type, data)).ok, `control: a plain ${type} is accepted`);
     assert.equal((await B("records.create", type, data, { attrs: { project: purn } })).ok, false, `${type} with attrs.project = the owner's project`);
     assert.equal((await B("records.create", type, data, { attrs: { owner: w.OWNER } })).ok, false, `${type} with attrs.owner = the owner`);
