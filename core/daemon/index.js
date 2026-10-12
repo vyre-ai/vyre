@@ -1635,9 +1635,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
     return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
-  // The module bus carries every person's planner titles, approvals, project and task events: a paired device reads it only as the home's owner (a member's paired device is a device of this home
-  // too, but callerFacts names no person for it; her app reads through the member door, which filters). The socket and the other listeners are unchanged.
+  // The module bus carries every person's planner titles, approvals, project and task events. A paired device reads it whole only as the home's owner or an admin; a member's paired device (the app
+  // that lives on the team's box) gets the stream open but each event cut to its type, time and the ids the app refetches by (cutEvent), so it reads the rest through the door, which filters.
+  // A device whose record names nobody gets nothing. The socket and the other listeners are unchanged.
+  /** @type {((e: any) => any) | null} */ let busCut = null;
   if (req.method === "GET" && (url.pathname === "/v1/events" || url.pathname === "/v1/events/stream") && policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
+    const k = kernelOf();
     let row = null;
     try {
       const id = String(policy.caller).slice(7);
@@ -1645,15 +1648,20 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       row = r && r.data ? r.data : null;
       if (row) { const w = await registry.call("wink.device.record", { id }, "module:vyred"); row = { ...row, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; }
     } catch { row = null; }
-    if (!callerFacts(String(policy.caller), policy, null, kernelOf(), false, row)) return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; the app reads what it may see through its own door" } });
+    // the person the home's own record of this device names, and the role the members list holds for her (a device that is not an app, a removed one and one that names nobody get none)
+    let role = null;
+    try { role = row && row.kind === "app" && row.removed === false && row.person ? (row.person === k.id.owner ? "owner" : k.gateway.members.roleOf({ kind: "person", id: row.person, space: k.id.space })) : null; } catch { role = null; }
+    if (role === "member") busCut = cutEvent;
+    else if (role !== "owner" && role !== "admin") return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; sign in on a device paired to this team, or ask the owner" } });
   }
   if (req.method === "GET" && url.pathname === "/v1/events") {
-    return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
-      type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
+    const rows = events.since(Number(url.searchParams.get("since") || 0), {
+      type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) });
+    return send(res, 200, { data: busCut ? rows.map(busCut).filter(Boolean) : rows });
   }
   if (req.method === "GET" && url.pathname === "/v1/events/stream") {
     if (policy.eventType) url.searchParams.set("type", policy.eventType);
-    return stream(req, res, url, events, streams);
+    return stream(req, res, url, events, streams, busCut);
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
@@ -1746,7 +1754,20 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
  * as events.on: "thread.started", "thread.*" or "*". The SSE id is the event id, so a browser's
  * EventSource resumes from Last-Event-ID on its own.
  */
-function stream(req, res, url, events, streams) {
+/** Event types a member's paired device is told of, and the payload keys each keeps: ids and counts the app refetches by, never a title, text, body or name. */
+const BUS_MEMBER = /** @type {Record<string, readonly string[]>} */ ({
+  "sidebar.changed": [], "settings.changed": ["key"], "stream.reset": ["from", "reason"],
+});
+/** @param {any} e @returns {any} */
+export function cutEvent(e) {
+  const keep = e && BUS_MEMBER[e.type] ? BUS_MEMBER[e.type] : null;
+  if (!keep) return null;
+  const payload = {};
+  for (const key of keep) { const v = e.payload && e.payload[key]; if (typeof v === "string" ? v.length <= 200 : typeof v === "number" || typeof v === "boolean") payload[key] = v; }
+  return { id: e.id, at: e.at, type: e.type, source: e.source, project: e.project ?? null, thread: e.thread ?? null, payload };
+}
+
+function stream(req, res, url, events, streams, cut = null) {
   // A client that went away while the request was being routed (or while the daemon was stopping) has no 'close' left to come: nothing to start, nothing to leak.
   if (req.destroyed || res.destroyed || res.writableEnded) return;
   const type = url.searchParams.get("type") || "*";
@@ -1766,7 +1787,7 @@ function stream(req, res, url, events, streams) {
   // And one byte of body: iOS URLSession reports nothing (it sits on "connecting", up to the 15s
   // heartbeat) until the body starts, whatever the headers say.
   res.write(": open\n\n");
-  const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+  const write = e => { const o = cut && e.type !== "stream.reset" ? cut(e) : e; if (o) res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(o)}\n\n`); };
   let cursor = lastId;
   // A cursor past the newest id cannot be replayed (the log was reset, or the surface followed
   // another box). Say so, and follow from now: the surface reloads through tools (ADR 0029, R1).
