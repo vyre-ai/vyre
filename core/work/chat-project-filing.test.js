@@ -54,7 +54,11 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   assert.ok((await chat.create(ownerChain, body("anas-matter", 7))).chat, "the owner, any project");
 
   // MOVING a chat is filing it too: into the owner's project (by short name or by record address) refused and nothing changes; into her own, allowed; the owner moves any chat as before
-  const move = (/** @type {string} */ person, /** @type {string} */ chatId, /** @type {string} */ project) => d.registry.callInSpace({ name: "vyred" }, SPACE, K, "work.chat.move", { chat: chatId, project }, person === OWNER ? ownerChain : chainOf(person));
+  // work.chat.move is a registry tool a person's own session calls (not on the member door): through a session token of that person
+  const move = async (/** @type {string} */ person, /** @type {string} */ chatId, /** @type {string} */ project) => {
+    const token = (await K.surfaces.open(person === OWNER ? ownerChain : chainOf(person), {})).token;
+    return d.registry.call("work.chat.move", { chat: chatId, project }, "cli", { token });
+  };
   const mover = await chat.create(chainOf(ANA), body("", 8));
   const projectOf = async (/** @type {string} */ chatId) => (await R.query(svc, "chat-record", { filter: { field: "chat", op: "eq", value: chatId }, page: { limit: 1 } })).rows[0].data.project.urn;
   const before = await projectOf(mover.chat);
