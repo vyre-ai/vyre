@@ -74,6 +74,7 @@
  "apps/app/ui/views/logic.test.js": 14,
  "apps/app/vendor/glass/input.test.js": 2,
  "core/about/about.test.js": 3,
+ "core/agents/roster-door.test.js": 2,
  "core/agents/access.test.js": 6,
  "core/agents/effort.test.js": 1,
  "core/agents/job.test.js": 2,

@@ -497,6 +497,21 @@ export default {
       },
     });
 
+    // A team member's roster on the team's server: the member door's `agents.list` row (core/work/member-tools.js) runs this under her chain, in the Space. It is ALWAYS the roster (id, name, kind, role, model, status),
+    // never an agent's instructions, tools, projects, computer or sign-in, even for an admin: an admin's full row is her own session's agents.list.
+    ctx.tool("agents.serve", {
+      description: "A team member's roster of the Space's agents on the team's server, as that member, in that Space (the daemon's member door only).", internal: true, callers: ["module"], effect: "read",
+      input: { type: "object", properties: { call: { type: "string", enum: ["roster"] }, input: { type: "object" } }, required: ["call"] },
+      run: async (i, extra) => {
+        if (!extra || !extra.in_space_chain || !extra.in_space) throw Object.assign(new Error("only the team server's member door runs this"), { code: "denied" });
+        const h = extra.in_space_chain.hops && extra.in_space_chain.hops.length === 1 ? extra.in_space_chain.hops[0] : null;
+        if (!h || h.actor.kind !== "person") throw Object.assign(new Error("not found"), { code: "not_found" });
+        if (i.call !== "roster") throw Object.assign(new Error("call is roster"), { code: "bad_input" });
+        const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
+        return Promise.all(rows.map(async a => rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) })));
+      },
+    });
+
     ctx.tool("agents.create", {
       description: "Make an agent: a name, its projects (\"*\" for all), its credentials (Vault items for the setup token and an API key fallback, with a budget), instructions and model. kind \"assistant\" makes the one assistant, which sees every project.",
       input: { type: "object", required: ["name"], properties: { name: { type: "string" }, ...fields } },

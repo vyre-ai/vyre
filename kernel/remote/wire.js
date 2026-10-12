@@ -41,6 +41,8 @@ export const CALLS = Object.freeze({
   work: ["templates", "project-create", "start-project"],
   // A member's project files (0.3.3; core/work/member-files.js): list, read and upload in one project's files area.
   files: ["list", "read", "upload"],
+  // The Space's roster for a member (core/agents/index.js agents.serve).
+  agents: ["roster"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
 });
 

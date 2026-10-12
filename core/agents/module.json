@@ -24,6 +24,13 @@
         "reach": "anyone"
       },
       {
+        "name": "agents.serve",
+        "summary": "a team member's roster of the Space's agents on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "read",
+        "crossSpace": "records.read"
+      },
+      {
         "name": "agents.create",
         "reach": "anyone",
         "effect": "write"
