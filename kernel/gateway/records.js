@@ -29,6 +29,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
   reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
+  "chat-record": ["work", "attachments", "stream"], "file-share": ["work"],   // a chat is private to its people and its project's team, a share to its chat and that team (class 3, the owner's ruling of 12 Oct): the work module serves both under its own chain and judges each record
   goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
 
@@ -1340,6 +1341,7 @@ export function createRecords(cfg) {
       const inverses = inversesOf(defs);
       for (const t of defs) {
         if (o.type !== undefined && t.name !== o.type) continue;
+        if (await isProtectedType(t.name) && !mayKeep(chain, t.name)) continue;   // a type a module keeps is not read through a link either
         for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === parts[3] || x.to === undefined) && (o.field === undefined || x.name === o.field))) {
           let cursor;
           for (let pages = 0; pages < 20 && !truncated; pages++) {

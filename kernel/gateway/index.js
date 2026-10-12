@@ -68,7 +68,7 @@ export function createGateway(cfg) {
     const base = records, has = (/** @type {string} */ path) => base.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 1 } });
     records = Object.freeze({ ...base,
       async create(/** @type {any} */ c, /** @type {string} */ t, /** @type {any} */ d, /** @type {any} */ o) {
-        const r = await base.create(c, t, d, o), by = String((base.attrsOf(r.urn) || {}).created_by || "");
+        const r = await base.create(c, t, d, o), at = base.attrsOf(r.urn) || {}, by = String(at.created_for || at.created_by || "");
         if (t === "file-share" && by.startsWith("person:") && await sharedRead(`vyre://${cfg.space}/file/${d.path}`, by.slice(7), { space: cfg.space, chains: cfg.chains, gs, records: base })) await cfg.drive.share(String(d.path)).catch(() => {});
         return r;
       },
