@@ -32,3 +32,12 @@ test("a member's agents.list is the roster: no instructions, auth, tools, projec
   const mine = await tool("agents.versions", { agent: full[0].name });
   assert.ok(mine && mine.agent === full[0].name, "the owner still reads versions");
 });
+
+test("seesFull fails closed: a call whose chain cannot be read is not given the whole row", { timeout: 120_000 }, async t => {
+  const { d } = await boot(t);
+  const real = d.kernel.chains.fromFacts;
+  const r = await d.registry.call("agents.list", {}, "mcp", { token: "not-a-session-token" });
+  assert.ok(Array.isArray(r.data) && r.data.length, "the roster is still listed: " + JSON.stringify(r.error));
+  for (const row of r.data) for (const k of ["instructions", "auth", "uid", "tools"]) assert.ok(!(k in row), `an unreadable chain gets no ${k}`);
+  void real;
+});

@@ -385,9 +385,9 @@ export default {
      * @param {any} meta @returns {Promise<boolean>}
      */
     const seesFull = async meta => {
-      if (!K) return true;
+      if (!K) return true;   // no kernel, no Space and no members: nobody to keep it from
       let person = null;
-      try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; person = h ? String(h.actor.id) : null; } catch { return true; }
+      try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; person = h ? String(h.actor.id) : null; } catch { return false; }   // a chain that cannot be read is not the owner's surface either
       if (!person) return true;
       const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
       if (K.owner && canon(person) === canon(String(K.owner))) return true;
