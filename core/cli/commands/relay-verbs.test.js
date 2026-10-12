@@ -166,7 +166,7 @@ test("relay cli verbs: vyre commands lists every verb run() handles", async t =>
   const r = await run(root, ["commands", "relay", "--json"]);
   assert.equal(r.code, 0, r.out);
   const verbs = JSON.parse(r.stdout).commands[0].verbs;
-  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "devices", "remove", "rename", "trust", "on", "off", "pin", "unpin"]);
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "devices", "remove", "rename", "trust", "mark", "on", "off", "pin", "unpin"]);
   assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["status", "devices"]);
   assert.ok(verbs.filter(v => !v.read).every(v => v.person), "every change asks for a person");
   assert.deepEqual(verbs.find(v => v.verb === "rename").args, [{ name: "id", required: true }, { name: "name", required: true, repeat: true }]);

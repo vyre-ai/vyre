@@ -190,7 +190,7 @@ test("link: with the box down, the Mac degrades to its own results and recovers"
 
 test("link: a listener's tailnet peer reaches the tool through vyred's router, never its input", async t => {
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [] }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { owner: "owner@example.com" } }));
   // A module fronting its own listener, as names does: it establishes caller and peer itself.
   writeModule(path.join(root, "modules"), "peerprobe", { roles: ["box"], does: { tools: ["peerprobe.who"] } }, `
     import http from "node:http";
