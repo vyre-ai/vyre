@@ -31,6 +31,13 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   const rec = db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created, confirmed_by, owner_kind, owner_id) VALUES (?, ?, 'phone', 'phone', 1, ?, 'person', ?)");
   for (const [k, person] of [["owner", OWNER], ["admin", ADMIN], ["member", BEN]]) { dev.run(ids[k]); rec.run(ids[k], person, OWNER, person); }
   dev.run(ids.nobody);
+  // the same four people as a trusted browser (kind web), a setup page and a label no row backs
+  const web = db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'browser', 'p', 1, 'web', 1, NULL)");
+  const wids = { owner: "wooooooooooooooo", admin: "waaaaaaaaaaaaaaa", member: "wmmmmmmmmmmmmmmm", nobody: "wnnnnnnnnnnnnnnn" };
+  for (const [k, person] of [["owner", OWNER], ["admin", ADMIN], ["member", BEN]]) { web.run(wids[k]); rec.run(wids[k], person, OWNER, person); }
+  web.run(wids.nobody);
+  db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('ssssssssssssssss', 'setup', 'p', 1, 'setup', 0, NULL)").run();
+  rec.run("ssssssssssssssss", OWNER, OWNER, OWNER);
   const add = await d.registry.call("planner.add", { kind: "note", title: "OWNER-DEVICE-BUS-SECRET", body: "x" }, "cli", ownerToken);
   assert.ok(!add.error, JSON.stringify(add.error));
   d.registry.deps.events.emit("sidebar", "sidebar.changed", { title: "LEAK-IN-SIDEBAR", n: 3 });
@@ -50,6 +57,13 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   }
   const none = await get(await as("nobody"), "/v1/events?since=0");
   assert.equal(none.status, 404, none.body);
+  // a trusted browser is judged the same way, by the person the home's record names
+  const asWeb = async (/** @type {string} */ label, /** @type {string} */ id) => { const s = /** @type {http.Server} */ (await serve(label, id)); t.after(() => s.close()); return s; };
+  for (const who of ["owner", "admin"]) { const r = await get(await asWeb("web:" + wids[who], wids[who]), "/v1/events?since=0&limit=500"); assert.ok(r.status === 200 && r.body.includes("OWNER-DEVICE-BUS-SECRET"), `web ${who}: the whole bus (${r.status})`); }
+  { const r = await get(await asWeb("web:" + wids.member, wids.member), "/v1/events/stream?since=0"); assert.ok(r.status === 200 && !r.body.includes("OWNER-DEVICE-BUS-SECRET") && !r.body.includes("planner.added") && r.body.includes("sidebar.changed"), `web member is cut: ${r.status} ${r.body.slice(0, 200)}`); }
+  for (const [label, id] of [["web:" + wids.nobody, wids.nobody], ["setup:ssssssssssssssss", "ssssssssssssssss"], ["tailnet:someone", "x"], ["web:" + ids.member, ids.member], ["device:" + wids.owner, wids.owner]]) {
+    for (const p of ["/v1/events?since=0", "/v1/events/stream?since=0"]) { const r = await get(await asWeb(label, id), p); assert.equal(r.status, 404, `${label} ${p}: ${r.status} ${r.body.slice(0, 120)}`); }
+  }
   const main = /** @type {http.Server} */ (await serve(undefined, "x")); t.after(() => main.close());
   const m = await get(main, "/v1/events?since=0&limit=500");
   assert.equal(m.status, 200, "control: no device caller serves the bus"); assert.ok(m.body.includes("OWNER-DEVICE-BUS-SECRET"));

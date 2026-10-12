@@ -1635,22 +1635,27 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
     return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
-  // The module bus carries every person's planner titles, approvals, project and task events. A paired device reads it whole only as the home's owner or an admin; a member's paired device (the app
-  // that lives on the team's box) gets the stream open but each event cut to its type, time and the ids the app refetches by (cutEvent), so it reads the rest through the door, which filters.
-  // A device whose record names nobody gets nothing. The socket and the other listeners are unchanged.
+  // The module bus carries every person's planner titles, approvals, project and task events. Default deny for any caller a listener established (a paired device, a browser, a setup page, any other label;
+  // the socket's own and the listeners that carry an event-type limit of their own are not these): the whole bus only for a caller the home's own record names as its owner or an admin; a member gets
+  // the stream open but each event cut to an allow-listed type and no payload (cutEvent), so her app refetches through the door, which filters; a caller that names nobody gets 404.
   /** @type {((e: any) => any) | null} */ let busCut = null;
-  if (req.method === "GET" && (url.pathname === "/v1/events" || url.pathname === "/v1/events/stream") && policy.caller && String(policy.caller).startsWith("device:") && kernelOf && kernelOf()) {
+  if (req.method === "GET" && (url.pathname === "/v1/events" || url.pathname === "/v1/events/stream") && policy.caller && !policy.eventType && kernelOf && kernelOf()) {
     const k = kernelOf();
     let row = null;
+    const label = String(policy.caller), id = label.includes(":") ? label.slice(label.indexOf(":") + 1) : "";
     try {
-      const id = String(policy.caller).slice(7);
-      const r = await registry.call("relay.device.info", { id }, "module:vyred");
-      row = r && r.data ? r.data : null;
-      if (row) { const w = await registry.call("wink.device.record", { id }, "module:vyred"); row = { ...row, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; }
+      if (/^[a-z0-9]{16}$/.test(id)) {
+        const r = await registry.call("relay.device.info", { id }, "module:vyred");
+        row = r && r.data ? r.data : null;
+        if (row) { const w = await registry.call("wink.device.record", { id }, "module:vyred"); row = { ...row, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; }
+      }
     } catch { row = null; }
-    // the person the home's own record of this device names, and the role the members list holds for her (a device that is not an app, a removed one and one that names nobody get none)
+    // the person the home's own record of this device names (an app, or a trusted browser; not a setup page, a removed device or one that names nobody), and the role the members list holds for her
     let role = null;
-    try { role = row && row.kind === "app" && row.removed === false && row.person ? (row.person === k.id.owner ? "owner" : k.gateway.members.roleOf({ kind: "person", id: row.person, space: k.id.space })) : null; } catch { role = null; }
+    try {
+      const ok = row && row.removed === false && row.person && (row.kind === "app" || (row.kind === "web" && row.trusted === true)) && label.startsWith(row.kind === "app" ? "device:" : "web:");
+      role = ok ? (row.person === k.id.owner ? "owner" : k.gateway.members.roleOf({ kind: "person", id: row.person, space: k.id.space })) : null;
+    } catch { role = null; }
     if (role === "member") busCut = cutEvent;
     else if (role !== "owner" && role !== "admin") return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; sign in on a device paired to this team, or ask the owner" } });
   }
