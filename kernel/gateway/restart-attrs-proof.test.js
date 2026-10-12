@@ -50,6 +50,9 @@ test("after a restart on a store with no durable attributes: the keeper and the 
   const rows = { skill: skill.id, "def-flow": flow.id, "flow-state": state.id, "kit-install": kit.id };
 
   const check = async (/** @type {any} */ w, /** @type {string} */ when) => {
+    // search first, before any get: the owner and the keeper find their rows
+    assert.ok((await w.R.search(w.owner, { text: "BODY-ONE", page: { limit: 20 } })).rows.some((/** @type {any} */ h) => h.type === "def-flow"), `${when}: the owner finds the def-flow row by search`);
+    assert.ok((await w.skills.records.search(w.keeper("skills"), { text: "SKILL-BODY-ONE", page: { limit: 20 } })).rows.some((/** @type {any} */ h) => h.type === "skill"), `${when}: the keeper finds its skill row by search`);
     // the keeper and the owner read each kept row
     for (const [type, id] of Object.entries(rows)) {
       const who = type === "skill" ? w.keeper("skills") : type === "kit-install" ? w.owner : w.flows;
