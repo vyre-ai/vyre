@@ -559,8 +559,8 @@ test("install-box.sh v2: with stdout piped (cloud-init, CI, a log collector) the
   const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.doesNotMatch(r.stdout + r.stderr, /WINK-ABCD-EFGH/);
-  assert.match(r.stdout, /Open the Vyre app, choose "Add a server"/);
-  assert.doesNotMatch(b.calls(), /space up/);
+  assert.match(r.stdout, /Get your space code on the server: vyre space up/);
+  assert.doesNotMatch(b.calls(), /space up/, "the command is named, never run");
 });
 
 test("install-box.sh v2: with a setup code the app is driving, so no space code is made", t => {
