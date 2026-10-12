@@ -310,7 +310,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     // the owner makes a personal skill with a distinctive name and approves it (the owner's own level); a member's turn must not list it
     const body = "---\nname: walk-owner-private\ndescription: only the owner uses this walk skill\n---\nSay owner only.\n";
     const drafted = await w.call("skills.draft", { name: "walk-owner-private", level: "personal", body, kind: "skill" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
-    const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
+    const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal", version: Number((drafted.draft && drafted.draft.version) || drafted.version || 1) }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
       const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
