@@ -2903,7 +2903,7 @@ export class Switchboard {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker, ...(kernelTurn.over ? { over: kernelTurn.over } : {}) }) : null);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker, ...(kernelTurn.space ? { space: kernelTurn.space } : {}), ...(kernelTurn.over ? { over: kernelTurn.over } : {}) }) : null);
     const queued = Number(r.lastInsertRowid);
     const live = this.live.get(id);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
