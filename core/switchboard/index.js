@@ -1785,6 +1785,8 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : reason === "limit" || reason === "back" ? lentHolder(this, id, st) : reason === "asked" ? by : person);   // a switch stops the process: on a person's own computer only that person may
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
+    // A person's own asked switch (threads.switch, threads.chat-switch) goes through the judgement a turn does: a member names only an account that is hers, none named is her own of that provider, none of hers is refused.
+    if (reason === "asked" && by) { const judged = await memberAccount(this, { ...rec, provider }, { account, provider, kernelTurn: { asker: by }, resume: true }, id); account = judged.account || null; person = person || by; }
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
@@ -1807,7 +1809,7 @@ export class Switchboard {
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
     if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(reason === "asked" && by ? { person: by } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
