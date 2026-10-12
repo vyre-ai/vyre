@@ -97,4 +97,12 @@ test("isolation: a session under an account's uid reads its own approved skills 
   await run(A, "true", set(NEW, 3));
   assert.deepEqual(fs.readdirSync(path.join(ga, ".vyre-skills")).sort(), [NEW], "only the current set stays, and the planted link is removed, not followed");
   assert.ok(fs.existsSync("/etc/passwd"));
+  // two sessions of one account at once, with different sets: starting the second does not delete the first's folder under it; once the first has ended, the next start prunes it
+  const first = await spawnAsAgent(["/bin/sh", "-c", "sleep 30"], { socket, cwd: work, account: A, seed: set(NEW, 3) });
+  const SECOND = "0000111122223333";
+  await run(A, "true", set(SECOND, 2));
+  assert.ok(fs.existsSync(path.join(ga, ".vyre-skills", NEW, "skills", "okafor", "SKILL.md")), "a session still running keeps its set when another of the same account starts");
+  first.kill("SIGKILL"); await exited(first);
+  await run(A, "true", set(ID, 2));
+  assert.deepEqual(fs.readdirSync(path.join(ga, ".vyre-skills")).sort(), [ID], "and the next start after it ended prunes it");
 });

@@ -394,5 +394,9 @@ test("skills seed scripts, as the writing user: files 0600 and folders 0700, a l
   fs.mkdirSync(path.join(h, ".vyre-skills", "fedcba9876543210", "skills"), { recursive: true });
   assert.equal(spawnSync("/bin/sh", ["-c", SKILLS_PRUNE_SCRIPT, "sh", h, ID]).status, 0);
   assert.deepEqual(fs.readdirSync(path.join(h, ".vyre-skills")).sort(), [ID], "only the current set stays");
+  // the sets of other running sessions are named too, and stay
+  fs.mkdirSync(path.join(h, ".vyre-skills", "1111111111111111")); fs.mkdirSync(path.join(h, ".vyre-skills", "2222222222222222")); fs.mkdirSync(path.join(h, ".vyre-skills", "3333333333333333"));
+  assert.equal(spawnSync("/bin/sh", ["-c", SKILLS_PRUNE_SCRIPT, "sh", h, ID, "1111111111111111", "2222222222222222"]).status, 0);
+  assert.deepEqual(fs.readdirSync(path.join(h, ".vyre-skills")).sort(), [ID, "1111111111111111", "2222222222222222"].sort(), "a named set stays, an unnamed one goes");
   assert.ok(fs.existsSync(target) && fs.readFileSync(target, "utf8") === "KEEP", "and nothing a link pointed at was touched");
 });

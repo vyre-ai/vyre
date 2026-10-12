@@ -34,6 +34,7 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { prepareSandbox, sessionCliEnv, pickedFirst } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
+import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -1443,10 +1444,13 @@ export class Switchboard {
         for (const rel of fs.readdirSync(dir, { recursive: true, withFileTypes: false }).map(String).sort()) {
           const full = path.join(dir, rel);
           if (!fs.lstatSync(full).isFile()) continue;
-          const text = fs.readFileSync(full, "utf8"); total += Buffer.byteLength(text);
-          seed[`.vyre-skills/${sid}/${rel.split(path.sep).join("/")}`] = text;
+          const key = `${SKILLS_PREFIX}${sid}/${rel.split(path.sep).join("/")}`;
+          const text = fs.readFileSync(full, "utf8");
+          // a file the spawner would refuse (an odd name, too deep, too big) is left out with a line in the log: one such file must not stop the session starting
+          if (!skillsKeyOk(key) || Buffer.byteLength(text) > SKILLS_CAPS.file) { this.deps.log(`threads: ${rel} in the skills set for ${String(id).slice(0, 8)} is left out (a name or size the account's folder does not take)`); continue; }
+          total += Buffer.byteLength(text); seed[key] = text;
         }
-        if (!Object.keys(seed).length || Object.keys(seed).length > 128 || total > 524288) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the session starts without it`); return dir; }
+        if (!Object.keys(seed).length || Object.keys(seed).length > SKILLS_CAPS.files || total > SKILLS_CAPS.total) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the session starts without it`); return dir; }
         this.libSeed.set(id, seed);
         return path.join(String(o.accountRun.home), ".vyre-skills", sid);
       } catch (e) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} could not be read for the account: ${/** @type {Error} */ (e).message}`); return dir; }

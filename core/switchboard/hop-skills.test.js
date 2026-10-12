@@ -37,7 +37,7 @@ test("libraryPlugin hands a sandboxed session a copy in its own temp folder, the
   const src = path.join(base, "home", "materialised", "claude", "0123456789abcdef");
   fs.mkdirSync(path.join(src, ".claude-plugin"), { recursive: true }); fs.mkdirSync(path.join(src, "skills", "okafor"), { recursive: true });
   fs.writeFileSync(path.join(src, ".claude-plugin", "plugin.json"), "{}"); fs.writeFileSync(path.join(src, "skills", "okafor", "SKILL.md"), "BLUEBIRD-77");
-  const make = (/** @type {any} */ sandbox) => /** @type {any} */ ({ turnAsker: new Map(), sessionTemp: Switchboard.prototype.sessionTemp, libraryForSandbox: Switchboard.prototype.libraryForSandbox, deps: { root: path.join(base, "home"), sandbox, call: async () => ({ data: { dir: src } }) } });
+  const make = (/** @type {any} */ sandbox) => /** @type {any} */ ({ turnAsker: new Map(), sessionTemp: Switchboard.prototype.sessionTemp, libraryForSandbox: Switchboard.prototype.libraryForSandbox, deps: { root: path.join(base, "home"), log: () => {}, sandbox, call: async () => ({ data: { dir: src } }) } });
   const ask = (/** @type {any} */ board, /** @type {any} */ o = {}) => Switchboard.prototype.libraryPlugin.call(board, { id: "t", provider: "claude" }, o, "t1");
   const copy = await ask(make({}));
   assert.notEqual(copy, src, "a sandboxed session is not pointed at Vyre's home");
@@ -53,6 +53,7 @@ test("libraryPlugin hands a sandboxed session a copy in its own temp folder, the
   const grok = await Switchboard.prototype.libraryPlugin.call(grokBoard, { id: "t", provider: "grok" }, { provider: "grok" }, "t2");
   assert.ok(grok.startsWith(path.join(base, "sessions")), `Grok is given a private copy even with no sandbox: ${grok}`);
   // a session under its own account's uid (the packaged box): the set is seeded into her HOME by the spawner, nothing is copied here, and the folder it is pointed at is hers
+  fs.writeFileSync(path.join(src, "skills", "okafor", "my notes.md"), "a name the account's folder does not take");
   const boxBoard = make({ uid: {} });
   const at = await ask(boxBoard, { accountRun: { uid: 2002, home: "/acct/2002" } });
   assert.equal(at, "/acct/2002/.vyre-skills/0123456789abcdef", "the session is pointed at its own account's HOME");
@@ -60,4 +61,5 @@ test("libraryPlugin hands a sandboxed session a copy in its own temp folder, the
   assert.equal(seed[".vyre-skills/0123456789abcdef/skills/okafor/SKILL.md"], "BLUEBIRD-77", "and the spawner is handed the set to write there");
   assert.ok(".vyre-skills/0123456789abcdef/.claude-plugin/plugin.json" in seed);
   assert.ok(Object.keys(seed).every(k => k.startsWith(".vyre-skills/0123456789abcdef/")), "only under the one prefix");
+  assert.ok(!Object.keys(seed).some(k => /my notes/.test(k)), "a file with a name the spawner would refuse is left out, so it cannot stop the whole session starting");
 });
