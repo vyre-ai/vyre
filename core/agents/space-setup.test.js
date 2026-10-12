@@ -25,7 +25,7 @@ test("a member reads the Space's agents, templates and playbooks and changes non
   // write: no, on the gateway route
   for (const [type, id] of [["template", tpl.id], ["playbook", pb.id], ["agent", agentRow.id]]) {
     const v = (await R.get(oc, type, id)).version;
-    await assert.rejects(() => R.update(bc, type, id, { name: "TAKEN" }, v), { code: "not_allowed" }, `a member updates a ${type}`);
+    await assert.rejects(() => R.update(bc, type, id, { name: "TAKEN" }, v), { code: "not_allowed", message: new RegExp(`^Only an owner or an admin can change this ${type}\\. Ask one of them\\.$`) }, `a member updates a ${type}`);
     await assert.rejects(() => R.remove(bc, type, id, v), { code: "not_allowed" }, `a member removes a ${type}`);
   }
   await assert.rejects(() => R.create(bc, "template", { name: "X", kind: "email", body: "x" }), { code: "not_allowed" }, "a member creates a template");
