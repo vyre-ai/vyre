@@ -21,3 +21,21 @@ test("for(space).gateway.serviceChain(name) is the calling module's own chain, w
   assert.equal(reg.withCrossSpace({ name: "work" }, home).for("spc_team").gateway.serviceChain("anything"), "chain:work", "and work's own view is work's");
   assert.equal(attachments.for("spc_other").hosted, false, "a Space that is not hosted here is returned as it was");
 });
+
+test("a module's view of a hosted Space carries no kernel; the registry still routes the module to its own handle there", () => {
+  const rawKernel = { gateway: { serviceChain: (/** @type {string} */ n) => `chain:${n}` }, chains: { fromFacts: () => "any chain" }, kernelFor: (/** @type {any} */ m) => ({ chats: `chats-of-${m.name}`, serviceChain: () => `own:${m.name}` }) };
+  const home = { space: "spc_home", owner: "per_x", for: (/** @type {string} */ id) => (id === "spc_team" ? { space: id, hosted: true, gateway: rawKernel.gateway, kernel: rawKernel } : { space: id, hosted: false }) };
+  const reg = Object.create(Registry.prototype);
+  const skills = reg.withCrossSpace({ name: "skills" }, home);
+  const view = skills.for("spc_team");
+  assert.equal(view.kernel, undefined, "no kernel on the view");
+  assert.ok(!("kernel" in view) && !Object.keys(view).includes("kernel") && !Reflect.ownKeys(view).includes("kernel"), "not under any key listing");
+  assert.equal(view.gateway.serviceChain("work"), "chain:skills", "and the gateway still gives only the module's own chain");
+  assert.equal(view.own.chats, "chats-of-skills", "the module's own handle there is on offer, and is its own");
+  assert.equal(reg.withCrossSpace({ name: "stream" }, home).for("spc_team").own.chats, "chats-of-stream");
+  // the registry's own routing takes the raw kernel from its private side, so the module is still routed to its handle in the Space the call runs for
+  reg.spaceOfCall = () => "spc_team";
+  const routed = reg.routedKernel({ name: "skills" }, skills);
+  assert.equal(routed.chats, "chats-of-skills", "a call running in the team Space gets the module's handle there");
+  assert.equal(routed.kernel, undefined);
+});
