@@ -52,4 +52,21 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   assert.match(await words(chat.create(chainOf(BEN), body("anas-matter", 6))), /not_allowed/, "another member's project");
   // the owner files anywhere, and a new name still makes a project for the owner (as before)
   assert.ok((await chat.create(ownerChain, body("anas-matter", 7))).chat, "the owner, any project");
+
+  // MOVING a chat is filing it too: into the owner's project (by short name or by record address) refused and nothing changes; into her own, allowed; the owner moves any chat as before
+  const move = (/** @type {string} */ person, /** @type {string} */ chatId, /** @type {string} */ project) => d.registry.callInSpace({ name: "vyred" }, SPACE, K, "work.chat.move", { chat: chatId, project }, person === OWNER ? ownerChain : chainOf(person));
+  const mover = await chat.create(chainOf(ANA), body("", 8));
+  const projectOf = async (/** @type {string} */ chatId) => (await R.query(svc, "chat-record", { filter: { field: "chat", op: "eq", value: chatId }, page: { limit: 1 } })).rows[0].data.project.urn;
+  const before = await projectOf(mover.chat);
+  const byName = await move(ANA, mover.chat, "owners-matter");
+  assert.match(JSON.stringify(byName.error || {}), /not on the project owners-matter/, "moving into the owner's project by name is refused: " + JSON.stringify(byName).slice(0, 200));
+  const byUrn = await move(ANA, mover.chat, owners.urn);
+  assert.match(JSON.stringify(byUrn.error || {}), /not on the project/, "and by record address");
+  assert.equal(await projectOf(mover.chat), before, "the chat stayed where it was");
+  const own = await move(ANA, mover.chat, "anas-matter");
+  assert.ok(!own.error, "into her own project: " + JSON.stringify(own.error));
+  assert.notEqual(await projectOf(mover.chat), before, "and it moved");
+  const ownerChat = await chat.create(ownerChain, body("", 9));
+  const byOwner = await move(OWNER, ownerChat.chat, "anas-matter");
+  assert.ok(!byOwner.error, "the owner moves a chat into any project: " + JSON.stringify(byOwner.error));
 });

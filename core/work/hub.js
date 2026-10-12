@@ -161,23 +161,28 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     } catch (e) { const again = await findChat(chat); if (again) return again; throw e; }
   }
 
+  const refuseFiling = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
+  /** Owner or admin of the Space: they file a chat under any project. @param {string} person */
+  const isStaff = async person => { const role = typeof kernel.membership === "function" ? ((await kernel.membership(person).catch(() => null)) || {}).role : undefined; return role === "owner" || role === "admin"; };
+  /** A member files a chat only under a project she owns or is on the team of: the ownership rule's own test (kernel/gateway/ownership.js projectTeamOf), one function. @param {string} person @param {any} rec the Project @param {string} label */
+  async function mayFileUnder(person, rec, label) {
+    if (await isStaff(person)) return;
+    const team = await projectTeamOf({ get: (/** @type {string} */ t, /** @type {string} */ id) => kernel.records.get(chain(), t, id), query: (/** @type {string} */ t, /** @type {any} */ spec) => kernel.records.query(chain(), t, spec) }, urnOf)(rec.id);
+    if (!(team && (team.owner === person || team.team.includes(person)))) throw refuseFiling(`You are not on the project ${label}, so a chat cannot be filed in it. Ask the project's owner to add you, or keep the chat where it is.`);
+  }
+  /** The person on a chain, or null. @param {any} c */
+  const personOnChain = c => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
   /**
-   * May this caller file a chat under the project named in the input? An owner or admin may (as today). A member only under a project she owns or is on the team of (the ownership rule's own test,
-   * kernel/gateway/ownership.js projectTeamOf: one function), and never one that does not exist yet: a chat does not make a project for her, she starts the project first. Called before the chat is made.
+   * May this caller file a chat under the project named in the input (work.chat.create)? An owner or admin may (as today). A member only under a project she owns or is on the team of, and never one that does
+   * not exist yet: a chat does not make a project for her, she starts the project first. Called before the chat is made. Moving a chat (moveChat) and a run's project hint (touch) ask the same question.
    * @param {any} callerChain @param {string} name the project's short name
    */
   async function mayFileChat(callerChain, name) {
-    const hops = callerChain && Array.isArray(callerChain.hops) ? callerChain.hops : [];
-    const me = hops.find((/** @type {any} */ h) => h.actor.kind === "person");
-    if (!me || !SLUG_RE.test(name)) return;
-    const role = typeof kernel.membership === "function" ? (await kernel.membership(String(me.actor.id)).catch(() => null) || {}).role : undefined;
-    if (role === "owner" || role === "admin") return;
-    const refuse = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
+    const me = personOnChain(callerChain);
+    if (!me || !SLUG_RE.test(name) || await isStaff(me)) return;
     const rec = await find(PROJECT, "slug", name);
-    if (!rec) throw refuse(`There is no project called ${name} yet. Start the project first, then start the chat in it.`, "not_found");
-    const team = await projectTeamOf({ get: (/** @type {string} */ t, /** @type {string} */ id) => kernel.records.get(chain(), t, id), query: (/** @type {string} */ t, /** @type {any} */ spec) => kernel.records.query(chain(), t, spec) }, (/** @type {string} */ t, /** @type {string} */ id) => `vyre://${kernel.space}/${t}/${id}`)(rec.id);
-    const who = String(me.actor.id);
-    if (!(team && (team.owner === who || team.team.includes(who)))) throw refuse(`You are not on the project ${name}, so a chat cannot be filed in it. Ask the project's owner to add you, or start the chat without a project.`);
+    if (!rec) throw refuseFiling(`There is no project called ${name} yet. Start the project first, then start the chat in it.`, "not_found");
+    await mayFileUnder(me, rec, name);
   }
 
   /** The kernel's `chat.created`: { chat: { id, people, assistants } }. @param {any} ev */
@@ -224,7 +229,11 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (o.project) {
       const home = await personalProject(creatorOf(rec)).catch(() => null);
       const cur = rec.data.project && rec.data.project.urn;
-      if (home && cur === home.urn) { const proj = await ensureProject(o.project).catch(() => null); if (proj && proj.urn !== home.urn) Object.assign(patch, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, rec.data.chat) }); }
+      // a run's project hint moves the chat only where its creator may file it: a member's hint never makes a project and never reaches one she is not on
+      const who = creatorOf(rec), staff = await isStaff(who);
+      const proj0 = home && cur === home.urn ? (staff ? await ensureProject(o.project).catch(() => null) : await find(PROJECT, "slug", o.project).catch(() => null)) : null;
+      const allowed = proj0 ? (staff || await mayFileUnder(who, proj0, o.project).then(() => true, () => false)) : false;
+      if (home && cur === home.urn) { const proj = allowed ? proj0 : null; if (proj && proj.urn !== home.urn) Object.assign(patch, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, rec.data.chat) }); }
     }
     return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version);
   }
@@ -334,6 +343,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     const proj = await projectOf(projectRef);
     if (!proj) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
     if (rec.data.project && rec.data.project.urn === proj.urn) return rec;
+    // a member moves a chat only into a project she owns or is on (the same test as filing it there to begin with)
+    { const me = personOnChain(by); if (me) await mayFileUnder(me, proj, String(proj.data.slug || projectRef)); }
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
     if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));
     const moved = await kernel.records.update(by, CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
