@@ -87,3 +87,16 @@ test("pairing store: a listener hears every change and a throwing listener does 
   await s.removePairingFor("boxa");
   assert.equal(n, 2, "stopped listening");
 });
+
+test("pairing store: a restart keeps every server (the same keyed text read by a new store), including one still held under the older key", { skip: !strip }, async () => {
+  const { makePairingStore } = await load();
+  const { io } = memory({ "vyre.relay.pairing": JSON.stringify(P("boxa")) });
+  const before = makePairingStore(io);
+  await before.savePairing(P("boxb"));
+  const after = makePairingStore(io); // the app restarted: nothing in memory, only what the secure store holds
+  assert.deepEqual((await after.listPairings()).map((p) => p.box), ["boxa", "boxb"]);
+  assert.equal((await after.loadPairing())?.box, "boxa");
+  const again = makePairingStore(io);
+  await again.setActivePairing("boxb");
+  assert.equal((await makePairingStore(io).loadPairing())?.box, "boxb", "the main server survives a restart too");
+});

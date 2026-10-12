@@ -45,11 +45,19 @@ export async function openPeer(box?: string): Promise<Peer> {
   return p;
 }
 
+/**
+ * A stand-in for the peer wire, for the proof page that drives the real screens and the real routing against two pretend servers (app/two-servers-proof.tsx). Never set by the app itself. It is asked
+ * (tool, input, box id) after the box id is resolved, so a call that reaches the wrong server is seen.
+ */
+let fake: ((tool: string, input: Record<string, unknown>, box: string) => Promise<unknown>) | null = null;
+export function setPeerFake(f: typeof fake): void { fake = f; }
+
 /** One tool call over the peer wire, to the server named (its box id) or the active one. Resolves the tool's data; rejects with { code, message } in the server's words. */
 export const peerCall = <T = unknown>(tool: string, input: Record<string, unknown> = {}, box?: string): Promise<T> => peerCallOnce<T>(tool, input, box);
 
 async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unknown> = {}, box?: string): Promise<T> {
   const id = (await pairingOf(box)).box;
+  if (fake) return (await fake(tool, input, id)) as T;
   let p = await openPeer(id);
   try { return (await p.call(tool, input)) as T; }
   catch (e) {

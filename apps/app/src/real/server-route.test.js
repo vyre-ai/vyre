@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
+import { urnSpace, approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -264,4 +264,11 @@ test("route: one server paired never refuses an approval", () => {
 test("approvalServersFrom: the held acts each server lists, by id, the first server keeping an id listed twice", () => {
   assert.deepEqual(approvalServersFrom({ boxa: [{ id: "x1" }, { id: "x2" }], boxb: [{ id: "y1" }, { id: "x1" }, null, { id: 3 }] }), { x1: "boxa", x2: "boxa", y1: "boxb" });
   assert.deepEqual(approvalServersFrom({ boxa: undefined, boxb: "junk" }), {});
+});
+
+test("urnSpace: a record address names the Space the call must carry, so the showing Space is never sent with another Space's record", () => {
+  assert.equal(urnSpace({ urn: `vyre://${B}/contact/01a1` }), B);
+  assert.equal(urnSpace({ urn: "not an address" }), "");
+  assert.equal(urnSpace({}), "");
+  assert.equal(urnSpace(undefined), "");
 });

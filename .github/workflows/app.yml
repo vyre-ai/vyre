@@ -106,6 +106,8 @@ jobs:
           echo '{"private":true}' > package.json
           npm i --no-audit --no-fund --no-package-lock playwright@1
           npx playwright install --with-deps chromium
+      - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server)"
+        run: node scripts/two-server-proof.mjs --dist dist
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock

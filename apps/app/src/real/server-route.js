@@ -160,3 +160,9 @@ export function approvalServersFrom(lists) {
   for (const [box, rows] of Object.entries(lists)) for (const r of Array.isArray(rows) ? rows : []) if (r && typeof r.id === "string" && r.id && !out[r.id]) out[r.id] = box;
   return out;
 }
+
+/** The Space a record address names (vyre://<space>/...), or "" when the input carries none. @param {Record<string, unknown> | undefined} input */
+export function urnSpace(input) {
+  const m = input && typeof input.urn === "string" ? ADDRESS.exec(input.urn) : null;
+  return m ? m[1] : "";
+}
