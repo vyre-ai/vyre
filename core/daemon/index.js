@@ -307,7 +307,7 @@ async function startLocked(opts, root, p, release) {
     // Every tool's static gates, its presence requirement and its asked requirement are decided by the kernel's one check (`authorize`) over the compiled rules (kernel/retrofit/gates.js; the golden set proves it changes no decision), not by the registry's inline predicates.
     const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
     registry.deps.gates = createLegacyGates({ registry });
-    // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
+        // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
     registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
       // RF-1: under the turn token's OWN chain (its agent, its grants: an agent narrowed to one project reads only that project), with the chat left out so it is the person's reading and
@@ -540,6 +540,7 @@ async function startLocked(opts, root, p, release) {
       set: (/** @type {string} */ t, /** @type {any} */ rec) => { db.prepare("INSERT INTO kernel_turns (thread, body) VALUES (?, ?) ON CONFLICT (thread) DO UPDATE SET body = excluded.body").run(t, JSON.stringify(rec)); },
       delete: (/** @type {string} */ t) => { db.prepare("DELETE FROM kernel_turns WHERE thread = ?").run(t); },
       all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
+    globalThis.__vyreSurfaces = kernel.surfaces; globalThis.__vyreOwner = kernel.id && kernel.id.owner;
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats, pinned: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const person = chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id; if (!person) return false; const r = await registry.call("work.chat.pinned", { person, chat }, "module:vyred"); return Boolean(r && r.data && r.data.kind === "assistant"); } });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
     const canonPerson = (/** @type {string} */ p) => { const f = kernel.kernelFor({ name: "kernel-sessions" }).canonicalPerson; return typeof f === "function" ? f(p) : p; };
