@@ -87,7 +87,7 @@ async function device(t, { records = false, wink = false, kernelFor = undefined,
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     fs.mkdirSync(path.join(dir, "wink"));
     fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
-    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); return { async stop() {} }; } };\n");
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' || i.device === 'srv_paired0000000002', name: i.device === 'srv_paired0000000002' ? 'second server' : 'my server' }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
@@ -1271,6 +1271,57 @@ test("a person with only their own Space can lend to it: the home Space is lenda
   assert.notEqual(on.error?.code, "not_found", `lending to the person's own Space: ${JSON.stringify(on.error)}`);
 });
 
+test("`server` on spaces.name-here and spaces.host-here: the owner's Mac asks the ONE chosen paired server (two paired), a stranger never causes a remote call, an unknown or removed id refuses without touching this home, and `server` is not forwarded", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const w = world(t);
+  const HOME = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null, ownerId = "";
+  const real = (/** @type {any} */ m) => (handle ||= K.kernelFor(m));
+  const kernelFor = (/** @type {any} */ m) => ({ space: HOME, get owner() { return ownerId; }, for: () => real(m).for(HOME), chain: (/** @type {any} */ meta) => real(m).chain(meta), proofFrom: (/** @type {any} */ meta) => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (/** @type {any} */ c, /** @type {any} */ p) => real(m).acceptProofRequest(c, p), membership: (/** @type {any} */ p) => real(m).membership(p, HOME) });
+  const d = await device(t, { kernelFor, wink: true });
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  ownerId = me.id;
+  K = await createKernel({ space: HOME, owner: me.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: { check: async () => null }, hasPresenceSession: () => true });
+  const { token } = await K.surfaces.open(K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true }));
+  /** @type {any[]} */ const sent = [];
+  /** @type {any} */ let refuseWith = null;
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { sent.push([dev, tool, input]); if (refuseWith) throw refuseWith; return { ok: true, data: { space: "spc_bbbbbbbbbbbb", existed: true, rootPublic: "pk" } }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  const ONE = "srv_paired0000000001", TWO = "srv_paired0000000002";
+  // the owner names the Space on the chosen server only; `server` is not forwarded and nothing else rides along
+  const named = await d.call("spaces.name-here", { name: "northwind", server: TWO }, "cli", { token });
+  assert.ok(!named.error, JSON.stringify(named.error));
+  assert.deepEqual(sent.map(x => [x[0], x[1], x[2]]), [[TWO, "spaces.name-here", { name: "northwind" }]], "one call, to the chosen server, with no `server` key");
+  sent.length = 0;
+  await d.ok("spaces.name-here", { name: "northwind", done: true, server: ONE }, "cli", { token });
+  assert.deepEqual(sent.map(x => [x[0], x[1], x[2]]), [[ONE, "spaces.name-here", { name: "northwind", done: true }]], "the other server when it is the one chosen");
+  sent.length = 0;
+  await d.ok("spaces.host-here", { name: "northwind", id: "spc_bbbbbbbbbbbb", server: TWO }, "cli", { token });
+  assert.deepEqual(sent.map(x => [x[0], x[1], x[2]]), [[TWO, "spaces.host-here", { name: "northwind", id: "spc_bbbbbbbbbbbb" }]]);
+  // an unknown or removed server: refused with a next step, nothing sent, and never answered by this home (a fallback would have answered { space, rootPublic })
+  sent.length = 0;
+  for (const bad of ["srv_unknown00000000", "srv_removed00000000"]) {
+    const r = await d.call("spaces.name-here", { name: "northwind", server: bad }, "cli", { token });
+    assert.equal(r.error?.code, "server_not_paired", JSON.stringify(r));
+    assert.match(r.error.message, /Settings, Servers/, "it names the next step");
+    assert.equal(r.data, undefined);
+    assert.equal((await d.call("spaces.host-here", { name: "northwind", server: bad }, "cli", { token })).error?.code, "server_not_paired");
+  }
+  assert.equal((await d.call("spaces.name-here", { name: "northwind", server: "" }, "cli", { token })).error?.code, "bad_input");
+  assert.deepEqual(sent, [], "nothing reached any server");
+  // a caller who is not the owner (no session of the owner) is refused here, before any remote call, in the same words either way
+  for (const tool of ["spaces.name-here", "spaces.host-here"]) {
+    const r = await d.call(tool, { name: "northwind", server: TWO }, "cli", {});
+    assert.equal(r.error?.code, "forbidden", `${tool}: ${JSON.stringify(r)}`);
+  }
+  assert.deepEqual(sent, [], "a stranger never causes a remote call");
+  // the server's refusal passes its code through; its words are cut, not trusted at length
+  refuseWith = Object.assign(new Error("x".repeat(400)), { code: "already_named" });
+  const again = await d.call("spaces.name-here", { name: "other", server: TWO }, "cli", { token });
+  assert.equal(again.error?.code, "already_named");
+  assert.ok(again.error.message.length <= 160, "the remote's words are cut to 160");
+});
+
 test("the Run on this computer switch reads the real list and lends with the real tool: the plan names the device and the spaces, lending shows in the list, and stopping asks nothing", async t => {
   const { lendPlan } = await import("../../apps/app/screens/runner/runner-model.js");
   world(t);
@@ -1934,10 +1985,11 @@ test("spaces.servers: the servers this device is paired to, with the id spaces.c
   const d = await device(t);
   assert.deepEqual(await d.ok("spaces.servers"), { servers: [] }, "no wink table, no servers");
   const db = d.db;
-  db.exec("CREATE TABLE IF NOT EXISTS wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', owner_kind TEXT, owner_id TEXT, offers TEXT, created INTEGER NOT NULL DEFAULT 0)");
+  db.exec("CREATE TABLE IF NOT EXISTS wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', owner_kind TEXT, owner_id TEXT, offers TEXT, created INTEGER NOT NULL DEFAULT 0, removed_at INTEGER)");
+  db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created, removed_at) VALUES ('srv_gone', 'per_x', 'server', 'Old server', 3, 9)").run();
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("srv_box1", "server", "Home server", 2);
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("ph_1", "phone", "Phone", 1);
-  assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, and not a phone");
+  assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, not a phone, and not one that was removed");
   void w;
 });
 
