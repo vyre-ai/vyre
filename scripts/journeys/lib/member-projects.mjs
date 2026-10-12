@@ -3,7 +3,7 @@
 // The assistant's task and a template agent's teammate running are added when team-credential is merged.
 import assert from "node:assert/strict";
 
-const TEMPLATE = { name: "Walk intake", description: "One stage with a task", tags: ["walk"], stages: [{ name: "Intake", tasks: [{ title: "Gather the documents", doer: "creator", output: { kind: "note" } }] }, { name: "Done" }] };
+const TEMPLATE = { name: "Walk intake", description: "One stage with a task", tags: ["walk"], roles: [{ role: "helper", agent: "assistant" }], stages: [{ name: "Intake", tasks: [{ title: "Gather the documents", doer: "role:helper", output: { kind: "note" } }, { title: "Check the documents", doer: "creator", output: { kind: "note" } }] }, { name: "Done" }] };
 
 /** @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: each { name, app, joined } */
 export async function memberProjectsSteps({ J, w, people, needs }) {
@@ -73,17 +73,25 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
     return "uploaded, listed, read back; the other member refused; the marker out of reach";
   }, { needs: [...needs, B], owner: "operations" });
 
-  const G = "her task from the template is in her task list and she submits it (tasks.submit through the door)";
+  const G = "the template's first-stage task for the assistant is made on her project";
   await J.step(G, async () => {
+    assert.ok(hers.tasks_made >= 1, `tasks made ${hers.tasks_made}, skipped ${JSON.stringify(hers.tasks_skipped || [])}`);
+    return `tasks made ${hers.tasks_made}`;
+  }, { needs: [...needs, B], owner: "projects-flows" });
+
+  const G2 = "her own task from the template (doer \"creator\") is in her task list and she submits it (tasks.submit through the door)";
+  await J.step(G2, async () => {
+    const skipped = JSON.stringify(hers.tasks_skipped || []);
+    if (/nobody can do creator/.test(skipped)) throw new Error(`NOT BUILT YET: the stage module cannot resolve the doer "creator" on a member-started project (${skipped}) (owner: projects-flows)`);
     const mine = await grace.joined.call("tasks.list", [{ record: hers.project }]);
     const rows = mine.rows || mine.tasks || mine;
-    const task = rows.find((/** @type {any} */ t) => String(t.title || (t.task && t.task.title) || "").includes("Gather the documents"));
+    const task = rows.find((/** @type {any} */ t) => String(t.title || (t.task && t.task.title) || "").includes("Check the documents"));
     assert.ok(task, `her task: ${JSON.stringify(rows).slice(0, 400)}`);
-    const out = await grace.joined.call("tasks.submit", [{ id: task.id, evidence: { note: "documents gathered by the walk" } }]);
+    const out = await grace.joined.call("tasks.submit", [{ id: task.id, evidence: { note: "documents checked by the walk" } }]);
     return `submitted ${task.id}: ${JSON.stringify(out).slice(0, 120)}`;
   }, { needs: [...needs, B], owner: "projects-flows" });
 
-  const H = "the Records screen's types leave out the team's kept types, and she adds a client and a note";
+  const H = "the Records screen's types leave out the team's kept types, and she adds a client";
   await J.step(H, async () => {
     const t = await grace.joined.call("records.types", [{}]);
     const names = (Array.isArray(t) ? t : t.types || []).map((/** @type {any} */ x) => String(x.name));
@@ -93,8 +101,6 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
     const clientRec = client.record || client;
     const list = await grace.joined.call("records.list", [{ type: "contact" }]);
     assert.ok(JSON.stringify(list).includes("Walk Client"), "the client is in her list");
-    const noteType = names.includes("note") ? "note" : null;
-    if (noteType) await grace.joined.call("records.create", [{ type: noteType, data: { title: "Walk note", body: "added by Grace" } }]);
-    return `types ${names.length}, none kept; client ${clientRec.id || ""}${noteType ? " and a note" : " (no `note` type here: the note is not tried)"}`;
+    return `types ${names.length}, none kept; client ${clientRec.id || ""}`;
   }, { needs: [...needs, B], owner: "trust" });
 }

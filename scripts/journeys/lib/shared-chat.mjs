@@ -29,6 +29,11 @@ export function installStandins() {
     found.push(real);
     // the agent's settings and its logs: Codex starts in "agent" and Vyre moves it to "workspace-write" (drivers/codex.js), and a walk that times out says what the agent received
     if (name === "codex-acp") {
+      // the stand-in calls Vyre's tools through the MCP server the client hands it (the route a real agent uses), with this helper beside it
+      const cp2 = sh(["cp", path.join(REPO, "core", "sessions", "testing", "walk-mcp-call.mjs"), `${BOX}:/tmp/walk-mcp-call.mjs`]);
+      assert.equal(cp2.status, 0, `docker cp walk-mcp-call.mjs: ${cp2.stderr}`);
+      const inst2 = sh(["exec", "-u", "root", BOX, "sh", "-c", `install -m 755 /tmp/walk-mcp-call.mjs ${path.posix.dirname(real)}/walk-mcp-call.mjs`]);
+      assert.equal(inst2.status, 0, `install walk-mcp-call: ${inst2.stderr}`);
       const env = "FAKE_ACP_START_MODE=agent\nFAKE_ACP_EXTRA_MODE=workspace-write\nFAKE_ACP_LOG=/work/fake-acp.log\nFAKE_ACP_RPC_LOG=/work/fake-acp-rpc.log\n";
       const w = sh(["exec", "-u", "root", BOX, "sh", "-c", `printf '%s' '${env}' > ${path.posix.dirname(real)}/fake-acp.env`]);
       assert.equal(w.status, 0, `the agent's settings: ${w.stderr}`);
@@ -66,7 +71,6 @@ const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(S
 
 /** What the server's own terminal says about the sessions, for a wait that timed out. */
 /** @type {(() => Promise<any[]>) | null} */ let ownerView = null;
-/** @type {string[]} */ const catchupMismatches = [];
 let serverView = async () => "";
 export const setOwnerView = (/** @type {() => Promise<any[]>} */ f) => { ownerView = f; };
 export const setServerView = (/** @type {() => Promise<string>} */ f) => { serverView = f; };
@@ -98,8 +102,8 @@ async function untilAnswerTo(person, chat, said) {
       const oat = om.findIndex((/** @type {any} */ m) => /^person:/.test(String(m.author)) && String(m.text).includes(said));
       const onext = om.findIndex((/** @type {any} */ m, /** @type {number} */ k) => k > oat && /^person:/.test(String(m.author)));
       const oans = oat >= 0 ? answers(om.slice(oat + 1, onext < 0 ? undefined : onext)) : [];
-      console.log(`DBG catchup-differs for "${said}": ${person.name}'s catchup has ${after.length} answers after it (her message ${at >= 0 ? "is" : "is NOT"} listed); the owner's view has ${oans.length}; ${person.name}'s tail: ${JSON.stringify(ms.slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 50)]))}`);
-      if (oans.length) { catchupMismatches.push(`${person.name}: "${said}"`); return oans; }
+      console.log(`DBG own-message-not-in-catchup (by design) for "${said}": ${person.name}'s catchup has ${after.length} answers after it (her message ${at >= 0 ? "is" : "is NOT"} listed); the owner's view has ${oans.length}; ${person.name}'s tail: ${JSON.stringify(ms.slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 50)]))}`);
+      if (oans.length) return oans;
     }
     await sleep(4000);
   }
@@ -303,22 +307,22 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
   await J.step(WC, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
+      await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     const out = /** @type {string[]} */ ([]);
     for (const who of [grace.name, edith.name]) {
-      const list = await R(who, `vyre call vault.list '{}' 2>&1`);
-      const reveal = await R(who, `vyre call vault.reveal '{"item":"walk-owner-item"}' 2>&1`);
+      const list = await R(who, `walk-mcp:vault.list {}`);
+      const reveal = await R(who, `walk-mcp:vault.reveal {"item":"walk-owner-item"}`);
       said[`${who}-vault`] = `${list} || ${reveal}`;
       assert.ok(!/walk-owner-item.*value|"items"\s*:\s*\[\s*\{/.test(list + reveal), `${who} sees no owner item through the tool: ${list} ${reveal}`);
       assert.ok(/vault|owner|private|not allowed|refus|stay out/i.test(list), `${who}'s vault.list is refused in words: ${list}`);
       out.push(`${who}: list -> ${list.slice(0, 160)} | reveal -> ${reveal.slice(0, 160)}`);
     }
-    const control = await R("owner", `vyre call vault.list '{}' 2>&1`);
+    const control = await R("owner", `walk-mcp:vault.list {}`);
     said["owner-vault"] = control;
     out.push(`owner (control): ${control.slice(0, 200)}`);
     return out.join(" || ");
@@ -331,16 +335,16 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const drafted = await w.call("skills.draft", { name: "walk-owner-private", level: "personal", body, kind: "skill" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
     const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
+      await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     const lists = /** @type {Record<string, string>} */ ({});
-    for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `vyre call skills.list '{}' 2>&1`);
+    for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `walk-mcp:skills.list {}`);
     said.skills = JSON.stringify(lists).slice(0, 1500);
-    for (const [who, out] of Object.entries(lists)) assert.ok(!/walk-term exit=(?!0\b)\d+/.test(out), `${who}'s command ran (a refused terminal says nothing about skills): ${out.slice(0, 200)}`);
+    for (const [who, out] of Object.entries(lists)) assert.ok(!/walk-(term|mcp) exit=(?!0\b)\d+/.test(out), `${who}'s command ran (a refused terminal says nothing about skills): ${out.slice(0, 200)}`);
     for (const who of [grace.name, edith.name]) assert.ok(!lists[who].includes("walk-owner-private"), `${who}'s turn does not list the owner's personal skill: ${lists[who].slice(0, 300)}`);
     assert.ok(lists.owner.includes("walk-owner-private") || (approved && approved.error), `the owner's turn lists the owner's own skill (or the skill could not be made: ${JSON.stringify(approved).slice(0, 200)}): ${lists.owner.slice(0, 300)}`);
     return `draft/approve: ${JSON.stringify(approved).slice(0, 120)} | lists: ${JSON.stringify(lists).slice(0, 600)}`;
@@ -349,18 +353,18 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
   const WE = "a job a member's turn leaves behind calls the tool CLI after the turn: while her session still stands it has hers, after it is gone the call fails; the owner's turn between them gets none of it";
   await J.step(WE, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
+      await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
       for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
-    const start = await R(grace.name, `cd "$PWD"; (setsid nohup sh -c 'sleep 4; vyre call vault.list "{}" > bg5.out 2>&1; sleep 45; vyre call vault.list "{}" > bg50.out 2>&1' >/dev/null 2>&1 &); echo started`);
+    const start = (await R(grace.name, `walk-mcp-bg:4 vault.list {}`)) + " " + (await R(grace.name, `walk-mcp-bg:50 vault.list {}`));
     await speak("owner", "whoami walkE-owner");
     const own = await untilAnswerTo(grace, chat, "walkE-owner");
     assert.ok(String(own[0].text).includes(`/${await ownerUid()}`), `the owner's turn ran as the owner: ${own[0].text}`);
     await sleep(60_000);
-    const files = await R(grace.name, `cd "$PWD"; echo "5s:"; cat bg5.out 2>&1; echo "50s:"; cat bg50.out 2>&1`);
+    const files = await R(grace.name, `cd "$PWD"; echo "5s:"; cat bg-mcp-4.out 2>&1; echo "50s:"; cat bg-mcp-50.out 2>&1`);
     assert.ok(!/walk-term exit=(?!0\b)\d+/.test(start + files), `the commands ran (a refused terminal proves nothing about a leftover job): ${(start + files).slice(0, 300)}`);
     said.bg = files;
     assert.ok(!/walk-owner-item|"items"\s*:\s*\[\s*\{/.test(files), `the leftover job never saw the owner's vault: ${files}`);
@@ -379,10 +383,27 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return `scanned ${all.length} characters in ${seenText.length} views`;
   }, { needs: [H], owner: "chat" });
 
-  const WM = "a member's own catchup shows her message and the answer to it, as the owner's view of the same chat does";
+  const WM = "catchup is what others said since you last read: a member's catchup holds the others' messages and the answers and not her own, and on the stream every person's message is followed by its answer in order";
   await J.step(WM, async () => {
-    assert.equal(catchupMismatches.length, 0, `the owner's view had the answer after the message but the member's catchup did not, for: ${catchupMismatches.join("; ")}`);
-    return "no difference between a member's catchup and the owner's view";
+    // (harness assertion corrected, lead ruling 12 Oct: catchup leaves out the caller's own messages by design; the app screen renders from the stream)
+    const mine = JSON.stringify(await seen(grace, chat));
+    assert.ok(!mine.includes("whoami walkA2") && !mine.includes("whoami walkA4"), "Grace's catchup does not repeat her own messages (walkA2, walkA4)");
+    assert.ok(mine.includes("whoami walkA1") && mine.includes("whoami walkA5"), "and holds the others' messages (walkA1 the owner's, walkA5 Edith's)");
+    const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session like ? order by cur").all("%"+process.argv[1]+"%").map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,120)]})))`;
+    const r = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", script, String(chat).replace(/^chat_/, "").slice(0, 8)]);
+    assert.equal(r.status, 0, `the stream could not be read: ${r.stderr}`);
+    const frames = JSON.parse(String(r.stdout).trim().split("\n").pop() || "[]");
+    const out = [];
+    for (let n = 1; n <= 5; n++) {
+      const tag = `whoami walkA${n}`;
+      const at = frames.findIndex((/** @type {any} */ f) => f[1] === "chat.user-message" && String(f[2]).includes(tag));
+      assert.ok(at >= 0, `${tag} is on the stream`);
+      const nextMsg = frames.findIndex((/** @type {any} */ f, /** @type {number} */ k) => k > at && f[1] === "chat.user-message");
+      const ans = frames.slice(at + 1, nextMsg < 0 ? undefined : nextMsg).filter((/** @type {any} */ f) => f[1] === "chat.text-delta" && /^home: /.test(String(f[2])));
+      assert.equal(ans.length, 1, `${tag}: exactly one answer follows it on the stream, found ${ans.length}`);
+      out.push(`${tag} -> frame ${ans[0][0]}`);
+    }
+    return out.join(", ");
   }, { needs: [H], owner: "chat" });
 
   // ---- the vault and the folders, from a MEMBER's own session on the server (rc1-a's steps; the owner's session is the control)
