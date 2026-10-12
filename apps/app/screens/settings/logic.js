@@ -78,6 +78,7 @@ function all(/** @type {string} */ space) {
     ] },
     { title: "Devices", rows: [
       ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
+      ["Servers", "Your servers and the Space on each", "/u/settings/servers", "storage"],
       ["Backups", "Which Spaces are backed up", "/u/settings/backups", "storage"],
       ["Access", "People, assistants, Kits and Flows", "/u/access", "access"],
     ] },
