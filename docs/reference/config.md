@@ -68,7 +68,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/wink/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
-| `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js`, `core/switchboard/project-access.js` |
 | `VYRE_AGENT_HOME` | Not described yet. | `core/daemon/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
@@ -144,6 +144,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PREVIEW_THUMBS` | Not described yet. | `core/previews/index.js` |
+| `VYRE_PROJECT_GIDS` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_PROJECT_GID_MAX` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_PROJECT_GID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_PUBLISH_DOCKER` | Not described yet. | `core/publish/index.js` |
 | `VYRE_PUB_CTX` | Not described yet. | `core/appmods/host-pub.js` |
 | `VYRE_RECOVERY_CODE` | Not described yet. | `core/cli/commands/up.js` |

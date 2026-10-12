@@ -61,7 +61,7 @@ u2=$(echo "$two" | sed -n 2p | node -e 'let s="";process.stdin.on("data",d=>s+=d
 [ "$u1" != x ] && [ "$u2" != x ] && [ "$u1" != "$u2" ] && rec 4-own-uid-each ok "$u1 and $u2" || rec 4-own-uid-each false "$two"
 
 # 5 /work is closed to others
-m=$(docker exec wallbox stat -c %a /work); [ "$m" = 2770 ] && rec 5-work-mode ok "$m" || rec 5-work-mode false "mode $m"
+m=$(docker exec wallbox stat -c %a /work); [ "$m" = 2711 ] && rec 5-work-mode ok "$m" || rec 5-work-mode false "mode $m"
 
 # 6 a restart reinstalls and re-probes before anything is spawned, and the rule is there exactly once
 at1=$(status wallbox | sed -n 's/.*"at":\([0-9]*\).*/\1/p')
