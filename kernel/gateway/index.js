@@ -68,7 +68,7 @@ export function createGateway(cfg) {
     const base = records, has = (/** @type {string} */ path) => base.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 1 } });
     records = Object.freeze({ ...base,
       async create(/** @type {any} */ c, /** @type {string} */ t, /** @type {any} */ d, /** @type {any} */ o) {
-        const r = await base.create(c, t, d, o), by = String((base.attrsOf(r.urn) || {}).created_by || "");
+        const r = await base.create(c, t, d, o), at = base.attrsOf(r.urn) || {}, by = String(at.created_for || at.created_by || "");
         if (t === "file-share" && by.startsWith("person:") && await sharedRead(`vyre://${cfg.space}/file/${d.path}`, by.slice(7), { space: cfg.space, chains: cfg.chains, gs, records: base })) await cfg.drive.share(String(d.path)).catch(() => {});
         return r;
       },
@@ -84,7 +84,12 @@ export function createGateway(cfg) {
   async function canSee(/** @type {any} */ chain, /** @type {any} */ e) {
     if (!(await allowed(chain, "events.read", e.subject))) return false;
     // an event about a record of a type a module keeps (its create event carries the data) is the keeper's and the owner's and admins' alone: subject vyre://<space>/<type>/<id>
-    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/[^/]+$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; }
+    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; if (m && !(await records.mayViewRow(chain, m[1], m[2]))) return false; }
+    // an event about a file (written, read, moved, deleted) is judged like the file: whoever may open it may know of it, nobody else (its path, size and who touched it are the file's)
+    if (/^vyre:\/\/[^/]+\/file\//.test(String(e.subject))) {
+      const memb = wiring.members || cfg.members, staff = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && ["owner", "admin"].includes(String((memb && memb.membership && memb.membership(h.actor) || {}).role)));
+      if (!staff && !(await allowed(chain, "drive.read", e.subject))) return false;
+    }
     const vis = e.vis;
     if (vis === "space") return true;
     if (vis === "subject") return allowed(chain, "records.read", e.subject);

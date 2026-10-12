@@ -187,6 +187,32 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /**
+   * May this PERSON read or change a chat's record: the people in the chat, the Space's owner or an admin, or the owner or team of the project it is filed under (class 3: the raw Records route to a chat
+   * is the owner's and the admins'; everyone else reads it through the work module, which asks here for each record).
+   * @param {string} person @param {any} rec
+   */
+  async function mayViewChat(person, rec) {
+    if (!person || !rec) return false;
+    const d = data(rec) || {};
+    if (String(d.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
+    if (await isStaff(person)) return true;
+    const urn = d.project && d.project.urn;
+    return urn ? mayUseProject(person, String(urn)).catch(() => false) : false;
+  }
+  /**
+   * May this PERSON see a file share: the owner or an admin, someone in the chat the file is in, or the owner or team of the project whose folder holds it (the share is what opens that one file to them).
+   * @param {string} person @param {any} rec
+   */
+  async function mayViewShare(person, rec) {
+    const path = String(((data(rec) || {}).path) || ""), m = /^Projects\/([^/]+)\/(?:chat|made)\/([^/]+)\//.exec(path);
+    if (!person || !m) return false;
+    if (await isStaff(person)) return true;
+    const chatRec = await findChat(m[2]);
+    if (chatRec && String((data(chatRec) || {}).people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(person)) return true;
+    return mayUseProject(person, `vyre://${kernel.space}/${PROJECT}/${m[1]}`).catch(() => false);
+  }
+
+  /**
    * May this caller file a chat under the project named in the input (work.chat.create)? An owner or admin may (as today). A member only under a project she owns or is on the team of, and never one that does
    * not exist yet: a chat does not make a project for her, she starts the project first. Called before the chat is made. Moving a chat (moveChat) and a run's project hint (touch) ask the same question.
    * @param {any} callerChain @param {string} name the project's short name
@@ -375,7 +401,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     { const me = personOnChain(by); if (me) await mayFileUnder(me, proj, String(proj.data.slug || projectRef)); }
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
     if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));
-    const moved = await kernel.records.update(by, CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
+    const moved = await kernel.records.update(chain(), CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
     return moved;
   }
 
@@ -400,7 +426,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     const t = String(title || "").trim().slice(0, 120);
     if (!t) return rec;
     let cur = rec;
-    if (cur.data.title !== t) cur = await kernel.records.update(by, CHAT, cur.id, { title: t }, cur.version);
+    if (cur.data.title !== t) cur = await kernel.records.update(chain(), CHAT, cur.id, { title: t }, cur.version);
     const runs = ((await tool("threads.of-chat", { chat: cur.data.chat })) || {}).runs || [];
     for (const r of runs) if (r.thread !== except && r.name !== t) await tool("threads.rename", { thread: r.thread, name: t });
     return cur;
@@ -475,5 +501,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }
