@@ -11,7 +11,7 @@ import { HOW_FIELD } from "./log.js";
  */
 export async function migrateParticipants(kernel, chain, log = () => {}) {
   const R = kernel.records;
-  /** @type {Map<string, { how: string, address: string, contact: string | null, id: string, version: number }[]>} */ const by = new Map();
+  /** @type {Map<string, { how: string, address: string, contact: string | null, id: string, version: number, at: number }[]>} */ const by = new Map();
   let cursor, seen = 0;
   try {
     do {
@@ -19,7 +19,7 @@ export async function migrateParticipants(kernel, chain, log = () => {}) {
       for (const r of page.rows) {
         const cu = r.data.communication && r.data.communication.urn;
         if (!cu) continue;
-        (by.get(cu) || by.set(cu, []).get(cu))?.push({ how: String(r.data.how || ""), address: String(r.data.address || "").toLowerCase(), contact: r.data.contact && r.data.contact.urn || null, id: r.id, version: r.version });
+        (by.get(cu) || by.set(cu, []).get(cu))?.push({ how: String(r.data.how || ""), address: String(r.data.address || "").toLowerCase(), contact: r.data.contact && r.data.contact.urn || null, id: r.id, version: r.version, at: Number(r.created_at) || 0 });
         seen++;
       }
       cursor = page.next_cursor;
@@ -32,6 +32,9 @@ export async function migrateParticipants(kernel, chain, log = () => {}) {
   let communications = 0;
   for (const [cu, parts] of by) {
     const id = cu.split("/").pop() || "";
+    // The query returns rows in the order of their random ids, so the addresses were written in an order that changed from run to run. The order a person reads is the one the participants were made in; two made in the same
+    // millisecond keep a fixed order by address.
+    parts.sort((a, b) => a.at - b.at || (a.address < b.address ? -1 : a.address > b.address ? 1 : 0));
     const comm = await R.get(chain, "communication", id).catch(() => null);
     if (comm) {
       /** @type {Record<string, string>} */ const patch = {};

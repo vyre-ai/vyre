@@ -18,8 +18,6 @@
 //    that spike, not trusted.
 // Not registered by default: the caller wires it once accounts resolve (sessions.accounts).
 
-import fs from "node:fs";
-import path from "node:path";
 import { acpProvider } from "./acp.js";
 
 /** A double-quoted TOML string. @param {string} v */
@@ -41,25 +39,6 @@ export function grokConfigToml(c) {
 }
 
 /**
- * The skills folder as the session can read it: a copy inside the session's own folder (`<cwd>/.vyre/library/<name>`, ignored by git), made once per library version (the folder is named by the
- * library's own content id). The original when the folder cannot be written (a lent computer's).
- * @param {string} src @param {string | undefined} cwd
- */
-export function libraryIn(src, cwd) {
-  if (!cwd) return src;
-  try {
-    const root = path.join(cwd, ".vyre", "library");
-    const dest = path.join(root, path.basename(src));
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-      fs.writeFileSync(path.join(root, ".gitignore"), "*\n", { mode: 0o600 });
-      fs.cpSync(src, dest, { recursive: true });
-    }
-    return dest;
-  } catch { return src; }
-}
-
-/**
  * @param {{ bin?: string, home?: string, floor?: (call: any) => any, sessions?: any, custom?: { id?: string, model: string, baseUrl: string, envKey: string } }} [o]
  *   home: the HOME of the account the session runs as (core/sessions/accounts.js), never the person's own
  *   custom: run Grok Build on another OpenAI-compatible endpoint (the hosted-runner proof: OpenRouter
@@ -73,9 +52,8 @@ export function grokProvider(o = {}) {
     id: "grok",
     bin: o.bin || "grok",
     // The Space's approved skills (R031-19), written by the skills module as a plugin folder (`VYRE_SKILLS_DIR`) under Vyre's home. Grok loads it with `agent --plugin-dir` (the flag sits between `agent`
-    // and `stdio`; after `stdio` it is refused), but it reads a skill's file through Vyre's own file and terminal tools, which stay inside the session's folder and refuse Vyre's home, so the library is
-    // copied into the folder first (`.vyre/library/`, git-ignored). Measured live 10 Oct: from Vyre's home Grok's read was refused ("Vyre's own state"); from the folder a skill only the library holds answers.
-    args: run => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", ...(run && run.env && run.env.VYRE_SKILLS_DIR ? ["--plugin-dir", libraryIn(String(run.env.VYRE_SKILLS_DIR), run.cwd)] : []), "stdio"],
+    // and `stdio`; after `stdio` it is refused), but it reads a skill's file through Vyre's own file and terminal tools, which refuse Vyre's home, so the Switchboard gives it a private copy of the library (the session's temp folder, or its own account's HOME), never a folder the project's other accounts can read.
+    args: run => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", ...(run && run.env && run.env.VYRE_SKILLS_DIR ? ["--plugin-dir", String(run.env.VYRE_SKILLS_DIR)] : []), "stdio"],
     ...(o.custom ? { seed: { ".grok/config.toml": grokConfigToml(o.custom) } } : {}),
     secretEnv: () => ["XAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     // Grok imports MCP servers from ~/.claude.json and ~/.cursor/mcp.json by default (measured with `grok inspect`, 1.0.46: the person's Claude
