@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { placeTag } from "../state/space-name.js";
-import { tagFor } from "./place-tag.js";
+import { tagFor, spaceOfUrn } from "./place-tag.js";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const walk = (/** @type {string} */ d, /** @type {string[]} */ out = []) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { if (e.name === "node_modules") continue; const p = path.join(d, e.name); if (e.isDirectory()) walk(p, out); else out.push(p); } return out; };
@@ -44,5 +44,13 @@ test("the rows carry it too: chats (the block list), projects, a project's files
   assert.ok(/tagOf\(x\) \? <SpaceTag text=\{tagOf\(x\)\} \/>/.test(read("ui/blocks/BlockViews.tsx")), "every block list row draws its tag (its own, else the list's)");
   assert.ok(/content: \{ \.\.\.\(tag \? \{ tag \} : \{\}\)/.test(read("screens/chats/ChatsList.tsx")), "the chats list gives its rows the tag of where they live");
   assert.ok(/tagOf=\{\(sid\) => tagFor\(cards, sid \|\| showing, showing\)\}/.test(read("screens/projects/ProjectsScreen.tsx")) && /tagOf && tagOf\(spaceId\(i\)\)/.test(read("ui/tasks/ProjectsList.tsx")), "projects: each row says its own space, so a mixed list is right");
-  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/settings/RealAgents.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
+  assert.ok(/tag: tagFor\(cards, spaceOfUrn\(r\.urn\) \|\| showing, showing\)/.test(read("screens/records/RecordsBlock.tsx")) && /<SpaceTag text=\{String\(r\.tag\)\} \/>/.test(read("ui/blocks/TypedTable.tsx")), "records rows carry the tag of the space their address names");
+  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/settings/RealAgents.tsx", "screens/drive/RealDrive.tsx", "screens/drive/SpaceDrive.tsx", "screens/find/FindPanel.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
+});
+
+test("a record's address names its space, so a mixed list tags each row right", () => {
+  assert.equal(spaceOfUrn("vyre://spc_abcdefghijkl/contact/01a1"), "spc_abcdefghijkl");
+  assert.equal(spaceOfUrn("not an address"), "");
+  const cards = [{ id: "spc_abcdefghijkl", tag: "Acme" }, { id: "spc_mnopqrstuvwx", tag: "Personal - Cloud" }];
+  assert.equal(tagFor(cards, spaceOfUrn("vyre://spc_mnopqrstuvwx/note/9") || "showing", "all"), "Personal - Cloud");
 });

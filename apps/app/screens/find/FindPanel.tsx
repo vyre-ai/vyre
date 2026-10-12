@@ -4,16 +4,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, Text, useRecordsWorld, type IconName } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, SpaceTag, Text, useRecordsWorld, type IconName } from "@vyre/ui";
 import { NAV } from "../shell/nav";
 import { find } from "./source-real";
 import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
-import { PlaceTag } from "../../src/real/PlaceTag";
+import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
 const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName };
 
 export default function FindPanel({ onDone, initial = "" }: { onDone?: () => void; initial?: string }) {
+  const findTag = usePlaceText("home");   // the search is over her own computer
   const router = useRouter();
   const { data: world } = useRecordsWorld();
   const [base, setBase] = useState<Base>(emptyBase);
@@ -123,7 +124,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const hit = (r: Hit) => (
     <Row key={r.key} dense selected={flat[hi]?.key === r.key} lead={<Icon name={ICON[r.kind] ?? "file"} size={16} tone="label" />} title={r.title}
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
-      state={r.right} onPress={() => pick(r)} />
+      state={r.right} end={findTag ? <SpaceTag text={findTag} /> : undefined} onPress={() => pick(r)} />
   );
   const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
