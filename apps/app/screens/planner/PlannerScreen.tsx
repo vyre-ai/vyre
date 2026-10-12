@@ -7,6 +7,7 @@ import { Page } from "../places/Frame";
 import { listen } from "../../src/api/box";
 import { planner } from "./planner";
 import { CHANGES, PLACES, addInput, agendaOf, clock, hrefOf, kindWord, nextAlarms, nextAt, previewLine, repeatWord, ringingOf, sortNotes, splitKind, type Item, type Ringing } from "./model.ts";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -73,6 +74,7 @@ export function PlannerScreen() {
   );
   return (
     <Page title="Planner" back="/u/now">
+      <PlaceTag of="home" />
       <Banner>Today, what is coming, and what is open. Type to add: call Dana tomorrow 3pm.</Banner>
       {rings.map((r) => (
         <Card key={r.firing} className="gap-s2">

@@ -1057,5 +1057,9 @@
  "core/work/member-projects.test.js": 11,
  "core/work/member-files.test.js": 8,
  "apps/app/src/chat/member-chat.test.js": 2,
- "apps/app/src/chat/member-poll.test.js": 4
+ "apps/app/src/chat/member-poll.test.js": 4,
+ "apps/app/src/real/place-tag.test.js": 6,
+ "apps/app/screens/projects/files-model.test.js": 3,
+ "apps/app/screens/settings/space-agents.test.js": 1,
+ "apps/app/screens/skills/skills.test.js": 3
 }

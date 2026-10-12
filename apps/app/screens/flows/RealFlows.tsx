@@ -7,6 +7,7 @@ import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
 import { healthRow, listWaits } from "./real-model.js";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 export function RealFlows() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export function RealFlows() {
     setPausedReal(f.id, !on).then(() => setFlows((xs) => xs && xs.map((x) => (x.id === f.id ? { ...x, paused: on ? null : "paused" } : x)))).catch((e) => showToast(e instanceof Error ? e.message : "That did not work."));
   return (
     <Frame title="Flows" sub="What happens on its own when something changes, and who is asked.">
+      <PlaceTag of="showing" />
       <Card flush>
         {err ? <ErrorState title="Flows did not load" reason={err} retry={load} /> : null}
         {!err && flows === null ? <LoadingState rows={3} /> : null}
