@@ -156,6 +156,8 @@ rule() {
 # returns 1 when it cannot, so finish says the older line instead. The last line says how to get the code again.
 show_space_code() {
   [ "$DRY" = 0 ] || return 1
+  # Only to a terminal: an install run by cloud-init, CI or a log collector writes its output to a file others may read, and the code would sit there after the person has it. VYRE_SPACE_CODE_PIPED=1 is for the tests.
+  [ -t 1 ] || [ "${VYRE_SPACE_CODE_PIPED:-0}" = 1 ] || return 1
   n=0
   while [ "$n" -lt "${VYRE_SPACE_TRIES:-15}" ]; do
     sc=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" space up 2>/dev/null || true)

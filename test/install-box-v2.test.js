@@ -545,13 +545,22 @@ test("install-box.sh v2: without a setup code the terminal asks nothing and pair
 
 test("install-box.sh v2: without a setup code the last lines are the space code from `vyre space up`, then how to get it again, and nothing after", t => {
   const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)'; echo '  Your four words: amber lake moss pine' ;; esac ;; esac; exit 0` });
-  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  const r = run({ ...b.env, VYRE_NO_UP: "0", VYRE_SPACE_CODE_PIPED: "1" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const lines = r.stdout.split("\n").filter(l => l.trim());
   assert.match(lines[lines.length - 1], /Get it again any time: vyre space up/);
   assert.match(lines[lines.length - 3], /Your space code: WINK-ABCD-EFGH \(good for 10 minutes, one use\)/);
   assert.doesNotMatch(r.stdout, /choose "Add a server", and run the line/, "the code replaces the older line");
   assert.match(b.calls(), /vyre space up/, "it is the same command a person runs later");
+});
+
+test("install-box.sh v2: with stdout piped (cloud-init, CI, a log collector) the space code is not printed, the older line is, and `vyre space up` is never asked", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout + r.stderr, /WINK-ABCD-EFGH/);
+  assert.match(r.stdout, /Open the Vyre app, choose "Add a server"/);
+  assert.doesNotMatch(b.calls(), /space up/);
 });
 
 test("install-box.sh v2: with a setup code the app is driving, so no space code is made", t => {
