@@ -1308,7 +1308,7 @@ export default {
         const fail = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
         const K = ctx.kernel;
         if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("only the team server's member door runs this", "denied");
-        if (!K || String(extra.in_space) !== String(K.space || "")) throw fail("teammates for members are kept in this server's own Space", "not_allowed");
+        if (!K || String(extra.in_space) !== String(K.space || "")) throw fail("Teammates for members are kept in this server's own Space; this Space has none here. Ask the owner.", "not_allowed");
         if (!i || i.call !== "list") throw fail("call is list", "bad_input");
         const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
         if (!h || h.actor.kind !== "person") throw fail("not found", "not_found");

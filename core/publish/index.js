@@ -741,7 +741,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         const fail = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
         if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("only the team server's member door runs this", "denied");
-        if (!ctx.kernel || String(extra.in_space) !== String(ctx.kernel.space || "")) throw fail("sites for members are kept in this server's own Space", "not_allowed");
+        if (!ctx.kernel || String(extra.in_space) !== String(ctx.kernel.space || "")) throw fail("Sites for members are kept in this server's own Space; this Space has none here. Ask the owner.", "not_allowed");
         if (!i || i.call !== "list") throw fail("call is list", "bad_input");
         const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
         if (!h || h.actor.kind !== "person") throw fail("not found", "not_found");
@@ -752,7 +752,7 @@ export default {
         for (const d of rows.sort((x, y) => y.created_at - x.created_at)) {
           if (!d.project || d.job) continue;
           if (!(await mayReadJob(spaceId, person, d, memo))) continue;
-          sites.push({ name: d.name, stage: d.stage, url: d.stage === "Production" ? d.url ?? null : null, project: String(d.project) });
+          sites.push({ name: d.name, stage: d.stage, url: d.stage === "Production" ? d.url ?? null : null, /* the literal stage on purpose: any other spelling shows no address (a Preview address can carry a token); do not compare loosely */ project: String(d.project) });
         }
         return { sites };
       },
