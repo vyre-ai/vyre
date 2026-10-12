@@ -70,7 +70,7 @@ test("pairing paths: the first device, a confirmed window and a gated ring leave
   const start1 = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
   await check(w, start1.device, false, "start");
   // the window: the redeemer is enrolled only after the screen confirms this exact phone
-  const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: w.d.kernel.id.owner, path: "relay" } };   // the owner's own screen: the daemon's edge gives a confirmed device these facts, and the door gate (core/modules/door-gate.js) refuses a device label without them
+  const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" } };
   const events = []; w.d.events.on("pairing.*", (/** @type {any} */ e) => events.push([e.type, e.payload]));
   const open = (await w.d.registry.call("relay.pair.window.open", {}, SCREEN, A)).data;
   const redeem = pairTicket(fromBase64url(open.ticket), { relay: (await w.d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: w.keys(), timeout: 20_000 });
@@ -125,4 +125,25 @@ test("a home with a member: the owner's own device reaches the owner's vault, a 
   });
   assert.equal(await vaultList(first.device), 200, "the owner's first device");
   assert.equal(await vaultList(bearer.device), 403, "a device that redeemed the classic code is not the owner's");
+});
+
+test("a one-person home: a device that redeemed a bearer code is refused the owner's tools over the relay (the door gate), and served once the owner has marked it", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const bearer = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  const callOver = (/** @type {string} */ id, /** @type {string} */ tool) => new Promise(resolve => {
+    const srv = http.createServer((req, res) => w.d.registry.deps.handler({})(req, res, `device:${id}`, { kind: "device", stableId: id }));
+    srv.listen(0, "127.0.0.1", () => {
+      const rq = http.request({ port: /** @type {any} */ (srv.address()).port, host: "127.0.0.1", path: `/v1/tools/${tool}`, method: "POST", headers: { "content-type": "application/json" } }, x => { let b = ""; x.on("data", c => { b += c; }); x.on("end", () => { srv.close(); try { resolve(JSON.parse(b)); } catch { resolve({ raw: b }); } }); });
+      rq.on("error", () => { srv.close(); resolve({ error: { message: "no answer" } }); }); rq.end("{}");
+    });
+  });
+  for (const tool of ["settings.get", "computers.list", "vault.list"]) {
+    const r = /** @type {any} */ (await callOver(bearer.device, tool));
+    assert.ok(r.error, `${tool}: a stranger's device is refused on a one-person home: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  const tokenFor = async (/** @type {string} */ person) => (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person, path: "direct", session: "s" }), {})).token;
+  const ok = await w.d.registry.call("relay.devices.mark", { id: bearer.device }, "cli", { ...PROOF, token: await tokenFor(w.d.kernel.id.owner) });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  const served = /** @type {any} */ (await callOver(bearer.device, "settings.get"));
+  assert.ok(served.data, `the owner's marked device is served: ${JSON.stringify(served).slice(0, 160)}`);
 });

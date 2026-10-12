@@ -170,15 +170,16 @@ test("an outward tool is on a member's list only with a reason: whose yes her ac
   assert.deepEqual(stale, [], `named in MEMBER_OUTWARD but not an outward tool on MEMBER_MAY: ${stale.join(", ")}`);
 });
 
-test("on a one-person home a device that carries no proof is refused the owner's tools and the vault; the owner's confirmed device, a socket and a module are served", { timeout: 200_000 }, async t => {
-  const { d } = await rig(t, false);
+test("on a one-person home a device the daemon found no proof for is refused the owner's tools and the vault; the owner's confirmed device, a socket and a module are served", { timeout: 200_000 }, async t => {
+  const { d, root } = await rig(t, false);
   const OWNER = d.kernel.id.owner;
   const DEV = "device:abcdefghijklmnop";
   const calls = /** @type {[string, any][]} */ ([["settings.get", {}], ["settings.set", { key: "x", value: 1 }], ["computers.list", {}], ["computers.pause", { agent: "assistant" }], ["artifacts.delete", { id: "x" }], ["mail.send", { to: "a@b.co", subject: "x", body: "y" }], ["vault.list", {}], ["spend.raise", {}]]);
   const facts = { kind: "device", device_key_id: "abcdefghijklmnop", person: OWNER, path: "relay" };
   for (const [tool, input] of calls) {
-    const stranger = await d.registry.call(tool, input, DEV, { person: { id: "s", kind: "person" } });
-    assert.equal(stranger.error && stranger.error.message, refusal(tool), `${tool}: a claimless device on a one-person home must be refused`);
+    // what the daemon's edge hands the registry for a paired device it gave no facts: meta.unproven
+    const stranger = await d.registry.call(tool, input, DEV, { unproven: true });
+    assert.equal(stranger.error && stranger.error.message, refusal(tool), `${tool}: an unproven device on a one-person home must be refused`);
     const mine = await d.registry.call(tool, input, DEV, { kernelFacts: facts });
     assert.ok(!(mine.error && mine.error.message === refusal(tool)), `${tool}: the owner's confirmed device (it carries the daemon's facts) must not meet the gate`);
     for (const label of ["cli", "module:vyred", "local"]) {
@@ -186,8 +187,6 @@ test("on a one-person home a device that carries no proof is refused the owner's
       assert.ok(!(other.error && other.error.message === refusal(tool)), `${tool} under ${label}: a socket or a module is not this gate's`);
     }
   }
-  for (const label of ["tailnet-guest:n1", "deck", "mobile"]) {
-    const r = await d.registry.call("settings.get", {}, label, {});
-    assert.equal(r.error && r.error.message, refusal("settings.get"), `${label} with no proof is refused on a one-person home`);
-  }
+  const mineOverSocket = await request("POST", "/v1/tools/settings.get", {}, { root, caller: "cli" });
+  assert.ok(!(mineOverSocket.error && mineOverSocket.error.message === refusal("settings.get")), "the owner's own socket is served");
 });

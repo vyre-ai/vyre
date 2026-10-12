@@ -8,7 +8,7 @@
 //   PLUMBING:   the harness hooks; never gated.
 // Source of the placing: team/0.3.4/DOOR-INVENTORY.md. Moving a tool to MEMBER_MAY needs a test that calls it as a member.
 
-/** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. */
+/** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
@@ -23,6 +23,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
+  "presence.person.locked", "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
   "previews.get", "previews.list", "previews.share",
   "projects.list",
   "providers.list",
@@ -42,6 +43,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "threads.send", "threads.send-now", "threads.stop", "threads.switch", "threads.tasks", "threads.thinking", "threads.unarchive", "threads.unqueue", "threads.unwatch",
   "threads.watch",
   "views.list",
+  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
   "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
   "work.know.suggestions", "work.link.suggest", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
@@ -137,9 +139,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "planner.agenda", "planner.calendar.create", "planner.calendar.sync", "planner.delete", "planner.dismiss", "planner.done", "planner.get", "planner.settings",
   "planner.snooze", "planner.update",
   "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.status",
-  "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.locked", "presence.person.pair-challenge", "presence.person.renew-allow",
-  "presence.person.revoke", "presence.person.rotate", "presence.person.sessions", "presence.person.start", "presence.person.start-paired", "presence.person.status",
-  "presence.remove",
+  "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.renew-allow", "presence.person.revoke", "presence.person.rotate",
+  "presence.person.sessions", "presence.remove",
   "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",
   "previews.signin", "previews.signin-done", "previews.signin-get", "previews.step", "previews.stop", "previews.thumb", "previews.url",
   "projects.access.check", "projects.access.grant", "projects.access.list", "projects.access.pending", "projects.access.restore", "projects.access.revoke",
@@ -208,12 +209,11 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
   "watchers.run", "watchers.test",
   "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.code.status", "wink.decline", "wink.device.key",
-  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.scan", "wink.phone.wait", "wink.relay.apply", "wink.remove", "wink.server.adopt", "wink.server.code",
-  "wink.server.confirm", "wink.server.pair.answer", "wink.server.pairing", "wink.server.probe", "wink.server.release", "wink.server.reset.begin",
-  "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge", "wink.storage.bridge.accept",
-  "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick", "wink.storage.remove",
-  "wink.storage.status",
+  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open", "wink.phone.scan",
+  "wink.relay.apply", "wink.remove", "wink.server.code", "wink.server.confirm", "wink.server.pairing", "wink.server.probe", "wink.server.release",
+  "wink.server.reset.begin", "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge",
+  "wink.storage.bridge.accept", "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick",
+  "wink.storage.remove", "wink.storage.status",
   "work.call", "work.chat.history-import", "work.chat.keys.begin", "work.chat.keys.finish", "work.chat.keys.lock", "work.chat.keys.status", "work.chat.upgrade-move",
   "work.know.accept", "work.project.create", "work.project.members", "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename",
   "work.team.add", "work.template.define", "work.template.from-project", "work.template.get", "work.template.golive", "work.template.install", "work.template.list",

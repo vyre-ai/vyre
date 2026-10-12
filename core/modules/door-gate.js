@@ -52,7 +52,8 @@ export function createDoorGate(k) {
     const m = meta || {};
     let others = true;
     try { others = (await k.othersExist(isRelay(caller, m) && m.in_space_chain ? m.in_space_chain.space : undefined)) === true; } catch { others = true; }
-    if (!others && !claimlessRemote(caller, m)) return "pass";
+    // a one-person home has nobody to keep out, except the stranger the daemon itself found no proof for (meta.unproven, set at the daemon's edge alone: a paired device it gave no facts)
+    if (!others && m.unproven !== true) return "pass";
     const relayed = isRelay(caller, m);
     const claims = relayed || typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
     /** @type {any} */ let first = null;
@@ -72,7 +73,10 @@ export function createDoorGate(k) {
   const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
     if (PLUMBING.has(tool)) return null;
     // the vault refuses a person in its own words; a call that carries no proof of who it is never reaches it
-    if (SELF_GATED.has(tool)) return claimlessRemote(caller, meta) ? { error: { code: "denied", message: refusal(tool) } } : null;
+    if (SELF_GATED.has(tool)) {
+      if (!claimlessRemote(caller, meta) && !(meta && meta.unproven === true)) return null;
+      return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
+    }
     if (MEMBER_MAY.has(tool)) return null;
     return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
   };
