@@ -495,7 +495,7 @@ async function startLocked(opts, root, p, release) {
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
     // A module that failed at start only because the store was still starting (a first install makes the Space's database) starts again when the store joins.
-    { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
+    { const ks = /** @type {any} */ (kernel).store; if (ks && typeof ks.attached === "function") registry.deps.storeAttached = () => ks.attached(); if (ks && typeof ks.attached === "function" && !ks.attached() && typeof ks.whenReady === "function") ks.whenReady(() => registry.startStoreWaiting()); }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
@@ -1428,7 +1428,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
-      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
+      modules: { running: mods.filter(m => m.state === "running").length, waiting: mods.filter(m => m.waiting).length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
       // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
       records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
