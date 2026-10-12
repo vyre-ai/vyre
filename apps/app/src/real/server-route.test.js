@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatServersFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
+import { chatServersFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -114,4 +114,44 @@ test("chatServersFrom: each server's chat list names the chats it holds; a chat 
   });
   assert.deepEqual(m, { c1: "boxa", c2: "boxa", c3: "boxb" });
   assert.deepEqual(chatServersFrom({ boxa: undefined, boxb: [] }), {});
+});
+
+// An action on a record, file, task, rule, flow or project belongs to ONE Space on ONE server. It goes there, whatever is showing and whichever server is active; one whose Space cannot be resolved is refused, never sent
+// to the active server (a confidential record landing on the wrong server).
+test("route: a record of B edited while A is showing and active reaches B only (its address names the Space)", () => {
+  assert.deepEqual(go({ tool: "records.update", input: { urn: `vyre://${B}/contact/01a1`, patch: {} }, showing: A }), { box: "boxb" });
+  assert.deepEqual(go({ tool: "records.reveal", input: { urn: `vyre://${B}/contact/01a1` }, showing: "all" }), { box: "boxb" });
+});
+
+test("route: a task, rule, flow, project or file action names its Space or follows the Space showing; under All spaces it is refused", () => {
+  for (const tool of ["tasks.decide", "tasks.move", "rules.disable", "flows.run", "work.project.rename", "work.template.install", "files.drive.upload", "files.drive.space.read", "records.create", "records.update"]) {
+    assert.deepEqual(go({ tool, input: { space: B }, showing: A }), { box: "boxb" }, `${tool} named Space wins`);
+    assert.deepEqual(go({ tool, input: {}, showing: B }), { box: "boxb" }, `${tool} follows the Space showing`);
+    const r = go({ tool, input: {}, showing: "all" });
+    assert.equal(r.error?.code, "pick_a_space", `${tool} under All spaces`);
+    assert.equal(r.box, undefined);
+    assert.match(r.error?.message ?? "", /Pick the Space/);
+  }
+});
+
+test("route: a Space this device does not know the server of is refused for those actions, not sent to the active server", () => {
+  const r = go({ tool: "records.create", input: { space: C }, showing: "all" });
+  assert.equal(r.error?.code, "space_unknown_server");
+  assert.match(r.error?.message ?? "", /Settings, Servers/);
+});
+
+test("route: plain reads (lists, types, me) under All spaces still go to the active server; a Space they name wins", () => {
+  for (const tool of ["records.list", "tasks.list", "records.types", "files.drive.space.list", "flows.list", "records.me"]) {
+    assert.deepEqual(go({ tool, input: {}, showing: "all" }), { box: undefined }, tool);
+    assert.deepEqual(go({ tool, input: { space: B }, showing: "all" }), { box: "boxb" }, `${tool} named`);
+  }
+});
+
+test("route: one server paired never refuses (nothing to choose between)", () => {
+  assert.deepEqual(go({ tool: "records.create", input: {}, showing: "all", paired: ["boxa"], spaceServers: {} }), { box: undefined });
+});
+
+test("needsSpace: the actions that belong to a Space, and not the reads or the tools that are the device's own", () => {
+  for (const t of ["records.create", "records.update", "tasks.decide", "rules.define", "flows.run", "work.project.rename", "work.start-project", "files.drive.upload"]) assert.equal(needsSpace(t), true, t);
+  for (const t of ["records.list", "tasks.list", "flows.list", "spaces.list", "projects.list", "work.chat.list", "stream.send", "records.me", "settings.get", "files.drive.list"]) assert.equal(needsSpace(t), false, t);
 });

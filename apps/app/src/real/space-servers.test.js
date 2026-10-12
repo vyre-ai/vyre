@@ -43,6 +43,20 @@ test("a chat that belongs to B is sent to B only, under All spaces, with A the a
   m.setPorts(null);
 });
 
+test("a record of B edited while A is active reaches B only; creating with no Space showing asks which Space and sends nothing", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  m.setPorts(/** @type {any} */ ({ ...w.ports, peerCall: async (/** @type {string} */ t, /** @type {any} */ i, /** @type {string | undefined} */ b) => { if (t === "spaces.list") return b === "boxa" ? [{ id: "spc_aaaaaaaaaaaa" }] : [{ id: "spc_bbbbbbbbbbbb" }]; return w.ports.peerCall(t, i, b); } }));
+  const edit = await m.routeCall({ tool: "records.update", input: { urn: "vyre://spc_bbbbbbbbbbbb/contact/01a1", patch: { name: "x" } }, showing: "spc_aaaaaaaaaaaa" });
+  assert.deepEqual(edit, { box: "boxb" });
+  await w.ports.peerCall("records.update", { urn: "vyre://spc_bbbbbbbbbbbb/contact/01a1" }, edit.box);
+  assert.deepEqual(w.sent.filter((x) => x[1] === "records.update").map((x) => x[0]), ["boxb"], "reached B only");
+  const create = await m.routeCall({ tool: "records.create", input: { type: "contact" }, showing: "all" });
+  assert.equal(create.error?.code, "pick_a_space");
+  assert.ok(!w.sent.some((x) => x[1] === "records.create"), "nothing was sent");
+  m.setPorts(null);
+});
+
 test("a chat nobody holds is refused in words and nothing is sent to any server", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({ boxa: ["chat_a"], boxb: ["chat_b"] });
