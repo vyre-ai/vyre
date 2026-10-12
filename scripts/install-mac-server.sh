@@ -201,6 +201,11 @@ preflight() {
   [ "$(id -u)" != 0 ] || die "run this as your own account, not root: Vyre never runs as root here"
   if [ "$SYSTEM" = 1 ]; then
     fetch_node
+  elif [ -n "${VYRE_NODE_URL:-}" ]; then
+    # The Mac app bundles the pinned Node and names it here: use it as the system install does (same
+    # checksum, same place under Vyre's own folder), so nobody has to install Node first.
+    fetch_node
+    if [ "$DRY" = 0 ]; then PATH="$NODE_DIST/bin:$PATH"; export PATH; node_ok || die "the bundled Node does not run on this Mac"; fi
   elif ! node_ok; then
     if command -v brew >/dev/null 2>&1; then
       if [ "$DRY" = 1 ]; then say "would install Node 22 with Homebrew"
