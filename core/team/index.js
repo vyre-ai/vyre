@@ -108,6 +108,8 @@ export const MIGRATIONS = [
 export const STOP_WAIT_MS = 10_000;
 
 /** The providers a session can run on (core/sessions PROVIDERS). */
+/** The only modules whose own setting may ask a teammate for work with no person on the call (the planner's tasks, the agents' own setup, a Flow's approver). Any other caller with no person is refused: nobody is recorded as having asked. */
+const AUTOMATION_CALLERS = new Set(["module:planner", "module:agents", "module:flows"]);
 const PROVIDER_IDS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
 /**
  * What team.ask's `model` means: "codex" or "grok/<model>" or "claude/opus" (a provider, optionally a model of its own), or a bare Claude model name ("opus"). Null for none. Anything else is refused,
@@ -1391,7 +1393,7 @@ export default {
           }
         }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
-        const forPerson = asker0 || inherited || (String(meta.caller || "").startsWith("module:") && meta.firstParty === true ? "automation" : null);
+        const forPerson = asker0 || inherited || (AUTOMATION_CALLERS.has(String(meta.caller || "")) && meta.firstParty === true ? "automation" : null);
         const filler0 = await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
         const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
