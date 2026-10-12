@@ -207,7 +207,8 @@ test("a member's message queued behind another member's running turn in a team c
   await as(ANA, "send", { chat: made.chat, text: long });
   await sleep(2500);   // her reply is streaming
   await as(BEN, "send", { chat: made.chat, text: "B-QUEUED question" });
+  // (catchup cuts a message at 140 characters; the answer to a queued turn on its own account starts with the conversation handed over)
   const said = async () => ((await as(ANA, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
   let last = [];
-  await until(async () => { last = await said(); return last.some((/** @type {string} */ x) => /B-QUEUED/.test(x)); }, "Ben's queued message to be answered", 120_000).catch(e => { throw new Error(`${e.message}; the assistant said: ${JSON.stringify(last.map((/** @type {string} */ x) => x.slice(0, 60)))}`); });
+  await until(async () => { last = await said(); return !last.some((/** @type {string} */ x) => /was not sent/.test(x)) && last.some((/** @type {string} */ x) => /Vyre continuation/.test(x)); }, "Ben's queued message to be answered (his turn runs on his account with the conversation handed over)", 120_000).catch(e => { throw new Error(`${e.message}; the assistant said: ${JSON.stringify(last.map((/** @type {string} */ x) => x.slice(0, 60)))}`); });
 });
