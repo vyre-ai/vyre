@@ -69,6 +69,14 @@ async function seen(person, chat) {
 // (the stand-in agent answers "home: ..."; the lines Vyre says about a turn moving to a member's account are the assistant's too, and are not answers)
 const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(String(m.author)) && /^home: /.test(String(m.text)));
 
+/** The chat's own stream as the people see it (stream_frames of the chat's session, in order): [[cur, type, text]]. @param {string} chat */
+function chatFrames(chat) {
+  const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session = ? order by cur").all(process.argv[1]).map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,200)]})))`;
+  const r = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", script, chat]);
+  if (r.status !== 0) throw new Error(`the stream could not be read: ${r.stderr}`);
+  return /** @type {any[]} */ (JSON.parse(String(r.stdout).trim().split("\n").pop() || "[]"));
+}
+
 /** What the server's own terminal says about the sessions, for a wait that timed out. */
 /** @type {(() => Promise<any[]>) | null} */ let ownerView = null;
 let serverView = async () => "";
@@ -115,7 +123,7 @@ async function untilAnswerTo(person, chat, said) {
  */
 export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
   // J9_SHORT=1: the chat steps only, without the scan and the catchup rule (J9 skips the project steps)
-  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
+  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message|each message a person typed/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
   setOwnerView(async () => (await w.call("stream.catchup", { chat, space: team.space })).messages || []);
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
@@ -295,19 +303,29 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     await sleep(2000);
     const q = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select id,substr(text,1,30) t,kturn from threads_inbox order by id").all()))`]);
     console.log(`DBG queued rows (kturn should carry a space): ${String(q.stdout).trim().slice(0, 1500)} ${String(q.stderr).slice(0, 200)}`);
-    const got = [];
-    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
-      const a = await untilAnswerTo(grace, chat, tag);
-      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
-      const uid = await uidOf(who);
-      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
-      got.push(tag);
+    // judged on the chat's own stream (a member's catchup leaves out her own message): after the sleeper's end there are three answers, on Grace's, Edith's and the owner's account in the order the messages came
+    const want = [accounts[grace.name].uid, accounts[edith.name].uid, await ownerUid()];
+    let answers3 = /** @type {any[]} */ ([]);
+    for (let i = 0; i < 30; i++) {
+      const f = chatFrames(chat);
+      const done = f.findIndex((/** @type {any} */ x) => x[1] === "chat.text-delta" && /walkB-done/.test(String(x[2])));
+      answers3 = done < 0 ? [] : f.slice(done + 1).filter((/** @type {any} */ x) => x[1] === "chat.text-delta" && /^home: /.test(String(x[2])) && !/walkZ/.test(String(x[2])));
+      if (answers3.length >= 3) break;
+      await sleep(8000);
     }
-    const ms = await seen(grace, chat);
-    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
-    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
+    assert.ok(answers3.length >= 3, `the three queued messages were answered (found ${answers3.length}); ${JSON.stringify(answers3.map(x => String(x[2]).slice(0, 40)))}`);
+    const got = answers3.slice(0, 3).map(x => (String(x[2]).match(/home: \/home\/acct\/(\d+)/) || [])[1]);
+    assert.deepEqual(got, want.map(String), `answered in the order sent, each on its own person's account (Grace ${want[0]}, Edith ${want[1]}, owner ${want[2]})`);
     void sleeper;
-    return got.join(", ");
+    return `answers on accounts ${got.join(", ")}`;
+  }, { needs: [H], owner: "chat" });
+
+  const WBD = "each message a person typed shows once in the chat, also the three typed while a turn ran";
+  await J.step(WBD, async () => {
+    const f = chatFrames(chat);
+    const counts = ["walkBq1", "walkBq2", "walkBq3", "walkA1"].map(t => [t, f.filter((/** @type {any} */ x) => x[1] === "chat.user-message" && String(x[2]).includes(`whoami ${t}`)).length]);
+    assert.ok(counts.every(c => c[1] === 1), `each appears once; counted ${JSON.stringify(counts)}`);
+    return JSON.stringify(counts);
   }, { needs: [H], owner: "chat" });
 
   const WZ = "one more message after the queued ones is answered on its person's account (the thread is not wedged)";
