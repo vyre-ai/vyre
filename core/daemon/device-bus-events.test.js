@@ -63,7 +63,7 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   assert.ok(noneList.status === 200 && !noneList.body.includes("OWNER-DEVICE-BUS-SECRET"), "and the list is cut too");
   // a removed device and a row the home never made get nothing
   db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('rrrrrrrrrrrrrrrr', 'gone', 'p', 1, 'app', 0, 5)").run();
-  for (const id of ["rrrrrrrrrrrrrrrr", "zzzzzzzzzzzzzzzz"]) { const r = await get(/** @type {http.Server} */ (await serve("device:" + id, id)), "/v1/events?since=0"); assert.equal(r.status, 404, `${id}: ${r.status}`); }
+  for (const id of ["rrrrrrrrrrrrrrrr", "zzzzzzzzzzzzzzzz"]) { const srv = /** @type {http.Server} */ (await serve("device:" + id, id)); t.after(() => srv.close()); const r = await get(srv, "/v1/events?since=0"); assert.equal(r.status, 404, `${id}: ${r.status}`); }
   // a trusted browser is judged the same way, by the person the home's record names
   const asWeb = async (/** @type {string} */ label, /** @type {string} */ id) => { const s = /** @type {http.Server} */ (await serve(label, id)); t.after(() => s.close()); return s; };
   for (const who of ["owner", "admin"]) { const r = await get(await asWeb("web:" + wids[who], wids[who]), "/v1/events?since=0&limit=500"); assert.ok(r.status === 200 && r.body.includes("OWNER-DEVICE-BUS-SECRET"), `web ${who}: the whole bus (${r.status})`); }
