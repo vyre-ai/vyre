@@ -1,15 +1,17 @@
 // @ts-check
 // core/modules/door-lists.js: which tools a Space MEMBER's own session may call. Data only; the gate is core/modules/door-gate.js.
-// Three lists, and every tool the registry holds is on exactly one of them (door-gate.test.js fails otherwise, so a new tool must be placed on purpose):
+// Four lists, and every tool the registry holds is on exactly one of them (door-gate.test.js fails otherwise, so a new tool must be placed on purpose):
 //   MEMBER_MAY: a member may call it; the handler or the kernel judges her on her own chain.
 //   OWNER_ONLY: refused to a member (the owner and admins are served). The default for anything whose handler does not yet keep a member to her own.
+//   SELF_GATED: the vault's tools: the vault's own member gate (core/vault/member-gate.js) refuses a member in its own words, so this gate passes them on and leaves them off her list.
 //   PLUMBING:   the harness hooks; never gated.
 // Source of the placing: team/0.3.4/DOOR-INVENTORY.md. Moving a tool to MEMBER_MAY needs a test that calls it as a member.
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. */
 export const MEMBER_MAY = Object.freeze(new Set([
-  "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
+  "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
+  "computer.targets",
   "files.deliver", "files.drive.address", "files.drive.share", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.upload",
   "files.drive.versions",
   "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.diff",
@@ -22,12 +24,14 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
+  "previews.get", "previews.list", "previews.share",
   "projects.list",
   "providers.list",
   "recall.links", "recall.search", "recall.sessions", "recall.thread", "recall.turn",
   "records.actors", "records.create", "records.events", "records.forget.propose", "records.get", "records.holders", "records.kits.get", "records.kits.library",
   "records.linked", "records.list", "records.me", "records.reference", "records.roles", "records.seal-put", "records.types", "records.update",
   "rules.get", "rules.list", "rules.test",
+  "runner.move",
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
   "skills.draft", "skills.find", "skills.get", "skills.list",
   "spaces.list", "spaces.members.list",
@@ -40,15 +44,15 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "threads.send", "threads.send-now", "threads.stop", "threads.switch", "threads.tasks", "threads.thinking", "threads.unarchive", "threads.unqueue", "threads.unwatch",
   "threads.watch",
   "views.list",
-  "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.list", "work.chat.persistent", "work.chat.pin", "work.chat.rename", "work.chat.span",
-  "work.chat.upgrade-plan", "work.file.list", "work.know.answer", "work.know.search", "work.know.suggestions", "work.link.suggest", "work.situation", "work.start-project",
-  "work.team.context", "work.team.doing", "work.template.library",
+  "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin",
+  "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
+  "work.know.suggestions", "work.link.suggest", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
 ]));
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  "agents.ask", "agents.create", "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
+  "agents.ask", "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
   "appmods.connection", "appmods.domain.add", "appmods.domain.list", "appmods.domain.remove", "appmods.hosts", "appmods.install", "appmods.logs", "appmods.open",
   "appmods.remove", "appmods.start", "appmods.stop",
@@ -68,7 +72,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
   "commands.list",
   "comms.send",
-  "computer.targets", "computer.use",
+  "computer.use",
   "computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
@@ -137,9 +141,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.locked", "presence.person.pair-challenge", "presence.person.renew-allow",
   "presence.person.revoke", "presence.person.rotate", "presence.person.sessions", "presence.person.start", "presence.person.start-paired", "presence.person.status",
   "presence.remove",
-  "previews.frame", "previews.get", "previews.keep", "previews.list", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply",
-  "previews.restart", "previews.run-get", "previews.share", "previews.signin", "previews.signin-done", "previews.signin-get", "previews.step", "previews.stop",
-  "previews.thumb", "previews.url",
+  "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",
+  "previews.signin", "previews.signin-done", "previews.signin-get", "previews.step", "previews.stop", "previews.thumb", "previews.url",
   "projects.access.check", "projects.access.grant", "projects.access.list", "projects.access.pending", "projects.access.restore", "projects.access.revoke",
   "projects.add-threads", "projects.add-workspace", "projects.archive", "projects.catalog", "projects.context", "projects.create", "projects.history", "projects.of",
   "projects.remove-threads", "projects.rename", "projects.threads", "projects.watchers.add", "projects.watchers.remove",
@@ -156,9 +159,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "relay.web.release",
   "releases.cert", "releases.sign",
   "rules.accept", "rules.define", "rules.disable", "rules.dismiss", "rules.enable", "rules.propose", "rules.remove",
-  "runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.move", "runner.pause-all",
-  "runner.place", "runner.placement", "runner.places", "runner.preview", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status",
-  "runner.stop", "runner.why-not",
+  "runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.pause-all", "runner.place",
+  "runner.placement", "runner.places", "runner.preview", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop",
+  "runner.why-not",
   "sessions.accounts.key", "sessions.accounts.remove", "sessions.accounts.set", "sessions.harness.get", "sessions.limits.get", "sessions.limits.set",
   "sessions.mention.search", "sessions.mode.get", "sessions.mode.set", "sessions.models", "sessions.models.get", "sessions.models.set", "sessions.prompt.get",
   "sessions.prompt.history", "sessions.prompt.preview", "sessions.prompt.revert", "sessions.prompt.set", "sessions.routes.get", "sessions.routes.set", "sessions.setup",
@@ -199,6 +202,27 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "tips.dismiss", "tips.list", "tips.next", "tips.reset", "tips.seen", "tips.used", "tips.whatsnew",
   "undo.list", "undo.run",
   "update.apply", "update.check", "update.status", "update.whats-new", "update.whats-new-seen",
+  "views.act", "views.get", "views.preview", "views.show", "views.shown",
+  "vitals.advice", "vitals.explain", "vitals.status", "vitals.summary", "vitals.watch",
+  "vyre.core",
+  "waiting.count", "waiting.list",
+  "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
+  "watchers.run", "watchers.test",
+  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.code.status", "wink.decline", "wink.device.key",
+  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open",
+  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.scan", "wink.phone.wait", "wink.relay.apply", "wink.remove", "wink.server.adopt", "wink.server.code",
+  "wink.server.confirm", "wink.server.pair.answer", "wink.server.pairing", "wink.server.probe", "wink.server.release", "wink.server.reset.begin",
+  "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge", "wink.storage.bridge.accept",
+  "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick", "wink.storage.remove",
+  "wink.storage.status",
+  "work.call", "work.chat.history-import", "work.chat.keys.begin", "work.chat.keys.finish", "work.chat.keys.lock", "work.chat.keys.status", "work.chat.upgrade-move",
+  "work.know.accept", "work.project.create", "work.project.members", "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename",
+  "work.team.add", "work.template.define", "work.template.from-project", "work.template.get", "work.template.golive", "work.template.install", "work.template.list",
+  "work.template.test", "work.tools",
+]));
+
+/** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
+export const SELF_GATED = Object.freeze(new Set([
   "vault.account.create", "vault.account.enroll-touchid", "vault.account.lock", "vault.account.status", "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",
@@ -216,23 +240,6 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "vault.session.status", "vault.ssh.add", "vault.ssh.approvals", "vault.ssh.approve", "vault.ssh.forget", "vault.ssh.generate", "vault.ssh.keys", "vault.state",
   "vault.sweep", "vault.tagged", "vault.totp", "vault.unlink", "vault.unlock", "vault.unlock-passphrase", "vault.untag", "vault.update", "vault.used-by", "vault.uses",
   "vault.vaults.create", "vault.vaults.list", "vault.vaults.rotate", "vault.vaults.sync",
-  "views.act", "views.get", "views.preview", "views.show", "views.shown",
-  "vitals.advice", "vitals.explain", "vitals.status", "vitals.summary", "vitals.watch",
-  "vyre.core",
-  "waiting.count", "waiting.list",
-  "watchers.card", "watchers.create", "watchers.delete", "watchers.items", "watchers.list", "watchers.logs", "watchers.pause", "watchers.preset", "watchers.resume",
-  "watchers.run", "watchers.test",
-  "wink.access", "wink.approve", "wink.cancel", "wink.card", "wink.code.ack", "wink.code.open", "wink.code.redeem", "wink.code.status", "wink.decline", "wink.device.key",
-  "wink.invite", "wink.offer.set", "wink.offers", "wink.pair.server", "wink.pair.status", "wink.pair.targets", "wink.phone.enrolled", "wink.phone.open",
-  "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.scan", "wink.phone.wait", "wink.relay.apply", "wink.remove", "wink.server.adopt", "wink.server.code",
-  "wink.server.confirm", "wink.server.pair.answer", "wink.server.pairing", "wink.server.probe", "wink.server.release", "wink.server.reset.begin",
-  "wink.server.reset.confirm", "wink.server.retarget", "wink.server.setup-offer", "wink.server.status", "wink.share", "wink.storage.bridge", "wink.storage.bridge.accept",
-  "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick", "wink.storage.remove",
-  "wink.storage.status",
-  "work.call", "work.chat.history-import", "work.chat.keys.begin", "work.chat.keys.finish", "work.chat.keys.lock", "work.chat.keys.status", "work.chat.link",
-  "work.chat.move", "work.chat.upgrade-move", "work.file.share", "work.file.unshare", "work.know.accept", "work.project.create", "work.project.members",
-  "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename", "work.team.add", "work.template.define", "work.template.from-project",
-  "work.template.get", "work.template.golive", "work.template.install", "work.template.list", "work.template.test", "work.timeline", "work.tools",
 ]));
 
 /** The hooks the session's own harness calls, not the model: never gated, so a member's session starts and its hooks run. */

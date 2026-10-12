@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { MEMBER_MAY, OWNER_ONLY, PLUMBING } from "./door-lists.js";
+import { MEMBER_MAY, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { refusal } from "./door-gate.js";
 import { request } from "../daemon/client.js";
 
@@ -85,12 +85,12 @@ test("a server with nobody but the owner gates nothing", { timeout: 200_000 }, a
 test("every tool the registry holds is on exactly one list, and no list names a tool that is not there", { timeout: 200_000 }, async t => {
   const { d } = await rig(t, false);
   const held = [...d.registry.tools.entries()].filter(([, def]) => !def.internal && !def.hook).map(([n]) => n);
-  const lonely = held.filter(n => !MEMBER_MAY.has(n) && !OWNER_ONLY.has(n) && !PLUMBING.has(n));
+  const lonely = held.filter(n => !MEMBER_MAY.has(n) && !OWNER_ONLY.has(n) && !PLUMBING.has(n) && !SELF_GATED.has(n));
   assert.deepEqual(lonely, [], `place these tools in core/modules/door-lists.js (MEMBER_MAY only with a test that calls it as a member; otherwise OWNER_ONLY): ${lonely.join(", ")}`);
-  const twice = held.filter(n => [MEMBER_MAY.has(n), OWNER_ONLY.has(n), PLUMBING.has(n)].filter(Boolean).length > 1);
+  const twice = held.filter(n => [MEMBER_MAY.has(n), OWNER_ONLY.has(n), PLUMBING.has(n), SELF_GATED.has(n)].filter(Boolean).length > 1);
   assert.deepEqual(twice, [], `on more than one list: ${twice.join(", ")}`);
   const all = new Set(d.registry.tools.keys());
-  const stale = [...MEMBER_MAY, ...OWNER_ONLY, ...PLUMBING].filter(n => !all.has(n));
+  const stale = [...MEMBER_MAY, ...OWNER_ONLY, ...PLUMBING, ...SELF_GATED].filter(n => !all.has(n));
   assert.deepEqual(stale, [], `named on a list but not registered: ${stale.join(", ")}`);
 });
 

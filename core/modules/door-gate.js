@@ -3,7 +3,7 @@
 // from the kernel's verified chain (the session token the socket stamped, or the facts the daemon proved), never from the caller's label. The chain's FIRST person hop decides:
 //   owner or admin: served as before. No person hop: passes (a module's own work). A member: only the tools on MEMBER_MAY. A chain that cannot be read: a member.
 // A server with no member but the owner has nobody to keep out, so nothing is gated there (asked on every call, nothing cached).
-import { MEMBER_MAY, PLUMBING } from "./door-lists.js";
+import { MEMBER_MAY, PLUMBING, SELF_GATED } from "./door-lists.js";
 
 /** The labels a model's session or a named agent's runs under: with no proof on the call they are a member's until shown otherwise. */
 const SESSION_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:)/;
@@ -38,7 +38,7 @@ export function createDoorGate(k) {
     return "member";
   };
   const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
-    if (PLUMBING.has(tool) || MEMBER_MAY.has(tool)) return null;
+    if (PLUMBING.has(tool) || MEMBER_MAY.has(tool) || SELF_GATED.has(tool)) return null;
     return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
   };
   /** Does this caller get a member's tool list (the owner's tools left off)? */
