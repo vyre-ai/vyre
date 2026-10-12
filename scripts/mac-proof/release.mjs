@@ -29,6 +29,12 @@ const src = fs.readFileSync(rel, "utf8");
 const patched = src.replace(/export const RELEASE_KEY = "[^"]+";/, `export const RELEASE_KEY = "${spki}";`);
 if (patched === src) throw new Error("RELEASE_KEY line not found in release.js");
 fs.writeFileSync(rel, patched);
+// The kernel's module list is checked against lib/release-sig.js's copy of the key (scripts/check-release-key.mjs keeps the two equal): the test tarball trusts its throwaway key there too.
+const sigFile = path.join(top, "lib", "release-sig.js");
+const sigSrc = fs.readFileSync(sigFile, "utf8");
+const sigPatched = sigSrc.replace(/export const RELEASE_KEY = "[^"]+";/, `export const RELEASE_KEY = "${spki}";`);
+if (sigPatched === sigSrc) throw new Error("RELEASE_KEY line not found in lib/release-sig.js");
+fs.writeFileSync(sigFile, sigPatched);
 
 execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", tree, "package"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
 const version = JSON.parse(fs.readFileSync(path.join(top, "package.json"), "utf8")).version;
