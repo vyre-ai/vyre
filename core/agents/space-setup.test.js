@@ -37,6 +37,8 @@ test("a member reads the Space's agents, templates and playbooks and changes non
       assert.ok(r.error, `${caller}: ${name} of the owner's agent is refused to a member`);
     }
   }
+  // the kernel limits what an agent she makes can reach: every project, or the owner's project, is refused; no project is fine
+  for (const projects of ["*", ["harlow-legal"]]) assert.ok((await d.registry.call("agents.create", { name: "ben-wide", instructions: "x", projects }, "deck", ben)).error, `a member's agent with projects ${JSON.stringify(projects)} is refused by the kernel`);
   // her own agent: she makes it, changes it and removes it (the decided rule: made, but not an actor of the Space)
   const mine = await d.registry.call("agents.create", { name: "bens-bot", instructions: "BEN-BRIEF", projects: [] }, "deck", ben);
   assert.ok(mine.data && mine.data.name === "bens-bot", "a member makes her own agent: " + JSON.stringify(mine.error));

@@ -653,6 +653,7 @@ export function createTasks(cfg) {
         promote(chain);
         return n;
       }
+      await ownsWrite(chain, t, {});   // a skip that waits for a yes is still a change to this task: only its doer, whoever gave it, or its project's owner or team may ask for it
       rule(t, "skipped", "proposal_for_person_with_presence");
       const who = cfg.responsibleFor ? cfg.responsibleFor(t.doer) : t.assigned_by;
       if (!who || who.kind !== "person") throw new KernelError("no_checker", "no person to decide a skip");

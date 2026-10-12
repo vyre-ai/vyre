@@ -150,3 +150,18 @@ test("planner rows are read by the person they are for: a member reads no remind
   const list = (await asMember(w, "planner.list", { state: "all" })).data.map((/** @type {any} */ x) => x.title).sort();
   assert.deepEqual(list, ["HER-NOTE", "HER-REMINDER"], "the planner's own tools still show her items");
 });
+
+test("a member who is neither a task's doer, checker nor on its project cannot skip it, nor even propose to skip a task that needs a check", async t => {
+  const { w } = await rig(t);
+  const [BEN, ANA] = MEMBERS;
+  const ask = w.k.gateway.ask;
+  const stranger = w.k.chains.fromFacts(memberFacts(ANA));
+  const person = (/** @type {string} */ id) => ({ kind: "person", id, space: SPACE });
+  const plain = await ask.request(w.owner, { title: "plain task", doer: person(OWNER), output: { kind: "note" }, source: "manual" });
+  const guarded = await ask.request(w.owner, { title: "checked task", doer: person(OWNER), checker: person(BEN), output: { kind: "note" }, source: "manual" });
+  await assert.rejects(() => ask.skip(stranger, plain.id, "no"), { code: "not_allowed" }, "an unchecked task: refused");
+  const before = (await ask.list(w.owner, {})).length;
+  await assert.rejects(() => ask.skip(stranger, guarded.id, "no"), { code: "not_allowed" }, "a task that needs a check: not even a skip proposal for the owner's Now");
+  assert.equal((await ask.list(w.owner, {})).length, before, "and no card was made");
+  assert.ok(await ask.skip(w.owner, plain.id, "the owner may"), "the owner skips");
+});
