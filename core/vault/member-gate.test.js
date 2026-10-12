@@ -102,3 +102,16 @@ test("a kernel that ran at start and is gone at a call refuses; only a home that
   live.current = undefined;
   await assert.rejects(() => reg.get("vault.test").run({}, { caller: "cli", token: "t" }), { code: "denied" });
 });
+
+test("alone in the home: a caller a remote listener named and that claims nothing is still refused; the owner's own surfaces, the verified tailnet owner and internal callers pass", async () => {
+  const k = { ...kernelOf(() => ({ hops: [hop("person", OWNER)] })), hasOtherMembers: async () => false };
+  const r = rig(k);
+  for (const caller of ["device:abcdefghijklmnop", "web:abcdefghijklmnop", "setup:abcdefghijklmnop", "tailnet-guest:juno", "space:ana@spc_x", "invitee:abc"]) {
+    const out = await r.call("vault.test", { caller });
+    assert.equal(out.error?.code, "denied", `${caller} claims nothing: refused even when the owner is alone`);
+    assert.equal(out.error?.message, MEMBER_REFUSAL);
+  }
+  for (const caller of ["cli", "local", "capsule", "mcp", "harness", "deck", "mobile", "tailnet:owner@example.com", "module:flows", "ext:pass"]) assert.equal((await r.call("vault.test", { caller })).data, "ran", `${caller} still passes`);
+  assert.equal((await r.call("vault.test", { caller: "device:abcdefghijklmnop", kernelFacts: { kind: "device", person: OWNER } })).data, "ran", "a device the daemon proved the owner's (it carries facts) passes");
+  assert.equal((await r.call("vault.test", { caller: "device:abcdefghijklmnop", token: "t" })).data, "ran", "so does one holding a session token");
+});
