@@ -35,7 +35,7 @@ export function SpaceAssistants() {
                 <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={40} />
                 <View className="min-w-0 flex-1 gap-s1">
                   <Text strong>{a.name}</Text>
-                  <View className="flex-row flex-wrap gap-s2">{a.tags.slice(0, 4).map((t) => <Chip key={t}>{t}</Chip>)}</View>
+                  <View className="flex-row flex-wrap gap-s2">{a.tags.slice(0, 4).map((t: string) => <Chip key={t}>{t}</Chip>)}</View>
                 </View>
                 <Button kind="ghost" size="sm" label="Ask" onPress={() => setSaid(askWords(a, "agent"))} />
               </View>
