@@ -38,4 +38,5 @@ test("the proof page and the app workflow are gated the same way: the page draws
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" dist\b/, "the release web export is searched for the marker");
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" "\$RUNNER_TEMP\/apk"/, "the release APK is searched for it");
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" "\$app"/, "and the iOS release build");
+  assert.match(wf, /EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p \$os --output-dir "dist-hermes-\$os"/, "a flagged Hermes bundle must SHOW the marker (the positive control)");
 });

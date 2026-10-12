@@ -115,6 +115,14 @@ jobs:
           EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof
           grep -rl "vyre-peer-fake-enabled" dist-proof > /dev/null || { echo "the proof export has no fake wire, so the proof cannot run"; exit 1; }
           node scripts/two-server-proof.mjs --dist dist-proof
+      - name: "Positive control: Hermes bytecode keeps the marker as plain bytes (so the APK and iOS greps cannot pass because the string is hidden)"
+        run: |
+          for os in android ios; do
+            EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p $os --output-dir "dist-hermes-$os"
+            test -n "$(find "dist-hermes-$os" -name '*.hbc' | head -1)" || { echo "the $os export is not Hermes bytecode, so this control proves nothing"; ls -R "dist-hermes-$os" | head -20; exit 1; }
+            grep -rl "vyre-peer-fake-enabled" "dist-hermes-$os" > /dev/null || { echo "a flagged $os Hermes bundle does not show the marker: the release greps could pass vacuously"; exit 1; }
+            echo "$os: a flagged Hermes bundle shows the marker, so the release check can find it"
+          done
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
         run: |
           EXPO_PUBLIC_VYRE_MOCK=1 npx expo export -p web --output-dir dist-mock
