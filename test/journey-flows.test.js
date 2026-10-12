@@ -4,6 +4,7 @@
 // really did. Each step names itself so a red line says which piece did not connect. A test box, never a Mac.
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
@@ -18,7 +19,7 @@ const ALL_DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, shows on the timeline, replays true; a business-hours schedule fires on its own", { timeout: 900_000 }, async t => {
   const root = tempHome(t);
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: process.env.J6_LOG ? (/** @type {any} */ m) => { try { fs.appendFileSync(String(process.env.J6_LOG), `${new Date().toISOString()} ${typeof m === "string" ? m : JSON.stringify(m)}\n`); } catch { /* the log is a help */ } } : () => {}, kernel: true });
   t.after(() => d.stop());
   const space = d.kernel.id.space;
   const host = d.registry.deps.flowsHost.get(space);
