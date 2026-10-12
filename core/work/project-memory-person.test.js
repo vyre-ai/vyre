@@ -43,6 +43,10 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
   const real = (await R.query(ownerChain, "project", { filter: { field: "slug", op: "eq", value: "owners-matter" }, page: { limit: 1 } })).rows[0];
   const madeUp = await d.registry.call("work.team.doing", { project: `vyre://${SPACE}/project/00000000-0000-4000-8000-00000000dead` }, "cli", { token: anaToken });
   assert.equal(madeUp.error && madeUp.error.code, "not_found", "a made-up project address starts no follower: " + JSON.stringify(madeUp).slice(0, 160));
+  // off the team she cannot read the project, so she starts no follower on it (class 3: a project is its team's); seated again, she does
+  const off = await d.registry.call("work.team.doing", { project: real.urn }, "cli", { token: anaToken });
+  assert.equal(off.error && off.error.code, "not_found", "a project she is not on starts no follower: " + JSON.stringify(off).slice(0, 160));
+  await R.create(ownerChain, "team-member", { name: "ana", actor: person(ANA, SPACE), kind: "person", project: { urn: real.urn } });
   const ok = await d.registry.call("work.team.doing", { project: real.urn }, "cli", { token: anaToken });
   assert.ok(!ok.error && ok.data && ok.data.lines, "an existing project does: " + JSON.stringify(ok).slice(0, 160));
   // a member's own memory tools asked for the owner's project room (the room argument) are refused: personal memory is read only by its person
