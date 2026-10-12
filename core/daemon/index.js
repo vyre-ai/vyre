@@ -1635,13 +1635,41 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
     return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
+  // The module bus carries every person's planner titles, approvals, project and task events. Default deny for any caller a listener established (a paired device, a browser, a setup page, any other label;
+  // the socket's own and the listeners that carry an event-type limit of their own are not these): the whole bus only for a caller the home's own record names as its owner or an admin; a member gets
+  // the stream open but each event cut to an allow-listed type and no payload (cutEvent), so her app refetches through the door, which filters; a caller that names nobody gets 404.
+  /** @type {((e: any) => any) | null} */ let busCut = null;
+  if (req.method === "GET" && (url.pathname === "/v1/events" || url.pathname === "/v1/events/stream") && policy.caller && !policy.eventType && kernelOf && kernelOf()) {
+    const k = kernelOf();
+    let row = null;
+    const label = String(policy.caller), id = label.includes(":") ? label.slice(label.indexOf(":") + 1) : "";
+    try {
+      if (/^[a-z0-9]{16}$/.test(id)) {
+        const r = await registry.call("relay.device.info", { id }, "module:vyred");
+        row = r && r.data ? r.data : null;
+        if (row) { const w = await registry.call("wink.device.record", { id }, "module:vyred"); row = { ...row, person: w && w.data && typeof w.data.owner === "string" ? w.data.owner : null }; }
+      }
+    } catch { row = null; }
+    // the person the home's own record of this device names (an app, or a trusted browser; not a setup page, a removed device or one that names nobody), and the role the members list holds for her
+    let role = null;
+    try {
+      const ok = row && row.removed === false && row.person && (row.kind === "app" || (row.kind === "web" && row.trusted === true)) && label.startsWith(row.kind === "app" ? "device:" : "web:");
+      role = ok ? (row.person === k.id.owner ? "owner" : k.gateway.members.roleOf({ kind: "person", id: row.person, space: k.id.space })) : null;
+      // A browser from the older one-step pairing is trusted only when the OWNER approved that browser with his presence (relay.devices.trust, never callable from the browser itself), and that pairing writes no Wink
+      // record: a trusted browser that names nobody is the owner's own. One that names someone is judged by that person.
+      if (!ok && row && row.removed === false && row.kind === "web" && row.trusted === true && !row.person && label.startsWith("web:")) role = "owner";
+    } catch { role = null; }
+    if (role === "member") busCut = cutEvent;
+    else if (role !== "owner" && role !== "admin") return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; sign in on a device paired to this team, or ask the owner" } });
+  }
   if (req.method === "GET" && url.pathname === "/v1/events") {
-    return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
-      type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
+    const rows = events.since(Number(url.searchParams.get("since") || 0), {
+      type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) });
+    return send(res, 200, { data: busCut ? rows.map(busCut).filter(Boolean) : rows });
   }
   if (req.method === "GET" && url.pathname === "/v1/events/stream") {
     if (policy.eventType) url.searchParams.set("type", policy.eventType);
-    return stream(req, res, url, events, streams);
+    return stream(req, res, url, events, streams, busCut);
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
@@ -1734,7 +1762,20 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
  * as events.on: "thread.started", "thread.*" or "*". The SSE id is the event id, so a browser's
  * EventSource resumes from Last-Event-ID on its own.
  */
-function stream(req, res, url, events, streams) {
+/** Event types a member's paired device is told of, and the payload keys each keeps: ids and counts the app refetches by, never a title, text, body or name. */
+const BUS_MEMBER = /** @type {Record<string, readonly string[]>} */ ({
+  "sidebar.changed": [], "settings.changed": ["key"], "stream.reset": ["from", "reason"],
+});
+/** @param {any} e @returns {any} */
+export function cutEvent(e) {
+  const keep = e && BUS_MEMBER[e.type] ? BUS_MEMBER[e.type] : null;
+  if (!keep) return null;
+  const payload = {};
+  for (const key of keep) { const v = e.payload && e.payload[key]; if (typeof v === "string" ? v.length <= 200 : typeof v === "number" || typeof v === "boolean") payload[key] = v; }
+  return { id: e.id, at: e.at, type: e.type, source: e.source, project: e.project ?? null, thread: e.thread ?? null, payload };
+}
+
+function stream(req, res, url, events, streams, cut = null) {
   // A client that went away while the request was being routed (or while the daemon was stopping) has no 'close' left to come: nothing to start, nothing to leak.
   if (req.destroyed || res.destroyed || res.writableEnded) return;
   const type = url.searchParams.get("type") || "*";
@@ -1754,7 +1795,7 @@ function stream(req, res, url, events, streams) {
   // And one byte of body: iOS URLSession reports nothing (it sits on "connecting", up to the 15s
   // heartbeat) until the body starts, whatever the headers say.
   res.write(": open\n\n");
-  const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+  const write = e => { const o = cut && e.type !== "stream.reset" ? cut(e) : e; if (o) res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(o)}\n\n`); };
   let cursor = lastId;
   // A cursor past the newest id cannot be replayed (the log was reset, or the surface followed
   // another box). Say so, and follow from now: the surface reloads through tools (ADR 0029, R1).
