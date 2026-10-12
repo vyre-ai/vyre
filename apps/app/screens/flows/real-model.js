@@ -9,8 +9,8 @@
  */
 export const shownWarnings = (ws) => (ws || []).filter((w) => typeof w === "string" || w.path !== "caps").map((w) => (typeof w === "string" ? w : w.message));
 
-/** A Flow's name for a person: its label, else its code name, never its id. @param {{ label?: string, name?: string } | null | undefined} f @param {string} id */
 export const UNTITLED = "Untitled Flow";
+/** A Flow's name for a person: its label, else its code name, else words; never its id. @param {{ label?: string, name?: string } | null | undefined} f @param {string} [_id] kept for the callers' sake; an id is not shown */
 export const titleOf = (f, _id) => (f && (f.label || f.name)) || UNTITLED;
 /** The name a Flows list row shows: its label, else its name, else words. Never its id (a Flow id is not for a person: "fl_01a1..."). @param {{ label?: string, name?: string } | null | undefined} r */
 export const rowName = (r) => (r && (r.label || r.name)) || UNTITLED;
