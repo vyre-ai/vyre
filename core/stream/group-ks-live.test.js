@@ -912,10 +912,17 @@ test("AN1: a member answers the question her own turn raised and the room moves 
   const ask2 = (await openAsks()).find((/** @type {any} */ a) => a.tool === "Bash" && a.id !== ask.id);
   const always = await b.as("carol")("stream.answer", { chat: chat.id, ask: ask2.id, decision: "always" });
   assert.ok(always.error, "always allow is not on offer for a member");
-  // stop: bob (not the one who asked) stops nothing of hers; she stops her own
+  // stop: another plain member of the chat stops nothing of hers; the Space's owner (staff) stops her turn; she stops her own
+  await w.C.change(w.chains.bob, chat.id, { add_people: [ADA] });
+  const adaStop = await b.as("ada")("stream.stop", { chat: chat.id });
+  assert.ok(!adaStop.error && adaStop.data.stopped.length === 0 && adaStop.data.left >= 1, `a plain member stops nothing of hers: ${JSON.stringify(adaStop)}`);
+  assert.ok((await openAsks()).some((/** @type {any} */ a) => a.id === ask2.id), "her question is still open");
   const bobStop = await b.as("bob")("stream.stop", { chat: chat.id });
-  assert.ok(!bobStop.error && Array.isArray(bobStop.data.stopped), JSON.stringify(bobStop));
+  assert.ok(!bobStop.error && bobStop.data.stopped.length >= 1, `the owner stops her turn: ${JSON.stringify(bobStop)}`);
+  await until(async () => !(await openAsks()).some((/** @type {any} */ a) => a.id === ask2.id), "stopping to close the open question", 15_000);
+  await b.as("carol")("stream.send", { chat: chat.id, text: "bash date", to: ["assistant:assistant"], cwd: w.work });
+  await until(async () => (await openAsks()).some((/** @type {any} */ a) => a.tool === "Bash"), "a new question", 30_000);
   const herStop = await b.as("carol")("stream.stop", { chat: chat.id });
   assert.ok(!herStop.error && herStop.data.stopped.length >= 1, `she stops her own turn: ${JSON.stringify(herStop)}`);
-  await until(async () => !(await openAsks()).some((/** @type {any} */ a) => a.id === ask2.id), "stopping to close the open question", 15_000);
+  await until(async () => (await openAsks()).length === 0, "her stop to close the question", 15_000);
 });

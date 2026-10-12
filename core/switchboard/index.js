@@ -481,7 +481,7 @@ export class Switchboard {
     this.shellContext = new Map();
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
-    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */
+    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();   /** @type {Map<string, string>} each open ask's asker: the person whose turn raised it, kept when it is raised (the thread's session may later belong to the next person) */ this.askAsker = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
@@ -1663,6 +1663,7 @@ export class Switchboard {
     const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, tool_use_id: ask.tool_use_id || null, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
       agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
     this.asks.anchored(a.id, ev && ev.id);
+    { const ks = /** @type {any} */ (this.ksCur.get(id)); const by = String((ks && ks.asker) || (rec && rec.person) || "").replace(/^person:/, ""); if (by) this.askAsker.set(a.id, by); }
   }
 
   /**
@@ -4798,7 +4799,7 @@ export default {
       });
     // A team member answers a question, or stops a turn, in a chat she is in (the stream module's member door, core/stream/index.js): the stream module has checked the person is in the chat and passes her verified id.
     // A question belongs to the person whose turn raised it (the verified asker of the thread's current turn, never a caller's word); a turn is stopped by the person who asked it, or by staff.
-    const streamOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:stream" || m.firstParty === false) throw Object.assign(new Error(`${what} is the stream module's alone`), { code: "denied" }); };
+    const streamOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:stream" || m.firstParty !== true) throw Object.assign(new Error(`${what} is the stream module's alone`), { code: "denied" }); };
     const bare = (/** @type {any} */ p) => String(p || "").replace(/^person:/, "");
     const askerOfRun = (/** @type {string} */ thread) => { const ks = /** @type {any} */ (sb.ksCur.get(thread)); const rec = /** @type {any} */ (sb.record(thread)); return bare((ks && ks.asker) || (rec && rec.person) || ""); };
     tool("threads.serve-answer", "A team member answers a question raised by a turn she asked, in a chat she is in: allow or deny (a question with its answers). Only the stream module's member door runs it.",
@@ -4808,7 +4809,7 @@ export default {
         const a = /** @type {any} */ (sb.asks.get(String(i.ask)));
         const rec = a ? /** @type {any} */ (sb.record(a.thread)) : null;
         if (!a || !rec || String(rec.chat || "") !== String(i.chat)) throw Object.assign(new Error("no such question in this chat: the chat shows the ones that are open"), { code: "not_found" });
-        const asker = askerOfRun(a.thread), person = bare(i.person);
+        const asker = bare(sb.askAsker.get(a.id)) || askerOfRun(a.thread), person = bare(i.person);
         if (!asker || asker !== person) throw Object.assign(new Error("that question is for the person whose turn raised it. Ask them, or the owner, to answer it"), { code: "denied" });
         if (i.decision !== "allow" && i.decision !== "deny") throw Object.assign(new Error("answer allow or deny (always allow is not on offer for members yet)"), { code: "bad_input" });
         return sb.answer(a.id, i.decision, "member", undefined, i.answers, undefined, null, person);
