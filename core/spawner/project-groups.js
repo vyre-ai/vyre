@@ -63,11 +63,11 @@ export function writeTable(file, t) {
 
 /**
  * The project groups of one spawner.
- * @param {{ file: string, work: string, min?: number, max?: number,
+ * @param {{ file: string, work: string, containers?: string[], min?: number, max?: number,
  *   vyre: { uid: number, gid: number }, groups?: number[], owners: (uid: number) => boolean,
  *   node?: string, timeoutMs?: number, log?: (m: string) => void,
  *   regroup?: (folder: string, gid: number) => Promise<void>, verify?: (folder: string) => Promise<void> }} o
- *   groups: extra groups every pass holds (the old shared group, so a folder not yet moved is still entered). owners: may a pass run as this uid (Vyre, the box agent, an account).
+ *   containers: folders that hold project folders (/work/projects): never a project themselves. groups: extra groups every pass holds (the old shared group, so a folder not yet moved is still entered). owners: may a pass run as this uid (Vyre, the box agent, an account).
  *   regroup, verify: replace the real pass and the real rules check (a test with no root).
  */
 export function projectGroups(o) {
@@ -79,9 +79,10 @@ export function projectGroups(o) {
   /** one at a time: a pass walks a whole folder, and two on one project must not race @template T @param {() => Promise<T>} fn @returns {Promise<T>} */
   const serial = fn => { const r = chain.then(fn, fn); chain = r.then(() => {}, () => {}); return r; };
 
-  /** One pass as `uid`. @param {number} uid @param {string[]} args @returns {Promise<{ fixed: number, others: number[] }>} */
-  const pass = (uid, args) => new Promise((resolve, reject) => {
-    const groups = [...new Set([...(o.groups || []), Number(args[args.length - 2])])];
+  /** One pass as `uid`. @returns {Promise<{ fixed: number, others: number[] }>} */
+  const pass = (uid, /** @type {"check"|"verify"|null} */ mode, /** @type {string} */ folder, /** @type {number} */ gid) => new Promise((resolve, reject) => {
+    const args = [...(mode ? [mode] : []), folder, String(gid), String(o.vyre.uid), work];
+    const groups = [...new Set([...(o.groups || []), gid])];
     execFile("/usr/bin/setpriv", [`--reuid=${uid}`, `--regid=${uid === o.vyre.uid ? o.vyre.gid : uid}`, `--groups=${groups.join(",")}`, "--inh-caps=-all", "--", o.node || process.execPath, SCRIPT, ...args],
       { timeout: o.timeoutMs ?? 15 * 60_000, killSignal: "SIGKILL", maxBuffer: 1 << 20, env: { PATH: "/usr/bin:/bin" } }, (e, out, err) => {
         if (e) { const first = String(err || "").split("\n")[0].trim(); return reject(refusal(first || `the pass as uid ${uid} failed (${/** @type {Error} */ (e).message})`, "pass_failed")); }
@@ -90,18 +91,18 @@ export function projectGroups(o) {
   });
 
   /** The rules on a real folder, as Vyre's user, before a group number is spent on it. @param {string} folder */
-  const verify = async folder => { await pass(o.vyre.uid, ["verify", folder, String(GID_MIN), String(o.vyre.uid)]); };
+  const verify = async folder => { await pass(o.vyre.uid, "verify", folder, GID_MIN); };
 
   /** The real pass: Vyre's own files first (with the rules check), then each other owner's. @param {string} folder @param {number} gid */
   async function regroup(folder, gid) {
-    const first = await pass(o.vyre.uid, ["check", folder, String(gid), String(o.vyre.uid)]);
+    const first = await pass(o.vyre.uid, "check", folder, gid);
     const done = new Set([o.vyre.uid]);
     for (let queue = [...(first.others || [])]; queue.length;) {
       const uid = /** @type {number} */ (queue.shift());
       if (done.has(uid)) continue;
       done.add(uid);
       if (!o.owners(uid)) { log(`spawner: files of uid ${uid} in ${folder} were left as they are (not an account or the box agent)`); continue; }
-      const r = await pass(uid, [folder, String(gid), String(o.vyre.uid)]);
+      const r = await pass(uid, null, folder, gid);
       for (const u of r.others || []) if (!done.has(u)) queue.push(u);
     }
   }
@@ -115,6 +116,7 @@ export function projectGroups(o) {
     if (typeof project !== "string" || !ID_RE.test(project)) throw refusal("a project id is letters, digits, dot, dash and underscore, up to 128 characters (the project's short name)");
     if (typeof home !== "string" || !path.isAbsolute(home) || home.includes("\0") || home.length > 1024 || path.resolve(home) !== home) throw refusal(`the folder must be an absolute path with no .. or trailing slash (got ${JSON.stringify(String(home).slice(0, 80))})`);
     if (home === work) throw refusal(`${work} itself cannot be a project folder; give the project's own folder inside it`);
+    for (const c of o.containers || []) if (inside(c, home)) throw refusal(`${home} holds project folders; give the project's own folder inside it`);
     if (!inside(home, work)) throw refusal(`${home} is outside ${work}; project folders live under ${work}`);
     const t = load();
     for (const [id, e] of Object.entries(t.projects)) {
@@ -150,4 +152,22 @@ export function projectGroups(o) {
     /** @returns {{ min: number, max: number, used: number }} */
     stats() { return { min, max, used: Object.keys(load().projects).length }; },
   };
+}
+
+/**
+ * The work folder as the project groups need it, done at every start as Vyre's user (no capability): /work belongs to the shared group at 2711 (any uid passes through it to a folder it knows; only Vyre and the
+ * shared group list it, so a member's session cannot find the other projects), and whatever sits directly in it, and each project folder in /work/projects, has no "other" bits until its project group is
+ * given, whatever mode an older volume left it in. Only the folders themselves, never what is inside; links are left alone.
+ * @param {{ work: string, shared: number, asVyre: (...argv: string[]) => void, log?: (m: string) => void }} o
+ */
+export function prepareWork(o) {
+  const log = o.log || (() => {});
+  try {
+    const st = fs.statSync(o.work);
+    if (st.gid !== o.shared) { log(`spawner: giving ${o.work} to group ${o.shared}`); o.asVyre("chgrp", String(o.shared), o.work); }
+    if ((fs.statSync(o.work).mode & 0o7777) !== 0o2711) { log(`spawner: ${o.work} is now 2711 (passed through, not listed)`); o.asVyre("chmod", "2711", o.work); }
+    const held = path.join(o.work, "projects");
+    o.asVyre("find", o.work, "-mindepth", "1", "-maxdepth", "1", "!", "-type", "l", "!", "-path", held, "-exec", "chmod", "o-rwx", "{}", "+");
+    if (fs.existsSync(held)) o.asVyre("find", held, "-mindepth", "1", "-maxdepth", "1", "!", "-type", "l", "-exec", "chmod", "o-rwx", "{}", "+");
+  } catch (e) { log(`spawner: ${o.work} is not set up for project groups: ${/** @type {Error} */ (e).message}`); }
 }

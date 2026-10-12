@@ -1,21 +1,22 @@
 // @ts-check
 // Gives one project folder to its project group. Runs AS A SINGLE UID (setpriv, no capability), never as root: it can only change what that uid owns, so a link planted in the folder
 // cannot make it touch anything else. The spawner runs it as the folder's owner first (`check` names the rules), then once for every other uid that owns something inside.
-//   node regroup.js [check|verify] <folder> <gid> <vyreUid>     verify: only the rules, nothing changed
+//   node regroup.js [check|verify] <folder> <gid> <vyreUid> <work>     verify: only the rules, nothing changed
 // Every entry is opened with O_PATH | O_NOFOLLOW and changed through /proc/self/fd, so a name swapped for a link after it was listed is never followed. Only plain files and folders are touched.
 // Prints one JSON line: { fixed, others } where others are the uids that own entries it left for their owners.
 
 import fs from "node:fs";
+import path from "node:path";
 
 const [, , first, ...rest] = process.argv;
 const verify = first === "verify", check = first === "check" || verify;
-const [folder, gidArg, vyreArg] = check ? rest : [first, ...rest];
+const [folder, gidArg, vyreArg, work] = check ? rest : [first, ...rest];
 const gid = Number(gidArg), vyre = Number(vyreArg), me = /** @type {number} */ (process.getuid?.());
 const O_PATH = 0o10000000;
 const { O_NOFOLLOW } = fs.constants;
 
 const fail = (/** @type {string} */ why) => { process.stderr.write(why + "\n"); process.exit(3); };
-if (!folder || !Number.isInteger(gid) || gid < 1 || !Number.isInteger(vyre)) fail("usage: regroup.js [check] <folder> <gid> <vyreUid>");
+if (!folder || !Number.isInteger(gid) || gid < 1 || !Number.isInteger(vyre)) fail("usage: regroup.js [check|verify] <folder> <gid> <vyreUid> <work>");
 
 /** @param {string} p */
 const open = p => fs.openSync(p, O_PATH | O_NOFOLLOW);
@@ -29,6 +30,24 @@ if (check) {
   const st = fs.lstatSync(folder);
   if (!st.isDirectory()) fail(`${folder} is not a folder`);
   if (st.uid !== vyre) fail(`${folder} is owned by uid ${st.uid}, not by Vyre (uid ${vyre})`);
+}
+
+if (check) {
+  // The folders between the work folder and the project's folder are passed through by every member (o+x, never listed unless they already could be): a project at /work/projects/acme needs /work/projects open to
+  // the people on acme and to nobody's listing. Each must be a real folder of Vyre's, opened without following a link.
+  const rel = path.relative(work, folder).split(path.sep).slice(0, -1);
+  let cur = work;
+  for (const part of rel) {
+    cur = path.join(cur, part);
+    let fd;
+    try { fd = open(cur); } catch (e) { fail(`${cur} cannot be reached (${/** @type {NodeJS.ErrnoException} */ (e).code || "error"})`); }
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isDirectory()) fail(`${cur} is not a folder`);
+      if (st.uid !== vyre) fail(`${cur}, which holds the project folder, is owned by uid ${st.uid}, not by Vyre (uid ${vyre})`);
+      if (!verify && (st.mode & 0o001) === 0) fs.chmodSync(via(fd), (st.mode & 0o7777) | 0o001);
+    } finally { fs.closeSync(fd); }
+  }
 }
 
 if (verify) { process.stdout.write('{"fixed":0,"others":[]}\n'); process.exit(0); }

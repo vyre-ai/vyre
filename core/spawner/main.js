@@ -14,12 +14,16 @@ import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { serve } from "./server.js";
 import { readStatus, holdsNetAdmin, recheck, POOL } from "./wall.js";
+import { projectGroups, prepareWork } from "./project-groups.js";
 
 const env = process.env;
 const num = (v, d) => (/^\d+$/.test(String(v || "")) ? Number(v) : d);
 const VYRE = num(env.VYRE_UID, 1000);
 const SHARED = num(env.VYRE_WORK_GID, 1002);
 const AGENT = { uid: num(env.VYRE_AGENT_UID, 1001), gid: num(env.VYRE_AGENT_GID, 1001), groups: [SHARED] };
+// One group per project (team/0.3.4/PROJECT-GROUPS.md): the reserved range, and where the table of project to group lives.
+const ACCOUNTS_HOME = env.VYRE_ACCOUNTS_HOME || "/home/acct";
+const ACCOUNT_UIDS = { min: num(env.VYRE_ACCOUNT_UID_MIN, 2000), max: num(env.VYRE_ACCOUNT_UID_MAX, 2063) };
 const WORK = env.VYRE_WORK || "/work";
 const SOCKET = env.VYRE_SPAWNER_SOCKET || "/run/vyre/spawner.sock";
 const LOOP = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "daemon", "loop.sh");
@@ -38,22 +42,11 @@ if (!process.getuid || process.getuid() !== 0) {
   const child = runLoop(["/bin/sh", LOOP], env);
   child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 } else {
-  // As vyre, who owns them: /work goes to the shared group once (a volume made before the split),
-  // with group write and setgid directories so new files keep it; vyred's home, which holds the
-  // vault and Claude's sign-in, is closed to everyone else. No capability is needed for either.
+  // As vyre, who owns it: /work itself belongs to the shared group at 2711, so any uid can pass through it to a folder it knows and only vyre and the shared group can list it (a member's session
+  // cannot find the other projects). What is inside is each project's own: a folder is handed to its project's group by the project-group op, when the project is made and at its first launch.
+  // vyred's home, which holds the vault and Claude's sign-in, is closed to everyone else. No capability is needed for either.
   const asVyre = (...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${SHARED}`, "--inh-caps=-all", "--", ...argv], { stdio: "ignore" });
-  try {
-    const st = fs.statSync(WORK);
-    if (st.gid !== SHARED || (st.mode & 0o2070) !== 0o2070) {
-      log(`spawner: giving ${WORK} to group ${SHARED}`);
-      asVyre("chgrp", "-R", String(SHARED), WORK);
-      asVyre("chmod", "-R", "g+rwX", WORK);
-      asVyre("find", WORK, "-type", "d", "-exec", "chmod", "g+s", "{}", "+");
-    }
-    // Closed to every other uid (2770): the watcher pool and anything else that is not vyred or the shared group cannot enter it.
-    // Only the folder itself: whatever is inside is unreachable without passing through it.
-    if ((st.mode & 0o007) !== 0) asVyre("chmod", "o-rwx", WORK);
-  } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
+  prepareWork({ work: WORK, shared: SHARED, asVyre, log });
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
   // The box agent's home is its own group's (an older volume has it in the /work group, which an account's session under /work joins): the agent, who owns it, moves it, with no capability.
   try {
@@ -77,12 +70,17 @@ if (!process.getuid || process.getuid() !== 0) {
   const makeDir = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
   // One uid per account, 2000-2063 in the image, each with a private HOME in the vyre-accounts volume.
-  const accounts = { min: num(env.VYRE_ACCOUNT_UID_MIN, 2000), max: num(env.VYRE_ACCOUNT_UID_MAX, 2063), home: env.VYRE_ACCOUNTS_HOME || "/home/acct", shared: [SHARED] };
+  const accounts = { min: ACCOUNT_UIDS.min, max: ACCOUNT_UIDS.max, home: ACCOUNTS_HOME, shared: [] };
+  // The project groups. Vyred and the box agent join the whole range below, so a project made later needs no restart and no ACL; an account's session joins only the groups of the projects it is on.
+  const projects = projectGroups({ file: env.VYRE_PROJECT_GIDS || path.join(ACCOUNTS_HOME, ".project-groups.json"), work: WORK, containers: [path.join(WORK, "projects")], vyre: { uid: VYRE, gid: VYRE }, groups: [SHARED], log,
+    ...(num(env.VYRE_PROJECT_GID_MIN, 0) ? { min: num(env.VYRE_PROJECT_GID_MIN, 0) } : {}), ...(num(env.VYRE_PROJECT_GID_MAX, 0) ? { max: num(env.VYRE_PROJECT_GID_MAX, 0) } : {}),
+    owners: uid => uid === VYRE || uid === AGENT.uid || (uid >= ACCOUNT_UIDS.min && uid <= ACCOUNT_UIDS.max) });
+  AGENT.groups = [SHARED, ...projects.range()];
   const grantGroup = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/chmod", "710", dir], { stdio: "ignore" });
   // The watcher wall: pool uids, their folders, and the status the entry script wrote after installing and probing the rule.
   const watcher = { min: num(env.VYRE_WATCH_UID_MIN, POOL.min), max: num(env.VYRE_WATCH_UID_MAX, POOL.max), home: env.VYRE_WATCH_HOME || "/run/vyre-watch",
     allow: [env.VYRE_WATCH_NODE || "/usr/local/bin/node"], status: () => readStatus(env.VYRE_WALL_STATUS), heldCap: holdsNetAdmin, reprobe: () => recheck() };
-  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, grantGroup, accounts, watcher, log });
+  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, grantGroup, accounts, projects, watcher, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing
   // where to ask. Its umask is 002, so what it writes in /work the agent can change too; its own
@@ -90,7 +88,7 @@ if (!process.getuid || process.getuid() !== 0) {
   // vyred is in every account's group (gid = uid, 2000-2063), so it can read each account's
   // transcripts through the group and no account can read another's.
   const accountGids = []; for (let g = accounts.min; g <= accounts.max; g++) accountGids.push(g);
-  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, AGENT.gid, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
+  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, AGENT.gid, ...accountGids, ...projects.range()].join(",")}`, "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/bin/sh", LOOP], { ...env, HOME: env.VYRE_USER_HOME || "/home/vyre", VYRE_SPAWNER_SOCKET: SOCKET });
   child.on("exit", async (code, signal) => { await srv.close(); process.exit(code ?? (signal ? 1 : 0)); });
 }

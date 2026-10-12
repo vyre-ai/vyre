@@ -80,9 +80,10 @@ test("box: the watcher wall: iptables is in the image, NET_ADMIN is the vyre ser
   assert.match(read("core/spawner/main.js"), /"--inh-caps=-all", "--",\s*\n?\s*"\/bin\/sh", "-c", 'umask 002; exec "\$@"', "sh", "\/bin\/sh", LOOP/);
 });
 
-test("box: /work is closed to every uid but vyre and the shared group (2770), in the image and for a volume made before", () => {
-  assert.match(read("box/Dockerfile"), /chown 1000:1002 \/work && chmod 2770 \/work/);
-  assert.match(read("core/spawner/main.js"), /chmod", "o-rwx", WORK/);
+test("box: /work is passed through by any uid and listed only by vyre and the shared group (2711), in the image and for a volume made before; a project's folder is its own group's", () => {
+  assert.match(read("box/Dockerfile"), /chown 1000:1002 \/work && chmod 2711 \/work/);
+  assert.match(read("core/spawner/main.js"), /asVyre\("chmod", "2711", WORK\)/);
+  assert.match(read("core/spawner/main.js"), /projects\.range\(\)/, "vyred and the box agent join every project group");
 });
 
 test("box: every base image a Dockerfile builds from is pinned by digest (FROM and COPY --from), so a source build cannot be handed other bytes", () => {

@@ -11,7 +11,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { serve } from "./server.js";
 import { spawnAsAgent, projectGroup } from "./client.js";
-import { projectGroups } from "./project-groups.js";
+import { projectGroups, prepareWork } from "./project-groups.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const root = process.platform === "linux" && process.getuid && process.getuid() === 0 && fs.existsSync("/usr/bin/setpriv");
@@ -35,7 +35,7 @@ async function box(t) {
   }
   for (const uid of [A, B]) { const h = path.join(acct, String(uid)); mk(h, uid, uid, 0o700); }
   fs.chmodSync(acct, 0o711);
-  const pg = projectGroups({ file, work, vyre: { uid: VYRE, gid: VYRE }, groups: [WORKGID], owners: uid => uid === VYRE || uid === AGENT || (uid >= 2000 && uid <= 2063) });
+  const pg = projectGroups({ file, work, containers: [path.join(work, "projects")], vyre: { uid: VYRE, gid: VYRE }, groups: [WORKGID], owners: uid => uid === VYRE || uid === AGENT || (uid >= 2000 && uid <= 2063) });
   const socket = path.join(dir, "s.sock");
   // the default wrap without tini (the test boxes have none; tini is only the subreaper)
   const wrap = (/** @type {string[]} */ argv, /** @type {string} */ cwd, /** @type {any} */ who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
@@ -134,4 +134,43 @@ test("project groups, real uids: a link, a file, a folder not owned by Vyre and 
   await assert.rejects(projectGroup("p5", path.join(work, "alpha", "inner"), { socket }), /overlaps .*alpha/);
   assert.equal(fs.statSync(path.join(work, "beta")).gid, WORKGID, "none of them touched beta");
   assert.equal(fs.statSync(path.join(work, "theirs")).gid, A);
+});
+
+test("project groups, real uids: a project at /work/projects/<slug> is reached through a folder the member passes but cannot list; one owned by someone else stops the pass", { skip: root ? false : "needs root on Linux with setpriv" }, async t => {
+  const { work, socket } = await box(t);
+  const projects = path.join(work, "projects");
+  for (const p of ["gamma", "delta"]) { fs.mkdirSync(path.join(projects, p), { recursive: true }); fs.chownSync(path.join(projects, p), VYRE, WORKGID); fs.chmodSync(path.join(projects, p), 0o2775); fs.writeFileSync(path.join(projects, p, "f.txt"), p); fs.chownSync(path.join(projects, p, "f.txt"), VYRE, WORKGID); }
+  fs.chownSync(projects, VYRE, WORKGID); fs.chmodSync(projects, 0o2770);
+  await assert.rejects(projectGroup("gamma", projects, { socket }), /holds project folders/, "the container is not a project");
+  await projectGroup("gamma", path.join(projects, "gamma"), { socket });
+  await projectGroup("delta", path.join(projects, "delta"), { socket });
+  assert.equal(fs.statSync(projects).mode & 0o7777, 0o2771, "the folder holding projects is passed through by anyone");
+  assert.equal((await run(socket, A, ["gamma"], path.join(projects, "gamma"), "cat f.txt")).out, "gamma");
+  const out = await run(socket, A, ["gamma"], path.join(projects, "gamma"), `cat ${projects}/delta/f.txt; ls ${projects}`);
+  assert.notEqual(out.code, 0);
+  assert.equal(out.out, "", "neither delta's file nor the list of projects");
+  // a folder holding the project that is not Vyre's cannot be made passable
+  fs.mkdirSync(path.join(work, "theirs", "epsilon"), { recursive: true }); fs.chownSync(path.join(work, "theirs"), A, A); fs.chownSync(path.join(work, "theirs", "epsilon"), VYRE, WORKGID);
+  await assert.rejects(projectGroup("epsilon", path.join(work, "theirs", "epsilon"), { socket }), /holds the project folder, is owned by uid 2000/);
+});
+
+test("project groups, real uids: at start /work becomes 2711 and the folders in it lose their other bits, links untouched, nothing inside changed; a second start changes nothing", { skip: root ? false : "needs root on Linux with setpriv" }, async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-pgr-")); fs.chmodSync(dir, 0o755);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const work = path.join(dir, "work");
+  const mk = (/** @type {string} */ p, /** @type {number} */ mode) => { fs.mkdirSync(p, { recursive: true }); fs.chownSync(p, VYRE, WORKGID); fs.chmodSync(p, mode); };
+  mk(work, 0o2770); mk(path.join(work, "old-project"), 0o2775); mk(path.join(work, "projects"), 0o2775); mk(path.join(work, "projects", "acme"), 0o2775); mk(path.join(work, "projects", "acme", "inside"), 0o2775);
+  fs.symlinkSync("/etc", path.join(work, "to-etc"));
+  const asVyre = (/** @type {string[]} */ ...argv) => { const r = spawnSync("/usr/bin/setpriv", [`--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${WORKGID}`, "--inh-caps=-all", "--", ...argv]); if (r.status !== 0) throw new Error(String(r.stderr)); };
+  const mode = (/** @type {string} */ p) => fs.lstatSync(p).mode & 0o7777;
+  prepareWork({ work, shared: WORKGID, asVyre });
+  assert.equal(mode(work), 0o2711);
+  assert.equal(mode(path.join(work, "old-project")), 0o2770, "a folder directly in /work is closed to others");
+  assert.equal(mode(path.join(work, "projects")), 0o2775, "the folder holding projects keeps its traverse bit for others");
+  assert.equal(mode(path.join(work, "projects", "acme")), 0o2770, "a project folder is closed to others");
+  assert.equal(mode(path.join(work, "projects", "acme", "inside")), 0o2775, "what is inside is left alone");
+  assert.ok(fs.lstatSync(path.join(work, "to-etc")).isSymbolicLink());
+  const c = fs.statSync(work).ctimeMs; await new Promise(r => setTimeout(r, 30));
+  prepareWork({ work, shared: WORKGID, asVyre });
+  assert.equal(fs.statSync(work).ctimeMs, c, "a second start changes nothing");
 });
