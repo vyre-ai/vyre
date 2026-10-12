@@ -290,7 +290,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
       const tag = `walkA${n + 1}`;
       await speak(who, `whoami ${tag}`);
       const a = await untilAnswerTo(grace, chat, tag).catch(async (/** @type {any} */ e) => {
-        const dump = async (/** @type {string} */ k, /** @type {() => Promise<any>} */ f) => { try { transcript.push(`DBG ${k}: ${JSON.stringify(await f()).slice(0, 1500)}\n`); } catch (x) { transcript.push(`DBG ${k}: ${String(x && x.message).slice(0, 200)}\n`); } };
+        const dump = async (/** @type {string} */ k, /** @type {() => Promise<any>} */ f) => { try { console.log(`DBG ${k}: ${JSON.stringify(await f()).slice(0, 1500)}`); } catch (x) { console.log(`DBG ${k}: ${String(x && x.message).slice(0, 200)}`); } };
         await dump("threads (space)", () => w.call("threads.list", { all: true, space: team.space }));
         await dump("threads (default)", () => w.operator("threads.list", { all: true }));
         await dump("queue", () => w.call("threads.queue", { space: team.space }));
