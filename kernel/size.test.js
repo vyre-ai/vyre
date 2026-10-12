@@ -18,7 +18,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9465 (stall fix, kernel +4 on 9461: batched event cursors for the consumers that ask, the record types shared until a type changes, a stop on the kernel that stores the cursors).
 // 9513 (kernel +48 on 9465: the gateway enforces which module keeps a record type and who may write a project, a seat or a task: kernel/gateway/ownership.js is the one rule, each route calls it in one line).
 // 9517 (kernel +4 on 9513: the planner's reminder and note types are kept by the planner where they are defined protected, so a member reads another person's through no Records route).
-const CAP = 9517;
+// 9533 (kernel +16 on 9517: +11 the protected-types set is signalled by every define and fails closed while the store is away (types-race2); +5 the Space's set-up types (an agent, a template, a playbook) are written only by an owner or an admin on every route).
+const CAP = 9533;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

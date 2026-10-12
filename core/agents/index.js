@@ -505,6 +505,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (i, meta) => {
         const { caller } = meta;
+        if (!(await seesFull(meta))) throw ownerOnly("adds an agent to the Space");
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -539,6 +540,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
       run: async (i, meta) => {
         const { caller } = meta;
+        if (!(await seesFull(meta))) throw ownerOnly("changes an agent");
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           // A model never edits an agent: it proposes, and the agent's owner says yes on one card (R031-09).
           throw Object.assign(new Error('changing agents is the person\'s; to ask for a change, propose it: flows.propose { what: "agent", agent: "<name>", patch: { instructions?, skills?, model?, effort?, tags? } }. Its owner approves; each approved change is a version you can roll back'), { code: "denied" });
@@ -797,6 +799,7 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ agent, id }, meta) => {
+        if (!(await seesFull(meta))) throw ownerOnly("removes an agent");
         const a = must(agent);
         if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id (agents.list shows them; leave id out to go by name)`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays; agents.stop stops its threads instead`), { code: "denied" });
@@ -848,7 +851,9 @@ export default {
     ctx.tool("agents.stop", {
       description: "Stop every running thread of an agent. Its record and transcripts stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller, ...meta }) => {
+      run: async ({ agent }, meta0) => {
+        const { caller, ...meta } = meta0;
+        if (!(await seesFull(meta0))) throw ownerOnly("stops an agent");
         guard(caller, "stop agents");
         if (!modelMay({ caller, ...meta })) throw Object.assign(new Error("stopping an agent is the assistant's or the person's, not another session's"), { code: "denied" });
         must(agent);
@@ -867,7 +872,9 @@ export default {
       description: "Resume one of an agent's threads (its latest by default) with its credentials and scope. A thread already running is left as it is ({ running: true }).",
       callers: ["cli", "local", "deck", "capsule", "module"],
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
-      run: async ({ agent, thread }, { caller }) => {
+      run: async ({ agent, thread }, meta0) => {
+        const { caller } = meta0;
+        if (!(await seesFull(meta0))) throw ownerOnly("resumes an agent");
         const a = must(agent);
         if (String(caller || "").startsWith("module:")) {
           if (!thread) throw new Error("thread is required");
