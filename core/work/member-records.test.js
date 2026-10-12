@@ -128,3 +128,30 @@ test("door.open honors a held chain only when it is exactly one person's, for th
   }
   assert.equal(await code(door.open({}, { in_space: "spc_zzzzzzzzzzzz", in_space_chain: { ...chain, space: "spc_zzzzzzzzzzzz" } })), "not_found", "a Space this server does not host");
 });
+
+test("idem on the door: a create or task request repeated under the same key returns the first one (one record, one task); two creates without a key are two; a different input under a used key is refused; another member's key is her own", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const mk = (/** @type {string} */ who, /** @type {any} */ extra = {}, name = "Jane") => w.as(who, "records.create", { type: "contact", data: { name, age: 40 }, ...extra });
+  const one = await mk(ANA, { idem: "k-one" });
+  const again = await mk(ANA, { idem: "k-one" });
+  assert.equal(again.record.id, one.record.id, "the repeat returns the first record");
+  assert.equal((await w.as(ANA, "records.list", { type: "contact", limit: 50 })).rows.filter((/** @type {any} */ r) => r.data.name === "Jane").length, 1, "one record");
+  // no key: two deliberate identical creates are two records
+  await mk(ANA, {}, "Twin"); await mk(ANA, {}, "Twin");
+  assert.equal((await w.as(ANA, "records.list", { type: "contact", limit: 50 })).rows.filter((/** @type {any} */ r) => r.data.name === "Twin").length, 2, "without a key, two");
+  // a used key with different input is refused in words
+  const refused = await mk(ANA, { idem: "k-one" }, "Other").then(() => null, (/** @type {any} */ e) => e);
+  assert.ok(refused && /different input|key/i.test(refused.message), `refused in words: ${refused && refused.message}`);
+  // another member's key space is her own: Ben's "k-one" makes Ben's own record
+  const bens = await mk(BEN, { idem: "k-one" });
+  assert.notEqual(bens.record.id, one.record.id, "one member's key never returns another's record");
+  // an over-long key is refused
+  assert.ok(await code(mk(ANA, { idem: "x".repeat(300) })), "a key is a short text");
+  // the same for a task request
+  const spec = { title: "Call the court", doer: ANA, output: { kind: "note" } };
+  const t1 = await w.as(ANA, "tasks.request", { task: spec, idem: "t-one" });
+  const t2 = await w.as(ANA, "tasks.request", { task: spec, idem: "t-one" });
+  assert.equal((t2.task || t2).id, (t1.task || t1).id, "the repeat returns the first task");
+  const listed = await w.as(ANA, "tasks.list", {});
+  assert.equal((listed.tasks || listed.rows || listed).filter((/** @type {any} */ x) => x.title === "Call the court").length, 1, "one task");
+});

@@ -83,7 +83,7 @@ export default {
       const u = parseUrn(i.urn);
       return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
     }, byUrn);
-    tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data) }));
+    tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data, typeof i.idem === "string" ? { idem: i.idem } : undefined) }));
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
@@ -201,7 +201,7 @@ export default {
     // The input keys each call takes: anything else is dropped before the tool sees it, so a member's call cannot name a Space, a proof or a chain. The kernel judges every record under her chain.
     const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
       me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"],
-      create: ["type", "data"], update: ["urn", "patch", "base_version"],
+      create: ["type", "data", "idem"], update: ["urn", "patch", "base_version"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");

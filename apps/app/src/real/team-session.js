@@ -7,6 +7,9 @@ export const IDLE_MS = 60_000;
 /** The codes that mean the session itself is gone, not that the door said no. */
 const GONE = new Set(["unreachable", "unavailable", "timeout", "closed", "relay_removed"]);
 
+/** Did this call die in the transport (no answer came back), as opposed to the door answering, even with a refusal? @param {any} err */
+export const isTransportFailure = (err) => { const code = err && err.code; return !code || GONE.has(code); };
+
 /**
  * @param {{ open: (space: string) => Promise<{ call(name: string, args: any[], opt?: any): Promise<any>, close(): void }>, idleMs?: number, timers?: { set: (f: () => void, ms: number) => any, clear: (t: any) => void } }} o
  */
@@ -36,8 +39,7 @@ export function createSharedSessions(o) {
         const s = await e.p;
         return await s.call(name, args, opt);
       } catch (err) {
-        const code = /** @type {any} */ (err)?.code;
-        if (!code || GONE.has(code)) drop(space, e);
+        if (isTransportFailure(err)) drop(space, e);
         throw err;
       } finally {
         e.busy--;

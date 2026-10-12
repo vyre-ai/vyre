@@ -34,11 +34,11 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.list": { tool: "records.serve", call: "list", keys: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], types: [] },
   "records.get": { tool: "records.serve", call: "get", keys: ["urn"], types: [] },
   "records.events": { tool: "records.serve", call: "events", keys: ["record", "task", "since", "limit"], types: [] },
-  "records.create": { tool: "records.serve-create", call: "create", keys: ["type", "data"], types: [] },
+  "records.create": { tool: "records.serve-create", call: "create", keys: ["type", "data", "idem"], types: [] },
   "records.update": { tool: "records.serve-update", call: "update", keys: ["urn", "patch", "base_version"], types: [] },
   "tasks.list": { tool: "tasks.serve", call: "list", keys: ["record", "doer", "checker", "state", "limit"], types: [] },
   "tasks.get": { tool: "tasks.serve", call: "get", keys: ["id"], types: [] },
-  "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
+  "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task", "idem"], types: [] },
   "tasks.move": { tool: "tasks.serve-work", call: "move", keys: ["id", "to", "reason", "suggested_fix"], types: [] },
   "tasks.submit": { tool: "tasks.serve-work", call: "submit", keys: ["id", "evidence"], types: [] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain

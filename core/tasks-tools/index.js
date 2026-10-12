@@ -43,7 +43,7 @@ export default {
       const { doer, checker, helpers, ...rest } = t;
       if (typeof doer !== "string" || !doer) throw refuse("a task needs a doer", "bad_input");
       const spec = { ...rest, doer: actor(doer, d.space), ...(typeof checker === "string" && checker ? { checker: actor(checker, d.space) } : {}), ...(Array.isArray(helpers) ? { helpers: helpers.map((/** @type {any} */ h) => actor(String(h), d.space)) } : {}) };
-      return { task: await asks(d).request(d.chain, spec) };
+      return { task: await asks(d).request(d.chain, spec, typeof i.idem === "string" ? { idem: i.idem } : undefined) };
     });
     tool("tasks.decide", "Approve or reject a task waiting for a check. The person's own act, with their presence.", obj({ space: str, id: str, outcome: { type: "string", enum: ["approved", "rejected"] }, reason: str }, ["id", "outcome"]), async (i, d) => ({
       task: await asks(d).decide(d.chain, String(i.id), { outcome: i.outcome, ...(i.reason ? { reason: String(i.reason) } : {}), ...(d.proof ? { proof: d.proof } : {}) }),
@@ -68,7 +68,7 @@ export default {
     // ---- the member door: a team member's daily work on tasks, run as her, in the team's Space ----
     // `decide` is not here: approving is the person's own act with their presence, which the door does not carry.
     const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
-      list: ["record", "doer", "checker", "state", "limit"], get: ["id"], request: ["task"], move: ["id", "to", "reason", "suggested_fix"], submit: ["id", "evidence"],
+      list: ["record", "doer", "checker", "state", "limit"], get: ["id"], request: ["task", "idem"], move: ["id", "to", "reason", "suggested_fix"], submit: ["id", "evidence"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
