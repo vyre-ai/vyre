@@ -139,6 +139,13 @@ test("planner rows are read by the person they are for: a member reads no remind
     return out;
   };
   assert.deepEqual(await seen(member), [], "a member reads none of them through Records");
+  for (const [type, id] of [["note", ownerNote.id], ["reminder", ownerRem.id], ["note", hers.id]]) {
+    const before = (await R.get(w.owner, type, id)).data.title;
+    await assert.rejects(() => R.update(member, type, id, { title: "TAKEN" }), `update of ${type} ${id} by a member`);
+    await assert.rejects(() => R.remove(member, type, id), `remove of ${type} ${id} by a member`);
+    assert.equal((await R.get(w.owner, type, id)).data.title, before, `${type} ${id} unchanged`);
+  }
+  await assert.rejects(() => R.create(member, "note", { title: "NEW", state: "open" }), "a member creates no planner note through Records");
   assert.ok((await seen(w.owner)).includes("OWNER-NOTE") && (await seen(w.owner)).includes("HER-REMINDER"), "the owner reads all");
   const list = (await asMember(w, "planner.list", { state: "all" })).data.map((/** @type {any} */ x) => x.title).sort();
   assert.deepEqual(list, ["HER-NOTE", "HER-REMINDER"], "the planner's own tools still show her items");
