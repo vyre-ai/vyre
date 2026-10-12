@@ -28,6 +28,7 @@ import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
 import { agentClaim } from "../modules/index.js";
+import { askerOf } from "../../lib/member-reach.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -139,13 +140,31 @@ export default {
     };
 
     /**
+     * Which agents' computers the person on this call may reach: null for the owner, an admin and the owner's surfaces (all of them), else the agents she made (agents.reach). The person is read from
+     * the call's verified chain, never from a label; a chain that cannot be read reaches nothing.
+     * @returns {Promise<Set<string> | null>}
+     */
+    const reachOf = async meta => {
+      const who = await askerOf(ctx.kernel, meta);
+      if (who.staff) return null;
+      if (who.unreadable || !who.person) return new Set();
+      const r = await ctx.call("agents.reach", { person: who.person });
+      return new Set(r.error ? [] : (r.data && r.data.names) || []);
+    };
+    const mayReach = async (meta, agent) => {
+      const reach = await reachOf(meta);
+      if (reach && !reach.has(agent)) throw Object.assign(new Error(`${agent}'s computer belongs to an agent you did not make. Ask the owner or an admin, or use computers.list to see the computers you can reach.`), { code: "denied" });
+    };
+
+    /**
      * Whose computer this call is about. `agentClaim` (core/modules) finds the agent behind any
      * transport shape, not only "mcp:agent:<name>" - a caller vouched under another surface
      * ("cli agent:<name>", what a person's own CLI gets when an agent runs inside it) gets the
      * same self-or-assistant rule as an agent's own MCP hands (hands-desktop's resolveAgent had
      * the same narrower gap, e2e review 2026-09-28).
      */
-    const resolve = async (input, caller) => {
+    const resolve = async (input, meta) => {
+      const caller = meta && meta.caller;
       const self = agentClaim(caller);
       let agent;
       if (self) {
@@ -157,6 +176,8 @@ export default {
         agent = input.agent;
       }
       if (!AGENT.test(String(agent))) throw new Error(`"${agent}" is not an agent name`);
+      // An agent's own hands reach its own computer; any other call is judged by the person on its verified chain.
+      if (!(self && agent === self)) await mayReach(meta, String(agent));
       return String(agent);
     };
 
@@ -202,10 +223,11 @@ export default {
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
 
     tool("computers.rename", "Rename an agent's computer: the person's own label for it, shown wherever the computer appears. An empty name goes back to the agent's name.",
-      obj({ computer: str, name: str }, ["computer", "name"]), async (i, { caller }) => {
-        if (agentClaim(caller)) throw new Error("renaming a computer is the person's, never an agent's");
+      obj({ computer: str, name: str }, ["computer", "name"]), async (i, meta) => {
+        if (agentClaim(meta.caller)) throw new Error("renaming a computer is the person's, never an agent's");
         const agent = String(i.computer || "");
         if (!AGENT.test(agent)) throw new Error(`"${agent}" is not an agent name`);
+        await mayReach(meta, agent);
         const label = cleanLabel(i.name);
         if (label.length > 64) throw new Error("a name is 1 to 64 printable characters");
         config.save({ computerLabels: { [agent]: label || null } }, ctx.paths.root, ctx.config);
@@ -214,35 +236,39 @@ export default {
       });
 
     tool("computers.list", "Every agent's computer: state, screen and thread when checked out, viewers, take-over, pause. Driver none means this machine cannot run computers.",
-      obj({}), async (_, { caller }) => {
+      obj({}), async (_, meta) => {
+        const { caller } = meta;
+        const reach = await reachOf(meta);
         const names = new Set(pool.rows().map(r => String(r.agent)));
         const r = await ctx.call("agents.list", {});
         if (!r.error) for (const a of r.data || []) if (a && a.computer === true) names.add(String(a.name));
         const claim = agentClaim(caller);
         const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const labels = (ctx.config.computerLabels && typeof ctx.config.computerLabels === "object") ? ctx.config.computerLabels : {};
-        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({ ...pool.view(n), label: labels[n] || null }));
+        const computers = [...names].filter(n => (!mine || n === mine) && (!reach || reach.has(n))).sort().map(n => ({ ...pool.view(n), label: labels[n] || null }));
         return { driver: driver ? driver.name : "none", screens: pool.opts.screens, computers };
       });
 
     tool("computers.get", "One agent's computer.", obj({ agent: str }),
-      async (i, { caller }) => pool.view(await resolve(i, caller)));
+      async (i, meta) => pool.view(await resolve(i, meta)));
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when screens are busy.",
-      obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
+      obj({ agent: str, thread: str, why: str }), async (i, meta) => {
+        const { caller, thread: live } = meta;
         ownOnly(caller);
+        const agent = await resolve(i, meta);
         if (!driver) throw new Error(NO_DRIVER);
         // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
         const thread = agentClaim(caller) ? live : i.thread;
-        return pool.checkout(await resolve(i, caller), { thread, why: i.why });
+        return pool.checkout(agent, { thread, why: i.why });
       }, { callers: OWN });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
-      async (i, { caller }) => { ownOnly(caller); return { released: pool.release(await resolve(i, caller), "released") }; }, { callers: OWN });
+      async (i, meta) => { ownOnly(meta.caller); return { released: pool.release(await resolve(i, meta), "released") }; }, { callers: OWN });
 
     tool("computers.stop", "Stop an agent's computer. Its home volume stays; the next checkout starts it again.", obj({ agent: str }),
-      async (i, { caller }) => {
-        const agent = await resolve(i, caller);
+      async (i, meta) => {
+        const agent = await resolve(i, meta);
         const t = keyboard.takeovers.get(agent);
         // Stopping the computer ends its take-over unconditionally, whoever held it: this is
         // the module administratively tearing the whole thing down, not one surface giving back
@@ -252,12 +278,13 @@ export default {
       });
 
     tool("computers.restart", "Restart an agent's computer: a new container on the same home, so files and Chrome profile stay. Anything open on its screen closes.",
-      obj({ agent: str }), async (i, { caller }) => { ownOnly(caller); return pool.restart(await resolve(i, caller)); }, { callers: OWN });
+      obj({ agent: str }), async (i, meta) => { ownOnly(meta.caller); return pool.restart(await resolve(i, meta)); }, { callers: OWN });
 
     tool("computers.limits", `Set an agent's processor cores and memory; they apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
-      obj({ agent: str, cpus: { type: "number", description: `whole cores, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}` }, memory_gb: { type: "number", description: `whole GB, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}` } }), async (i, { caller }) => {
+      obj({ agent: str, cpus: { type: "number", description: `whole cores, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}` }, memory_gb: { type: "number", description: `whole GB, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}` } }), async (i, meta) => {
+        const { caller } = meta;
         ownOnly(caller);
-        const agent = await resolve(i, caller);
+        const agent = await resolve(i, meta);
         const claim = agentClaim(caller);
         if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`${claim} cannot change a computer's limits; the user sets them`);
         await pool.allowed(agent);
@@ -265,8 +292,8 @@ export default {
       }, { callers: OWN });
 
     tool("computers.stats", "One CPU/RAM/network sample for an agent's computer (docker stats, one buffered request, never a streaming connection). Every field null when the computer is not running or this machine has no driver. Internal: vitals reads this, not the Deck.", obj({ agent: str }),
-      async (i, { caller }) => {
-        const agent = await resolve(i, caller);
+      async (i, meta) => {
+        const agent = await resolve(i, meta);
         if (!driver || typeof driver.stats !== "function") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
         const row = pool.row(agent);
         if (!row || !row.container || String(row.state) !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
@@ -274,15 +301,16 @@ export default {
       }, { internal: true });
 
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),
-      async (i, { caller }) => { ownOnly(caller); return pool.pause(await resolve(i, caller), true); }, { callers: OWN });
+      async (i, meta) => { ownOnly(meta.caller); return pool.pause(await resolve(i, meta), true); }, { callers: OWN });
 
     tool("computers.resume", "Let a paused agent's hands act again.", obj({ agent: str }),
-      async (i, { caller }) => pool.pause(await resolve(i, caller), false));
+      async (i, meta) => pool.pause(await resolve(i, meta), false));
 
     tool("computers.takeover", "Take the keyboard of an agent's computer for a person's screen. The agent's hands stop, and the thread's lease moves to that screen. Call again to renew; it lapses after 90 s unrenewed.",
-      obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
+      obj({ agent: str, surface: str }, ["surface"]), async (i, meta) => {
+        const { caller } = meta;
         ownOnly(caller);
-        const agent = await resolve(i, caller);
+        const agent = await resolve(i, meta);
         if (!driver) throw new Error(NO_DRIVER);
         const surface = await ownSurface(i, caller);
         // Nobody types into a computer the Vault is signing in on; the fill ends in seconds.
@@ -291,13 +319,13 @@ export default {
       }, { callers: OWN });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
-      async (i, { caller }) => { ownOnly(caller); return keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller); }, { callers: OWN });
+      async (i, meta) => { ownOnly(meta.caller); return keyboard.giveback(await resolve(i, meta), await ownSurface(i, meta.caller), meta.caller); }, { callers: OWN });
 
     tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass. slow: the viewer's link is relayed or slow, so send fewer frames.",
       obj({ agent: str, surface: str, slow: { type: "boolean" } }, ["surface"]),
-      async (i, { caller }) => {
-        const agent = await resolve(i, caller);
-        const surface = await ownSurface(i, caller);
+      async (i, meta) => {
+        const agent = await resolve(i, meta);
+        const surface = await ownSurface(i, meta.caller);
         if (!driver) throw new Error(NO_DRIVER);
         await pool.allowed(agent);
         // A computer that died on its own is not started behind the person's back by opening its screen.
@@ -310,23 +338,23 @@ export default {
       });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Checks out and thaws.",
-      obj({ agent: str, thread: str }), async (i, { caller }) => {
-        const agent = await resolve(i, caller);
+      obj({ agent: str, thread: str }), async (i, meta) => {
+        const agent = await resolve(i, meta);
         await pool.checkout(agent, { thread: i.thread, why: "hands" });
         return pool.endpoint(agent);
       }, { internal: true });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
-      obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
-        const agent = await resolve(i, caller);
+      obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, meta) => {
+        const agent = await resolve(i, meta);
         return shield.mayAct(agent, i.read === true, () => keyboard.mayAct(agent, i.tool));
       }, { internal: true });
 
     tool("computers.helper", "Where computerd answers, and its token. Thaws and touches without taking a screen.",
-      obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
+      obj({ agent: str }), async (i, meta) => helper(pool, await resolve(i, meta)), { internal: true });
 
     tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
-      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true, { reason: "person" }), { internal: true });
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, meta) => shield.set(await resolve(i, meta), i.on === true, { reason: "person" }), { internal: true });
 
     // ---- fill: the Vault signs an agent in without the agent seeing the login (fill.js) -------
 

@@ -490,6 +490,15 @@ export default {
       },
     });
 
+    ctx.tool("agents.reach", {
+      description: "The names of the agents a person made, which are the ones she may reach (their computers). For the computers module, which asks it of the person on the call's own chain; it never takes her word.",
+      input: { type: "object", required: ["person"], properties: { person: { type: "string" } } }, internal: true, callers: ["module"],
+      run: async ({ person }) => {
+        const canon = K && typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        const me = String(person || "");
+        return { names: me ? db.prepare("SELECT * FROM agents_agents").all().map(shape).filter(a => a.owner && canon(String(a.owner)) === canon(me)).map(a => a.name) : [] };
+      },
+    });
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },

@@ -24,6 +24,10 @@
         "reach": "anyone"
       },
       {
+        "name": "agents.reach",
+        "reach": "modules"
+      },
+      {
         "name": "agents.create",
         "reach": "anyone",
         "effect": "write"
