@@ -110,6 +110,8 @@ test("a device or node with no proof on a team server is a member's; the moment 
   const { d, tokens } = await rig(t, false);
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
+  const alone = await d.registry.call("mail.accounts", {}, "device:abc", { person: { id: "x", kind: "person" } });
+  assert.ok(!(alone.error && alone.error.message === refusal("mail.accounts")), "one person on the server: nothing is gated");
   const before = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
   assert.ok(!(before.error && before.error.message === refusal("mail.accounts")));
   await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: proof() });
@@ -168,25 +170,4 @@ test("an outward tool is on a member's list only with a reason: whose yes her ac
   assert.deepEqual(bare, [], `these outward tools are on MEMBER_MAY (a member's call lands a held card in the owner's approvals): move them to OWNER_ONLY, or give each a reason in MEMBER_OUTWARD saying whose yes it waits for: ${bare.join(", ")}`);
   const stale = Object.keys(MEMBER_OUTWARD).filter(n => !outward.includes(n));
   assert.deepEqual(stale, [], `named in MEMBER_OUTWARD but not an outward tool on MEMBER_MAY: ${stale.join(", ")}`);
-});
-
-test("on a one-person home a device the daemon found no proof for is refused the owner's tools and the vault; the owner's confirmed device, a socket and a module are served", { timeout: 200_000 }, async t => {
-  const { d, root } = await rig(t, false);
-  const OWNER = d.kernel.id.owner;
-  const DEV = "device:abcdefghijklmnop";
-  const calls = /** @type {[string, any][]} */ ([["settings.get", {}], ["settings.set", { key: "x", value: 1 }], ["computers.list", {}], ["computers.pause", { agent: "assistant" }], ["artifacts.delete", { id: "x" }], ["mail.send", { to: "a@b.co", subject: "x", body: "y" }], ["vault.list", {}], ["spend.raise", {}]]);
-  const facts = { kind: "device", device_key_id: "abcdefghijklmnop", person: OWNER, path: "relay" };
-  for (const [tool, input] of calls) {
-    // what the daemon's edge hands the registry for a paired device it gave no facts: meta.unproven
-    const stranger = await d.registry.call(tool, input, DEV, { unproven: true });
-    assert.equal(stranger.error && stranger.error.message, refusal(tool), `${tool}: an unproven device on a one-person home must be refused`);
-    const mine = await d.registry.call(tool, input, DEV, { kernelFacts: facts });
-    assert.ok(!(mine.error && mine.error.message === refusal(tool)), `${tool}: the owner's confirmed device (it carries the daemon's facts) must not meet the gate`);
-    for (const label of ["cli", "module:vyred", "local"]) {
-      const other = await d.registry.call(tool, input, label, {});
-      assert.ok(!(other.error && other.error.message === refusal(tool)), `${tool} under ${label}: a socket or a module is not this gate's`);
-    }
-  }
-  const mineOverSocket = await request("POST", "/v1/tools/settings.get", {}, { root, caller: "cli" });
-  assert.ok(!(mineOverSocket.error && mineOverSocket.error.message === refusal("settings.get")), "the owner's own socket is served");
 });

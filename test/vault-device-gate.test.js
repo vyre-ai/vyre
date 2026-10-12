@@ -60,7 +60,7 @@ for (const claimed of [true, false]) {
       if (claimed) {
         assert.ok(r.error, `the member's device is refused ${tool}: ${JSON.stringify(r).slice(0, 160)}`);
         assert.ok(!JSON.stringify(r).includes(SECRET) && !JSON.stringify(r).includes("owner-secret\""), "and learns nothing of the owner's items");
-        if (["vault.list", "vault.item", "vault.audit", "vault.vaults.list", "vault.vaults.create"].includes(/** @type {string} */ (tool))) assert.ok([MEMBER_REFUSAL, "This is the owner's: the Space's vault. Ask the owner or an admin to do it for you, or to give you access."].includes(r.error.message), `${tool}: the vault's words, or the door gate's before them: ${r.error.message}`);
+        if (["vault.list", "vault.item", "vault.audit", "vault.vaults.list", "vault.vaults.create"].includes(/** @type {string} */ (tool))) assert.equal(r.error.message, MEMBER_REFUSAL, `${tool}: the gate's words`);
       }
     }
     if (!claimed) console.log(`FINDING|unclaimed home (known open, rc.2), the member's device over the listener: ${seen.join(" | ")}`);
