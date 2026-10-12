@@ -150,6 +150,13 @@
         "effect": "write"
       },
       {
+        "name": "team.serve",
+        "reach": "modules",
+        "effect": "read",
+        "crossSpace": "records.read",
+        "summary": "a team member's list of the teammates of the projects she is on, as that member in that Space (the daemon's member door only)"
+      },
+      {
         "name": "team.list",
         "projectArg": "project",
         "projectIsRecord": true,

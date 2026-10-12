@@ -47,6 +47,7 @@ test("the team's own work never goes to a member's own home: it has a door call 
     assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
   }
   assert.equal(memberWire("work.timeline"), "work.timeline", "the timeline has a door row now (seat-filtered by the tool)");
+  assert.equal(memberWire("team.list"), "team.list", "the teammates of her projects have a door row; the rest of team.* is still refused");
   assert.ok(!isTeamWork("work.timeline"));
   for (const t of ["work.chat.list", "stream.send", "planner.add", "spaces.list", "sessions.accounts.list", "vault.list", "records.me"]) assert.ok(!isTeamWork(t), `${t} is not refused`);
   assert.match(NOT_FOR_MEMBERS_YET, /Ask the owner/, "it names a next step");

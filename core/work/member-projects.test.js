@@ -185,3 +185,23 @@ test("work.timeline on the door: a member reads the timeline of her own project;
   const named = await w.as(ANA, "timeline", { project: mine.slug, person: BEN, as: BEN }).then((/** @type {any} */ r) => r, (/** @type {any} */ e) => e);
   assert.ok(Array.isArray(named.entries), "extra keys are dropped; it is still her timeline");
 });
+
+test("team.list on the door: a member sees the teammates of the projects she is on (role, agent, state; no brief, no last result), asking for another project is not found, no project named is her projects only, the owner sees all", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const mine = await w.as(ANA, "project-create", { name: "Ana's matter" });
+  const bens = await w.as(BEN, "project-create", { name: "Ben's matter" });
+  const add = async (/** @type {any} */ p, /** @type {string} */ role) => w.owner("team.add", { project: p.project, role, brief: "SECRET BRIEF for " + role });
+  await add(mine, "reviewer"); await add(bens, "drafter");
+  const tools = createMemberTools({ space: w.space, kernel: w.d.kernel, registry: w.d.registry });
+  const list = (/** @type {string} */ person, /** @type {any} */ input = {}) => tools.team.list(w.chainOf(person), input);
+  const hers = await list(ANA);
+  assert.deepEqual(hers.teammates.map((/** @type {any} */ x) => x.role), ["reviewer"], "only the project she is on");
+  assert.deepEqual(Object.keys(hers.teammates[0]).sort(), ["agent", "project", "role", "state"], "no brief, no last result");
+  assert.ok(!JSON.stringify(hers).includes("SECRET BRIEF"));
+  const err = await list(ANA, { project: bens.project }).then(() => null, (/** @type {any} */ e) => e);
+  assert.ok(err && err.code === "not_found", `another member's project: ${err && err.code}`);
+  assert.deepEqual((await list(ANA, { project: mine.project })).teammates.map((/** @type {any} */ x) => x.role), ["reviewer"]);
+  assert.deepEqual((await list(BEN)).teammates.map((/** @type {any} */ x) => x.role), ["drafter"]);
+  assert.deepEqual((await list(w.OWNER)).teammates.map((/** @type {any} */ x) => x.role).sort(), ["drafter", "reviewer"], "the owner sees every project's");
+  await assert.rejects(tools.team.list(w.chainOf(ZED), {}), /not found/i, "a person who is not a member");
+});

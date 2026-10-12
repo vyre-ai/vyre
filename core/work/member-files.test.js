@@ -104,7 +104,7 @@ test("every row that targets a project refuses a member who is not on it (the ta
   const w = await world(t);
   const p = await w.work(ANA, "project-create", { name: "Ana's targeted" });
   const rows = Object.entries(MEMBER_TOOLS).filter(([, r]) => r.target === "project");
-  assert.deepEqual(rows.map(([k]) => k).sort(), ["files.list", "files.read", "files.upload", "work.timeline"].sort(), "the rows that name a project");
+  assert.deepEqual(rows.map(([k]) => k).sort(), ["files.list", "files.read", "files.upload", "team.list", "work.timeline"].sort(), "the rows that name a project");
   const tools = createMemberTools({ space: w.space, kernel: w.d.kernel, registry: w.d.registry });
   for (const [door] of rows) {
     const [group, call] = [door.slice(0, door.indexOf(".")), door.slice(door.indexOf(".") + 1)];

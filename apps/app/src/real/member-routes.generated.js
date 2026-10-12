@@ -48,6 +48,7 @@ export const MEMBER_ROWS = [
  "tasks.move",
  "tasks.request",
  "tasks.submit",
+ "team.list",
  "work.project-create",
  "work.start-project",
  "work.templates",
