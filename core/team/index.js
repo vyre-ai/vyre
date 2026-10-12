@@ -25,6 +25,7 @@
 // session yet — that part is sessions' (core/sessions/switchboard), queued behind their rc.2
 // work per the lead.
 
+import { bareTerminal } from "../modules/index.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -108,6 +109,8 @@ export const MIGRATIONS = [
 export const STOP_WAIT_MS = 10_000;
 
 /** The providers a session can run on (core/sessions PROVIDERS). */
+/** The only modules whose own setting may ask a teammate for work with no person on the call (the planner's tasks, the agents' own setup, a Flow's approver). Any other caller with no person is refused: nobody is recorded as having asked. */
+const AUTOMATION_CALLERS = new Set(["module:planner", "module:agents", "module:flows"]);
 const PROVIDER_IDS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
 /**
  * What team.ask's `model` means: "codex" or "grok/<model>" or "claude/opus" (a provider, optionally a model of its own), or a bare Claude model name ("opus"). Null for none. Anything else is refused,
@@ -1381,7 +1384,9 @@ export default {
         const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
         const owner0 = K && typeof K.owner === "string" ? K.owner : "";
         const viaChain = await chainPerson();
-        const asker0 = viaChain || (K && owner0 && (meta.caller === "cli" || meta.caller === "local") ? owner0 : null);
+        // A session's call carries only the module's hop: the person is the one the session was started for (the thread id is stamped by the daemon's session socket, never sent by the session).
+        const viaThread = !viaChain && meta.thread ? (await use("threads.person-of", { thread: String(meta.thread) }).catch(() => null) || {}).person || null : null;
+        const asker0 = viaChain || viaThread || (K && owner0 && bareTerminal(meta) ? owner0 : null);
         if (asker0 && K) {
           const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
           const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));
@@ -1391,7 +1396,7 @@ export default {
           }
         }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
-        const forPerson = asker0 || inherited || (String(meta.caller || "").startsWith("module:") && meta.firstParty === true ? "automation" : null);
+        const forPerson = asker0 || inherited || (AUTOMATION_CALLERS.has(String(meta.caller || "")) && meta.firstParty === true ? "automation" : null);
         const filler0 = await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
         const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });

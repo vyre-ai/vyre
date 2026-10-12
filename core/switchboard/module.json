@@ -291,6 +291,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.person-of",
+        "reach": "modules"
+      },
+      {
         "name": "threads.key-release",
         "reach": "modules"
       },

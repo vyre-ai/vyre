@@ -305,6 +305,8 @@ const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "pur
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
 /** The saved launch options of a thread (threads_runs.opts). */
+/** The origins a thread record keeps for a session the box's own terminal started (the daemon sets it from the proven listener, never the session). */
+const TERMINAL_ORIGINS = new Set(["cli", "local"]);
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
 
 /**
@@ -4807,6 +4809,8 @@ export default {
       run: async (i0, m) => { const i = trustedLaunch(i0, m); await checkLaunch(sb, i, ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner(), m && m.origin); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
     ctx.tool("threads.launch-check", { description: "Would this agent or teammate launch be allowed for whoever is asking? A module asks before it queues work (team.ask); answers { asker }.", internal: true, callers: ["module"], input: { type: "object", properties: { agent: str, agent_kind: str, env: { type: "object" }, fallback: { type: "object" }, asker: str } }, run: async (i0, m) => ({ asker: await checkLaunch(sb, trustedLaunch(i0, m), ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner(), m && m.origin) }) });
+    ctx.tool("threads.person-of", { description: "The person a session was started for: { person } (null when none is recorded). For the teammates module, which must name WHO asked from a session's call, where the call itself carries only the module's hop.", internal: true, callers: ["module"], input: { type: "object", properties: { thread: str }, required: ["thread"] },
+      run: async (i) => { const row = sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(String(i.thread || "")); const o = optsOf(row); return { person: o.person || (TERMINAL_ORIGINS.has(String(o.origin || "")) ? kernelOwner() || null : null) }; } });   // a session the box's own terminal started, with no person recorded, is the owner's
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
     ctx.tool("threads.usage", {
       description: "Turns, time, tokens and cost per agent, and the last rate-limit report.", internal: true,
