@@ -189,6 +189,14 @@ export default {
           assert.equal(r.id, mac.identity.id, "the new device joined this person's identity");
           return `joined with words ${shown[0]}`;
         }, { needs: [SIGN], owner: "trust" });
+        await J.step("the relay's pairing window and ring ticket: what they answer (names of fields only)", async () => {
+          const keys = (/** @type {any} */ o) => (o && typeof o === "object" ? Object.keys(o).join(",") : String(o));
+          const out = /** @type {string[]} */ ([]);
+          try { const win = await mac.callTool("relay.pair.window.open", {}); out.push(`window.open: ${keys(win)}`); try { await mac.callTool("relay.pair.window.close", { window: win.window }); } catch { /* closed */ } } catch (e) { out.push(`window.open refused: ${String(/** @type {any} */ (e).message).slice(0, 140)}`); }
+          try { const t = await mac.callTool("relay.pair.ticket", {}); out.push(`ticket: ${keys(t)}`); } catch (e) { out.push(`ticket refused: ${String(/** @type {any} */ (e).message).slice(0, 140)}`); }
+          console.log(`DBG RELAY-PAIRING ${out.join(" | ")}`);
+          return out.join(" | ");
+        }, { needs: [SIGN], owner: "trust" });
         await J.step("the window-added device's rows: relay_devices and wink_devices (ids and flags only)", async () => {
           const { spawnSync } = await import("node:child_process");
           const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify({relay:db.prepare("select id,name,kind,trusted,removed_at,paired_at,key_storage,(join_grant is not null) join_grant from relay_devices").all(),wink:db.prepare("select id,identity,kind,name,owner_kind,owner_id,(confirmed_by is not null) confirmed,confirmed_by,key_storage from wink_devices").all()}))`;

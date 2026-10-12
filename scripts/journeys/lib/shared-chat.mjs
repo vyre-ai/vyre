@@ -71,7 +71,7 @@ const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(S
 
 /** The chat's own stream as the people see it (stream_frames of the chat's session, in order): [[cur, type, text]]. @param {string} chat */
 function chatFrames(chat) {
-  const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session = ? order by cur").all(process.argv[1]).map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,200),String(j.message||(j.data&&j.data.message)||""),String((j.data&&j.data.state)||"")]})))`;
+  const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session = ? order by cur").all(process.argv[1]).map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,200),String(j.message||(j.data&&j.data.message)||""),String((j.data&&j.data.state)||""),String((j.data&&j.data.ask_id)||"")]})))`;
   const r = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", script, chat]);
   if (r.status !== 0) throw new Error(`the stream could not be read: ${r.stderr}`);
   return /** @type {any[]} */ (JSON.parse(String(r.stdout).trim().split("\n").pop() || "[]"));
@@ -123,7 +123,7 @@ async function untilAnswerTo(person, chat, said) {
  */
 export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
   // J9_SHORT=1: the chat steps only, without the scan and the catchup rule (J9 skips the project steps)
-  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "3" ? !/each person.s turn lists|a job a member|from a member.s session/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has|five turns)/.test(name) : process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message|each message a person typed/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
+  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => (process.env.J9_SHORT === "4" ? !/^(each person.s turn lists|a permission ask)/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has|five turns)/.test(name) : process.env.J9_SHORT === "3" ? !/each person.s turn lists|a job a member|from a member.s session/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has|five turns)/.test(name) : process.env.J9_SHORT === "2" ? !/five turns|three messages|one more message|each message a person typed/.test(name) && !/^(the owner signs in|switching|the owner, who|everyone in|each member|Grace starts|the box has)/.test(name) : /retired product|catchup is what/.test(name)) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
   setOwnerView(async () => (await w.call("stream.catchup", { chat, space: team.space })).messages || []);
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
@@ -386,8 +386,16 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, "walk-env");
     said.skills = JSON.stringify(counts).slice(0, 600);
     for (const [who, out] of Object.entries(counts)) assert.ok(/walk-env exit=0/.test(out), `${who}'s launched session answered: ${out.slice(0, 200)}`);
-    for (const who of [grace.name, edith.name]) assert.ok(!counts[who].includes("walk-owner-private"), `${who}'s launched session does not have the owner's personal skill: ${counts[who].slice(0, 200)}`);
-    if (!(approved && approved.error)) assert.ok(counts.owner.includes("walk-owner-private"), `the owner's launched session has the owner's own approved skill: ${counts.owner.slice(0, 200)}`);
+    const idOf = (/** @type {string} */ t) => (t.match(/\.codex-lib\/([0-9a-f]+)/) || [])[1] || "";
+    const ids = Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, idOf(v)]));
+    const sets = sh(["exec", "-u", "vyre", BOX, "sh", "-c", "for d in ~/.vyre/materialised/codex/*/; do echo \"$(basename $d): $(ls $d/skills 2>/dev/null | tr '\\n' ',')\"; done"]);
+    said.skillSets = String(sets.stdout).slice(0, 400);
+    const setLine = (/** @type {string} */ id) => String(sets.stdout).split("\n").find(l => id && l.startsWith(id + ":")) || "";
+    // (1) handed: the owner's launch carries the set that holds the owner's private skill; no member's launch carries a set that holds it
+    if (!(approved && approved.error)) assert.ok(setLine(ids.owner).includes("walk-owner-private"), `the owner's launch (CODEX_HOME id ${ids.owner || "none"}) was handed a set with the owner's approved skill; sets on the box: ${String(sets.stdout).slice(0, 300)}`);
+    for (const who of [grace.name, edith.name]) assert.ok(!setLine(ids[who]).includes("walk-owner-private"), `${who}'s launch (id ${ids[who] || "none"}) was not handed the owner's private skill: ${setLine(ids[who])}`);
+    // (2) readable: the session can list its own skills dir (a launch whose set the account cannot read hands it nothing)
+    assert.ok(/skills=[^u].*walk-owner-private|skills=walk-owner-private/.test(counts.owner), `the owner's launched session can read its skills: ${counts.owner.slice(0, 200)}`);
     return `launched sessions: ${JSON.stringify(counts).slice(0, 500)}`;
   }, { needs: [H], owner: "chat" });
 
@@ -423,6 +431,46 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
     return `scanned ${all.length} characters in ${seenText.length} views`;
   }, { needs: [H], owner: "chat" });
+
+  if (process.env.J9_ASK) {
+    const askFrames = () => chatFrames(chat).filter((/** @type {any} */ x) => x[1] === "chat.ask");
+    const waitFor = async (/** @type {() => any} */ f, /** @type {string} */ what, tries = 20) => { for (let i = 0; i < tries; i++) { const v = f(); if (v) return v; await sleep(4000); } throw new Error(`timed out waiting for ${what}`); };
+    const trace = (/** @type {number} */ from) => chatFrames(chat).filter((/** @type {any} */ x) => x[0] >= from && /user-message|text-delta|chat\.ask|text-done|chat\.notice|chat\.failed|chat\.stopped/.test(String(x[1]))).map((/** @type {any} */ x) => `${x[0]} ${String(x[1]).replace("chat.", "")}${x[4] ? "(" + x[4] + ")" : ""} ${String(x[2]).slice(0, 60).replace(/\s+/g, " ")}`).join(" | ");
+    const CMD = "walk-term:find \"$HOME\" \"${CODEX_HOME:-$HOME}\" -path '*walk-owner-private*' -name SKILL.md 2>/dev/null | wc -l; find \"$HOME\" \"${CODEX_HOME:-$HOME}\" -name SKILL.md 2>/dev/null | wc -l";
+    const ASK_NEEDS = [H];
+    const A1 = "a permission ask: the owner answers yes, the turn runs, and the room sees";
+    await J.step(A1, async () => {
+      const before = askFrames().length, cut = chatFrames(chat).slice(-1)[0][0];
+      await speak("owner", CMD);
+      const ask = await waitFor(() => askFrames()[before], "the ask card");
+      const asked = ask[0];
+      const ans = await w.call("threads.answer", { ask: ask[5], decision: "allow", surface: "deck" });
+      const done = await waitFor(() => chatFrames(chat).find((/** @type {any} */ x) => x[0] > asked && x[1] === "chat.text-delta" && /^walk-term exit=/.test(String(x[2]))), "the turn's answer after the yes");
+      return `ask at frame ${asked}, threads.answer ${JSON.stringify(ans).slice(0, 80)}, answer at frame ${done[0]}: ${String(done[2]).slice(0, 60)} | frames: ${trace(cut + 1)}`;
+    }, { needs: ASK_NEEDS, owner: "chat" });
+    const A2 = "a permission ask: the owner answers no, and the room sees";
+    await J.step(A2, async () => {
+      const before = askFrames().length, cut = chatFrames(chat).slice(-1)[0][0];
+      await speak("owner", CMD);
+      const ask = await waitFor(() => askFrames()[before], "the ask card");
+      const ans = await w.call("threads.answer", { ask: ask[5], decision: "deny", surface: "deck" });
+      await sleep(15_000);
+      return `ask at frame ${ask[0]}, threads.answer ${JSON.stringify(ans).slice(0, 80)} | frames: ${trace(cut + 1)}`;
+    }, { needs: [A1], owner: "chat" });
+    const A3 = "a permission ask nobody answers: a message queued behind it waits, the owner stops the turn, and the queued message then runs";
+    await J.step(A3, async () => {
+      const before = askFrames().length, cut = chatFrames(chat).slice(-1)[0][0];
+      await speak("owner", CMD);
+      const ask = await waitFor(() => askFrames()[before], "the ask card");
+      await speak(grace.name, "whoami walkQ1");
+      await sleep(25_000);
+      const waiting = chatFrames(chat).filter((/** @type {any} */ x) => x[0] > ask[0] && x[1] === "chat.text-delta" && /walkQ1|^home:/.test(String(x[2]))).length;
+      const t0 = Date.now();
+      const stop = await w.call("threads.chat-stop", { chat });
+      const ran = await waitFor(() => chatFrames(chat).find((/** @type {any} */ x) => x[0] > ask[0] && x[1] === "chat.text-delta" && /^home: /.test(String(x[2]))), "the queued message's answer after the stop", 20);
+      return `ask at frame ${ask[0]}; 25 s later answers before the stop: ${waiting}; threads.chat-stop ${JSON.stringify(stop).slice(0, 100)}; the queued message answered ${((Date.now() - t0) / 1000).toFixed(0)} s after the stop at frame ${ran[0]} (${String(ran[2]).slice(0, 40)}) | frames: ${trace(cut + 1)}`;
+    }, { needs: [A2], owner: "chat" });
+  }
 
   const WM = "catchup is what others said since you last read: a member's catchup does not repeat her own messages (it shows what others said since she last read), and on the stream every person's message is followed by its answer in order";
   await J.step(WM, async () => {
