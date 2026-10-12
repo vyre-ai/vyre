@@ -50,11 +50,13 @@ export function serverFor(o) {
   if (o.paired.length > 1 && o.tool && o.tool.startsWith("approvals.") && !(o.input && typeof o.input.space === "string" && o.input.space)) {
     const ids = [o.input?.id, ...(Array.isArray(o.input?.decisions) ? o.input.decisions.map((/** @type {any} */ d) => d && d.id) : [])].filter((v) => typeof v === "string" && v);
     if (ids.length) {
-      const at = new Set(ids.map((id) => (o.approvalServers ?? {})[/** @type {string} */ (id)]));
-      if (at.has(undefined)) return { error: { code: "approval_unknown_server", message: "Vyre does not know which server holds this approval. Open Approvals to refresh the list, then try again. Nothing was answered." } };
-      if (at.size > 1) return { error: { code: "approval_mixed_servers", message: "These approvals are on different servers. Answer them one server at a time. Nothing was answered." } };
-      const box = [...at][0];
-      return o.paired.includes(/** @type {string} */ (box)) ? { box } : refuse();
+      const boxes = ids.map((id) => (o.approvalServers ?? {})[/** @type {string} */ (id)]);
+      /** @type {string[]} */ const known = [];
+      for (const b of boxes) if (typeof b === "string") known.push(b);
+      if (known.length !== boxes.length) return { error: { code: "approval_unknown_server", message: "Vyre does not know which server holds this approval. Open Approvals to refresh the list, then try again. Nothing was answered." } };
+      const only = [...new Set(known)];
+      if (only.length > 1) return { error: { code: "approval_mixed_servers", message: "These approvals are on different servers. Answer them one server at a time. Nothing was answered." } };
+      return o.paired.includes(only[0]) ? { box: only[0] } : refuse();
     }
   }
   // An action that names an item by its id alone goes to the Space the id was seen in (a list, or the call that made it), whatever is showing. An id never seen is refused when several servers are paired.
