@@ -4,6 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { leaks } from "../../test/holds.js";
 import { render, forViewer, resolveRefs } from "./viewer.js";
 
 const BOB = { id: "person:bob", roles: [] };
@@ -13,7 +14,7 @@ const KEYS = ["name", "label", "kind", "sealed", "placeholder", "value"];
 
 test("V-1: a forged sealed placeholder with a ref and a hint comes out without them", () => {
   const f = out({ sealed: "ssn", placeholder: true, ref: "r_SECRET", hint: "***1234" });
-  assert.ok(!JSON.stringify(f).includes("r_SECRET") && !JSON.stringify(f).includes("1234"));
+  assert.ok(!JSON.stringify(f).includes("r_SECRET") && !leaks(f, "1234"));
   assert.ok(!("ref" in f) && !("hint" in f));
   assert.equal(f.placeholder, true);
   assert.deepEqual(Object.keys(f.value).sort(), ["can_reveal", "present", "sealed", "valid_format"]);
@@ -53,7 +54,7 @@ test("V-1: a forged can_reveal is recomputed from the viewer, not believed", () 
 
 test("V-1: a genuinely sealed field and a plain read_roles field are still drawn right, and a plain readable field passes untouched", () => {
   const sealed = out({ name: "ssn", label: "SSN", kind: "sealed", value: { sealed: "ssn", ref: "seal:1", present: true, valid_format: true, hint: "9999" } });
-  assert.ok(!JSON.stringify(sealed).includes("seal:1") && !JSON.stringify(sealed).includes("9999"));
+  assert.ok(!JSON.stringify(sealed).includes("seal:1") && !leaks(sealed, "9999"));
   const gated = out({ name: "fee", label: "Fee", kind: "money", value: { amount: 1 }, read_roles: ["admin"] });
   assert.equal(gated.placeholder, true);
   const plain = { name: "t", label: "Title", kind: "text", value: "Harlow" };
@@ -72,7 +73,7 @@ test("a cited field the server did not resolve is a chip, never a value; a resol
   assert.equal(mgr.record, "vyre://spc/matter/1", "the record a readable field came from rides with it, so a tap opens the record");
   const mem = /** @type {any} */ (await resolveRefs(f, mk(["member"]))).data.blocks[0];
   assert.equal(mem.placeholder, true);
-  assert.ok(!JSON.stringify(mem).includes("4200"));
+  assert.ok(!leaks(mem, "4200"));
   assert.equal(mem.record, undefined, "a field the viewer cannot read names no record");
   assert.equal(/** @type {any} */ (f).data.blocks[0].block, "field-ref", "the shared frame is not mutated");
   const gone = /** @type {any} */ (await resolveRefs(f, { id: "p", roles: ["manager"], resolve: async () => { throw new Error("x"); } })).data.blocks[0];

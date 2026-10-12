@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
 import { spawnAsAgent, wipeAccount, shareTranscript, placeTranscript } from "./client.js";
-import { PLACE_SCRIPT } from "./server.js";
+import { PLACE_SCRIPT, SKILLS_SEED_SCRIPT, SKILLS_PRUNE_SCRIPT } from "./server.js";
 import { spawnSync } from "node:child_process";
 import net from "node:net";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -340,3 +340,63 @@ for (const shared of [false, true]) {
     assert.deepEqual(ran.map(w => [w.uid, w.groups.length]), [[2000, shared ? 1 : 0]], "as the account, in the shared group only when its session is");
   });
 }
+
+test("spawner accounts: an account's approved skills are one content id under .vyre-skills/, capped before any write; a traversal, a second id or an oversized set is refused in words", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-"));
+  const work = path.join(dir, "work"), acct = path.join(dir, "acct");
+  fs.mkdirSync(work, { recursive: true }); fs.mkdirSync(path.join(acct, "2000"), { recursive: true });
+  /** @type {any[]} */ const written = [];
+  const socket = path.join(dir, "s.sock");
+  const stat = () => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: 2000, mode: 0o40700 });
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [] }, wrap: argv => argv, seed: (home, who, files) => written.push(files), accounts: { min: 2000, max: 2063, home: acct, shared: [], stat } });
+  t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const ID = "0123456789abcdef", spawn1 = (/** @type {any} */ seed) => spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2000, seed });
+  const set = (/** @type {number} */ n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`.vyre-skills/${ID}/skills/s${i}/SKILL.md`, `skill ${i}\n`]));
+  await exited(await spawn1(set(40)));
+  assert.equal(written.length, 1, "a set of 40 files (far over the 8 of an ordinary seed) is accepted");
+  assert.equal(Object.keys(written[0]).length, 40);
+  const refused = [
+    ["a traversal key", { [`.vyre-skills/${ID}/../../x`]: "y" }], ["a dot segment", { [`.vyre-skills/${ID}/./x`]: "y" }], ["an absolute key", { "/.vyre-skills/x": "y" }],
+    ["an id that is not a content id", { ".vyre-skills/../x": "y" }, ".vyre-skills/notanid/skills/a/SKILL.md"], ["two ids", { [`.vyre-skills/${ID}/a`]: "y", ".vyre-skills/fedcba9876543210/b": "y" }],
+    ["too many files", set(129)], ["one file over its cap", { [`.vyre-skills/${ID}/big`]: "x".repeat(65537) }],
+    ["a set over the total", Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`.vyre-skills/${ID}/f${i}`, "x".repeat(60000)]))],
+  ];
+  for (const [what, seed, extra] of /** @type {any[]} */ (refused)) {
+    await assert.rejects(spawn1(extra ? { [extra]: "y" } : seed), /seed is up to 8|a skills set is one content id/, what);
+  }
+  await assert.rejects(spawn1(set(129)), /send a smaller set/, "an oversized set is refused in words that name the next step");
+  assert.equal(written.length, 1, "and nothing was written for any refused one");
+});
+
+test("skills seed scripts, as the writing user: files 0600 and folders 0700, a link is refused or removed and never followed, other sets are pruned", t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-skills-")); t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const h = fs.realpathSync(home), ID = "0123456789abcdef";
+  const put = (/** @type {string} */ rel, /** @type {string} */ text) => spawnSync("/bin/sh", ["-c", SKILLS_SEED_SCRIPT, "sh", path.join(h, rel), h], { input: text });
+  assert.equal(put(`.vyre-skills/${ID}/skills/okafor/SKILL.md`, "BLUEBIRD-77").status, 0);
+  const mode = (/** @type {string} */ f) => fs.statSync(path.join(h, f)).mode & 0o777;
+  assert.equal(fs.readFileSync(path.join(h, `.vyre-skills/${ID}/skills/okafor/SKILL.md`), "utf8"), "BLUEBIRD-77");
+  assert.equal(mode(`.vyre-skills/${ID}/skills/okafor/SKILL.md`), 0o600, "a file is 0600");
+  assert.equal(mode(`.vyre-skills/${ID}/skills`), 0o700, "a folder is 0700");
+  assert.equal(mode(".vyre-skills"), 0o700);
+  // a folder that is a link is refused, and nothing is written through it
+  const outside = fs.mkdtempSync(path.join(SCRATCH, "vyre-outside-")); t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.symlinkSync(outside, path.join(h, ".vyre-skills", "aaaaaaaaaaaaaaaa"));
+  assert.notEqual(put(".vyre-skills/aaaaaaaaaaaaaaaa/skills/x", "NO").status, 0, "a folder that is a link is refused");
+  assert.deepEqual(fs.readdirSync(outside), [], "and nothing reached the folder it points at");
+  // a file that is a link is refused, and nothing is written through it
+  const target = path.join(outside, "target"); fs.writeFileSync(target, "KEEP");
+  fs.symlinkSync(target, path.join(h, ".vyre-skills", ID, "skills", "okafor", "LINK.md"));
+  assert.equal(put(`.vyre-skills/${ID}/skills/okafor/LINK.md`, "NEW").status, 11, "a file that is a link is refused");
+  assert.equal(fs.readFileSync(target, "utf8"), "KEEP", "a link is never written through");
+  // a path outside the HOME is refused
+  assert.notEqual(spawnSync("/bin/sh", ["-c", SKILLS_SEED_SCRIPT, "sh", path.join(outside, "x"), h], { input: "NO" }).status, 0, "outside the HOME is refused");
+  // pruning keeps the one set and removes the others, links included, without following them
+  fs.mkdirSync(path.join(h, ".vyre-skills", "fedcba9876543210", "skills"), { recursive: true });
+  assert.equal(spawnSync("/bin/sh", ["-c", SKILLS_PRUNE_SCRIPT, "sh", h, ID]).status, 0);
+  assert.deepEqual(fs.readdirSync(path.join(h, ".vyre-skills")).sort(), [ID], "only the current set stays");
+  // the sets of other running sessions are named too, and stay
+  fs.mkdirSync(path.join(h, ".vyre-skills", "1111111111111111")); fs.mkdirSync(path.join(h, ".vyre-skills", "2222222222222222")); fs.mkdirSync(path.join(h, ".vyre-skills", "3333333333333333"));
+  assert.equal(spawnSync("/bin/sh", ["-c", SKILLS_PRUNE_SCRIPT, "sh", h, ID, "1111111111111111", "2222222222222222"]).status, 0);
+  assert.deepEqual(fs.readdirSync(path.join(h, ".vyre-skills")).sort(), [ID, "1111111111111111", "2222222222222222"].sort(), "a named set stays, an unnamed one goes");
+  assert.ok(fs.existsSync(target) && fs.readFileSync(target, "utf8") === "KEEP", "and nothing a link pointed at was touched");
+});
