@@ -30,6 +30,7 @@ const CTR = "vyre-vyre-1";
 if (a[0] === "inspect") {
   const fmt = a[2], name = a[3];
   if (name === CTR) {
+    if (has("ctr-down")) process.exit(1);
     if (fmt === "{{.State.Pid}}") out(rd("ctr-pid", "4242"));
     if (fmt === "{{.Image}}") out("sha256:" + "a".repeat(64));
     if (fmt === "{{.Id}}") out(rd("ctr-id", "abcdef012345") + "0".repeat(52));
@@ -83,6 +84,7 @@ if (a[0] === "run" && a[a.indexOf("--network") + 1] === "none" && !a.includes("-
 if (a[0] === "create") { fs.appendFileSync(F + "/created", "1\\n"); out("ctr-golden"); }
 if (a[0] === "cp") { const src = a[1].replace(/^[^:]*:/, ""); if (has("cp-fails")) process.exit(1); fs.copyFileSync(src, a[2]); process.exit(0); }
 if (a[0] === "rm") process.exit(0);
+if (a[0] === "run" && has("gone") && a.includes(rd("gone"))) { process.stderr.write("docker: Error response from daemon: No such image: " + rd("gone") + "\\n"); process.exit(125); }
 if (a[0] === "run" && has("gen-fails")) { process.stderr.write(rd("gen-fails") + "\\n"); process.exit(Number(rd("gen-exit", "1"))); }
 if (a[0] === "run") {
   const i = a.indexOf("-e");
