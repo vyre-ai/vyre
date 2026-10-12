@@ -19,7 +19,7 @@ import { createKernel } from "../../kernel/index.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 import { connect, wsDuplex } from "./client.js";
-import { holds } from "../../test/holds.js";
+import { holds, leaks } from "../../test/holds.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
@@ -351,7 +351,7 @@ test("a cited field is the kernel's own records.get for the viewer: a value, the
   while (!got.some(f => f.type === "chat.text-done" && f.data.message === "m9") && Date.now() < end) await tick(10);
   const blocks = got.find(f => f.type === "chat.text-done" && f.data.message === "m9").data.blocks;
   const wire = JSON.stringify(got);
-  assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref never reaches the wire");
+  assert.ok(!wire.includes("sv_SECRET") && !leaks(wire, "6789"), "a sealed value or its ref never reaches the wire");
   const by = (/** @type {string} */ n) => blocks.find((/** @type {any} */ b) => b.name === n);
   // every block is a field block, never a ref and never a leak
   assert.ok(blocks.every((/** @type {any} */ b) => b.block === "field"));

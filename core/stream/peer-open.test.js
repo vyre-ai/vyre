@@ -6,6 +6,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { leaks } from "../../test/holds.js";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -163,7 +164,7 @@ test("PS-A: two viewers in one chat each get their own stream: a frame for one n
   await settle(w);
   for (const v of [bob, carol]) {
     const wire = v.text();
-    assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref reaches no stream");
+    assert.ok(!wire.includes("sv_SECRET") && !leaks(wire, "6789"), "a sealed value or its ref reaches no stream");
     const done = v.got.find(d => d && d.type === "chat.text-done");
     assert.ok(done, "the viewer got the reply");
     assert.equal(done.data.blocks.find((/** @type {any} */ b) => b.name === "ssn").placeholder, true, "the sealed field is a placeholder");
