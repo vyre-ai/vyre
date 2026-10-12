@@ -46,6 +46,7 @@ import { lentRequest } from "./threadsock.js";
 import { available as spawnerThere } from "../spawner/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
+import { createDoorGate, memberSees } from "../modules/door-gate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -787,6 +788,15 @@ async function startLocked(opts, root, p, release) {
         try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
       };
     }
+    // One gate for a member's own session at the registry's entry (core/modules/door-gate.js): the person is the kernel's verified chain's first person hop, never the caller's label.
+    if (kernel.grants && typeof kernel.kernelFor === "function") {
+      const doorKernel = kernel.kernelFor({ name: "door-gate" });
+      registry.deps.doorGate = createDoorGate({
+        chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
+        roleOf: (/** @type {any} */ a) => kernel.grants.roleOf(a),
+        othersExist: async () => kernel.grants.hasOtherMembers(kernel.id.owner),
+      });
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
@@ -1416,6 +1426,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
   if (req.method === "GET" && url.pathname === "/v1/tools") {
     let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
+    // A member's own session is shown the tools it may call and no others (core/modules/door-gate.js).
+    if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null && await registry.deps.doorGate.hides(String(caller), typeof tok === "string" ? { token: tok } : {}) === "member") data = data.filter(t => memberSees(t.name)); }
     // The plugin agent is offered only what its grant names.
     if (pluginAgent) {
       const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);

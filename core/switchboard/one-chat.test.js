@@ -1,6 +1,7 @@
 // One Chat (team/0.3/DESIGN-one-chat.md): every run lives in a chat. A start that names no chat (the CLI, a Flow, the assistant) gets one the daemon makes for the home owner; a run the stream
 // starts for a chat keeps that chat; a resumed older thread with none gets one; the thread says which chat it is in.
 import "../../scripts/mac-test-guard.mjs";
+import { refusal } from "../modules/door-gate.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -479,14 +480,15 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
     for (const k of want) input[k] = sample(k, props[k] || {});
     const res = await d.registry.call(name, input, "cli", bob);
     // a tool a person's surface cannot call at all (module-only) answers no_such_tool: it is not a way in
-    assert.ok(res.error && (["not_found", "no_such_tool"].includes(res.error.code) || (res.error.code === "denied" && /not available to/.test(res.error.message))), `${name} for a member outside the chat: ${JSON.stringify(res.error || res.data).slice(0, 140)}`);
+    assert.ok(res.error && (["not_found", "no_such_tool"].includes(res.error.code) || (res.error.code === "denied" && (/not available to/.test(res.error.message) || res.error.message === refusal(name)))), `${name} for a member outside the chat: ${JSON.stringify(res.error || res.data).slice(0, 140)}`);
     if (res.error.code === "not_found") walked.push(name);
   }
   assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
   // the terminal reads a session's thread by relaying the person at it: the relayed call is judged as that person (firstParty false), so a member outside the chat gets nothing, and a person in it is not refused
   const outside = await d.registry.call("term.open", { session: thread, surface: "deck:outside" }, "cli", bob);
   assert.ok(outside.error && ["denied", "not_found"].includes(outside.error.code), `term.open on a run in a chat the person is not in: ${JSON.stringify(outside.error || outside.data).slice(0, 200)}`);
-  assert.equal((await d.registry.call("term.list", {}, "cli", bob)).data.terms.length, 0, "and no terminal was made for them");
+  const termList = await d.registry.call("term.list", {}, "cli", bob);
+  assert.ok(termList.error || termList.data.terms.length === 0, "and no terminal was made for them");
   const inside = await d.registry.call("term.open", { session: thread, surface: "deck:inside" }, "cli");
   assert.ok(!inside.error || !["denied", "not_found"].includes(inside.error.code), `the person in the chat is not refused: ${JSON.stringify(inside.error).slice(0, 200)}`);
   if (inside.data && inside.data.term) await d.registry.call("term.close", { term: inside.data.term }, "cli");
