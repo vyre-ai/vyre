@@ -33,8 +33,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
   "skills.draft", "skills.find", "skills.get", "skills.list",
   "spaces.list", "spaces.members.list",
-  "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.reply-mode", "stream.second-opinion", "stream.send",
-  "stream.typing",
+  "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
+  "stream.send", "stream.typing",
   "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
   "team.ask", "team.notes", "team.status",
   "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
@@ -185,7 +185,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "spaces.upgrade.wrap-key",
   "spend.check", "spend.raise", "spend.summary",
   "statusline.line",
-  "stream.open-peer", "stream.read",
+  "stream.open-peer",
   "suggest.picked", "suggest.query",
   "sync.consent", "sync.delete", "sync.delete.import", "sync.upload.cancel", "sync.upload.chunk", "sync.upload.finish", "sync.upload.plan", "sync.upload.start",
   "system.build", "system.echo", "system.info", "system.modules", "system.rename",
@@ -195,8 +195,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "team.duties.list", "team.duties.run-now", "team.duties.start", "team.duties.update", "team.fail", "team.list", "team.merge", "team.project-append",
   "team.project-has-any", "team.retire", "team.role.fill",
   "term.attach", "term.close", "term.list", "term.open",
-  "threads.answer", "threads.bind", "threads.branch", "threads.chat-of", "threads.chat-switch", "threads.continue-here", "threads.fork", "threads.lease", "threads.mode",
-  "threads.of-chat", "threads.release", "threads.remember", "threads.roll", "threads.roll-session", "threads.rolls", "threads.shell", "threads.start", "threads.undo-edit",
+  "threads.answer", "threads.branch", "threads.chat-of", "threads.chat-switch", "threads.continue-here", "threads.fork", "threads.lease", "threads.mode", "threads.of-chat",
+  "threads.release", "threads.remember", "threads.roll", "threads.roll-session", "threads.rolls", "threads.shell", "threads.start", "threads.undo-edit",
   "tips.dismiss", "tips.list", "tips.next", "tips.reset", "tips.seen", "tips.used", "tips.whatsnew",
   "undo.list", "undo.run",
   "update.apply", "update.check", "update.status", "update.whats-new", "update.whats-new-seen",
@@ -240,9 +240,10 @@ export const SELF_GATED = Object.freeze(new Set([
   "vault.vaults.create", "vault.vaults.list", "vault.vaults.rotate", "vault.vaults.sync",
 ]));
 
-/** The hooks the session's own harness calls, not the model: never gated, so a member's session starts and its hooks run. */
+/** The hooks the session's own harness calls (harness.\*, and threads.bind, the SessionStart bind), not the model: never gated, so a member's session starts and its hooks run. */
 export const PLUMBING = Object.freeze(new Set([
   "harness.brief", "harness.end", "harness.enrich", "harness.learn", "harness.rules", "harness.stop", "harness.touched",
+  "threads.bind",
 ]));
 
 export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
