@@ -41,3 +41,22 @@ test("seesFull fails closed: a call whose chain cannot be read is not given the 
   for (const row of r.data) for (const k of ["instructions", "auth", "uid", "tools"]) assert.ok(!(k in row), `an unreadable chain gets no ${k}`);
   void real;
 });
+
+test("a remote call with no person on it (a device, visiting Space or tailnet node) gets the roster, never the whole row; the owner's local surfaces still do", { timeout: 120_000 }, async t => {
+  const { tool, d } = await boot(t);
+  const OWNER = d.kernel.id.owner;
+  const BEN = "per_" + "c".repeat(26);
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const full = await tool("agents.list", {});
+  for (const caller of ["device:bcdefghijklmnopq", "space:ben@spc_team", "tailnet-guest:ben@example.com", "tailnet:ben@example.com"]) {
+    const r = await d.registry.call("agents.list", {}, caller, {});
+    assert.ok(Array.isArray(r.data) && r.data.length === full.length, `${caller}: the roster is listed: ${JSON.stringify(r).slice(0, 160)}`);
+    for (const row of r.data) for (const k of HIDDEN) assert.ok(!(k in row), `${caller}: no person on the call, so no ${k}`);
+  }
+  for (const caller of ["cli", "local", "deck"]) {
+    const r = await d.registry.call("agents.list", {}, caller, {});
+    if (r.error) continue; // a label this fixture does not allow
+    assert.ok(r.data.length && "instructions" in r.data[0], `${caller}: the owner's own surface still gets the full row`);
+  }
+});

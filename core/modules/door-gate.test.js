@@ -242,7 +242,7 @@ test("the proof still works where the gate lets the call through: a right presen
 
 test("the tools that still show other people's matter are refused to a member, in words that name a next step, until each is scoped to her", { timeout: 200_000 }, async t => {
   const { d, as } = await rig(t);
-  const held = ["agents.list", "team.list", "team.status", "planner.agenda", "planner.get", "planner.update", "planner.delete", "planner.done", "planner.snooze", "planner.dismiss"];
+  const held = ["team.list", "team.status", "planner.agenda", "planner.get", "planner.update", "planner.delete", "planner.done", "planner.snooze", "planner.dismiss"];
   for (const tool of held) {
     assert.ok(!MEMBER_MAY.has(tool) && OWNER_ONLY.has(tool), `${tool} is the owner's until it is scoped`);
     assert.ok(d.registry.tools.has(tool), `${tool} is a real tool`);

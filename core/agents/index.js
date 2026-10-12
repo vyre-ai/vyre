@@ -496,7 +496,9 @@ export default {
       run: async (_, meta) => {
         const { caller } = meta;
         guard(caller, "list agents");
-        const full = await seesFull(meta);
+        // A remote caller with no person on its chain (an unproven device, a browser, a visiting Space, a tailnet guest) is not the owner's own surface: it gets the roster, never the whole row.
+        const remoteNoPerson = /^(?:device|web|setup|space|invitee|tailnet-guest|tailnet):/.test(String(caller)) && !(await chainPerson(meta));
+        const full = !remoteNoPerson && await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
         return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
