@@ -465,6 +465,74 @@ test("FAILBACK: the switch back after carol's hop fails twice: the chat goes dor
   assert.equal(watcher.frames.filter(f => /session stopped while switching back/.test(JSON.stringify(f.data || {})) && f.type === "chat.text-done").length <= 1, true, "told once");
 });
 
+test("R1: a message the Switchboard refuses (the sender has no sign-in of their own) is not left silent: the room gets a notice with the next step, the message is shown as not sent, and the outbox gives it up; the next person's message is still answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  db.prepare("DELETE FROM sessions_accounts WHERE label = ?").run("carol's Claude");   // her sign-in is gone: the Switchboard will refuse her turn
+  const carol = await b.as("carol")("stream.send", { chat: chat.id, text: "C-NOACCT", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!carol.error, carol.error && carol.error.message);
+  await until(() => watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text))), "the room to be told", 60_000);
+  const told = watcher.frames.filter(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text)));
+  assert.equal(told.length, 1, "once");
+  assert.match(String(told[0].data.text), /send it again|sign in|ask the owner/i, "with the next step: " + told[0].data.text);
+  assert.ok(!replyOf(watcher.frames, "C-NOACCT"), "and no reply to words that were never run");
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-AFTER", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-AFTER", 60_000)).who, BOB, "the next message is still answered");
+});
+
+/** Make the Switchboard's answer to the next threads.send calls of one text an error, as a refusal with a given code and message would be. */
+function refuseSends(/** @type {any} */ b, /** @type {string} */ words, /** @type {string} */ code, /** @type {string} */ message) {
+  const real = b.reg.call.bind(b.reg);
+  let on = true;
+  b.reg.call = async (/** @type {any} */ ...a) => (on && a[0] === "threads.send" && a[1] && String(a[1].text) === words ? { error: { code, message } } : real(...a));
+  return () => { on = false; };
+}
+
+test("R2: the notice for a refused message is one fixed sentence for the cause, never the Switchboard's own words (an account label, a path, a token-shaped string stay out); two refusals inside a minute make one notice", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  const LEAK = "account Eve's Claude (acct_77) at /home/acct/2001/.claude with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 on api.example.com";
+  refuseSends(b, "C-ONE", "account_unavailable", LEAK);
+  refuseSends(b, "C-TWO", "account_unavailable", LEAK);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-TWO", to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text))), "the room to be told", 60_000);
+  await sleep(2500);
+  const notices = watcher.frames.filter(f => f.type === "chat.text-delta" && f.data.notice === true && /not sent/.test(String(f.data.text)));
+  assert.equal(notices.length, 1, "two refusals inside a minute: one notice");
+  const text = String(notices[0].data.text);
+  assert.ok(!/Eve|acct_77|\/home\/acct|sk-ant|example\.com/.test(text), "nothing of the Switchboard's message reaches the room: " + text);
+  assert.match(text, /Open AI accounts to sign in again/, "the fixed sentence for that cause, with the next step");
+  assert.ok(!JSON.stringify(watcher.frames).match(/sk-ant|acct_77|\/home\/acct/), "and nowhere in the room's frames");
+});
+
+test("R3: a refusal that may go through later (unavailable) is not given up: it stays in the outbox, and after a restart it is delivered and answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b1 = await w.boot();
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b1.watch("bob", chat.id);
+  assert.ok(!(await b1.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  refuseSends(b1, "B-LATER", "unavailable", "the server is busy starting");
+  assert.ok(!(await b1.as("bob")("stream.send", { chat: chat.id, text: "B-LATER", to: ["assistant:assistant"], cwd: w.work })).error);
+  await sleep(3000);
+  assert.ok(!watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /not sent|not kept/.test(String(f.data.text))), "no 'not sent' claim for a refusal that may pass");
+  await w.crash(b1);
+  const b2 = await w.boot();
+  t.after(() => b2.stop().catch(() => {}));
+  const again = await b2.watch("bob", chat.id);
+  assert.equal((await answered(w, again, "B-LATER", 90_000)).who, BOB, "delivered at the next start, and answered");
+});
+
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
   const w = await world(t);
   const b = await world0(w, t);
@@ -561,6 +629,57 @@ test("HOP: a thread bob started takes carol's one turn on her own account (her t
   await until(() => run().account === bobsAccount, "the thread to go back to bob's account", 30_000);
   assert.equal(skillsFor[skillsFor.length - 1], BOB, `and the hop back was given bob's skills, not nobody's: ${JSON.stringify(skillsFor)}`);
   assert.equal(JSON.parse(run().opts).person, BOB, "bob is still the thread's person");
+});
+
+/** bob starts the chat's thread; carol's long turn runs on her own account (a hop); returns what the stop and restart tests need. */
+async function carolMidHop(/** @type {any} */ w, /** @type {any} */ b, /** @type {any} */ t, /** @type {string} */ long) {
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  const acct = (/** @type {string} */ who) => db.prepare("SELECT id FROM sessions_accounts WHERE label = ?").get(`${who}'s Claude`).id;
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  const thread = kitThread(b, chat.id);
+  const run = () => db.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(thread);
+  const bobsAccount = run().account;
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: long, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => run().account === acct("carol"), "the thread to be on carol's account (her hop)", 30_000);
+  return { chat, watcher, db, acct, thread, run, bobsAccount };
+}
+
+test("STOP: a hop's process stopped mid-turn puts the chat back on bob's account, says so once, and bob's next turn is answered on his own account", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const h = await carolMidHop(w, b, t, LONGER);
+  assert.ok(JSON.parse(h.run().opts).switchPerson, "during the hop the record names carol");
+  const stopped = await b.reg.call("threads.stop", { thread: h.thread }, "deck", { token: w.tokens.bob });
+  assert.ok(!stopped.error, stopped.error && stopped.error.message);
+  await until(() => h.run().account === h.bobsAccount, "the thread to be back on bob's account", 30_000);
+  const o = JSON.parse(h.run().opts);
+  assert.ok(o.switchPerson === undefined && o.hopBack === undefined && o.person === BOB, "the hop's person and record are gone: " + h.run().opts);
+  await until(() => textOf(h.watcher.frames).includes("stopped before it finished"), "the room to be told", 20_000);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: h.chat.id, text: "B-AFTER-STOP", to: ["assistant:assistant"], cwd: w.work })).error);
+  const next = await answered(w, h.watcher, "B-AFTER-STOP", 60_000);
+  assert.equal(next.who, BOB);
+  assert.equal(h.run().account, h.bobsAccount, "and it ran on bob's own account");
+});
+
+test("RESTART: the daemon dies with carol's hop pending: after the restart the chat is on bob's account, the room is told, and bob's next turn is answered on it", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b1 = await w.boot();
+  const h = await carolMidHop(w, b1, t, LONGER);
+  await w.crash(b1);
+  const b2 = await w.boot();
+  t.after(() => b2.stop().catch(() => {}));
+  const db2 = /** @type {any} */ (b2.reg.deps.db || /** @type {any} */ (b2.reg).db);
+  const row = () => db2.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(h.thread);
+  assert.equal(row().account, h.bobsAccount, "after the restart the record is on bob's account");
+  const o = JSON.parse(row().opts);
+  assert.ok(o.switchPerson === undefined && o.hopBack === undefined, "no hop record is left: " + row().opts);
+  const bob = await b2.watch("bob", h.chat.id);
+  assert.ok(!(await b2.as("bob")("stream.send", { chat: h.chat.id, text: "B-AFTER-RESTART", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, bob, "B-AFTER-RESTART", 60_000)).who, BOB);
+  assert.equal(row().account, h.bobsAccount);
 });
 
 test("SEQ: bob, carol, bob, carol, ada take turns in one chat, each on their own account; no turn is refused, and each is answered", { timeout: 300_000 }, async t => {

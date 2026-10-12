@@ -839,11 +839,54 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     } else if (mayQueue) take();
     q.outDone.run(row.uuid);
   }
+  /**
+   * The refusals that would be the same at the next start: a person has no sign-in of their own, may not use what they named, or the message cannot be read. Only these give a row up. Anything else (busy, unavailable,
+   * start_timeout, unreachable, internal...) may go through later and stays in the outbox. One fixed sentence per cause, with the next step: the Switchboard's own message can hold another person's account label, a vault name, a path or a
+   * host, and this notice is shown to everyone in the chat.
+   */
+  const REFUSALS = /** @type {Record<string, string>} */ ({
+    account_required: "you have no sign-in of your own here. Add one under AI accounts, then send it again.",
+    no_account: "you have no sign-in of your own here. Add one under AI accounts, then send it again.",
+    account_unavailable: "the sign-in it needed is not available. Open AI accounts to sign in again, then send it again.",
+    account_removed: "the sign-in it needed is not available. Open AI accounts to sign in again, then send it again.",
+    denied: "you may not use that here. Ask the owner, or pick your own account, then send it again.",
+    not_allowed: "you may not use that here. Ask the owner, or pick your own account, then send it again.",
+    residency: "this chat only uses the vendors the Space allows. Ask the owner to allow one, or pick another, then send it again.",
+    bad_input: "it could not be read as a message. Send it again.",
+  });
+  /** One notice a minute per chat and sender; the refusals after it in that minute are counted and said once when it ends. @type {Map<string, { until: number, more: number, timer?: any }>} */
+  const refusedNotices = new Map();
+  /** A delivery that was refused for a cause that will not change by itself: the outbox gives it up, the message shows as cancelled, and the room is told, in the fixed words for that cause. @param {Member} m @param {any} row @param {any} err */
+  function refusedRow(m, row, err) {
+    log(`deliver to ${row.who} in ${row.grp}: refused (${err.code}): ${err.message}; given up`);
+    try { q.outDone.run(row.uuid); } catch { /* already done */ }
+    try { shown(String(row.grp), messageOf(row), "cancelled", String(row.text), String(row.asker)); } catch { /* the notice below still tells */ }
+    const say = (/** @type {string} */ id, /** @type {string} */ words) => {
+      noticeToRoom(m, { kind: "text-delta", data: { message: id, index: 0, text: words, notice: true } });
+      noticeToRoom(m, { kind: "text-done", data: { message: id, index: 0, notice: true } });
+    };
+    const key = `${row.grp}:${row.asker}`, at = now();
+    const seen = refusedNotices.get(key);
+    if (seen && at < seen.until) { seen.more++; return; }
+    const entry = { until: at + 60_000, more: 0, timer: /** @type {any} */ (null) };
+    refusedNotices.set(key, entry);
+    say(`refused.${String(row.uuid)}`, `A message was not sent: ${REFUSALS[err.code]}`);
+    entry.timer = setTimeout(() => {
+      refusedNotices.delete(key);
+      if (entry.more > 0) say(`refused.more.${String(row.uuid)}`, `${entry.more} more message${entry.more === 1 ? " was" : "s were"} not sent for the same reason. Fix that, then send ${entry.more === 1 ? "it" : "them"} again.`);
+    }, 60_000);
+    entry.timer.unref?.();
+  }
   /** One delivery at a time per assistant, in the order asked. @param {any} row */
   function schedule(row) {
     const m = group(String(row.grp)).bots.get(String(row.who));
     if (!m) return Promise.resolve();
-    const p = m.q.then(() => deliver(row)).catch(err => { log(`deliver to ${row.who} in ${row.grp}: ${/** @type {Error} */ (err).message} (kept in the outbox)`); });
+    const p = m.q.then(() => deliver(row)).catch(err => {
+      // The Switchboard (or the stream) REFUSED the message for a cause that does not change by itself (REFUSALS): it is given up here and the room is told. Anything else (busy, unavailable, a timeout, the stream stopping, an exception) may go through
+      // later and stays in the outbox for the next start, as before.
+      if (err && typeof err.code === "string" && Object.hasOwn(REFUSALS, err.code)) { refusedRow(m, row, err); return; }
+      log(`deliver to ${row.who} in ${row.grp}: ${/** @type {Error} */ (err).message} (kept in the outbox)`);
+    });
     m.q = p;
     return p;
   }

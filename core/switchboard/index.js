@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -517,6 +517,16 @@ export class Switchboard {
     // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
     // (it may be a mounted volume).
     try { const tmp = path.join(sessionsRoot(String(this.deps.root || "")), "tmp"); for (const n of fs.readdirSync(tmp)) fs.rmSync(path.join(tmp, n), { recursive: true, force: true }); } catch { /* none yet */ }
+    // A one-turn hop the old daemon died in: nothing will revert it (the entry was in memory), so the thread goes back to the base it left, from the record the hop wrote when it began.
+    try {
+      for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%hopBack%'").all())) {
+        const back = optsOf(r).hopBack;
+        if (back && typeof back === "object" && back.provider) {
+          this.endHop(String(r.id), back);
+          try { this.emit("thread.text", { message: "vyre", text: "The server restarted while a turn was running on another account. That turn did not finish; the chat is back on its own account. Send the message again if it is still needed.", done: true, notice: true }, String(r.id), null); } catch { /* a notice */ }
+        }
+      }
+    } catch { /* no hop record */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
       // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
@@ -828,7 +838,7 @@ export class Switchboard {
   async accountFor(q, resuming = null) {
     const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
     if (r.error) {
-      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used was removed; pick another to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
+      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used is not available to this turn: it was removed, or it is not yours to use. Pick your own to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
       throw Object.assign(new Error(r.error.message), { code: r.error.code || "bad_input" });
     }
     return r.data && !r.data.synthetic ? r.data : null;
@@ -1769,7 +1779,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson;
+    if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson; if (reason !== "once") delete kept.hopBack;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2184,6 +2194,11 @@ export class Switchboard {
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
+    if (this.once.has(id) && !this.reverting.has(id)) {
+      this.endHop(id, this.once.get(id).back);
+      // said once, in words: that person's turn did not finish, and the chat is back on its usual account
+      try { const r0 = this.record(id); this.emit("thread.text", { message: "vyre", text: "A turn on another account stopped before it finished. The chat is back on its own account; send that message again if it is still needed.", done: true, notice: true }, id, r0 ? r0.project : null); } catch { /* a notice */ }
+    }   // the hop's process ended on its own (stopped, crashed): the thread goes back to its base record, nobody reverts it later
     this.closeSocket(id);
     if (st.startWatch) { clearTimeout(st.startWatch); st.startWatch = null; }
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
@@ -2623,6 +2638,7 @@ export class Switchboard {
     if (this.once.has(id)) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
     const mine = { back, from: cur, to: provider, sent: String(text), reply: "" };
     this.once.set(id, mine);
+    try { const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)); kept.hopBack = back; this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id); } catch { /* a restart would then find no hop to end: the old behaviour */ }
     try {
       if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction); inside the try, so a throw reverts only what this call owns
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
@@ -2635,10 +2651,30 @@ export class Switchboard {
       if (this.once.get(id) !== mine) throw e;
       this.carry.delete(id);
       const at = this.record(id);
-      if (at && (at.provider || "claude") !== back.provider) { const undo = this.revertOnce(id).catch(() => {}); this.reverting.set(id, undo); await undo; if (this.reverting.get(id) === undo) this.reverting.delete(id); }   // recorded like any hop back: the next person's turn waits for it
-      this.once.delete(id);
+      if (at && hopMovedAway(at, back)) { const undo = this.revertOnce(id).catch(() => {}); this.reverting.set(id, undo); await undo; if (this.reverting.get(id) === undo) this.reverting.delete(id); }   // recorded like any hop back: the next person's turn waits for it
+      this.endHop(id);
       throw e;
     }
+  }
+
+  /**
+   * A one-turn hop is over, by whatever path it ended (the switch back, a failed ask, a stopped or crashed process, a restart that found one pending): the in-memory entry goes, and so do the two records of it in
+   * the thread's opts, `switchPerson` (whose account a resume would resolve) and `hopBack` (where the thread goes back to). With `back` the thread's record is put back on its base too, so nothing is left
+   * running as, or resumable as, the person whose turn it was. @param {string} id @param {{ provider: string, account?: string | null, model?: string | null, person?: string | null } | null} [back]
+   */
+  endHop(id, back = null) {
+    this.once.delete(id);
+    try {
+      const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+      const had = kept.switchPerson !== undefined || kept.hopBack !== undefined;
+      delete kept.switchPerson; delete kept.hopBack;
+      if (back) {
+        kept.provider = back.provider;
+        if (back.account) kept.account = back.account; else delete kept.account;
+        if (back.person) kept.person = back.person; else delete kept.person;
+        this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(back.provider, back.account || null, back.model || null, JSON.stringify(kept), id);
+      } else if (had) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
+    } catch (e) { this.deps.log(`threads: could not end the hop of ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** The one-turn ask is over: back to the session's own provider, which is told what was said while it was away. @param {string} id */
@@ -2661,11 +2697,7 @@ export class Switchboard {
       // anything of the hop still running is stopped, and the room is told once. The thread is then dormant: the next message, or the resume of a row already waiting, is an ordinary resume on the
       // thread's own base, judged by the code that is always used.
       this.deps.log(`threads: could not switch ${id.slice(0, 8)} back: ${failed.message}`);
-      const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
-      if (once.back.account) kept.account = once.back.account; else delete kept.account;
-      if (once.back.person) kept.person = once.back.person; else delete kept.person;
-      delete kept.switchPerson;   // the hop is over: its person must not pick the account of the resume that follows (the rows queued behind belong to the base's own people)
-      this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
+      this.endHop(id, once.back);   // the base goes back into the record, and the hop's person leaves it: the resume below is judged for the base's own people
       const left = this.live.get(id); if (left) left.haltReason = "switching back failed";
       await this.stop(id).catch(() => {});
       this.emit("thread.provider", { from: once.to, to: once.back.provider, account: once.back.account || null, model: modelName(once.back.model), reason: "back" }, id, rec ? rec.project : null);
@@ -2801,7 +2833,7 @@ export class Switchboard {
    */
   async learnModels(provider, account) {
     if (provider === "claude" || !(this.deps.providers && this.deps.providers.get(provider))) return { learned: false };
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-models-"));
+    const cwd = fs.mkdtempSync(path.join(probeBase({ work: process.env.VYRE_WORK, tmp: os.tmpdir(), exists: p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } } }), "vyre-models-"));
     let id = null;
     try {
       const r = await this.launch({ cwd, provider, ...(account ? { account } : {}), purpose: "job", once: true, name: `${providerName(provider)} models` });
