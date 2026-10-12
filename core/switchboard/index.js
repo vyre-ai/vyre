@@ -1013,7 +1013,7 @@ export class Switchboard {
     at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o), lentSpawn: await lentOf(this, id, rec) };
     at("skill library");
-    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o) };
+    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o, id) };
     at("spawn");
     // A thread rolled over and not yet written to has a fresh native session waiting for its first message, and the seed that rides with it: a restart in between must not try
     // to resume a session that never began, and must not lose the seed.
@@ -1414,14 +1414,33 @@ export class Switchboard {
    * skills module. Null for a job or lean thread that names its own plugins, for another provider's thread (it is given the same library in its own layout), or when nothing is approved.
    * @param {any} rec @param {any} o
    */
-  async libraryPlugin(rec, o) {
+  async libraryPlugin(rec, o, id) {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
       const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project && await projectMay(this, rec, o) ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
-      return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+      const there = dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+      return there && id ? this.libraryForSandbox(id, there, o) : there;
     } catch { return null; }
+  }
+
+  /**
+   * A sandboxed session cannot see Vyre's home, which is where the skills module writes the library, so the session is given a copy in its own temp folder (the one the sandbox already allows it), named
+   * by the library's content id. A session with no sandbox reads the original. The copy is the session's alone and is removed with its folder.
+   * @param {string} id @param {string} dir @param {any} o
+   */
+  libraryForSandbox(id, dir, o) {
+    const cfg = this.deps.sandbox;
+    if (!cfg || cfg.off) return dir;
+    if (o && o.accountRun && o.accountRun.uid != null) return dir;   // a session under its own account's uid is handled where the account's files are written
+    try {
+      const to = path.join(this.sessionTemp(id), "library", path.basename(dir));
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 });
+      fs.cpSync(dir, to, { recursive: true });
+      return to;
+    } catch { return dir; }
   }
 
   spawn(id, o) {
@@ -2204,7 +2223,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 
