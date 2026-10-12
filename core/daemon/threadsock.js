@@ -64,6 +64,8 @@ export async function openThreadSocket(o) {
     try {
       const url = new URL(req.url || "/", "http://vyred");
       const tool = url.pathname.startsWith("/v1/tools/") ? canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length))) : null;
+      // The module bus (every person's planner titles, approvals, project and task events) is the app's and the CLI's, on the main socket: a session, a member's included, reads tools, not the bus.
+      if (url.pathname === "/v1/events" || url.pathname.startsWith("/v1/events/")) return send(res, 404, { error: { code: "not_found", message: "a session does not read the event bus; ask for what you need with a tool (GET /v1/tools lists them)" } });
       // A session never answers, approves, proves presence or signs a person in.
       if (tool && (PERSON_ONLY.has(tool) || HUMAN_ONLY.has(tool))) return send(res, 403, { error: { code: "denied", message: `${tool} is the person's own; a session never runs it` } });
       if (url.pathname.startsWith("/v1/presence") || url.pathname.startsWith("/v1/person")) return send(res, 403, { error: { code: "denied", message: "presence is the person's" } });
