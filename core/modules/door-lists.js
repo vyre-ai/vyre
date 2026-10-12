@@ -3,6 +3,7 @@
 // Four lists, and every tool the registry holds is on exactly one of them (door-gate.test.js fails otherwise, so a new tool must be placed on purpose):
 //   MEMBER_MAY: a member may call it; the handler or the kernel judges her on her own chain.
 //   OWNER_ONLY: refused to a member (the owner and admins are served). The default for anything whose handler does not yet keep a member to her own.
+// Note: files.drive.space.list is on MEMBER_MAY because the MODULE refuses a member on her own chain (core/files/space-drive.js: the kernel's drive.read grant decides; she gets not_found), not because the gate does.
 //   SELF_GATED: the vault's tools: the vault's own member gate (core/vault/member-gate.js) refuses a member in its own words, so this gate passes them on and leaves them off her list.
 //   PLUMBING:   the harness hooks; never gated.
 // Source of the placing: team/0.3.4/DOOR-INVENTORY.md. Moving a tool to MEMBER_MAY needs a test that calls it as a member.
@@ -245,5 +246,13 @@ export const PLUMBING = Object.freeze(new Set([
   "harness.brief", "harness.end", "harness.enrich", "harness.learn", "harness.rules", "harness.stop", "harness.touched",
   "threads.bind",
 ]));
+
+/**
+ * The outward tools (the registry's `outward` flag, the one test/outward-flags reads) that stay on MEMBER_MAY, each with whose yes a member's action waits for and why that is right for a member. A member's session that reaches an outward
+ * tool lands a held card in the OWNER's approvals worded as her assistant's request (measured on mail.send and files.drive.upload), so an outward tool is not on MEMBER_MAY by its name: it is here, with a reason, or it is owner-only.
+ * Empty today. The drift test fails for an outward tool on MEMBER_MAY that is not a key here, and for a key here that is not an outward tool on MEMBER_MAY.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const MEMBER_OUTWARD = Object.freeze({});
 
 export const MEMBER_MAY_COUNT = MEMBER_MAY.size;

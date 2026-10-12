@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { MEMBER_MAY, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
+import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { refusal } from "./door-gate.js";
 import { request } from "../daemon/client.js";
 
@@ -161,4 +161,13 @@ test("a member's sign-in tools see only her accounts and cannot bind, sign in or
     assert.ok(r.error, `${tool}: naming the owner's account gets her an error, got ${JSON.stringify(r).slice(0, 160)}`);
   }
   assert.ok(db.prepare("SELECT 1 FROM sessions_accounts WHERE id = ?").get(ownerAcct), "and the owner's account is still there");
+});
+
+test("an outward tool is on a member's list only with a reason: whose yes her action waits for", { timeout: 200_000 }, async t => {
+  const { d } = await rig(t, false);
+  const outward = [...d.registry.tools.entries()].filter(([n, def]) => MEMBER_MAY.has(n) && def.outward).map(([n]) => n);
+  const bare = outward.filter(n => !(typeof /** @type {any} */ (MEMBER_OUTWARD)[n] === "string" && /** @type {any} */ (MEMBER_OUTWARD)[n].length > 20));
+  assert.deepEqual(bare, [], `these outward tools are on MEMBER_MAY (a member's call lands a held card in the owner's approvals): move them to OWNER_ONLY, or give each a reason in MEMBER_OUTWARD saying whose yes it waits for: ${bare.join(", ")}`);
+  const stale = Object.keys(MEMBER_OUTWARD).filter(n => !outward.includes(n));
+  assert.deepEqual(stale, [], `named in MEMBER_OUTWARD but not an outward tool on MEMBER_MAY: ${stale.join(", ")}`);
 });
