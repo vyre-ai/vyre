@@ -30,6 +30,13 @@ const NOUN = Object.freeze({
   settings: "set-up", spend: "spending", artifacts: "artifact library", bridges: "bridges to the owner's other accounts", machine: "set-up", spaces: "Space set-up",
 });
 
+/**
+ * Tools a member's own call may make, but not a call with no person on it at all (an unproven device, browser, visiting Space or tailnet node, which may be a stranger). They are on MEMBER_MAY so a member with a
+ * person on her chain is served by the handler; a no-person remote call is turned away here, on a Space with a second person, with the next step. A one-person home is not gated at all.
+ * agents.list: an agent's name can carry a client's.
+ */
+const NEEDS_A_PERSON = Object.freeze({ "agents.list": "This device is not marked as yours yet, so it cannot see the Space's agents. Mark it as yours with `vyre relay mark <id>` (or the mark card in the app), then ask again." });
+
 /** What a refused member is told: what it is, whose it is, whom to ask. Never a tool name. @param {string} tool */
 export const refusal = (tool) => {
   const noun = /** @type {Record<string, string>} */ (NOUN)[tool.split(".")[0]];
@@ -41,29 +48,32 @@ export const refusal = (tool) => {
  * @returns {((tool: string, caller: string, meta: any) => Promise<{ error: { code: string, message: string } } | null>) & { hides: (caller: string, meta: any) => Promise<"member" | "pass"> }}
  */
 export function createDoorGate(k) {
-  /** Is this call a MEMBER's own session? "member" or "pass". @param {string} caller @param {any} meta @returns {Promise<"member" | "pass">} */
-  const judge = async (caller, meta) => {
+  /** Is this call a MEMBER's own session? `v` is "member" or "pass"; `noPerson` says a member verdict came from the label alone, with no person on the call. @param {string} caller @param {any} meta @returns {Promise<{ v: "member" | "pass", noPerson: boolean }>} */
+  const judged = async (caller, meta) => {
     const m = meta || {};
     let others = true;
     try { others = (await k.othersExist(isRelay(caller, m) && m.in_space_chain ? m.in_space_chain.space : undefined)) === true; } catch { others = true; }
-    if (!others) return "pass";
+    if (!others) return { v: "pass", noPerson: false };
     const relayed = isRelay(caller, m);
     const claims = relayed || typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
     /** @type {any} */ let first = null;
     if (!claims) {
-      if (!UNPROVEN_LABEL.test(String(caller))) return "pass";
+      if (!UNPROVEN_LABEL.test(String(caller))) return { v: "pass", noPerson: false };
     } else {
       try {
         const c = relayed ? m.in_space_chain : await k.chainOf(m);
         const hop = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
-        if (!hop) return "pass";
+        if (!hop) return { v: "pass", noPerson: false };
         first = hop.actor;
       } catch { first = null; }
     }
-    if (first) { let role = null; try { role = k.roleOf(first); } catch { role = null; } if (roleAtLeast(String(role), "admin")) return "pass"; }
-    return "member";
+    if (first) { let role = null; try { role = k.roleOf(first); } catch { role = null; } if (roleAtLeast(String(role), "admin")) return { v: "pass", noPerson: false }; }
+    return { v: "member", noPerson: !claims };
   };
+  /** @param {string} caller @param {any} meta @returns {Promise<"member" | "pass">} */
+  const judge = async (caller, meta) => (await judged(caller, meta)).v;
   const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
+    if (Object.hasOwn(NEEDS_A_PERSON, tool) && MEMBER_MAY.has(tool)) { const j = await judged(caller, meta); if (j.v === "member" && j.noPerson) return { error: { code: "denied", message: /** @type {Record<string, string>} */ (NEEDS_A_PERSON)[tool] } }; }
     if (PLUMBING.has(tool) || MEMBER_MAY.has(tool) || SELF_GATED.has(tool)) return null;
     if (WEB_REACH.has(tool) && String(caller).startsWith("web:")) return null; // a browser's own short list, about itself only; agent-reach holds it to that list next
     return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
