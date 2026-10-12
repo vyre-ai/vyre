@@ -847,7 +847,8 @@ update() {
   if [ "$CHECK" = 1 ]; then
     newest=${TAG#v}
     if [ -z "$newest" ]; then fetch VERSION "$tmp/VERSION" 2>/dev/null || die "could not read the newest version from $BASE"; newest=$(tr -d ' \r\n' <"$tmp/VERSION"); fi
-    [ -n "$newest" ] || die "could not read the newest version from $BASE"
+    # Neither the GitHub tag nor the site's VERSION file is verified here (the update checks the signature), and this line goes into a JSON line an app reads: only a version's own characters pass.
+    case "$newest" in ""|*[!0-9A-Za-z.-]*|[!0-9]*) die "the newest version on the $CHANNEL channel is not a version number; nothing was changed" ;; esac
     upd=1
     if [ -n "$UPD_FROM" ] && ! older "$UPD_FROM" "$newest"; then upd=0; fi
     if [ "$JSON" = 1 ]; then

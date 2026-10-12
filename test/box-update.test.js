@@ -1368,3 +1368,12 @@ test("box update (rc.3): when sudo cannot raise the floor the update says so in 
   assert.match(r.out, /Run: sudo vyre raise-floor$/m);
   assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
 });
+
+test("box update --check (rc.3): a newest version with a quote or a backslash in it is refused, never printed into the JSON", async t => {
+  const b = await box(t, { releases: [], site: "0.2.0" });
+  fs.writeFileSync(path.join(b.DL, "site", "VERSION"), '0.2.0","update":false,"x":"\\\n');
+  const r = /** @type {any} */ (await b.run(["update", "--check", "--json"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /not a version number/);
+  assert.doesNotMatch(r.out, /"update":false,"x"/);
+});
