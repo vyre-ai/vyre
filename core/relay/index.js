@@ -71,6 +71,9 @@ export const MIGRATIONS = [
   `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
   // Where the app SAYS it made its device key (hardware | software | unknown), from the pairing hello: self-reported, display only (the Devices line shows only "software").
   `ALTER TABLE relay_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown';`,
+  // The owner's own PRESENT act paired this device (the first device, the classic QR he made with presence, a window he confirmed on a screen, the three words): who and how, as a fact of its own beside the Wink record.
+  // It is never written for a ticket nobody was present for. It opens no person session and grants no pairing; the bus rule and the caller's facts read it (see `deviceIsOwner` in core/daemon/index.js).
+  `ALTER TABLE relay_devices ADD COLUMN owner_paired TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -374,11 +377,15 @@ export default {
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
       const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
-      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?)
+      // The owner's own present act paired it? The first device (nobody is on this box yet), the classic QR (minted with his presence), a window ticket (his screen confirmed this exact phone) and a phone's or a ring's gated ticket
+      // (he confirmed the words) are; a server's gated ticket (the server is the redeemer) and an ungated ticket a module minted are not.
+      const ownerAct = match && (match.first === true || match.via === "start" || Boolean(match.window) || match.gate === "phone" || match.gate === "ring");
+      const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.first ? "first" : match.gate ? `gate:${match.gate}` : match.window ? "window" : "start" }) : null;
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
-          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage`)
-        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage);
+          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage, ownerPaired);
       // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
       // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
       const pkey = hello.passkey;
@@ -715,7 +722,7 @@ export default {
       const row = /** @type {any} */ (db.prepare("SELECT presence_key, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) return false;
       // Only what the 4401 answer needs stays (the key and the time): the name the person deleted, the presence key id, the build and the path are blanked.
-      db.prepare("UPDATE relay_devices SET removed_at = ?, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0 WHERE id = ?").run(now(), id);
+      db.prepare("UPDATE relay_devices SET removed_at = ?, owner_paired = NULL, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0 WHERE id = ?").run(now(), id);
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
       live.delete(id);
       if (row.presence_key) ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
@@ -1286,8 +1293,8 @@ export default {
       description: "A paired relay device as the link module's companion check needs it: kind, trusted, when it paired, its presence key id and whether it was removed. Null for an id never paired. Modules only.",
       input: obj({ id: str }, ["id"]),
       run: async input => {
-        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at FROM relay_devices WHERE id = ?").get(String(input.id)));
-        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined } : null;
+        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired FROM relay_devices WHERE id = ?").get(String(input.id)));
+        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null } : null;
       },
     });
 
