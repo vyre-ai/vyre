@@ -460,6 +460,15 @@ export default {
         return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || "") }; }).filter((/** @type {any} */ m) => m.agent) };
       },
     });
+    ctx.tool("work.project.may-read", {
+      description: "Whether a person may use a project's memory, brief and skills: the Space's owner or an admin, or the project's owner or team. For the memory module and the switchboard, which build a person's thread.",
+      input: obj({ project: { type: "string", description: "The Project's short name, record id or address" }, person: { type: "string" } }, ["project", "person"]), callers: ["module"], internal: true,
+      run: async (input, extra) => {
+        kernelOf();
+        if (!["module:memory", "module:switchboard"].includes(String((extra && extra.caller) || ""))) throw Object.assign(new Error("only the memory module and the switchboard ask whether a person may use a project's memory"), { code: "denied" });
+        return { ok: await hubOf().mayUseProject(String(input.person || ""), String(input.project || "")) };
+      },
+    });
     ctx.tool("work.project.people", {
       description: "The people a project shares with 'the project' (its owner, its team's people, the people of its chats; a Personal project is its person's alone). For the previews module's own use.",
       input: obj({ project: { type: "string", description: "The Project's short name, record id or address" } }, ["project"]), callers: ["module"], internal: true,
