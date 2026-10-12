@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { personOf, projectsFor, ensureFolder, stopLostSeats, socketGid, regroupSocket, syncProjects, launchAccess } from "./project-access.js";
 import { syncAll } from "../../lib/project-folders.js";
+import { Switchboard } from "./index.js";
 
 const PROJECTS = [
   { slug: "alpha", home: "/work/projects/alpha", workspaces: [{ path: "/work/projects/alpha/site" }] },
@@ -12,7 +13,7 @@ const PROJECTS = [
   { slug: "gamma", home: "/work/projects/gamma" },
   { slug: "elsewhere", home: "/srv/elsewhere" },
 ];
-const SEATS = /** @type {Record<string, Record<string, { owner?: boolean, team?: boolean }>>} */ ({ ben: { alpha: { team: true }, gamma: { owner: true } }, cara: { beta: { team: true } } });
+const SEATS = /** @type {Record<string, Record<string, { owner?: boolean, team?: boolean, level?: string }>>} */ ({ ben: { alpha: { team: true }, gamma: { owner: true } }, cara: { beta: { team: true } }, vik: { alpha: { team: true, level: "viewer" }, beta: { team: true, level: "contributor" }, gamma: { team: true, level: "lead" } } });
 
 /** A switchboard with the two tools it asks of the others. @param {{ owner?: string | null, seats?: typeof SEATS, log?: string[], live?: Map<string, any>, recs?: Record<string, any> }} [o] */
 const sb = (o = {}) => {
@@ -23,7 +24,7 @@ const sb = (o = {}) => {
       call: async (/** @type {string} */ tool, /** @type {any} */ i) => {
         calls.push(tool);
         if (tool === "projects.list") return { data: { projects: PROJECTS } };
-        if (tool === "work.project.seat") { const s = (seats[i.person] || {})[i.project]; return { data: s ? { exists: true, owner: Boolean(s.owner), team: Boolean(s.team) } : { exists: true, owner: false, team: false } }; }
+        if (tool === "work.project.seat") { const s = (seats[i.person] || {})[i.project]; return { data: s ? { exists: true, owner: Boolean(s.owner), team: Boolean(s.team), level: s.level || (s.owner ? "lead" : s.team ? "contributor" : null) } : { exists: true, owner: false, team: false } }; }
         throw new Error(`unexpected ${tool}`);
       } },
   });
@@ -163,4 +164,22 @@ test("a launch on an account with no person says why it gets no project folders"
   said.length = 0;
   const own = await launchAccess(s, { cwd: "/srv/elsewhere" }, { accountRun: { uid: 2000, person: null }, kernelTurn: { asker: "owen" } }, "t10");
   assert.deepEqual(own.accountRun.projects, ["alpha", "beta", "gamma"]); assert.equal(said.length, 0);
+});
+
+test("a viewer's session gets no group for the project it only reads, keeps the others at their levels, and is not started in the project's folder", async () => {
+  assert.deepEqual(await projectsFor(sb(), { person: "vik" }), ["beta", "gamma"], "alpha is read-only for vik: no group, so no write at the folder; a contributor and a lead keep theirs");
+  const s = sb();
+  s.emit = () => {};
+  const got = await launchAccess(s, { cwd: "/work/projects/alpha", project: "alpha" }, { accountRun: { uid: 2000, person: "vik" } }, "tv").catch(e => e);
+  assert.equal(got.code, "not_allowed");
+  assert.match(got.message, /read-only access to this project \(viewer\)/); assert.match(got.message, /Ask the project's owner or a lead/);
+});
+
+test("a chat message from a viewer of the chat's project is refused in words; a contributor's, and a chat in no project, go through", async () => {
+  const fake = /** @type {any} */ ({ deps: { kernelSession: async () => ({}), call: sb().deps.call } });
+  const ask = (/** @type {any} */ rec, /** @type {string} */ asker) => Switchboard.prototype.assertAsker.call(fake, "t", rec, { chat: "c", asker });
+  await assert.rejects(() => ask({ project: "alpha" }, "vik"), (/** @type {any} */ e) => e.code === "not_allowed" && /read-only access to this project \(viewer\)/.test(e.message) && /Ask the project's owner or a lead/.test(e.message));
+  await ask({ project: "beta" }, "vik");
+  await ask({ project: "gamma" }, "vik");
+  await ask({}, "vik");
 });

@@ -19,6 +19,7 @@ import os from "node:os";
 import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
 import { projectTeamOf } from "../../kernel/gateway/ownership.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
+import { SEAT_LEVELS, levelOfSeat, VIEWER_WORDS } from "../../lib/seat-levels.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat", PERSONAL = "Personal";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
@@ -223,6 +224,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     const rec = await find(PROJECT, "slug", name);
     if (!rec) throw refuseFiling(`There is no project called ${name} yet. Start the project first, then start the chat in it.`, "not_found");
     await mayFileUnder(me, rec, name);
+    // a viewer reads the project's chats and starts none in it
+    const seat = await seatOf(rec.id, me);
+    if (seat && seat.level === "viewer") throw refuseFiling(VIEWER_WORDS);
   }
 
   /** The kernel's `chat.created`: { chat: { id, people, assistants } }. @param {any} ev */
@@ -377,16 +381,35 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
 
   /**
    * Where a person stands on a project: its owner, on its team (a team-member row of kind person), or neither. Null when there is no such project. Not the people of its chats: this is who may SEND WORK to its teammates.
-   * @param {string} ref @param {string} person @returns {Promise<{ owner: boolean, team: boolean } | null>}
+   * `level` is the person's seat level on it (lib/seat-levels.js): lead for the owner, else the row's level (contributor when it has none), null when not on the team.
+   * @param {string} ref @param {string} person @returns {Promise<{ owner: boolean, team: boolean, level: "lead" | "contributor" | "viewer" | null } | null>}
    */
   async function seatOf(ref, person) {
     const proj = await projectOf(ref);
     if (!proj) return null;
     const d = data(proj) || {};
-    if (d.personal_of) return { owner: String(d.personal_of) === person, team: false };
+    if (d.personal_of) return { owner: String(d.personal_of) === person, team: false, level: String(d.personal_of) === person ? "lead" : null };
     const own = d.owner && d.owner.actor && d.owner.actor.kind === "person" ? String(d.owner.actor.id) : "";
     const team = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
-    return { owner: own === person, team: team.some((/** @type {any} */ x) => { const m = data(x) || {}; return m.kind === "person" && m.actor && m.actor.actor && String(m.actor.actor.id) === person; }) };
+    const row = team.find((/** @type {any} */ x) => { const m = data(x) || {}; return m.kind === "person" && m.actor && m.actor.actor && String(m.actor.actor.id) === person; });
+    return { owner: own === person, team: Boolean(row), level: own === person ? "lead" : row ? /** @type {any} */ (levelOfSeat(data(row))) : null };
+  }
+
+  /**
+   * Set a person's level on a project (lead, contributor or viewer), under the CALLER's chain: the kernel's ownership rule says who may (the project's owner or a lead on it, an owner or an admin), so a refusal
+   * is the kernel's own, in words. A person with no seat yet is seated at that level. Null when there is no such project.
+   * @param {any} callerChain @param {{ project: string, person: string, level: string }} o
+   */
+  async function setSeatLevel(callerChain, { project, person, level }) {
+    if (!SEAT_LEVELS.includes(level)) throw Object.assign(new Error(`a level is one of ${SEAT_LEVELS.join(", ")}`), { code: "bad_input" });
+    if (!person) throw Object.assign(new Error("say which person: their id"), { code: "bad_input" });
+    const proj = await projectOf(project);
+    if (!proj) return null;
+    const rows = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+    const mine = rows.find((/** @type {any} */ x) => { const m = data(x) || {}; return m.kind === "person" && m.actor && m.actor.actor && String(m.actor.actor.id) === person; });
+    if (mine) { const r = await kernel.records.update(callerChain, "team-member", mine.id, { level }, mine.version); return { id: r.id, person, level }; }
+    const made = await kernel.records.create(callerChain, "team-member", { name: person, actor: { actor: { kind: "person", id: person, space: kernel.space } }, kind: "person", level, project: { urn: proj.urn } });
+    return { id: made.id, person, level, seated: true };
   }
 
   /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
@@ -501,5 +524,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, setSeatLevel, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

@@ -15,6 +15,7 @@
 
 import { KernelError } from "../core/errors.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
+import { levelOfSeat, VIEWER_WORDS } from "../../lib/seat-levels.js";
 
 /**
  * The services whose one-hop chain writes these types for the whole Space, each trusted because the service checks the person itself BEFORE it writes (a service not listed here is judged as acting for the
@@ -58,7 +59,7 @@ const actorsOf = chain => (chain && Array.isArray(chain.hops) ? chain.hops.map((
 
 /**
  * May this chain write this row of this type. @param {any} chain @param {string} type @param {any} row @param {any} patch
- * @param {{ op: "create" | "update" | "remove", trusted: boolean, actingFor?: string | null, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, task?: (id: string) => Promise<any> }} ctx
+ * @param {{ op: "create" | "update" | "remove", trusted: boolean, actingFor?: string | null, role?: string, project: (ref: string) => Promise<{ owner: string | null, team: string[], levels?: Record<string, string> } | null>, task?: (id: string) => Promise<any> }} ctx
  */
 export async function mayWrite(chain, type, row, patch, ctx) {
   if (!OWNED_TYPES.includes(type) || ctx.trusted) return true;
@@ -71,6 +72,10 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   const data = (row && row.data) || {};
   const ownsOrBelongs = (/** @type {{ owner: string | null, team: string[] } | null} */ pr) => Boolean(pr && (pr.owner === person || pr.team.includes(person)));
   const ownsIt = (/** @type {{ owner: string | null, team: string[] } | null} */ pr) => Boolean(pr && pr.owner === person);
+  // seat levels (lib/seat-levels.js): a viewer writes nothing in the project; a lead manages it like its owner, but only with a Space role of member or above (a level never widens the Space role)
+  const levelIn = (/** @type {any} */ pr) => (!pr || pr.owner === person || !pr.team.includes(person) ? null : (pr.levels && pr.levels[person]) || "contributor");
+  const viewer = (/** @type {any} */ pr) => levelIn(pr) === "viewer";
+  const manages = (/** @type {any} */ pr) => ownsIt(pr) || (levelIn(pr) === "lead" && roleAtLeast(String(ctx.role), "member"));
 
   /** The keys of a patch that change the stored value. @param {any} cur */
   const changed = (/** @type {any} */ cur) => Object.keys(p).filter(k => JSON.stringify(p[k]) !== JSON.stringify(cur ? cur[k] : undefined));
@@ -87,10 +92,11 @@ export async function mayWrite(chain, type, row, patch, ctx) {
     if (Object.prototype.hasOwnProperty.call(p, "owner") && idOf(p.owner) !== idOf(data.owner)) throw no("a project's owner is changed by an owner or admin, not by a member. Ask one of them.");
     if (ctx.op === "remove") { if (!ownsIt(pr)) throw no("only the project's owner, or an owner or admin, removes a project."); return true; }
     if (!ownsOrBelongs(pr)) throw no("you are not on this project's team. Ask the project's owner to add you.");
+    if (viewer(pr)) throw no(VIEWER_WORDS);
     const edits = changed(data).filter(k => k !== "owner");
     const blocked = edits.find(k => PROJECT_TRUSTED_FIELDS.includes(k));
     if (blocked) throw no(`${blocked} points at files, memory or credentials and is changed by an owner or admin. Ask one of them.`);
-    if (!ownsIt(pr)) { const extra = edits.find(k => !PROJECT_TEAM_FIELDS.includes(k)); if (extra) throw no(`a team member changes a project's ${PROJECT_TEAM_FIELDS.join(", ")}, not its ${extra}. Ask the project's owner.`); }
+    if (!manages(pr)) { const extra = edits.find(k => !PROJECT_TEAM_FIELDS.includes(k)); if (extra) throw no(`a team member changes a project's ${PROJECT_TEAM_FIELDS.join(", ")}, not its ${extra}. Ask the project's owner.`); }
     return true;
   }
 
@@ -101,7 +107,7 @@ export async function mayWrite(chain, type, row, patch, ctx) {
     if (ctx.op !== "remove") refs.add(Object.prototype.hasOwnProperty.call(p, "project") || ctx.op === "create" ? refOf(p.project) : refOf(data.project));
     for (const ref of refs) {
       if (!ref) throw no("a team seat belongs to a project. An owner or admin writes one with no project.");
-      if (!ownsIt(await ctx.project(ref))) throw no("only the project's owner, or an owner or admin, changes who is on its team.");
+      if (!manages(await ctx.project(ref))) throw no("only the project's owner or a lead on it, or an owner or admin, changes who is on its team. Ask one of them.");
     }
     // a project's owner adds a PERSON to her own project as a plain member. Anything that routes work to the seat (role, skills), an assistant's brief, or an assistant or agent seat is for an owner or admin.
     const seatKind = Object.prototype.hasOwnProperty.call(p, "kind") ? p.kind : data.kind;
@@ -118,9 +124,12 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   const moveTo = Object.prototype.hasOwnProperty.call(p, "project") ? refOf(p.project) : undefined;
   if (moveTo || (ctx.op === "create" && refOf(p.project))) {
     const target = /** @type {string} */ (moveTo || refOf(p.project));
-    if (!ownsOrBelongs(await ctx.project(target))) throw no("a task goes only into a project you are on. Ask the project's owner to add you first.");
+    const into = await ctx.project(target);
+    if (viewer(into)) throw no(VIEWER_WORDS);
+    if (!ownsOrBelongs(into)) throw no("a task goes only into a project you are on. Ask the project's owner to add you first.");
   }
   if (ctx.op === "create") return true;
+  if (currentProject && viewer(await ctx.project(currentProject))) throw no(VIEWER_WORDS);
   const allowed = Boolean(t && (mine(t.doer) || mine(t.assigned_by))) || Boolean(currentProject && ownsOrBelongs(await ctx.project(currentProject)));
   if (allowed) {
     // handing a stuck task to someone else (tasks unblock): the new doer is on the task's project, or, with no project, not herself unless she gave the task
@@ -164,12 +173,13 @@ export const projectTeamOf = (store, urn, attrsOf = undefined) => async (/** @ty
   // the owner is the project's owner field; a project with none belongs to the kernel's record of who owns it, then who made it
   const at = typeof attrsOf === "function" ? attrsOf(urn("project", pid)) || {} : {};
   const made = String(at.created_for || at.created_by || ""), madeBy = made.startsWith("person:") ? made.slice(7) : null;
-  return { owner: idOf(pr.data.owner) || (at.owner ? String(idOf(at.owner) || at.owner) : null) || madeBy, team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean) };
+  return { owner: idOf(pr.data.owner) || (at.owner ? String(idOf(at.owner) || at.owner) : null) || madeBy, team: rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person").map((/** @type {any} */ r) => idOf(r.data.actor)).filter(Boolean),
+    levels: Object.fromEntries(rows.filter((/** @type {any} */ r) => r.data && r.data.kind === "person" && idOf(r.data.actor)).map((/** @type {any} */ r) => [idOf(r.data.actor), levelOfSeat(r.data)])) };
 };
 
 /**
  * The kernel attributes a record is created with (`owner`, `project`, `sensitivity`), for ANY type: a member may not name another person as the owner, set its sensitivity or file a record under a
- * project she is not on. @param {any} chain @param {any} attrs @param {{ trusted: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null> }} ctx
+ * project she is not on. @param {any} chain @param {any} attrs @param {{ trusted: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[], levels?: Record<string, string> } | null> }} ctx
  */
 export async function mayAttrs(chain, attrs, ctx) {
   if (ctx.trusted || !attrs || typeof attrs !== "object") return true;
@@ -180,6 +190,7 @@ export async function mayAttrs(chain, attrs, ctx) {
   if (attrs.project !== undefined && attrs.project !== null) {
     const pr = await ctx.project(String(refOf(attrs.project) || attrs.project));
     if (!(pr && (pr.owner === person || pr.team.includes(person)))) throw no("a record goes only under a project you are on. Ask the project's owner to add you first.");
+    if (pr.owner !== person && pr.levels && pr.levels[person] === "viewer") throw no(VIEWER_WORDS);
   }
   return true;
 }

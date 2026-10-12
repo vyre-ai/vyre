@@ -12,6 +12,7 @@
 //   child's stdout --translate--> thread.* / ask.* events --> /v1/events/stream --> every surface
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
+import { VIEWER_WORDS } from "../../lib/seat-levels.js";
 import { capsFromInit } from "../../lib/harness-caps.js";
 import { newId } from "../../lib/id.js";
 import { refuseKey, planSecure } from "../../lib/secure-paste.js";
@@ -1167,6 +1168,11 @@ export class Switchboard {
     if (!this.deps.kernelSession) return;
     try { await this.deps.kernelSession({ thread: id, agent: (rec && rec.agent) || null, rec, chat: turn.chat, asker: turn.asker, ...(turn.space ? { space: turn.space } : {}), probe: true }); }
     catch { throw Object.assign(new Error("that person is not in this chat, so their message was not sent"), { code: "not_found" }); }
+    // a viewer on the project the chat is filed under reads it and sends nothing in it, and so asks its assistant nothing there (seat level, lib/seat-levels.js)
+    if (rec && rec.project && turn.asker) {
+      const r = /** @type {any} */ (await this.deps.call("work.project.seat", { project: String(rec.project), person: String(turn.asker) }).catch(() => null));
+      if (r && !r.error && r.data && r.data.level === "viewer") throw Object.assign(new Error(VIEWER_WORDS), { code: "not_allowed" });
+    }
   }
 
   /**

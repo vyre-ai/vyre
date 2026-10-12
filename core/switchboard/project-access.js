@@ -6,6 +6,7 @@
 import path from "node:path";
 import { projectGroup, usesSpawner } from "../sessions/spawn.js";
 import { mappedProjects as mapped, syncAll, workRoot, under } from "../../lib/project-folders.js";
+import { VIEWER_WORDS } from "../../lib/seat-levels.js";
 
 /** The spawner takes at most this many project ids in one spawn (core/spawner/project-groups.js MAX_PER_SPAWN). */
 const MAX_PER_SPAWN = 64;
@@ -13,6 +14,8 @@ const MAX_PER_SPAWN = 64;
 const SAY_AFTER_MS = 3000;
 
 const mappedProjects = (/** @type {any} */ sb) => mapped(() => sb.deps.call("projects.list", {}));
+/** Where a person stands on a project (work.project.seat): { exists, owner, team, level } or null. @param {any} sb @param {string} slug @param {string} person */
+const seatOn = async (sb, slug, person) => { const r = /** @type {any} */ (await sb.deps.call("work.project.seat", { project: slug, person }).catch(() => null)); return r && !r.error ? r.data : null; };
 
 /**
  * The person a session on an account is for. The account's own person; or, for an account that records none (the home's legacy accounts), the launch's VERIFIED person (a chat turn's asker) when that
@@ -43,10 +46,11 @@ export async function projectsFor(sb, run, want = {}) {
   /** @type {string[]} */ let mine;
   if (who.owner) mine = mapped.map(p => p.slug);
   else {
+    // A VIEWER's session gets no project group: the folder is one read-and-write group, so a read-only seat is left out of it, and the project's files reach a viewer's assistant only through Vyre's own read
+    // (the kernel refuses its writes, kernel/core/folders.js). The seat's level comes with the seat (work.project.seat).
     const seats = await Promise.all(mapped.map(async p => {
-      const r = /** @type {any} */ (await sb.deps.call("work.project.seat", { project: p.slug, person }).catch(() => null));
-      const s = r && !r.error ? r.data : null;
-      return Boolean(s && s.exists && (s.owner || s.team));
+      const s = await seatOn(sb, p.slug, person);
+      return Boolean(s && s.exists && (s.owner || s.team) && s.level !== "viewer");
     }));
     mine = mapped.filter((_p, i) => seats[i]).map(p => p.slug);
   }
@@ -117,10 +121,18 @@ export function socketGid(run) {
  */
 export async function launchAccess(sb, rec, o, id) {
   const say = (/** @type {string} */ text) => sb.emit("thread.text", { message: "vyre", text, done: true, notice: true }, id, rec.project);
-  await ensureFolder(sb, rec.cwd, say);
-  if (!(o.accountRun && o.accountRun.uid != null)) return o;
+  const account = Boolean(o.accountRun && o.accountRun.uid != null);
   const want = { agent: o.agent || rec.agent || null, scope: o.scope || null, cwd: rec.cwd, person: (o.kernelTurn && o.kernelTurn.asker) || null };   // the verified chat turn's asker, never a caller's word
-  if (!personOf(sb, o.accountRun, want)) say("This AI account has no person recorded, so this session gets no project folders. Open AI accounts and sign in with your own account again, or ask the owner to check it.");
+  const who = account ? personOf(sb, o.accountRun, want) : null;
+  // a viewer's session in the project's own folder is not started: the folder is one read-and-write group and is not theirs to write
+  if (who && !who.owner && rec.cwd) {
+    const dir = path.resolve(rec.cwd), here = (await mappedProjects(sb)).find(p => p.folders.some(f => under(dir, f)));
+    const seat = here ? await seatOn(sb, here.slug, who.person) : null;
+    if (here && seat && seat.level === "viewer") throw Object.assign(new Error(`Vyre did not start this session in ${here.slug}: ${VIEWER_WORDS}`), { code: "not_allowed" });
+  }
+  await ensureFolder(sb, rec.cwd, say);
+  if (!account) return o;
+  if (!who) say("This AI account has no person recorded, so this session gets no project folders. Open AI accounts and sign in with your own account again, or ask the owner to check it.");
   return { ...o, accountRun: { ...o.accountRun, projects: await projectsFor(sb, o.accountRun, want) } };
 }
 
