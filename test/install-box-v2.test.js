@@ -772,3 +772,26 @@ test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command'
   assert.deepEqual([...new Set(seen)], ["|"], "no run of the vyre command inherited VYRE_STORE or VYRE_CODE");
   assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the choice the line carried is in vyre.env");
 });
+
+test("install-box.sh rc.3: a kept .env from a source-build install stops a release install in words, before anything is started, and leaves the .env alone", t => {
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  const stale = `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${b.dir}/src\n`;
+  fs.writeFileSync(path.join(b.dir, ".env"), stale, { mode: 0o600 });
+  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base), VYRE_NO_UP: "0" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /earlier install that built Vyre from source/);
+  assert.match(r.stderr, /sudo mv .*\.env .*\.env\.old/, "it names the next step");
+  assert.equal(fs.readFileSync(path.join(b.dir, ".env"), "utf8"), stale, "the person's .env is not rewritten");
+  assert.ok(!/\bup\b -d|compose .* up/.test(b.calls()), "nothing was started:\n" + b.calls());
+});
+
+test("install-box.sh rc.3: a stack that fails to start ends the install in words and a nonzero exit, with the next step", t => {
+  const b = box(t, { docker: 'case "$*" in *" up -d"*) echo "unable to prepare context: path \\"/srv/vyre/src\\" not found" >&2; exit 1 ;; esac; case "$1 $2" in "compose version") echo 2.29.1 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stderr, /unable to prepare context/, "docker's own message is kept");
+  assert.match(r.stderr, /Vyre did not start/);
+  assert.match(r.stderr, /then run: vyre up/);
+  assert.doesNotMatch(r.stdout, /Vyre is running on this server/);
+});

@@ -363,7 +363,7 @@ ready() {
     if [ "$i" -ge "$limit" ] && [ "$limit" -lt "$cap" ] && [ "$(compose ps --format '{{.State}}' vyre 2>/dev/null | head -n 1)" = running ] \
        && [ -n "$(compose logs --since 20s --no-log-prefix vyre 2>/dev/null | head -n 1)" ]; then
       limit=$((limit + 15))
-      echo "vyre: vyred has not answered yet but Vyre is still working (its log moved in the last 20 s); waiting up to $((limit - i)) s more" >&2
+      echo "vyre: Vyre has not answered yet but is still working (its log moved in the last 20 s); waiting up to $((limit - i)) s more" >&2
     fi
     sleep 1
   done

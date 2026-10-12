@@ -548,6 +548,12 @@ write_env() {
     if { [ -n "$FROM" ] || [ "$TGZ" = 1 ]; } && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
       say "  (it does not list compose.build.yml, so the image is pulled, not built from source)"
     fi
+    # The other way round: a .env left by an install that built from source, on an install that pulls Vyre's signed image. The stack would try to build from a source folder this install never
+    # laid out (docker: "unable to prepare context"), or build an old tree and call it the new release. The .env is the person's, so it is not rewritten: the install stops here, before
+    # anything is started, and says what to do.
+    if [ -z "$FROM" ] && [ "$TGZ" != 1 ] && grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
+      die "$DIR/.env is from an earlier install that built Vyre from source (it names compose.build.yml), and this install pulls Vyre's signed image instead. Nothing was started. Move it aside and run the same line again: sudo mv $DIR/.env $DIR/.env.old (anything of yours in it, such as COMPOSE_PROFILES, can be copied back into the new .env afterwards)."
+    fi
     return 0
   fi
   TMP=${TMP:-$(mktemp -d)}
@@ -655,11 +661,14 @@ start() {
   # --quiet: the installer says what happens next itself (the pairing, or the check words), so `vyre up` adds no "already running" and no command.
   upflag="--quiet"
   [ "$LINK_ONLY" = 1 ] && upflag="--print-link"
+  up_ok=1
   if [ "$as_owner" = 1 ]; then
-    dk sudo -n -u "$OWNER" env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
+    dk sudo -n -u "$OWNER" env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"} || up_ok=0
   else
-    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
+    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"} || up_ok=0
   fi
+  # Docker's own message is above. Without these words the install ended on it (set -e) and the app was told nothing.
+  [ "$up_ok" = 1 ] || die "Vyre did not start (docker's message is above). Look at: docker compose -p vyre ps and docker compose -p vyre logs (in $DIR), fix what they name, then run: vyre up. If $DIR/.env is from an older install, move it aside (sudo mv $DIR/.env $DIR/.env.old) and run the install line again."
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
     say "Your account cannot use Docker, so run vyre commands with sudo, like: sudo vyre up."
