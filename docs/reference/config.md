@@ -98,6 +98,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CORE_SOCKET` | vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns. | `core/vyre-core/main.js` |
 | `VYRE_CORE_STRICT` | `0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac. | `core/vyre-core/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js`, `core/daemon/main.js` |
+| `VYRE_DEV_ALLOW_LISTEN` | Not described yet. | `core/daemon/dev-ports.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DOCUMENTS_PDF` | Not described yet. | `core/documents/index.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
@@ -164,7 +165,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
-| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/index.js` |
+| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js`, `core/daemon/ownserver-host.js`, `core/switchboard/adopt.js`, `core/switchboard/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TEST` | Not described yet. | `core/names/directory.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
@@ -221,7 +222,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SESSION_SANDBOX_OFF` | Not described yet. | `core/daemon/index.js`, `core/team/team-fixture.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
 | `VYRE_SKILLS_DIR` | Not described yet. | `core/sessions/drivers/codex.js`, `core/sessions/drivers/grok.js` |
-| `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
+| `VYRE_SOCKET` | The path of vyred's socket, for Lumen. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/daemon/index.js`, `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `bin/vyre`, `core/cli/daemonctl.js`, `core/cli/index.js`, `core/cli/session.js`, `harness/hooks/hook.js` |
 
