@@ -490,6 +490,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.folder",
+        "summary": "a chat's folder path in the Drive (the modules that read a chat's attachments ask it; the Drive decides who may open it)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.pinned",
         "summary": "which pinned chat a chat is for a person (the daemon's question when it opens a session)",
         "reach": "modules",

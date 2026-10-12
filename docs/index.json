@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":348,"tool":1680,"event":536,"config":302,"env":288,"screen":0,"concept":39},
+  "counts": {"command":348,"tool":1681,"event":536,"config":302,"env":288,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -3123,6 +3123,7 @@
     {"kind":"tool","name":"work.call","definedIn":"core/work/index.js","page":"reference/tools.md#workcall","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.change","definedIn":"core/work/index.js","page":"reference/tools.md#workchatchange","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.create","definedIn":"core/work/index.js","page":"reference/tools.md#workchatcreate","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.chat.folder","definedIn":"core/work/index.js","page":"reference/tools.md#workchatfolder","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.get","definedIn":"core/work/hub.js","page":"reference/tools.md#workchatget","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.history-import","definedIn":"core/work/index.js","page":"reference/tools.md#workchathistory-import","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.keys.begin","definedIn":"core/work/index.js","page":"reference/tools.md#workchatkeysbegin","module":"work","mentions":[]},

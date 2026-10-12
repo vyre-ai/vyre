@@ -62,13 +62,13 @@ export function createGateway(cfg) {
     projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
+  records = createRecords({ grantOf: (/** @type {string} */ id) => { const gr = wiring.grants || cfg.grants; return gr && gr.get ? gr.get(id) : undefined; }, tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
   // Share to project over a sealed chat: a share record by someone in the chat wraps the file's key into the project's ring, and the last share of a path taken back rotates it (kernel/storage/sealed-drive.js).
   if (cfg.drive && cfg.drive.share) {
     const base = records, has = (/** @type {string} */ path) => base.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 1 } });
     records = Object.freeze({ ...base,
       async create(/** @type {any} */ c, /** @type {string} */ t, /** @type {any} */ d, /** @type {any} */ o) {
-        const r = await base.create(c, t, d, o), by = String((base.attrsOf(r.urn) || {}).created_by || "");
+        const r = await base.create(c, t, d, o), at = base.attrsOf(r.urn) || {}, by = String(at.created_for || at.created_by || "");
         if (t === "file-share" && by.startsWith("person:") && await sharedRead(`vyre://${cfg.space}/file/${d.path}`, by.slice(7), { space: cfg.space, chains: cfg.chains, gs, records: base })) await cfg.drive.share(String(d.path)).catch(() => {});
         return r;
       },
@@ -84,7 +84,12 @@ export function createGateway(cfg) {
   async function canSee(/** @type {any} */ chain, /** @type {any} */ e) {
     if (!(await allowed(chain, "events.read", e.subject))) return false;
     // an event about a record of a type a module keeps (its create event carries the data) is the keeper's and the owner's and admins' alone: subject vyre://<space>/<type>/<id>
-    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/[^/]+$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; }
+    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; if (m && !(await records.mayViewRow(chain, m[1], m[2]))) return false; }
+    // an event about a file (written, read, moved, deleted) is judged like the file: whoever may open it may know of it, nobody else (its path, size and who touched it are the file's)
+    if (/^vyre:\/\/[^/]+\/file\//.test(String(e.subject))) {
+      const staff = records.staffOfChain(chain);
+      if (!staff && !(await allowed(chain, "drive.read", e.subject))) return false;
+    }
     const vis = e.vis;
     if (vis === "space") return true;
     if (vis === "subject") return allowed(chain, "records.read", e.subject);

@@ -17,6 +17,8 @@ const bad = (/** @type {string} */ message) => Object.assign(new Error(message),
  */
 export function createSendContext({ kernel, call }) {
   let chainNow = /** @type {any} */ (null);
+  // the stream has no chain of its own to read a chat's record: it asks the work module for the folder path, and the Drive opens that folder to the chat's people alone
+  const files = kernel ? { ...kernel, folderRoot: async (/** @type {string} */ chat) => { const r = await call("work.chat.folder", { chat }); return r && r.data && typeof r.data.root === "string" ? r.data.root : ""; } } : kernel;
   const card = cardsFor({ kernel, call, chain: () => chainNow });
   return async ({ chain, grp, text, pasted, attachments, people = 1, members }) => {
     const checked = checkList(attachments);
@@ -26,11 +28,11 @@ export function createSendContext({ kernel, call }) {
     const cardNote = people > 1 ? "" : await card({ thread: grp, text, pasted });
     if (!checked.list.length) return { saved: [], noteOf: () => cardNote, imagesOf: () => [] };
     if (!kernel || !chain) throw bad("files can be attached by a person at their own surface");
-    const have = new Map((await listFiles(kernel, chain, grp).catch(() => [])).map(a => [a.id, a]));
+    const have = new Map((await listFiles(files, chain, grp).catch(() => [])).map(a => [a.id, a]));
     for (const a of checked.list) if (!have.has(a.id)) throw bad(`${a.name} is not a file of this chat: add it again`);
     const list = checked.list.map(a => ({ ...a, bytes: have.get(a.id)?.bytes || a.bytes }));
     /** @type {Map<string, Buffer>} */ const bytes = new Map();
-    const bytesOf = async (/** @type {string} */ id) => { let b = bytes.get(id); if (!b) bytes.set(id, b = await read(kernel, chain, grp, id)); return b; };
+    const bytesOf = async (/** @type {string} */ id) => { let b = bytes.get(id); if (!b) bytes.set(id, b = await read(files, chain, grp, id)); return b; };
     /** @type {Map<string, { images: { media_type: string, data: string }[], note: string }>} */ const byWho = new Map();
     for (const m of members) {
       const here = m.cwd && fs.existsSync(m.cwd) ? m.cwd : null;
@@ -38,7 +40,7 @@ export function createSendContext({ kernel, call }) {
         const a = /** @type {any} */ (list.find(x => x.id === id));
         if (as === "base64") return { base64: (await bytesOf(id)).toString("base64") };
         if (!here) return { path: "(in this chat's files; this assistant's folder is not on this machine)" };
-        return { path: await materialise(kernel, chain, grp, here, a) };
+        return { path: await materialise(files, chain, grp, here, a) };
       });
       byWho.set(m.who, { images: resolved.filter(r => r.form === "image").map(r => ({ media_type: r.mime, data: String(r.base64) })), note: noteFor(resolved) });
     }

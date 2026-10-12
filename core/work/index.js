@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { readers, personOf as personOfChain, shareFile, unshareFile } from "./shares.js";
 import { createTimeline } from "./timeline.js";
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
@@ -103,6 +104,10 @@ export default {
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
     /** @type {any} */ let hub = null;
     const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
+    const readersOf = () => readers(kernelOf(), hubOf());
+    const chatRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().chatRows(chain, spec);
+    const shareRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().shareRows(chain, spec);
+    const personOf = personOfChain;
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
       // a project made through the old project list (the CLI, the app) gets its record
@@ -175,7 +180,7 @@ export default {
     // One persistent chat per person for their assistant and for @Engineer (core/work/persistent.js, R031-94)
     /** @type {any} */ let persistent = null;
     const persistentOf = () => persistent || (persistent = createPersistent({ db: ctx.store.db, kernel: kernelOf,
-      agentOf: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const r = (await kernelOf().records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } })).rows[0]; return r ? String(r.data.agents || "").split(",").map(x => x.trim()).filter(Boolean) : []; } }));
+      agentOf: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const r = (await chatRows(chain, { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } }))[0]; return r ? String(r.data.agents || "").split(",").map(x => x.trim()).filter(Boolean) : []; } }));
     chatTool("work.chat.persistent", { description: "Your pinned chat with your assistant or @Engineer (kind): its id or null if none yet, and whether you may have one.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"], description: "One of each per person, the same chat as the session rolls over. The Engineer is for an owner or an admin" } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
     ctx.tool("work.chat.pinned", { description: "Whether a chat is a person's pinned assistant or Engineer chat: { kind: \"assistant\" | \"engineer\" | null }. For vyred, which lets only the pinned assistant chat run with the assistant's authority.", internal: true, callers: ["module"],
@@ -183,6 +188,9 @@ export default {
     // A chat's name for the home's list of what runs on a person's computer (core/runner lent-home titleOf, through the daemon): any chat id, no person chain, at most 120 characters. Only the daemon's own modules ask.
     ctx.tool("work.chat.title", { description: "A chat's name, at most 120 characters: { title }. For the daemon, which names a lent chat on its computer's list.", internal: true, callers: ["module"],
       input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i) => { const rec = await hubOf().chatRecord(String(i.chat)); return { title: rec && rec.data && rec.data.title ? String(rec.data.title).slice(0, 120) : "" }; } });
+    // The folder a chat's files are kept in (its Drive root), for the modules that handle a chat's attachments: only the path, which the Drive opens to the chat's people alone. The chat record is the work module's own.
+    ctx.tool("work.chat.folder", { description: "A chat's folder path in the Drive: { root } or an empty string. For the daemon's modules that read a chat's attachments; the Drive decides who may open it.", internal: true, callers: ["module"],
+      input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i) => { const rec = await hubOf().chatRecord(String(i.chat)); return { root: rec && rec.data && rec.data.drive ? String(rec.data.drive) : "" }; } });
     // Share to project (R031-41): a share is one `file-share` record by someone in the chat. The kernel does the rest: it opens that one file to the project's members and, for an encrypted chat, wraps the file's key into the project's ring (and rotates it when the last share goes).
     // The files a chat made or received, by name, with which are shared to its project. The chat's folders are sealed: the names come from the chat's own index, for the people in the chat only.
     // One timeline per record and project, and a chat's link to a record (core/work/timeline.js; R031-41, R031-46)
@@ -199,10 +207,11 @@ export default {
     ctx.tool("work.file.list", { description: "The files this chat has, received (chat/) and made (made/): name, size, time, shared with the project or not. Only for someone in the chat.",
       input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         const k = kernelOf(), chain = await chainOf(extra), chat = String(i.chat);
-        const rec = ((await k.records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } })).rows || [])[0];
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat: name a chat you are in"), { code: "not_found" });   // the same answer every route gives a person outside the chat
+        const rec = (await chatRows(chain, { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } }))[0];
         const root = rec && rec.data && rec.data.drive ? String(rec.data.drive) : "";
         if (!root) return { files: [], root: "" };
-        const shares = new Set(((await k.records.query(chain, "file-share", { page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || []).map((/** @type {any} */ r) => String(r.data.path)));
+        const shares = new Set(((await shareRows(chain, { page: { limit: 500 } }).catch(() => []))).map((/** @type {any} */ r) => String(r.data.path)));
         const files = [];
         for (const kind of ["chat", "made"]) {
           for (const e of (await k.drive.list(chain, `${root}/${kind}/${chat}`).catch(() => [])) || []) {
@@ -213,21 +222,9 @@ export default {
         return { root, files };
       } });
     ctx.tool("work.file.share", { description: "Share one file of a chat you are in with that chat's project: its members open that one file and nothing else. Give the file's path (Projects/<project>/chat/<chat>/<name>).",
-      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-        const k = kernelOf(), chain = await chainOf(extra), m = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\/./.exec(String(i.path));
-        // only a chat's own people can share its files: a chat that is not theirs is not there for them
-        const row = m ? ((await k.records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: m[1] }, page: { limit: 1 } })).rows || [])[0] : null, me = chain.hops[0] && chain.hops[0].actor.id;
-        if (!row || !String(row.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).includes(me)) throw Object.assign(new Error("that file is not in a chat of yours (work.file.list shows the files of a chat you are in)"), { code: "not_found" });
-        const r = await k.records.create(chain, "file-share", { path: String(i.path) }); return { shared: true, id: r.id };
-      } });
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => shareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
-      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-        const k = kernelOf(), chain = await chainOf(extra);
-        const rows = (await k.records.query(chain, "file-share", { filter: { field: "path", op: "eq", value: String(i.path) }, page: { limit: 50 } })).rows || [];
-        let removed = 0;
-        for (const r of rows) { try { await k.records.remove(chain, "file-share", r.id, r.version); removed++; } catch { /* not this person's to take back */ } }
-        return { unshared: removed };
-      } });
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => unshareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
     ctx.tool("work.project.create", {
@@ -518,7 +515,7 @@ export default {
         const chain = await chainOf(extra);
         const k = kernelOf();
         const proj = input.project ? await hubOf().projectOf(input.project) : null;
-        const res = await k.records.query(chain, "chat-record", { page: { limit: Math.min(Number(input.limit) || 200, 500) } });
+        const res = { rows: await chatRows(chain, { page: { limit: Math.min(Number(input.limit) || 200, 500) } }) };
         const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
         // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)

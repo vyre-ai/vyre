@@ -53,11 +53,16 @@ async function rig() {
 }
 
 test("project files are sealed at rest and open only for the project's members and their assistants; an owner, an admin, another member and an outside agent get not_found before the Drive is touched", async () => {
-  const { D, raw, owner, bob, carol, ada, dan, as, dir } = await rig();
+  const { k, D, raw, owner, bob, carol, ada, dan, as, dir } = await rig();
   await D.put(bob, `${dir}/plan.txt`, enc("the plan"));
   for (const [p, versions] of raw.files) if (p.startsWith(dir)) for (const v of versions) assert.ok(!Buffer.from(v.bytes).toString("utf8").includes("the plan"), `${p} is stored sealed`);
-  assert.ok(![...raw.files.keys()].some(p => p.includes("plan.txt")), "and its name is not stored in the clear");
+  assert.ok(![...raw.files.keys()].some(p => p.includes("file.written")), "and its name is not stored in the clear");
   assert.equal(dec(await D.get(bob, `${dir}/plan.txt`)), "the plan", "the owner of the project reads it");
+  // the file's events are the file's: a member of the project and staff see them, another member does not (not its path, size or who touched it)
+  const seen = async (who) => JSON.stringify(await k.gateway.events.read(who, { since: 0, limit: 500 }));
+  assert.ok((await seen(carol)).includes("file.written") && (await seen(bob)).includes("file.written"), "the project's people see the file's events");
+  assert.ok((await seen(owner)).includes("file.written") && (await seen(ada)).includes("file.written"), "an owner and an admin see them");
+  assert.ok(!(await seen(dan)).includes("file.written"), "another member sees none of them");
   assert.equal(dec(await D.get(carol, `${dir}/plan.txt`)), "the plan", "a member with a team-member row");
   assert.equal(dec(await D.get(as(BOB, "assistant", "s1"), `${dir}/plan.txt`)), "the plan", "a member's default assistant");
   raw.calls.length = 0;

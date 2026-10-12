@@ -47,3 +47,28 @@ test("sessions survive adoption: a thread started before is still listed, a kern
   const sb = d.registry.deps.switchboard;
   if (sb && typeof sb.canonTurn === "function") assert.equal(sb.canonTurn(JSON.stringify({ chat: "c", asker: old })), JSON.stringify({ chat: "c", asker: A }));
 });
+
+test("claudesNaming: the claude a subreaper runs for us is ours (its parent is the pid we recorded); a claude of nobody ours is still named", async t => {
+  const { spawn } = await import("node:child_process");
+  const { claudesNaming } = await import("./adopt.js");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const sub = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-subreaper.js");
+  const id = (await import("node:crypto")).randomUUID();
+  // a program that looks like a claude with this session open, run under a stand-in subreaper (as tini wraps a session) and, separately, on its own
+  const idle = ["-e", "setInterval(()=>{},1000)", "claude", "--session-id", id];
+  const wrapped = spawn(sub, ["-s", "--", process.execPath, ...idle], { stdio: "ignore", detached: true });
+  const alone = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  t.after(() => { for (const c of [wrapped, alone]) { try { process.kill(-/** @type {number} */ (c.pid), "SIGKILL"); } catch { /* gone */ } } });
+  const until = async (/** @type {() => boolean} */ f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 50)); };
+  await until(() => claudesNaming(id, []).length >= 3);
+  const named = claudesNaming(id, [/** @type {number} */ (wrapped.pid)]);
+  assert.ok(!named.includes(/** @type {number} */ (wrapped.pid)), "the subreaper is ours");
+  assert.deepEqual(named, [alone.pid], `the claude under our subreaper is ours; only the one of nobody ours is named: ${named}`);
+  // a claude the model starts from a tool inside the session is a grandchild in the session's own process group: a second writer of the transcript, so it is still named (only a CHILD of ours is ours)
+  const sh = spawn("/bin/sh", ["-c", `${JSON.stringify(sub)} -s -- ${JSON.stringify(process.execPath)} -e "setInterval(()=>{},1000)" claude --session-id ${id} & wait`], { stdio: "ignore", detached: true });
+  t.after(() => { try { process.kill(-/** @type {number} */ (sh.pid), "SIGKILL"); } catch { /* gone */ } });
+  await until(() => claudesNaming(id, [/** @type {number} */ (sh.pid), /** @type {number} */ (wrapped.pid)]).length >= 2);
+  const grand = claudesNaming(id, [/** @type {number} */ (sh.pid), /** @type {number} */ (wrapped.pid)]).filter(p => p !== alone.pid);
+  assert.equal(grand.length, 1, `the grandchild is named though it shares the group of our recorded pid: ${grand}`);
+});
