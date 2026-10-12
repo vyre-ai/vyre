@@ -14,6 +14,7 @@
 // It returns true, or throws KernelError("not_allowed", words that name who can do it).
 
 import { KernelError } from "../core/errors.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 
 /**
  * The services whose one-hop chain writes these types for the whole Space, each trusted because the service checks the person itself BEFORE it writes (a service not listed here is judged as acting for the
@@ -139,7 +140,7 @@ export function isTrustedChain(chain, roleOf) {
   const first = hops.find((/** @type {any} */ h) => h.actor.kind === "person");
   if (!first) return false;
   const role = roleOf(first.actor);
-  return (role === "owner" || role === "admin") && (hops.length === 1 || hops[hops.length - 1].actor.kind === "service");
+  return roleAtLeast(String(role), "admin") && (hops.length === 1 || hops[hops.length - 1].actor.kind === "service");
 }
 
 /** The owner and the people on a project's team, read straight from the record store (no gate: the rule's own question). @param {{ get: Function, query: Function }} store @param {(type: string, id: string) => string} urn @param {(urn: string) => any} [attrsOf] */
@@ -174,6 +175,6 @@ export async function mayAttrs(chain, attrs, ctx) {
 /** Who is writing and whether that is trusted: the chain as it is, or, for a service that is not trusted, the person the task is for (an owner or admin there counts as trusted). @param {any} chain @param {any} doer @param {(a: any) => string | null | undefined} roleOf @param {string} space */
 export function judgeWriter(chain, doer, roleOf, space) {
   const actingFor = actingForOf(chain, doer);
-  const trusted = isTrustedChain(chain, roleOf) || (actingFor !== null && ["owner", "admin"].includes(String(roleOf({ kind: "person", id: actingFor, space }))));
+  const trusted = isTrustedChain(chain, roleOf) || (actingFor !== null && roleAtLeast(String(roleOf({ kind: "person", id: actingFor, space })), "admin"));
   return { trusted, actingFor };
 }
