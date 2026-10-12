@@ -281,3 +281,11 @@ test("a queued hop in a team Space chat carries the Space with it: the hop's ker
   await new Promise(r => setTimeout(r, 30));
   assert.deepEqual(seen, { chat: "c", asker: "per_ada", space: "spc_aaaaaaaaaaaa" });
 });
+
+test("deliverRow opens the row's session in the Space of its chat (a team chat's row delivered without a hop was judged against the home's chats)", async () => {
+  /** @type {any[]} */ const turns = [];
+  const sb = /** @type {any} */ ({ record: () => ({ project: null }), renewCapped: async (/** @type {string} */ _id, /** @type {any} */ _rec, /** @type {any} */ turn) => { turns.push(turn); return true; }, write() {}, dropQueuedChatTurn() {} });
+  await Switchboard.prototype.deliverRow.call(sb, "t", { text: "B-ONE", uuid: "u" }, { chat: "c", asker: "per_ben", space: "spc_team" });
+  await Switchboard.prototype.deliverRow.call(sb, "t", { text: "H-ONE", uuid: "v" }, { chat: "c", asker: "per_ben" });
+  assert.deepEqual(turns, [{ chat: "c", asker: "per_ben", space: "spc_team" }, { chat: "c", asker: "per_ben" }], "the Space rides when the turn has one, and only then");
+});

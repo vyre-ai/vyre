@@ -24,7 +24,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // [kernel +11: the protected-types cache is invalidated on every definition change; fail closed while the definitions cannot be read] (rc1-a)
 // [kernel +1: goals are kept by the goals module] (rc1-a)
 // [kernel +5: the Space's set-up types (an agent, a template, a playbook) are written only by an owner or an admin on every route] (rc1-b)
-const CAP = 9547;
+// 9548 (kernel +1 on 9547: a skip that waits for a yes passes the same task-ownership check as one that does not).
+const CAP = 9548;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

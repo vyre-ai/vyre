@@ -58,6 +58,14 @@ export function createMemoryGateway(cfg) {
   /** The agent a chain works as: its first agent hop, or null. @param {any} chain */
   const agentOf = (chain) => { const h = chain.hops.find((/** @type {any} */ x) => x.actor.kind === "agent"); return h ? String(h.actor.id) : null; };
   const projectUrn = (/** @type {string} */ id) => `vyre://${cfg.space}/project/${id}`;
+  /** A person reaches a project's memory as its team does: project.reach alone is the MEMBER role's, held for every project, so a member also needs a seat (owner, admin, the project's owner or team). An agent-only chain is judged by project.reach (its grants). @param {any} chain @param {string} project */
+  const mayReach = async (chain, project) => {
+    if (!(await check(chain, "project.reach", projectUrn(project)))) return false;
+    const p = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+    if (!p || typeof cfg.projectMember !== "function") return true;
+    const role = typeof cfg.roleOf === "function" ? cfg.roleOf(p.actor) : null;
+    return role === "owner" || role === "admin" || Boolean(await cfg.projectMember(String(p.actor.id), project));
+  };
 
   /** The source a fact names: a record, task or file of THIS Space the filer may read, or an opaque session or thread reference. */
   async function checkSource(/** @type {any} */ chain, /** @type {any} */ source) {
@@ -99,7 +107,7 @@ export function createMemoryGateway(cfg) {
       if (f.scope !== undefined) {
         const m = typeof f.scope === "string" ? /^project:([A-Za-z0-9_-]{1,64})$/.exec(f.scope) : null;
         if (f.scope === "agent") { const a = agentOf(chain); if (!a) throw new KernelError("bad_input", "only an agent has a scope of its own: name a project, or leave the scope out"); scope = `agent:${a}`; }
-        else if (m) { if (!(await check(chain, "project.reach", projectUrn(m[1])))) throw new KernelError("not_found", "no such record"); scope = `project:${m[1]}`; }
+        else if (m) { if (!(await mayReach(chain, m[1]))) throw new KernelError("not_found", "no such record"); scope = `project:${m[1]}`; }
         else throw new KernelError("bad_input", 'scope is "agent" or "project:<id>"');
       }
       await ready();
@@ -130,7 +138,7 @@ export function createMemoryGateway(cfg) {
       const topic = typeof o.topic === "string" ? o.topic.trim().toLowerCase() : "";
       const rows = (await cfg.store.query("memory_fact", { filter: { field: "state", op: "eq", value: "active" }, sort: [{ field: "filed_at", dir: "desc" }], page: { limit: SCAN_MAX } })).rows;
       const me = agentOf(chain), here = typeof chain.project === "string" ? chain.project : (typeof o.project === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(o.project) ? o.project : null);
-      const mayHere = here ? await check(chain, "project.reach", projectUrn(here)) : false;
+      const mayHere = here ? await mayReach(chain, here) : false;
       /** @type {any[]} */ const out = [];
       for (const r of rows) {
         if (out.length >= limit) break;

@@ -174,16 +174,15 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** The person on a chain, or null. @param {any} c */
   const personOnChain = c => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
   /**
-   * May this PERSON use the project's memory, brief and skills: the Space's owner or an admin, or the project's owner or team (the ownership rule's own projectTeamOf). A name that matches no project is open
-   * (nothing to protect). Asked by memory.prompt and the switchboard for a person's thread. @param {string} person @param {string} ref a short name, record id or address
+   * May this PERSON use the project's memory, brief and skills: the Space's owner or an admin, or the project's owner or team (the ownership rule's own projectTeamOf). A name that matches no project is NO. Asked by memory.prompt and the switchboard for a person's thread. @param {string} person @param {string} ref a short name, record id or address
    */
   async function mayUseProject(person, ref) {
     if (!person || await isStaff(person)) return true;
-    // "no such project" is open (nothing to protect); a read ERROR is not an answer, so it throws and the caller counts it as no
+    // A project that cannot be found is NO, never yes: resolve it first, then judge the seat. (It used to be open, "nothing to protect"; a made-up or half-made name must not read a room.) A read ERROR is not an answer either: it throws and the caller counts it as no.
     const r = String(ref || "");
     const id = r.startsWith("vyre://") ? (r.split("/")[3] === PROJECT ? r.split("/")[4] : null) : projectRecordIdOf(r);
     const rec = id ? await kernel.records.get(chain(), PROJECT, id).catch((/** @type {any} */ e) => { if (e && e.code === "not_found") return null; throw e; }) : await find(PROJECT, "slug", r);
-    if (!rec) return true;
+    if (!rec) return false;
     return mayFileUnder(person, rec, r).then(() => true, () => false);
   }
 

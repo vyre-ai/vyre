@@ -1221,7 +1221,7 @@ export class Switchboard {
   /** A queued row that needs no hop (the thread already is on the asker's account): its words go in as a plain drained turn, under their asker. @param {string} id @param {any} r @param {any} kt */
   async deliverRow(id, r, kt) {
     const rec = this.record(id), project = rec ? rec.project : null;
-    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker }) : false;
+    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker, ...(kt.space ? { space: kt.space } : {}) }) : false;
     if (!ok) { this.dropQueuedChatTurn(id, [r], project); return; }
     this.write(id, r.text, { uuid: r.uuid || crypto.randomUUID(), askedBy: kt.asker || null, images: imagesFrom(r.images) || null, ...(r.note ? { note: r.note } : {}) });
   }
