@@ -28,7 +28,7 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   const chat = createChatService({ space: SPACE, kernel: K, registry: d.registry });
   const R = K.gateway.records, svc = K.gateway.serviceChain("work");
   const mk = (/** @type {string} */ slug, /** @type {string} */ owner) => R.create(ownerChain, "project", { name: slug, slug, status: "active", memory_scope: `project:${slug}`, owner: person(owner, SPACE) });
-  await mk("owners-matter", OWNER); await mk("anas-matter", ANA);
+  await mk("owners-matter", OWNER); await mk("anas-matter", ANA); const closed = await mk("owners-closed", OWNER);
   const count = async (/** @type {string} */ type) => (await R.query(svc, type, { page: { limit: 500 } })).rows.length;
   // a chat the way a device makes it: its id and its key ring (the server makes none for a chat it is asked to start without one)
   const dev = newDeviceKey(), agree = toB64u(Uint8Array.from([4, ...fromB64u(dev.publicJwk.x), ...fromB64u(dev.publicJwk.y)]));
@@ -62,9 +62,9 @@ test("a member files a chat only under a project she owns or is on; an unknown n
   const mover = await chat.create(chainOf(ANA), body("", 8));
   const projectOf = async (/** @type {string} */ chatId) => (await R.query(svc, "chat-record", { filter: { field: "chat", op: "eq", value: chatId }, page: { limit: 1 } })).rows[0].data.project.urn;
   const before = await projectOf(mover.chat);
-  const byName = await move(ANA, mover.chat, "owners-matter");
-  assert.match(JSON.stringify(byName.error || {}), /not on the project owners-matter/, "moving into the owner's project by name is refused: " + JSON.stringify(byName).slice(0, 200));
-  const byUrn = await move(ANA, mover.chat, owners.urn);
+  const byName = await move(ANA, mover.chat, "owners-closed");
+  assert.match(JSON.stringify(byName.error || {}), /not on the project owners-closed/, "moving into the owner's project by name is refused: " + JSON.stringify(byName).slice(0, 200));
+  const byUrn = await move(ANA, mover.chat, closed.urn);
   assert.match(JSON.stringify(byUrn.error || {}), /not on the project/, "and by record address");
   assert.equal(await projectOf(mover.chat), before, "the chat stayed where it was");
   const own = await move(ANA, mover.chat, "anas-matter");
