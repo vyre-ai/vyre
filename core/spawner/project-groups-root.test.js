@@ -175,3 +175,34 @@ test("project groups, real uids: at start /work becomes 2711 and the folders in 
   prepareWork({ work, shared: WORKGID, asVyre });
   assert.equal(fs.statSync(work).ctimeMs, c, "a second start changes nothing");
 });
+
+test("project groups, real uids: an old-layout /work (vyre-work 2770, projects in it): the agent works in a project before the upgrade and after its first ensure, with no vyre-work; loose files are named in the notice", { skip: root ? false : "needs root on Linux with setpriv" }, async t => {
+  const { work, socket } = await box(t);
+  fs.writeFileSync(path.join(work, "loose.txt"), "loose"); fs.chownSync(path.join(work, "loose.txt"), VYRE, WORKGID); fs.chmodSync(path.join(work, "loose.txt"), 0o660);
+  fs.chmodSync(work, 0o2770);   // the old mode
+  // before: the agent holds vyre-work and works in alpha
+  assert.equal(as(AGENT, [WORKGID], "/bin/sh", "-c", `echo before >> ${work}/alpha/notes.txt`).status, 0);
+  // upgrade: /work is prepared, the agent drops vyre-work and holds only the range
+  const asVyre = (/** @type {string[]} */ ...argv) => { const r = spawnSync("/usr/bin/setpriv", [`--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${WORKGID}`, "--inh-caps=-all", "--", ...argv]); if (r.status !== 0) throw new Error(String(r.stderr)); };
+  const said = /** @type {string[]} */ ([]);
+  const loose = prepareWork({ work, shared: WORKGID, asVyre, log: m => said.push(m) });
+  assert.deepEqual(loose, ["loose.txt"]); assert.match(said.join("\n"), /loose file\(s\).*loose\.txt.*move what a session needs/);
+  assert.notEqual(as(AGENT, [], "/bin/cat", path.join(work, "alpha/notes.txt")).status, 0, "before its first ensure the project is closed to a session with no group");
+  const alpha = await projectGroup("alpha", path.join(work, "alpha"), { socket });
+  const after = as(AGENT, [alpha.gid], "/bin/sh", "-c", `cat ${work}/alpha/notes.txt && echo after >> ${work}/alpha/notes.txt && cat ${work}/alpha/sub/made.txt`);
+  assert.equal(after.status, 0, after.stderr); assert.match(after.stdout, /alpha-vyrebefore\nalpha-made-by-account/);
+  assert.notEqual(as(AGENT, [alpha.gid], "/bin/cat", path.join(work, "loose.txt")).status, 0, "a loose file is vyred's alone now, and was said so");
+  assert.notEqual(as(AGENT, [alpha.gid], "/bin/cat", path.join(work, "beta/notes.txt")).status, 0, "another project's tree is still closed");
+});
+
+test("project groups, real uids: a path that leaves /work, a link in the middle of it, or one with .. is refused and nothing outside /work is regrouped", { skip: root ? false : "needs root on Linux with setpriv" }, async t => {
+  const { work, socket, dir } = await box(t);
+  const outside = path.join(dir, "outside"); fs.mkdirSync(path.join(outside, "proj"), { recursive: true }); fs.chownSync(path.join(outside, "proj"), VYRE, WORKGID); fs.chownSync(outside, VYRE, WORKGID);
+  fs.writeFileSync(path.join(outside, "proj", "f"), "x"); fs.chownSync(path.join(outside, "proj", "f"), VYRE, WORKGID);
+  fs.symlinkSync(outside, path.join(work, "out")); fs.lchownSync(path.join(work, "out"), VYRE, WORKGID);
+  await assert.rejects(projectGroup("o1", path.join(outside, "proj"), { socket }), /outside .*work/);
+  await assert.rejects(projectGroup("o2", path.join(work, "out", "proj"), { socket }), /link|cannot be reached|not a folder/);
+  await assert.rejects(projectGroup("o3", `${work}/alpha/../../outside/proj`, { socket }), /no \.\./);
+  await assert.rejects(projectGroup("o4", "/etc", { socket }), /outside .*work/);
+  assert.equal(fs.statSync(path.join(outside, "proj")).gid, WORKGID); assert.equal(fs.statSync(path.join(outside, "proj", "f")).gid, WORKGID, "nothing outside /work was regrouped");
+});
