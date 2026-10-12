@@ -41,6 +41,8 @@ function box(t, opts = {}) {
     VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
     // the stub box answers the check words at once or never (the sudo retry starts at the third ask): the installer waits for them up to 180 tries, about 3 minutes, otherwise
     VYRE_WORDS_TRIES: "4",
+    // the space code is asked for once, not retried for the 15 tries a real first start can need
+    VYRE_SPACE_TRIES: "1",
     // Never the machine's own units: on a host that runs a real Vyre the uninstall sees them and keeps the wrapper.
     VYRE_SYSTEMD_DIR: path.join(base, "systemd"),
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
@@ -539,6 +541,25 @@ test("install-box.sh v2: without a setup code the terminal asks nothing and pair
   assert.ok(!b.calls().includes("wink.server.code") && !b.calls().includes("wink.server.pairing"), "the pairing was not asked for");
   assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
   assert.doesNotMatch(r.stdout, /already running|not paired yet/);
+});
+
+test("install-box.sh v2: without a setup code the last lines are the space code from `vyre space up`, then how to get it again, and nothing after", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH (good for 10 minutes, one use)'; echo '  Your four words: amber lake moss pine' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const lines = r.stdout.split("\n").filter(l => l.trim());
+  assert.match(lines[lines.length - 1], /Get it again any time: vyre space up/);
+  assert.match(lines[lines.length - 3], /Your space code: WINK-ABCD-EFGH \(good for 10 minutes, one use\)/);
+  assert.doesNotMatch(r.stdout, /choose "Add a server", and run the line/, "the code replaces the older line");
+  assert.match(b.calls(), /vyre space up/, "it is the same command a person runs later");
+});
+
+test("install-box.sh v2: with a setup code the app is driving, so no space code is made", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *"vyre space up"*) echo '  Your space code: WINK-ABCD-EFGH' ;; *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /Your space code/);
+  assert.doesNotMatch(b.calls(), /space up/);
 });
 
 /** A server with no Docker: the get.docker.com script (a curl stub) prints a flood, and either installs a Docker stub or fails. */

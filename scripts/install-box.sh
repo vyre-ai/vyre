@@ -151,6 +151,23 @@ rule() {
   fi
 }
 
+# show_space_code: the code that sets this server's space up from the app, from the same command a person runs later (`vyre space up`), so the installer and the command can never differ.
+# Goes the way `vyre up` went (through sudo when this account cannot reach Docker), waits for the box to be able to make a code (a first start can take a moment), and prints nothing and
+# returns 1 when it cannot, so finish says the older line instead. The last line says how to get the code again.
+show_space_code() {
+  [ "$DRY" = 0 ] || return 1
+  n=0
+  while [ "$n" -lt "${VYRE_SPACE_TRIES:-15}" ]; do
+    sc=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" space up 2>/dev/null || true)
+    case "$sc" in
+      *"Your space code:"*) printf '%s\n' "$sc"; say "  Get it again any time: ${BOLD}vyre space up${RESET}"; return 0 ;;
+      *"already set up"*) return 1 ;;
+    esac
+    n=$((n + 1)); sleep 1
+  done
+  return 1
+}
+
 # finish: what just happened and the one next step. It ends on that step, with no sign-off.
 finish() {
   say ""
@@ -169,7 +186,7 @@ finish() {
     else
       if [ -n "$CODE" ]; then
         say "  Go back to the Vyre app to finish."
-      else
+      elif ! show_space_code; then
         say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
       fi
     fi
