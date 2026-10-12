@@ -14,7 +14,7 @@ function table(/** @type {any} */ row) {
     run: (/** @type {any[]} */ ...a) => { writes.push([sql, a]); if (/SET provider/.test(sql)) { [row.provider, row.account, row.model] = a; row.opts = a[3]; } else if (/SET opts/.test(sql)) row.opts = a[0]; return { changes: 1 }; } }) };
 }
 const hopRow = () => ({ id: "t1", provider: "claude", account: "acct_carol", model: null, opts: JSON.stringify({ provider: "claude", account: "acct_carol", person: "per_bob", switchPerson: "per_carol", hopBack: BASE }) });
-const sbOf = (/** @type {any} */ t, /** @type {any} */ extra = {}) => /** @type {any} */ ({ db: t, once: new Map([["t1", { back: BASE }]]), reverting: new Map(), deps: { log() {} }, endHop: Switchboard.prototype.endHop, ...extra });
+const sbOf = (/** @type {any} */ t, /** @type {any} */ extra = {}) => /** @type {any} */ ({ db: t, once: new Map([["t1", { back: BASE }]]), reverting: new Map(), deps: { log() {} }, endHop: Switchboard.prototype.endHop, resumeWaiting() {}, ...extra });
 
 test("endHop with a base puts the base account, model and person back and removes the hop's person and its record", () => {
   const t = table(hopRow()); const sb = sbOf(t);

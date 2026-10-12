@@ -469,6 +469,7 @@ test("E1: three people queued behind the owner's turn, and that turn is stopped 
   assert.ok(!stopped.error, stopped.error && stopped.error.message);
   const c = await answered(w, watcher, "C-E1", 120_000), a = await answered(w, watcher, "A-E1", 120_000);
   assert.deepEqual([c.who, a.who], [CAROL, ADA]);
+  assert.deepEqual(askersOf(w).filter(Boolean), [BOB, CAROL, ADA], "the turn that was stopped is not run again for the person who stopped it: three persons' turns, not four (the restart itself opens no one's session)");
   assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed" && /resume/.test(String(f.data.note))), "nothing says it could not resume");
 });
 
