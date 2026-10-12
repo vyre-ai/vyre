@@ -230,6 +230,140 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return got;
   }, { needs: [G], owner: "chat" });
 
+  // ---- walk-3 (final tree, sandbox on): the same chat, five turns by three people, three queued behind a running turn, the tool gate, skills, a leftover job, and a scan for a retired product word
+  /** @type {Record<string, any>} */ const said = {};
+  const ownerUid = async () => (await w.operator("sessions.accounts.list", { provider: "codex" })).find((/** @type {any} */ a) => a.id === ownerAcctId).uid;
+  const speak = (/** @type {string} */ who, /** @type {string} */ text) => who === "owner"
+    ? w.call("stream.send", { chat, space: team.space, text: `@assistant ${text}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` })
+    : (who === grace.name ? grace : edith).joined.call("chat.send", [{ chat, text: `@assistant ${text}`, account: `codex:${accounts[who].id}` }]);
+  const uidOf = async (/** @type {string} */ who) => (who === "owner" ? await ownerUid() : accounts[who].uid);
+
+  const WA = "five turns, owner then Grace then owner then Grace then Edith, each on that person's own account, each answered once and under its own person";
+  await J.step(WA, async () => {
+    const order = ["owner", grace.name, "owner", grace.name, edith.name];
+    const out = [];
+    for (const [n, who] of order.entries()) {
+      const tag = `walkA${n + 1}`;
+      await speak(who, `whoami ${tag}`);
+      const a = await untilAnswerTo(grace, chat, tag).catch(async (/** @type {any} */ e) => {
+        const dump = async (/** @type {string} */ k, /** @type {() => Promise<any>} */ f) => { try { console.log(`DBG ${k}: ${JSON.stringify(await f()).slice(0, 1500)}`); } catch (x) { console.log(`DBG ${k}: ${String(x && x.message).slice(0, 200)}`); } };
+        await dump("threads (space)", () => w.call("threads.list", { all: true, space: team.space }));
+        await dump("threads (default)", () => w.operator("threads.list", { all: true }));
+        await dump("queue", () => w.call("threads.queue", { space: team.space }));
+        await dump("chat tail", async () => (await seen(grace, chat)).slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 80)]));
+        throw e;
+      });
+      assert.equal(a.length, 1, `${tag} (${who}) is answered once, not ${a.length} times: ${JSON.stringify(a.map(m => m.text))}`);
+      const uid = await uidOf(who);
+      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag}: ${who}'s turn ran as their account (user ${uid}): ${a[0].text}`);
+      for (const other of ["owner", grace.name, edith.name].filter(x => x !== who)) assert.ok(!String(a[0].text).includes(`/${await uidOf(other)}`), `${tag}: and not as ${other}'s`);
+      out.push(`${tag} ${who}: ${String(a[0].text).slice(0, 60)}`);
+    }
+    return out.join(" | ");
+  }, { needs: [H], owner: "chat" });
+
+  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
+  await J.step(WB, async () => {
+    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
+    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
+    await sleep(3000);
+    await speak(grace.name, "whoami walkBq1");
+    await sleep(500);
+    await speak(edith.name, "whoami walkBq2");
+    await sleep(500);
+    await speak("owner", "whoami walkBq3");
+    const got = [];
+    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
+      const a = await untilAnswerTo(grace, chat, tag);
+      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
+      const uid = await uidOf(who);
+      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
+      got.push(tag);
+    }
+    const ms = await seen(grace, chat);
+    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
+    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
+    void sleeper;
+    return got.join(", ");
+  }, { needs: [H], owner: "chat" });
+
+  const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
+  await J.step(WC, async () => {
+    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const known = new Set((await termsNow()).map(m => m.message));
+      await speak(who, `walk-term:${cmd}`);
+      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      throw new Error(`no answer to ${cmd} from ${who}`);
+    };
+    const out = /** @type {string[]} */ ([]);
+    for (const who of [grace.name, edith.name]) {
+      const list = await R(who, `vyre call vault.list '{}' 2>&1`);
+      const reveal = await R(who, `vyre call vault.reveal '{"item":"walk-owner-item"}' 2>&1`);
+      said[`${who}-vault`] = `${list} || ${reveal}`;
+      assert.ok(!/walk-owner-item.*value|"items"\s*:\s*\[\s*\{/.test(list + reveal), `${who} sees no owner item through the tool: ${list} ${reveal}`);
+      assert.ok(/vault|owner|private|not allowed|refus|stay out/i.test(list), `${who}'s vault.list is refused in words: ${list}`);
+      out.push(`${who}: list -> ${list.slice(0, 160)} | reveal -> ${reveal.slice(0, 160)}`);
+    }
+    const control = await R("owner", `vyre call vault.list '{}' 2>&1`);
+    said["owner-vault"] = control;
+    out.push(`owner (control): ${control.slice(0, 200)}`);
+    return out.join(" || ");
+  }, { needs: [H], owner: "chat" });
+
+  const WD = "each person's turn lists that person's skills and none of another's";
+  await J.step(WD, async () => {
+    // the owner makes a personal skill with a distinctive name and approves it (the owner's own level); a member's turn must not list it
+    const body = "---\nname: walk-owner-private\ndescription: only the owner uses this walk skill\n---\nSay owner only.\n";
+    const drafted = await w.call("skills.draft", { name: "walk-owner-private", level: "personal", body, kind: "skill" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+    const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
+    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const known = new Set((await termsNow()).map(m => m.message));
+      await speak(who, `walk-term:${cmd}`);
+      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      throw new Error(`no answer to ${cmd} from ${who}`);
+    };
+    const lists = /** @type {Record<string, string>} */ ({});
+    for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `vyre call skills.list '{}' 2>&1`);
+    said.skills = JSON.stringify(lists).slice(0, 1500);
+    for (const who of [grace.name, edith.name]) assert.ok(!lists[who].includes("walk-owner-private"), `${who}'s turn does not list the owner's personal skill: ${lists[who].slice(0, 300)}`);
+    assert.ok(lists.owner.includes("walk-owner-private") || (approved && approved.error), `the owner's turn lists the owner's own skill (or the skill could not be made: ${JSON.stringify(approved).slice(0, 200)}): ${lists.owner.slice(0, 300)}`);
+    return `draft/approve: ${JSON.stringify(approved).slice(0, 120)} | lists: ${JSON.stringify(lists).slice(0, 600)}`;
+  }, { needs: [H], owner: "chat" });
+
+  const WE = "a job a member's turn leaves behind calls the tool CLI after the turn: while her session still stands it has hers, after it is gone the call fails; the owner's turn between them gets none of it";
+  await J.step(WE, async () => {
+    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
+      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
+      const known = new Set((await termsNow()).map(m => m.message));
+      await speak(who, `walk-term:${cmd}`);
+      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      throw new Error(`no answer to ${cmd} from ${who}`);
+    };
+    const start = await R(grace.name, `cd "$PWD"; (setsid nohup sh -c 'sleep 4; vyre call vault.list "{}" > bg5.out 2>&1; sleep 45; vyre call vault.list "{}" > bg50.out 2>&1' >/dev/null 2>&1 &); echo started`);
+    await speak("owner", "whoami walkE-owner");
+    const own = await untilAnswerTo(grace, chat, "walkE-owner");
+    assert.ok(String(own[0].text).includes(`/${await ownerUid()}`), `the owner's turn ran as the owner: ${own[0].text}`);
+    await sleep(60_000);
+    const files = await R(grace.name, `cd "$PWD"; echo "5s:"; cat bg5.out 2>&1; echo "50s:"; cat bg50.out 2>&1`);
+    said.bg = files;
+    assert.ok(!/walk-owner-item|"items"\s*:\s*\[\s*\{/.test(files), `the leftover job never saw the owner's vault: ${files}`);
+    return `start: ${start.slice(0, 80)} | files: ${files.slice(0, 500)}`;
+  }, { needs: [H], owner: "chat" });
+
+  const WF = "the retired product word does not appear on anything a person sees in the chat: messages, notices, refusals";
+  await J.step(WF, async () => {
+    const seenText = [];
+    for (const p of people) seenText.push(JSON.stringify(await seen(p, chat)));
+    seenText.push(JSON.stringify((await w.call("stream.catchup", { chat, space: team.space })).messages || []));
+    seenText.push(JSON.stringify(said));
+    const all = seenText.join("\n");
+    const hit = all.match(/.{0,60}capsule.{0,60}/i);
+    assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
+    return `scanned ${all.length} characters in ${seenText.length} views`;
+  }, { needs: [H], owner: "chat" });
+
   // ---- the vault and the folders, from a MEMBER's own session on the server (rc1-a's steps; the owner's session is the control)
   const I = "from a member's session: the daemon's main socket is closed to them, the owner's vault answers a refusal in words and shows no item name, and another chat's folder cannot be listed";
   await J.step(I, async () => {
@@ -274,137 +408,4 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     return transcript.join("\n");
   }, { needs: [H], owner: "chat" });
 
-  // ---- walk-3 (final tree, sandbox on): the same chat, five turns by three people, three queued behind a running turn, the tool gate, skills, a leftover job, and a scan for a retired product word
-  /** @type {Record<string, any>} */ const said = {};
-  const ownerUid = async () => (await w.operator("sessions.accounts.list", { provider: "codex" })).find((/** @type {any} */ a) => a.id === ownerAcctId).uid;
-  const speak = (/** @type {string} */ who, /** @type {string} */ text) => who === "owner"
-    ? w.call("stream.send", { chat, space: team.space, text: `@assistant ${text}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` })
-    : (who === grace.name ? grace : edith).joined.call("chat.send", [{ chat, text: `@assistant ${text}`, account: `codex:${accounts[who].id}` }]);
-  const uidOf = async (/** @type {string} */ who) => (who === "owner" ? await ownerUid() : accounts[who].uid);
-
-  const WA = "five turns, owner then Grace then owner then Grace then Edith, each on that person's own account, each answered once and under its own person";
-  await J.step(WA, async () => {
-    const order = ["owner", grace.name, "owner", grace.name, edith.name];
-    const out = [];
-    for (const [n, who] of order.entries()) {
-      const tag = `walkA${n + 1}`;
-      await speak(who, `whoami ${tag}`);
-      const a = await untilAnswerTo(grace, chat, tag).catch(async (/** @type {any} */ e) => {
-        const dump = async (/** @type {string} */ k, /** @type {() => Promise<any>} */ f) => { try { console.log(`DBG ${k}: ${JSON.stringify(await f()).slice(0, 1500)}`); } catch (x) { console.log(`DBG ${k}: ${String(x && x.message).slice(0, 200)}`); } };
-        await dump("threads (space)", () => w.call("threads.list", { all: true, space: team.space }));
-        await dump("threads (default)", () => w.operator("threads.list", { all: true }));
-        await dump("queue", () => w.call("threads.queue", { space: team.space }));
-        await dump("chat tail", async () => (await seen(grace, chat)).slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 80)]));
-        throw e;
-      });
-      assert.equal(a.length, 1, `${tag} (${who}) is answered once, not ${a.length} times: ${JSON.stringify(a.map(m => m.text))}`);
-      const uid = await uidOf(who);
-      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag}: ${who}'s turn ran as their account (user ${uid}): ${a[0].text}`);
-      for (const other of ["owner", grace.name, edith.name].filter(x => x !== who)) assert.ok(!String(a[0].text).includes(`/${await uidOf(other)}`), `${tag}: and not as ${other}'s`);
-      out.push(`${tag} ${who}: ${String(a[0].text).slice(0, 60)}`);
-    }
-    return out.join(" | ");
-  }, { needs: [I], owner: "chat" });
-
-  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
-  await J.step(WB, async () => {
-    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
-    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
-    await sleep(3000);
-    await speak(grace.name, "whoami walkBq1");
-    await sleep(500);
-    await speak(edith.name, "whoami walkBq2");
-    await sleep(500);
-    await speak("owner", "whoami walkBq3");
-    const got = [];
-    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
-      const a = await untilAnswerTo(grace, chat, tag);
-      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
-      const uid = await uidOf(who);
-      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
-      got.push(tag);
-    }
-    const ms = await seen(grace, chat);
-    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
-    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
-    void sleeper;
-    return got.join(", ");
-  }, { needs: [WA], owner: "chat" });
-
-  const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
-  await J.step(WC, async () => {
-    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
-      const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
-      throw new Error(`no answer to ${cmd} from ${who}`);
-    };
-    const out = /** @type {string[]} */ ([]);
-    for (const who of [grace.name, edith.name]) {
-      const list = await R(who, `vyre call vault.list '{}' 2>&1`);
-      const reveal = await R(who, `vyre call vault.reveal '{"item":"walk-owner-item"}' 2>&1`);
-      said[`${who}-vault`] = `${list} || ${reveal}`;
-      assert.ok(!/walk-owner-item.*value|"items"\s*:\s*\[\s*\{/.test(list + reveal), `${who} sees no owner item through the tool: ${list} ${reveal}`);
-      assert.ok(/vault|owner|private|not allowed|refus|stay out/i.test(list), `${who}'s vault.list is refused in words: ${list}`);
-      out.push(`${who}: list -> ${list.slice(0, 160)} | reveal -> ${reveal.slice(0, 160)}`);
-    }
-    const control = await R("owner", `vyre call vault.list '{}' 2>&1`);
-    said["owner-vault"] = control;
-    out.push(`owner (control): ${control.slice(0, 200)}`);
-    return out.join(" || ");
-  }, { needs: [WB], owner: "chat" });
-
-  const WD = "each person's turn lists that person's skills and none of another's";
-  await J.step(WD, async () => {
-    // the owner makes a personal skill with a distinctive name and approves it (the owner's own level); a member's turn must not list it
-    const body = "---\nname: walk-owner-private\ndescription: only the owner uses this walk skill\n---\nSay owner only.\n";
-    const drafted = await w.call("skills.draft", { name: "walk-owner-private", level: "personal", body, kind: "skill" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
-    const approved = drafted && !drafted.error ? await w.call("skills.approve", { name: "walk-owner-private", level: "personal" }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) })) : drafted;
-    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
-      const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
-      throw new Error(`no answer to ${cmd} from ${who}`);
-    };
-    const lists = /** @type {Record<string, string>} */ ({});
-    for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `vyre call skills.list '{}' 2>&1`);
-    said.skills = JSON.stringify(lists).slice(0, 1500);
-    for (const who of [grace.name, edith.name]) assert.ok(!lists[who].includes("walk-owner-private"), `${who}'s turn does not list the owner's personal skill: ${lists[who].slice(0, 300)}`);
-    assert.ok(lists.owner.includes("walk-owner-private") || (approved && approved.error), `the owner's turn lists the owner's own skill (or the skill could not be made: ${JSON.stringify(approved).slice(0, 200)}): ${lists.owner.slice(0, 300)}`);
-    return `draft/approve: ${JSON.stringify(approved).slice(0, 120)} | lists: ${JSON.stringify(lists).slice(0, 600)}`;
-  }, { needs: [WC], owner: "chat" });
-
-  const WE = "a job a member's turn leaves behind calls the tool CLI after the turn: while her session still stands it has hers, after it is gone the call fails; the owner's turn between them gets none of it";
-  await J.step(WE, async () => {
-    const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
-      const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-term/.test(String(m.text)));
-      const known = new Set((await termsNow()).map(m => m.message));
-      await speak(who, `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
-      throw new Error(`no answer to ${cmd} from ${who}`);
-    };
-    const start = await R(grace.name, `cd "$PWD"; (setsid nohup sh -c 'sleep 4; vyre call vault.list "{}" > bg5.out 2>&1; sleep 45; vyre call vault.list "{}" > bg50.out 2>&1' >/dev/null 2>&1 &); echo started`);
-    await speak("owner", "whoami walkE-owner");
-    const own = await untilAnswerTo(grace, chat, "walkE-owner");
-    assert.ok(String(own[0].text).includes(`/${await ownerUid()}`), `the owner's turn ran as the owner: ${own[0].text}`);
-    await sleep(60_000);
-    const files = await R(grace.name, `cd "$PWD"; echo "5s:"; cat bg5.out 2>&1; echo "50s:"; cat bg50.out 2>&1`);
-    said.bg = files;
-    assert.ok(!/walk-owner-item|"items"\s*:\s*\[\s*\{/.test(files), `the leftover job never saw the owner's vault: ${files}`);
-    return `start: ${start.slice(0, 80)} | files: ${files.slice(0, 500)}`;
-  }, { needs: [WD], owner: "chat" });
-
-  const WF = "the retired product word does not appear on anything a person sees in the chat: messages, notices, refusals";
-  await J.step(WF, async () => {
-    const seenText = [];
-    for (const p of people) seenText.push(JSON.stringify(await seen(p, chat)));
-    seenText.push(JSON.stringify((await w.call("stream.catchup", { chat, space: team.space })).messages || []));
-    seenText.push(JSON.stringify(said));
-    const all = seenText.join("\n");
-    const hit = all.match(/.{0,60}capsule.{0,60}/i);
-    assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
-    return `scanned ${all.length} characters in ${seenText.length} views`;
-  }, { needs: [WE], owner: "chat" });
 }

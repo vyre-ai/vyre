@@ -12,8 +12,8 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
   /** @type {any} */ let hers = null;
   const A = "the owner puts a project template live on the team's server";
   await J.step(A, async () => {
-    const def = await w.operator("work.template.define", { body: TEMPLATE });
-    await w.operator("work.template.golive", { template: def.template, version: def.version });
+    const def = await w.call("work.template.define", { body: TEMPLATE });
+    await w.call("work.template.golive", { template: def.template, version: def.version });
     tpl = def.template;
     return `${tpl} v${def.version} live`;
   }, { needs, owner: "projects-flows" });
@@ -36,7 +36,7 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
     const row = rows.find((/** @type {any} */ r) => r.data && r.data.slug === hers.slug);
     assert.ok(row, `her list: ${JSON.stringify(rows).slice(0, 300)}`);
     assert.equal(row.data.owner.actor.id, grace.app.identity.id, "she is its owner");
-    const ownerSees = JSON.stringify(await w.operator("records.list", { type: "project" }));
+    const ownerSees = JSON.stringify(await w.call("records.list", { type: "project" }));
     assert.ok(ownerSees.includes(hers.slug), "the owner sees it");
     return "in her list, owned by her, seen by the owner";
   }, { needs: [...needs, B], owner: "projects-flows" });
