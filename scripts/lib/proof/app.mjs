@@ -334,6 +334,9 @@ export function createApp(o) {
 
   return {
     nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    /** A multi-server walk: which server this app's calls go to (its pairing and signed-in session), saved and put back. */
+    snapshot() { return { pairing, session }; },
+    useServer(/** @type {{ pairing: any, session: any }} */ snap) { pairing = snap.pairing; session = snap.session; },
     get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
