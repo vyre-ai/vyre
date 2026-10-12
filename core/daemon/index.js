@@ -86,8 +86,8 @@ function kernelProof(req) {
 export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
 
 /**
- * Does a `tailnet:<login>` label hold? The label is the tailnet listener's claim, so it is the owner's own only when the peer that listener verified (whois) is that very login and, where the home records
- * its owner's login (`network.owner`, a string), that login is the owner's. A home that records none falls back to the verified peer alone (the same rule link.health and the switchboard apply). A label that
+ * Does a `tailnet:<login>` label hold? The label is the tailnet listener's claim, so it is the owner's own only when the peer that listener verified (whois) is that very login and that login is the one the home
+ * records as its owner (`network.owner`, a string). A home that records none holds no tailnet label at all (nothing in the product writes `network.owner` yet: the listener that stamps this label must record it first). A label that
  * fails is treated as a guest's for the whole request, so callerFacts, the module reach lists and the event bus all see the same caller. Nothing the caller sends reaches it.
  * @param {string} label @param {any} peer the verified peer the listener handed over @param {any} network the home's `network` config
  */
@@ -95,7 +95,7 @@ export function tailnetLabelHolds(label, peer, network) {
   const login = String(label).slice("tailnet:".length).trim().toLowerCase();
   if (!login || !peer || typeof peer.login !== "string" || peer.login.trim().toLowerCase() !== login) return false;
   const owner = network && typeof network.owner === "string" ? network.owner.trim().toLowerCase() : "";
-  return !owner || owner === login;
+  return owner !== "" && owner === login;
 }
 /**
  * What the kernel may build a person's own chain from, for a call that arrived on a connection the daemon itself proved: a person's surface on the 0600 socket (only the owner can

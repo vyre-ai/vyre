@@ -112,3 +112,13 @@ test("a fresh box: the set-up page's stream (the onboarding listener, no owner d
   assert.equal(status, 200);
   assert.deepEqual(got, ["onboard.stepped"], "the set-up stream carries onboard.* only, as it always did");
 });
+
+test("a home that records no owner login holds no tailnet label: the verified peer alone is not the owner", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const peer = { kind: "device", login: "owner@example.com", stableId: "n_owner" };
+  const s = /** @type {http.Server} */ (await new Promise(r => { const x = http.createServer((req, res) => d.registry.deps.handler({})(req, res, "tailnet:owner@example.com", peer)); x.listen(0, "127.0.0.1", () => r(x)); }));
+  t.after(() => s.close());
+  const r = await new Promise(res => { http.get({ port: /** @type {any} */ (s.address()).port, host: "127.0.0.1", path: "/v1/events?since=0" }, x => { let b = ""; x.on("data", c => { b += c; }); x.on("end", () => res({ status: x.statusCode, body: b })); }); });
+  assert.equal(/** @type {any} */ (r).status, 404);
+});
