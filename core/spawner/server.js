@@ -28,6 +28,7 @@
 //   paths it may read] checked. Refused while the wall's status file says it is not in place, and while NET_ADMIN is held.
 // The child starts once both io connections are attached; a spawn nobody attaches to in 10 s ends.
 
+import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -62,6 +63,15 @@ export const PLACE_MAX = 64 * 1024 * 1024;
  */
 export const PLACE_SCRIPT = 'f="$1"; d=$(dirname -- "$f"); [ ! -L "$d" ] && [ ! -L "$f" ] || exit 11; q="$d"; while [ ! -e "$q" ]; do q=$(dirname -- "$q"); done; [ "$(readlink -f -- "$q")" = "$q" ] || exit 13; umask 077; mkdir -p -- "$d" || exit 12; [ "$(readlink -f -- "$d")" = "$d" ] && [ "$(stat -c %u -- "$d")" = "$2" ] || exit 13; { [ ! -e "$f" ] || { [ -f "$f" ] && [ "$(stat -c %u -- "$f")" = "$2" ]; }; } || exit 14; t=$(mktemp -p "$d" .place.XXXXXX) || exit 15; if cat > "$t" && chmod 0600 -- "$t" && mv -T -- "$t" "$f"; then exit 0; fi; rm -f -- "$t"; exit 16';
 
+export { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk };
+/**
+ * What runs AS THE ACCOUNT to write one file of its skills set: $1 the file, $2 the account's HOME. Every existing component from the file's folder up to the HOME must be a plain folder (never a link), the folder is
+ * made 0700 and the file 0600 (umask 077), a file already there is removed first; a file that is a link is refused (exit 11), never followed. Exported so a test runs the real logic.
+ */
+export const SKILLS_SEED_SCRIPT = 'h="$2"; f="$1"; d=$(dirname -- "$f"); [ ! -L "$f" ] || exit 11; q="$d"; while [ "$q" != "$h" ]; do case "$q" in "$h"/*) ;; *) exit 13;; esac; [ ! -L "$q" ] || exit 11; q=$(dirname -- "$q"); done; umask 077; mkdir -p -- "$d" || exit 12; [ "$(readlink -f -- "$d")" = "$d" ] || exit 13; rm -f -- "$f" || exit 14; cat > "$f" && chmod 0600 -- "$f"';
+/** What runs AS THE ACCOUNT before a set is written: every set under its HOME's skills folder goes except the ones named, so the HOME does not grow and a session still running keeps its folder. $1 the HOME, the rest the content ids to keep. Never follows a link. */
+export const SKILLS_PRUNE_SCRIPT = 'r="$1/.vyre-skills"; shift; [ -d "$r" ] && [ ! -L "$r" ] || exit 0; for e in "$r"/* "$r"/.[!.]*; do [ -e "$e" ] || [ -L "$e" ] || continue; b=$(basename -- "$e"); k=0; for x in "$@"; do [ "$x" = "$b" ] && k=1; done; [ "$k" = 1 ] || rm -rf -- "$e"; done';
+
 export async function serve(o) {
   const log = o.log || (() => {});
   const work = path.resolve(o.work || "/work");
@@ -72,7 +82,18 @@ export async function serve(o) {
     "--inh-caps=-all", "--", "/bin/sh", "-c", 'umask 002; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv]);
   /** Write each file as the account's uid: mkdir -p, replace, 0600 (root cannot enter an account's HOME). */
   const defaultSeed = (home, who, files) => {
+    const as = ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--"];
+    const skills = Object.entries(files).filter(([k]) => k.startsWith(SKILLS_PREFIX));
+    if (skills.length) {
+      const id = skills[0][0].split("/")[1];
+      // the sets of this account's other running sessions stay: they are in use
+      const keep = new Set([id]);
+      for (const l of live.values()) if (l.req.account === who.account && l.req.seed) for (const k of Object.keys(l.req.seed)) if (skillsKeyOk(k)) keep.add(k.split("/")[1]);
+      execFileSync(as[0], [...as.slice(1), "/bin/sh", "-c", SKILLS_PRUNE_SCRIPT, "sh", home, ...keep], { stdio: "ignore" });
+      for (const [rel, text] of skills) execFileSync(as[0], [...as.slice(1), "/bin/sh", "-c", SKILLS_SEED_SCRIPT, "sh", path.join(home, rel), home], { input: text, stdio: ["pipe", "ignore", "ignore"] });
+    }
     for (const [rel, text] of Object.entries(files)) {
+      if (rel.startsWith(SKILLS_PREFIX)) continue;
       const file = path.join(home, rel);
       execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c",
         'umask 077; mkdir -p "$(dirname "$1")" && rm -f "$1" && cat > "$1"', "sh", file], { input: text, stdio: ["pipe", "ignore", "ignore"] });
@@ -113,7 +134,7 @@ export async function serve(o) {
     const onData = d => {
       buf = Buffer.concat([buf, d]);
       const i = buf.indexOf(10);
-      if (i < 0) { if (buf.length > 256 * 1024) { sock.off("data", onData); reject(new Error("request too large")); } return; }
+      if (i < 0) { if (buf.length > 4 * 1024 * 1024) { sock.off("data", onData); reject(new Error("request too large")); } return; }
       sock.off("data", onData);
       sock.pause();
       const rest = buf.subarray(i + 1);
@@ -160,7 +181,12 @@ export async function serve(o) {
     if (req.seed !== undefined) {
       if (req.account === undefined) return "seed files are for an account";
       const e = req.seed && typeof req.seed === "object" && !Array.isArray(req.seed) ? Object.entries(req.seed) : null;
-      if (!e || e.length > 8 || e.some(([k, v]) => typeof v !== "string" || v.length > 65536 || typeof k !== "string" || !k || k.length > 200 || path.isAbsolute(k) || k.split(/[\\/]/).includes("..") || k.includes("\0"))) return "seed is up to 8 small files, by path inside the HOME";
+      const skillFiles = e ? e.filter(([k]) => k.startsWith(SKILLS_PREFIX)) : [];
+      if (!e || e.length - skillFiles.length > 8 || e.some(([k, v]) => typeof v !== "string" || v.length > 65536 || typeof k !== "string" || !k || k.length > 200 || path.isAbsolute(k) || k.split(/[\\/]/).includes("..") || k.includes("\0"))) return "seed is up to 8 small files, by path inside the HOME";
+      // A skills set (the only seed that may be larger): one content id, plain names under the fixed prefix, and the caps checked before anything is written.
+      if (skillFiles.length) {
+        if (skillFiles.length > SKILLS_CAPS.files || skillFiles.some(([k, v]) => !skillsKeyOk(k) || Buffer.byteLength(v) > SKILLS_CAPS.file) || new Set(skillFiles.map(([k]) => k.split("/")[1])).size !== 1 || skillFiles.reduce((n, [, v]) => n + Buffer.byteLength(v), 0) > SKILLS_CAPS.total) return `a skills set is one content id of up to ${SKILLS_CAPS.files} plain files, ${SKILLS_CAPS.file / 1024} KiB each and ${SKILLS_CAPS.total / 1024} KiB in all, under ${SKILLS_PREFIX}; send a smaller set`;
+      }
     }
     if (req.account !== undefined && (typeof req.account !== "number" || (req.shared !== undefined && typeof req.shared !== "boolean"))) return "account is a uid and shared a boolean";
     const w = whoFor(req);

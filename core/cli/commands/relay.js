@@ -81,6 +81,7 @@ export default [
       { verb: "remove", summary: "forget a device and close its connections", usage: "<id>", person: true },
       { verb: "rename", summary: "give a device a name", usage: "<id> <name...>", person: true },
       { verb: "trust", summary: "give a web app browser the full powers of your app, or take them back", usage: "<id> [--off]", person: true },
+      { verb: "mark", summary: "mark a paired phone or computer app as yours", usage: "<id>", person: true },
       { verb: "on", summary: "turn the relay on", usage: "[--url u]", person: true },
       { verb: "off", summary: "turn the relay off; paired devices stay paired", usage: "", person: true },
       { verb: "pin", summary: "trust one web app release", usage: "<release>", person: true },
@@ -112,6 +113,9 @@ export default [
         case "trust":
           if (!a) return usage("vyre relay trust needs a device id", "vyre relay devices lists them");
           return asPerson("relay.devices.trust", { id: a, trusted: !flags.off }, d => out(`  ${d.id} ${d.trusted ? "has the full powers of your app" : "is limited again"}`));
+        case "mark":
+          if (!a) return usage("vyre relay mark needs a device id", "vyre relay devices lists them");
+          return asPerson("relay.devices.mark", { id: a }, d => out(`  ${d.id} is marked as yours`));
         case "on":
           return asPerson("relay.enable", flags.url ? { url: String(flags.url) } : {}, d => out(`  relay on ${dim(`· ${d.url}`)}`));
         case "off":

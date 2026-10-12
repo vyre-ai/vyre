@@ -33,7 +33,7 @@ async function outbox(t) {
 async function world(t) {
   const root = tempHome(t);
   const mail = await outbox(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, network: { owner: "alex@example.com" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: mail.base } } } }));
   const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps, softwareOk: () => process.env.VYRE_SEAL_DEV === "1" && process.env.VYRE_SEAL_SOFTWARE === "1",
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) }, who: async () => [] }) });

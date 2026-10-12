@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tempHome, writeModule } from "../helpers.js";
+import { tempHome, writeModule, nameAsOwner } from "../helpers.js";
 import { proxy } from "./proxy.js";
 
 process.env.VYRE_SSE_HEARTBEAT_MS = "300";
@@ -93,6 +93,7 @@ async function world(t) {
   assert.ok(first.data, JSON.stringify(first.error));
   const keyStore = memoryKeyStore(), crypto = webCrypto();
   const paired = await pair(first.data.url, { name: "kit", keyStore, crypto });
+  nameAsOwner(d, paired.device);   // stands for the owner's first device after adoption (relay.pair.first), which Wink names
   const relayPath = { ...paired, keyStore, crypto, backoff: { min: 100, max: 400 } };
   return {
     ...r, d, relayPath,

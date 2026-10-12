@@ -28,7 +28,7 @@ import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
-import { tempHome } from "./helpers.js";
+import { tempHome, nameAsOwner } from "./helpers.js";
 import { fakeCoreKeys, macCore } from "./fake-core-keys.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
@@ -273,6 +273,7 @@ shardTest("relay: a socket client cannot claim to be a device", async t => {
 shardTest("relay: an event stream stays open and delivers events through the channel", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
+  nameAsOwner(d, p.reply.device);   // alex's phone stands for the owner's first device after adoption (relay.pair.first), which Wink names
   const s = p.channel.open({ method: "GET", path: "/v1/events/stream", headers: { accept: "text/event-stream" } });
   s.end();
   const head = await new Promise(res => { s.onhead = res; });
