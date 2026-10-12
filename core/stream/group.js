@@ -605,7 +605,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       refuse();
       if (/** @type {any} */ (err).code === "no_session") {
         // The session did not come back (reopenPending gave it up, or never had it): the pending reply is dropped and the room is told, with no content.
-        m.dead = true; giveUpNote(m);
+        m.dead = true; log(`${m.who} in ${m.grp}: no session: ${/** @type {any} */ (err).detail || "no detail"}`); giveUpNote(m);
         return false;
       }
       log(`${m.who} in ${m.grp}: the kernel refused the reply (${/** @type {any} */ (err).code || "error"}); nothing was shown`);
