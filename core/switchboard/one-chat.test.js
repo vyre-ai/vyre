@@ -485,6 +485,15 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
     if (res.error.code === "not_found") walked.push(name);
   }
   assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
+  // a member of ANOTHER chat is no more in this one: the check is the thread's own chat, not "is she in some chat"
+  const ownerK = kernelCaller(d, root);
+  const chatB = await ownerK("work.chat.create", { title: "Bob's own", people: [BOB], ...(({ id, ring }) => ({ id, ring }))(sealed()) });
+  assert.ok(chatB.data, JSON.stringify(chatB.error));
+  for (const [name, input] of /** @type {[string, any][]} */ ([["threads.get", { thread }], ["threads.stop", { thread }], ["threads.delete", { thread }], ["threads.rename", { thread, name: "mine" }], ["threads.send", { thread, text: "hi" }], ["threads.kill-task", { thread, task: "x" }], ["threads.send-now", { thread, queued: 1 }]])) {
+    const res = await d.registry.call(name, input, "cli", bob);
+    assert.ok(res.error && ["not_found", "denied"].includes(res.error.code), `${name}: a member of another chat meets the owner's thread: ${JSON.stringify(res.error || res.data).slice(0, 140)}`);
+  }
+  assert.ok((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data, "and the thread is untouched for the owner");
   // the terminal reads a session's thread by relaying the person at it: the relayed call is judged as that person (firstParty false), so a member outside the chat gets nothing, and a person in it is not refused
   const outside = await d.registry.call("term.open", { session: thread, surface: "deck:outside" }, "cli", bob);
   assert.ok(outside.error && ["denied", "not_found"].includes(outside.error.code), `term.open on a run in a chat the person is not in: ${JSON.stringify(outside.error || outside.data).slice(0, 200)}`);
