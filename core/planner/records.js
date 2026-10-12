@@ -63,11 +63,14 @@ const isProjectUrn = (/** @type {any} */ v) => typeof v === "string" && /^vyre:\
  * A Task made by the planner as a planner row, or null for any other Task. `t` is the task as the kernel gives it (the record's words laid over the authority); `d` is the task record's data.
  * @param {any} t @param {any} d
  */
+/** The one person hop on a call's kernel chain, or null (the planner's own work, an agent's own claim, no kernel). @param {any} c */
+export const callerPerson = c => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
+
 export function fromTask(t, d) {
   const p = readCarrier(d && d.planner);
   if (!p) return null;
   const state = t.state === "done" ? "done" : t.state === "skipped" ? "cancelled" : "open";
-  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: d.list ?? null, priority: d.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: t.project ?? p.project_name ?? null, thread: p.thread ?? null,
+  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: d.list ?? null, priority: d.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, _doer: t.doer && t.doer.kind === "person" ? String(t.doer.id) : null, project: t.project ?? p.project_name ?? null, thread: p.thread ?? null,
     tags: typeof d.tags === "string" ? d.tags : "[]", pinned: d.pinned ? 1 : 0, state, at: t.due ?? null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
     date: p.date ?? null, repeat: typeof d.repeat === "string" ? d.repeat : null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
     deleted_at: p.deleted_at ?? null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
@@ -294,8 +297,11 @@ export async function openRecords(o) {
         // A to-do for the person is the planner's own request (the service made it); one given to an assistant is the person's, so the assistant is its doer under them.
         const given = row.assignee ? { kind: "agent", id: String(row.assignee), space } : null;
         if (given && !w.chain) throw Object.assign(new Error("only the person gives a to-do to an assistant"), { code: "denied" });
-        const t = await K.tasks.request(given ? w.chain : chain(), toTaskSpec(row, given || { kind: "person", id: owner(), space }));
-        const made = { ...row, id: t.id, _task: true };
+        // The to-do is the CALLING person's: the ownership rule judges a service-made task as the person it is for (kernel/gateway/ownership.js), so a member's to-do goes only into a project she is on, and it never
+        // appears as the owner's. A call with no person on it (the planner's own, an agent's claim, no kernel) is the owner's as before.
+        const forId = given ? null : (callerPerson(w.chain) || owner());
+        const t = await K.tasks.request(given ? w.chain : chain(), toTaskSpec(row, given || { kind: "person", id: forId, space }));
+        const made = { ...row, id: t.id, _task: true, ...(forId ? { _doer: String(forId) } : {}) };
         items.set(t.id, made);
         return made;
       }
