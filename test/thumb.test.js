@@ -46,6 +46,7 @@ test("attachments.get answers the file, its preview, or no preview, and only for
   const big = png(900, 900);
   /** @type {Record<string, Uint8Array>} */ const files = { [`${folder}/att_aaaaaaaaaaaaaaaaaaaaaa-pic.png`]: big, [`${folder}/att_bbbbbbbbbbbbbbbbbbbbbb-note.pdf`]: new Uint8Array([37, 80, 68, 70]), [`${folder}/att_cccccccccccccccccccccc-shot.jpg`]: new Uint8Array(SMALL_BYTES + 5) };
   const gateway = {
+    serviceChain: () => ({ hops: [{ actor: { kind: "service", id: "work" } }] }),   // a chat record is read under the module's own chain
     records: { query: async () => ({ rows: [{ data: { drive: "proj" } }] }) },
     drive: { list: async () => Object.entries(files).map(([path, b]) => ({ path, size: b.length })), get: async (/** @type {any} */ _c, /** @type {string} */ p) => files[p] },
   };

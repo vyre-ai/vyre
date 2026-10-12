@@ -3,6 +3,7 @@
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
 import { onTypesChanged } from "../store/types-signal.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 import { mayWrite, mayAttrs, mayReadTask, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
@@ -29,7 +30,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
   reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
-  "chat-record": ["work", "attachments", "stream"], "file-share": ["work"],   // a chat is private to its people and its project's team, a share to its chat and that team (class 3, the owner's ruling of 12 Oct): the work module serves both under its own chain and judges each record
+  "chat-record": ["work", "attachments"], "file-share": ["work"],   // a chat is private to its people and its project's team, a share to its chat and that team (class 3, the owner's ruling of 12 Oct): the work module serves both under its own chain and judges each record
   goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
 
@@ -232,8 +233,8 @@ export function createRecords(cfg) {
     project: async (me, rec) => (rec.data && rec.data.personal_of ? String(rec.data.personal_of) === me : onProject(me, { urn: rec.urn })),
     task: async (_me, rec, chain) => { const t = await taskFacts(rec.id); return mayReadTask(chain, { doer: t && t.doer, assigned_by: t && t.assigned_by, project: (rec.data && rec.data.project) || (t && t.project) }, { staff: false, project: seatOf, checkers: t && t.checkers }); },
   };
-  /** An owner or an admin as a person, whatever the chain's shape: what the chain may do is the authorizer's to narrow, this is only whether the PERSON is staff. @param {string} person */
-  const staffPerson = (person) => { if (!members || typeof members.membership !== "function") return false; const r = (members.membership({ kind: "person", id: person, space }) || {}).role; return r === "owner" || r === "admin"; };
+  /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
+  /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec) => {
@@ -241,8 +242,13 @@ export function createRecords(cfg) {
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
-    if (staffPerson(String(who.actor.id))) return true;
-    try { return await rule(String(who.actor.id), rec, chain); } catch { return false; }
+    if (staffOfChain(chain)) return true;
+    try {
+      if (await rule(String(who.actor.id), rec, chain)) return true;
+      // an explicit grant that names a row scope, given by an owner or an admin (never a delegation), is access to see: the authorizer already matched it to this very row
+      const d = await check(chain, "records.read", rec.urn);
+      return Boolean(d && (d.grants || []).some((/** @type {string} */ id) => { const g = cfg.grantOf && cfg.grantOf(id); return Boolean(g && !g.parent && g.resource && Array.isArray(g.resource.where) && g.resource.where.length && staffActor(g.issuer)); }));
+    } catch { return false; }
   };
   /** @type {Set<string> | null} */ let protectedTypes = null;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
@@ -1434,9 +1440,9 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
-    mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type),
+    mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type), staffOfChain,
     /** Whether this chain may see events about one record of a listed type (the record gone: staff and services only). */
-    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || (isChain(chain) && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && staffPerson(String(h.actor.id))))); },
+    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if (PRIVATE_READS[type] && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
@@ -1452,7 +1458,7 @@ export function createRecords(cfg) {
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
-      if (PRIVATE_READS[type] && !serviceOnly(chain) && !(isChain(chain) && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && staffPerson(String(h.actor.id))))) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
+      if (PRIVATE_READS[type] && !serviceOnly(chain) && !staffOfChain(chain)) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
       return api.aggregate(chain, type, spec);
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
