@@ -297,6 +297,7 @@
  "core/planner/gate.test.js": 2,
  "core/planner/legacy.test.js": 3,
  "core/planner/link.test.js": 1,
+ "core/planner/member-reads.test.js": 1,
  "core/planner/module.test.js": 1,
  "core/planner/parse.test.js": 16,
  "core/planner/planner.test.js": 27,
