@@ -12,7 +12,7 @@ import { connect as connectStream, wsDuplex } from "@vyre/stream/client.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { call, send, socket } from "../api/box";
 import { peerDuplex, peerWanted } from "../real/peer";
-import { showingJoined, teamCall, teamSession } from "../real/team-join";
+import { showingJoined, teamCall } from "../real/team-join";
 import { tool } from "../real/box";
 import { useSpaces } from "../../screens/shell/state";
 import { pollDuplex } from "./member-poll.js";
