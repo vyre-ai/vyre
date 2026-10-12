@@ -333,6 +333,9 @@ export function createGrantsStore(cfg) {
     const prior = memberships.get(m.person);
     if (prior && !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine} cannot change a ${prior.role}`);
     if (m.role === "temp" && (!Array.isArray(m.scope) || !m.scope.length || m.scope.some(s => !segments(s) || spaceOf(s) !== cfg.space) || !(m.expires > clock()))) throw new KernelError("bad_input", "a temp role needs a scope and an expiry");
+    // A custom role (core/roles) is the base role's grants narrowed: only Admin or Member as base, only actions that base holds, only a prefix inside this Space, only an expiry as a condition.
+    const cu = m.custom;
+    if (cu && (typeof cu.id !== "string" || !/^[a-z][a-z0-9-]{1,30}$/.test(cu.id) || ROLE_IDS.includes(cu.id) || cu.id === "guest" || !["admin", "member"].includes(m.role) || !Array.isArray(cu.grants) || !cu.grants.length || cu.grants.some((/** @type {any} */ x) => !x || !Array.isArray(x.actions) || !x.actions.length || x.actions.some((/** @type {string} */ a) => !ROLE_ACTIONS[/** @type {"admin"} */ (m.role)].includes(a)) || !x.resource || !containedPrefix(String(x.resource.prefix), `vyre://${cfg.space}/*/*`) || Object.keys(x.resource).some(k => !["prefix", "where", "fields"].includes(k)) || Object.keys(x.conditions || {}).some(k => k !== "when" || Object.keys(x.conditions.when).some(w => w !== "expires"))))) throw new KernelError("not_allowed", "a custom role starts from Admin or Member and holds only what that role holds, inside this Space");
     const actor = { kind: "person", id: m.person, space: cfg.space };
     // The last owner stays: the Space is never left without one.
     if (prior && prior.role === "owner" && m.role !== "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
@@ -340,7 +343,7 @@ export function createGrantsStore(cfg) {
       const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "role changed" }); grants.set(n.id, n);
       await note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "role changed" }, d.decision);
     }
-    const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
+    const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(cu ? { custom: cu.id } : {}), ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
     memberships.set(m.person, membership);
     // An owner change is also a fact for the Space's identity chain: the spaces module reads `owner_change` and appends the owner op, signed by the owner's devices.
     const ownerChange = ownerOp(prior, m.role, m.person, issuer.id, d.decision);
@@ -350,8 +353,8 @@ export function createGrantsStore(cfg) {
     const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
     const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
     const made = [];
-    for (const prefix of prefixes) {
-      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...ROLE_ACTIONS[/** @type {"owner"} */ (m.role)]], action_set_version: version, resource: { prefix }, conditions: { delegate: deleg, ...(m.role === "temp" ? { when: { expires: m.expires } } : {}) }, issuer: { ...issuer }, source: `role:${m.role}`, status: "active", created_at: clock() });
+    for (const sp of cu ? structuredClone(cu.grants) : prefixes.map(prefix => ({ actions: ROLE_ACTIONS[/** @type {"owner"} */ (m.role)], resource: { prefix }, conditions: m.role === "temp" ? { when: { expires: m.expires } } : {} }))) {
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [...sp.actions], action_set_version: version, resource: sp.resource, conditions: { delegate: deleg, ...(sp.conditions || {}) }, issuer: { ...issuer }, source: `role:${cu ? cu.id : m.role}`, status: "active", created_at: clock() });
       grants.set(g.id, g); made.push(g);
       await note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
     }
