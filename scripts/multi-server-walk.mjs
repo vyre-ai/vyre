@@ -34,7 +34,7 @@ const peerCall = (/** @type {string} */ tool, /** @type {Record<string, unknown>
     calls.push({ box: which, tool });
     if (!snap[which]) throw new Error("not paired");
     mac.useServer(snap[which]);
-    return mac.callTool(tool, input);
+    return Promise.race([mac.callTool(tool, input), new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error(`server_offline: ${which} did not answer ${tool} in 20 s`), { code: "server_offline" })), 20_000))]);
   });
   mutex = run.then(() => {}, () => {});
   return run;
@@ -58,6 +58,7 @@ try {
     await mac.openSession();
     await mac.callTool("system.info");
     snap[which] = mac.snapshot();
+    if (which === "A") ids.owner = String((snap.A.pairing.owner && (snap.A.pairing.owner.id || snap.A.pairing.owner)) || mac.identity.id);
     ids[which] = String(snap[which].pairing.box);
   };
 
@@ -127,7 +128,7 @@ try {
     return `chat ${chat.slice(0, 14)}`;
   });
   await step("5d. a task request through B's route lands on B", async () => {
-    const r = await peerCall("tasks.request", { task: { title: "B task", output: { kind: "note" }, doer: { kind: "person", id: mac.identity.id } } }, ids.B);
+    const r = await peerCall("tasks.request", { task: { title: "B task", output: { kind: "note" }, doer: ids.owner } }, ids.B);
     return JSON.stringify(r).slice(0, 200);
   });
 
