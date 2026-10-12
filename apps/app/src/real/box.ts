@@ -11,7 +11,7 @@ import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { APPROVAL_LISTS, EVERY_SERVER } from "./server-route.js";
+import { isApprovalList, isEveryServer } from "./server-route.js";
 import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
@@ -77,8 +77,8 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
     if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
     // The approvals inbox is every server's, and the phone's push token goes to every server (one that was down is named by pushMissed).
-    if (APPROVAL_LISTS.includes(name) && !opts.server) { const all = await (await import("./space-servers")).listAllApprovals(name, input); if (all) return all as T; }
-    if (EVERY_SERVER.includes(name) && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) return (await import("./space-servers")).callEvery<T>(name, input);
+    if (isApprovalList(name) && !opts.server) { const all = await (await import("./space-servers")).listAllApprovals(name, input); if (all) return all as T; }
+    if (isEveryServer(name) && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) return (await import("./space-servers")).callEvery<T>(name, input);
     const route = await routeCall({ tool: name, input: given, showing: useSpaces.getState().space, server: opts.server });
     if (route.error) throw new BoxError(route.error.code, route.error.message);
     const to = route.box;

@@ -15,10 +15,12 @@ const NOT_PAIRED = "This device is not paired to that server. Add it in Settings
  */
 const ALLOW = ["relay.", "wink.", "presence.", "identity.", "spaces.", "push.", "names.", "settings.", "appearance.", "sidebar.", "about.", "tips.", "commands.", "statusline.", "vyre.", "releases."];
 /** What a server owns by itself (who is signed in on it, its sessions) is allowed as a family but these are routed: they act on one server. */
-const ROUTED_EXACT = ["presence.person.start", "presence.person.sessions", "presence.person.revoke", "presence.person.locked", "presence.person.renew-allow", "presence.person.end-paired"];
-/** Tools that go to EVERY paired server (the phone's push token must reach each one that may need it), and the inbox lists that are every server's. */
-export const EVERY_SERVER = Object.freeze(["push.subscribe", "push.unsubscribe", "push.settings", "push.seen"]);
-export const APPROVAL_LISTS = Object.freeze(["approvals.pending", "approvals.items"]);
+const ROUTED_PRESENCE = /^presence\.person\.(start|sessions|revoke|locked|renew-allow|end-paired)$/;
+/** Tools that go to EVERY paired server (the phone's push token must reach each one that may need it), and the inbox lists that are every server's. Patterns, not copies of the registry's tool list. */
+const EVERY = /^push\.(subscribe|unsubscribe|settings|seen)$/;
+const APPROVAL_LIST = /^approvals\.(pending|items)$/;
+/** @param {string} tool */ export const isEveryServer = (tool) => EVERY.test(tool);
+/** @param {string} tool */ export const isApprovalList = (tool) => APPROVAL_LIST.test(tool);
 /** A plain read of many (or of status) carries nothing private: under All spaces it is the active server's, as it always was. The vault has no such exemption: even its list names what a person keeps. */
 const PLAIN_READ = /\.(list|types|me|actors|library|events|status|catalog|catalogue|accounts|agenda|holders|serve|serve-create|serve-update|serve-request|serve-work)$/;
 /** The inputs that name an item by an id alone. */
@@ -27,7 +29,7 @@ const ID_KEYS = ["id", "task", "project", "template", "thread"];
 /** Must the Space (and with it the server) be known for this tool? Yes unless it is on the allow-list or is a plain read; the vault is always yes. @param {string | undefined} tool */
 export const needsSpace = (tool) => {
   if (!tool) return false;
-  if (tool.startsWith("vault.") || ROUTED_EXACT.includes(tool)) return true;
+  if (tool.startsWith("vault.") || ROUTED_PRESENCE.test(tool)) return true;
   if (PLAIN_READ.test(tool) || ALLOW.some((p) => tool.startsWith(p))) return false;
   return true;
 };
