@@ -309,6 +309,24 @@ test("install-mac-server.sh: a Docker Desktop already there is untouched and no 
   assert.equal(fs.readFileSync(path.join(app, "Info.plist"), "utf8"), "docker desktop");
 });
 
+test("install-mac-server.sh: --login-only with the app's bundled Node (VYRE_NODE_URL) and no node on PATH installs from the tarball", t => {
+  const m = noBrew(t);
+  fs.rmSync(path.join(m.base, "tools", "node"));
+  const nd = path.join(m.base, "nodepkg", "node-v0"); fs.mkdirSync(path.join(nd, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  const tgz = path.join(m.base, "node.tgz");
+  execFileSync("tar", ["-czf", tgz, "-C", path.dirname(nd), "node-v0"]);
+  const env = { ...m.env, VYRE_NODE_URL: `file://${tgz}`, VYRE_NODE_SHA256: sha(fs.readFileSync(tgz)) };
+  const r = run(env, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(!/needs Node 22\.5/.test(r.stderr), "never asks the person to install Node");
+  assert.ok(fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "node-dist", "bin", "node")), "the bundled Node lands in Vyre's own folder");
+  // a tarball that does not match its checksum installs nothing
+  const bad = run({ ...env, VYRE_NODE_SHA256: sha("other") }, ["--yes", "--from", m.src]);
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /pinned checksum/);
+});
+
 // ---------------------------------------------------------------------------------------------
 // The default mode: the system service (ADR 0040 phase 4). The root installer is a fake that acts
 // like the real one where the script can see it: it prints the enrolment line last, writes core.json
