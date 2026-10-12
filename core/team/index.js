@@ -1374,14 +1374,14 @@ export default {
         if (!PRIORITIES.includes(priority)) throw Object.assign(new Error(`priority must be one of ${PRIORITIES.join(", ")}`), { code: "bad_input" });
         const from_kind = callerTm ? "teammate" : meta.thread ? "session" : isPerson(meta.caller) ? "person" : "session";
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
-        // WHO asked is judged HERE, where the person is on the call: from this call's own chain (the module's hop to the Switchboard does not carry a session's person). A non-owner, non-admin asker may send work
-        // only to a project she owns or is on the team of, and gets a refusal in words (nothing queued) when the teammate's credential would not reach the turn unreadable (the Switchboard's launch check). A teammate
-        // asking inherits the open request's person; a first-party module asking is the owner's own setting ("automation"); the box's own terminal is the owner. Anyone else with no person on the call is nobody.
+        // WHO asked is judged HERE, where the person is on the call: from this call's own chain (the module's hop to the Switchboard does not carry a session's person). ONLY a person on the chain who is not the
+        // owner or an admin is judged: she may send work only to a project she owns or is on the team of, and gets a refusal in words (nothing queued) when the teammate's credential would not reach the turn
+        // unreadable (the Switchboard's launch check). A call with no person on it is not judged and not refused: it runs as it did before the gate.
         const K = ctx.kernel;
         const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
         const owner0 = K && typeof K.owner === "string" ? K.owner : "";
         const viaChain = await chainPerson();
-        const asker0 = viaChain || (K && owner0 && (meta.caller === "cli" || meta.caller === "local") ? owner0 : null);
+        const asker0 = viaChain;
         if (asker0 && K) {
           const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
           const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));
@@ -1391,7 +1391,7 @@ export default {
           }
         }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
-        const forPerson = asker0 || inherited || (String(meta.caller || "").startsWith("module:") && meta.firstParty === true ? "automation" : null);
+        const forPerson = asker0 || inherited || null;
         const filler0 = await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
         const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });

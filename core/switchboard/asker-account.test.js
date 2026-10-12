@@ -124,8 +124,9 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   await assert.rejects(checkLaunch(none, { ...tm, for_person: ANA }, null, OWNER), /cannot be used for a teammate's request yet/, "no chain, the module says the work is for a member");
   assert.equal(await checkLaunch(none, { ...tm, for_person: OWNER }, null, OWNER), OWNER, "no chain, the module says it is for the owner");
   assert.equal(await checkLaunch(none, { ...tm, for_person: "automation" }, null, OWNER), null, "automation, named by the module");
-  await assert.rejects(checkLaunch(none, tm, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, a picked credential");
-  await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), /nobody is recorded as having asked/, "nobody recorded, nothing picked (ambient): refused as well");
+  // No person on the call is not judged (the narrow gate): the owner's surfaces, a restart re-running a queued request, a duty and a Flow run as they did before the gate.
+  assert.equal(await checkLaunch(none, tm, null, OWNER), null, "nobody recorded, a picked credential: not judged");
+  assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked (ambient): not judged either");
   await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, chain(ANA), OWNER), /has no AI sign-in picked for it/, "a member, nothing picked (ambient)");
   // an agentless launch: tool-less passes for anyone; WITH tools it is the machine's own sign-in, the owner's
   assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), ANA, "tool-less");
@@ -134,11 +135,8 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   await assert.rejects(checkLaunch(none, { for_person: ANA }, null, OWNER), /runs on the machine's own sign-in/, "agentless with tools, for a member");
   assert.equal(await checkLaunch(none, {}, chain(OWNER), OWNER), OWNER, "agentless with tools, the owner");
   assert.equal(await checkLaunch(none, {}, null, OWNER), null, "agentless with tools, nobody: today's behaviour (the planner refuses a member's job itself)");
-  // the box's own terminal carries no chain through a module's hop: it is the owner's
-  assert.equal(await checkLaunch(none, tm, null, OWNER, "cli"), OWNER, "cli");
-  assert.equal(await checkLaunch(none, tm, null, OWNER, "local"), OWNER, "local");
-  await assert.rejects(checkLaunch(none, tm, null, OWNER, "mcp"), /nobody is recorded/, "a session is not a terminal");
-  await assert.rejects(checkLaunch(none, tm, null, OWNER, "device"), /nobody is recorded/, "a device with no chain is nobody");
+  // the narrow gate reads no caller label: a call with no person is not judged whatever it says it is
+  for (const label of ["cli", "local", "mcp", "device"]) assert.equal(await checkLaunch(none, tm, null, OWNER), null, `${label}: no person, not judged`);
 });
 
 test("trustedLaunch keeps for_person only from a first-party module's call", () => {
