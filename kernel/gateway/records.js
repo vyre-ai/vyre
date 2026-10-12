@@ -91,9 +91,23 @@ export function createRecords(cfg) {
   const kattrs = store.meta ? store.meta : new Map();
   /** Types known to hold no privileged record (a row's sensitivity is set once, when it is created, so a type found clean stays clean until a privileged record is created in it). */
   const noPrivileged = new Set();
+  /** Types whose create events have been read for a privileged record: the in-memory map holds only what THIS process wrote, so after a restart the log is the authority, read once per type (the type's own create events, not the whole log). */
+  const privilegedScanned = new Set();
   const hasPrivileged = (/** @type {string} */ type) => {
     if (noPrivileged.has(type)) return false;
-    const found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    let found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    // a store with its own attribute map and a log that is not durable: the log may be younger than the store, so neither says "none" (rows are gated one by one, nothing is pushed down)
+    if (!found && !kattrs.anyWith && store.meta && log.durable !== true) return true;
+    if (!found && !kattrs.anyWith && !privilegedScanned.has(type)) {
+      // the map is not the whole truth: ask the log. If the log cannot say, answer "may have privileged rows" (rows are gated one by one) and remember nothing, never "none".
+      try {
+        for (const e of log.iterate({ type: `${type}.created` })) {
+          const a = e.data && typeof e.data.attrs === "object" ? e.data.attrs : null;
+          if (a && a.sensitivity === "privileged") { found = true; kattrs.set(String(e.subject), a); }
+        }
+        privilegedScanned.add(type);
+      } catch { return true; }
+    }
     if (!found) noPrivileged.add(type);
     return found;
   };
@@ -180,12 +194,12 @@ export function createRecords(cfg) {
     if (adminish(chain)) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return false;
-    const a = kattrs.get(urn(r.type, r.id)) || {};
+    const a = attrsOf(urn(r.type, r.id)) || {};
     return String(a.created_for || a.created_by || "") === `person:${who.actor.id}`;
   };
   /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
   const madeByTrusted = (u) => {
-    const made = String((kattrs.get(u) || {}).created_by || "");
+    const made = String((attrsOf(u) || {}).created_by || "");
     const [kind, ...rest] = made.split(":");
     if (kind === "service") return true;
     if (kind !== "person" || !members || typeof members.membership !== "function") return false;
