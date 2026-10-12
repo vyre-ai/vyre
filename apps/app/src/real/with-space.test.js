@@ -89,3 +89,14 @@ test("the screens that need the team's timeline say so for a member: a tag and o
   assert.match(read("../../screens/projects/ProjectPanes.tsx"), /if \(notHere\) return <NotHereYet what="The team's timeline" \/>;/);
   assert.match(read("../../screens/records/RecordTimeline.tsx"), /<NotHereYet what="The team's timeline" \/>/);
 });
+
+test("a member's Approve and Stop in a team chat go to the team's door (chat.answer, chat.stop), with the chat named and nothing else of the home's input", async () => {
+  const fs = await import("node:fs");
+  const { memberWire } = await import("./with-space.js");
+  assert.equal(memberWire("threads.answer"), "chat.answer");
+  assert.equal(memberWire("threads.chat-stop"), "chat.stop");
+  const src = fs.readFileSync(new URL("../chat/box-stream.ts", import.meta.url), "utf8");
+  assert.match(src, /name === "threads\.answer" \? \{ chat: session, ask: input\.ask, decision: input\.decision \}/);
+  assert.match(src, /name === "threads\.chat-stop" \? \{ chat: session \}/);
+  assert.match(src, /answerAsk: \(ask, decision\) => note\("threads\.answer"/, "the screen still names the home's tool; the route decides");
+});

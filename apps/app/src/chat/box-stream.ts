@@ -79,7 +79,9 @@ export function boxStream(session: string): BoxStream {
   const seen = () => (Platform.OS === "web" ? typeof document === "undefined" || document.visibilityState !== "hidden" : AppState.currentState === "active");
   const writeVia = async (name: string, input: Record<string, unknown>) => {
     if (!(await teamSpace())) return write(name, input);
-    try { return { data: await tool(name, input) } as { data?: unknown; error?: { code?: string; message?: string } }; }
+    // A team chat's answer to a question names the chat (the door's call is the chat's); nothing else of the home's input rides along
+    const given = name === "threads.answer" ? { chat: session, ask: input.ask, decision: input.decision } : name === "threads.chat-stop" ? { chat: session } : input;
+    try { return { data: await tool(name, given) } as { data?: unknown; error?: { code?: string; message?: string } }; }
     catch (e) { const x = e as { code?: string; message?: string }; return { error: { code: x.code ?? "error", message: x.message ?? "" } }; }
   };
   const source = streamSource({

@@ -18,7 +18,7 @@ export function withSpace(tool, input, showing) {
 
 /** A team member's own chat tools and the Space's chat service call each one reaches (kernel/remote/wire.js CALLS.chat): a member has no session on the team's server, so these go through the Space's own door. */
 const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "work.chat.pin": "chat.pin", "work.chat.list": "chat.list", "work.chat.get": "chat.get", "work.chat.create": "chat.create",
-  "stream.send": "chat.send", "stream.catchup": "chat.catchup", "stream.typing": "chat.typing", "stream.react": "chat.react", "stream.pin": "chat.pin-message", "stream.reply-mode": "chat.reply-mode", "stream.mark-read": "chat.mark-read",
+  "threads.answer": "chat.answer", "threads.chat-stop": "chat.stop", "stream.send": "chat.send", "stream.catchup": "chat.catchup", "stream.typing": "chat.typing", "stream.react": "chat.react", "stream.pin": "chat.pin-message", "stream.reply-mode": "chat.reply-mode", "stream.mark-read": "chat.mark-read",
   // A member's own AI sign-in (kernel/remote CALLS.accounts): the Settings screen's calls reach the team's server the same way.
   "sessions.accounts.list": "accounts.list", "sessions.accounts.signin": "accounts.signin", "sessions.accounts.remove": "accounts.remove", "sessions.accounts.bind": "accounts.default" });
 
