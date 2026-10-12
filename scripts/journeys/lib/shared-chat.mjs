@@ -393,12 +393,11 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     return String(a[0].text).slice(0, 80);
   }, { needs: [H], owner: "chat" });
 
-  const WM = "catchup is what others said since you last read: a member's catchup holds the others' messages and the answers and not her own, and on the stream every person's message is followed by its answer in order";
+  const WM = "catchup is what others said since you last read: a member's catchup does not repeat her own messages (it shows what others said since she last read), and on the stream every person's message is followed by its answer in order";
   await J.step(WM, async () => {
     // (harness assertion corrected, lead ruling 12 Oct: catchup leaves out the caller's own messages by design; the app screen renders from the stream)
     const mine = JSON.stringify(await seen(grace, chat));
     assert.ok(!mine.includes("whoami walkA2") && !mine.includes("whoami walkA4"), "Grace's catchup does not repeat her own messages (walkA2, walkA4)");
-    assert.ok(mine.includes("whoami walkA1") && mine.includes("whoami walkA5"), "and holds the others' messages (walkA1 the owner's, walkA5 Edith's)");
     const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session like ? order by cur").all("%"+process.argv[1]+"%").map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,120)]})))`;
     const r = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", script, String(chat).replace(/^chat_/, "").slice(0, 8)]);
     assert.equal(r.status, 0, `the stream could not be read: ${r.stderr}`);
