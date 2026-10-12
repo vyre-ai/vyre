@@ -289,7 +289,14 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     for (const [n, who] of order.entries()) {
       const tag = `walkA${n + 1}`;
       await speak(who, `whoami ${tag}`);
-      const a = await untilAnswerTo(grace, chat, tag);
+      const a = await untilAnswerTo(grace, chat, tag).catch(async (/** @type {any} */ e) => {
+        const dump = async (/** @type {string} */ k, /** @type {() => Promise<any>} */ f) => { try { transcript.push(`DBG ${k}: ${JSON.stringify(await f()).slice(0, 1500)}\n`); } catch (x) { transcript.push(`DBG ${k}: ${String(x && x.message).slice(0, 200)}\n`); } };
+        await dump("threads (space)", () => w.call("threads.list", { all: true, space: team.space }));
+        await dump("threads (default)", () => w.operator("threads.list", { all: true }));
+        await dump("queue", () => w.call("threads.queue", { space: team.space }));
+        await dump("chat tail", async () => (await seen(grace, chat)).slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 80)]));
+        throw e;
+      });
       assert.equal(a.length, 1, `${tag} (${who}) is answered once, not ${a.length} times: ${JSON.stringify(a.map(m => m.text))}`);
       const uid = await uidOf(who);
       assert.ok(String(a[0].text).includes(`/${uid}`), `${tag}: ${who}'s turn ran as their account (user ${uid}): ${a[0].text}`);
