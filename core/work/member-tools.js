@@ -73,7 +73,7 @@ export const MEMBER_TOOLS = Object.freeze({
   "flows.propose": { tool: "flows.serve", call: "propose", keys: ["id", "version", "note"], types: ["def-flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run"] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
   "work.templates": { tool: "work.serve", call: "templates", keys: [], types: ["project-template"] },
-  "work.timeline": { tool: "work.serve", call: "timeline", keys: ["project", "record", "limit"], types: [] },
+  "work.timeline": { tool: "work.serve", call: "timeline", keys: ["project", "record", "limit"], types: [], target: "project" },
   "work.project-create": { tool: "work.serve-write", call: "create-project", keys: ["name", "slug"], types: [] },
   "work.start-project": { tool: "work.serve-write", call: "start-project", keys: ["template", "name", "slug"], types: ["project-template"] },
   // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive

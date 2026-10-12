@@ -43,7 +43,7 @@ export default {
       const { doer, checker, helpers, ...rest } = t;
       if (typeof doer !== "string" || !doer) throw refuse("a task needs a doer", "bad_input");
       const spec = { ...rest, doer: actor(doer, d.space), ...(typeof checker === "string" && checker ? { checker: actor(checker, d.space) } : {}), ...(Array.isArray(helpers) ? { helpers: helpers.map((/** @type {any} */ h) => actor(String(h), d.space)) } : {}) };
-      return { task: await asks(d).request(d.chain, spec, typeof i.idem === "string" ? { idem: i.idem } : undefined) };
+      return { task: await (typeof i.idem === "string" ? asks(d).request(d.chain, spec, { idem: i.idem }) : asks(d).request(d.chain, spec)) };   // no extra argument without a key: a remote gateway refuses one
     });
     tool("tasks.decide", "Approve or reject a task waiting for a check. The person's own act, with their presence.", obj({ space: str, id: str, outcome: { type: "string", enum: ["approved", "rejected"] }, reason: str }, ["id", "outcome"]), async (i, d) => ({
       task: await asks(d).decide(d.chain, String(i.id), { outcome: i.outcome, ...(i.reason ? { reason: String(i.reason) } : {}), ...(d.proof ? { proof: d.proof } : {}) }),

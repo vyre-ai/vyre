@@ -83,7 +83,7 @@ export default {
       const u = parseUrn(i.urn);
       return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
     }, byUrn);
-    tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data, typeof i.idem === "string" ? { idem: i.idem } : undefined) }));
+    tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await (typeof i.idem === "string" ? d.gateway.records.create(d.chain, String(i.type), i.data, { idem: i.idem }) : d.gateway.records.create(d.chain, String(i.type), i.data)) }));   // no extra argument without a key: a remote gateway refuses one
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
