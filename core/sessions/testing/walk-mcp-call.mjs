@@ -6,6 +6,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
+/** A tool's answer short enough to read in a chat line: a skills list as its names, anything else cut. @param {string} text */
+function brief(text) {
+  try { const j = JSON.parse(text); if (j && Array.isArray(j.skills)) return "skills: " + j.skills.map((/** @type {any} */ k) => k.name).join(","); } catch { /* not JSON */ }
+  return text.replace(/\s+/g, " ").slice(0, 150);
+}
+
 /** @param {any} srv one entry of session/new's mcpServers @param {string} tool @param {any} input @returns {Promise<string>} "walk-mcp exit=<0|1|2|3>: <text>" */
 export function callViaMcp(srv, tool, input) {
   if (!srv || !srv.command) return Promise.resolve("walk-mcp exit=2: the client handed this session no MCP server");
@@ -25,7 +31,7 @@ export function callViaMcp(srv, tool, input) {
         if (r.id === 1) { send({ method: "notifications/initialized" }); send({ id: 2, method: "tools/call", params: { name: "tools_call", arguments: { tool, arguments: input } } }); }
         if (r.id === 2) {
           const text = r.error ? String(r.error.message) : (((r.result && r.result.content) || []).map((/** @type {any} */ c) => c.text || "").join("\n"));
-          finish(`walk-mcp exit=${r.error || (r.result && r.result.isError) ? 1 : 0}: ${text.slice(0, 1500)}`);
+          finish(`walk-mcp exit=${r.error || (r.result && r.result.isError) ? 1 : 0}: ${brief(text)}`);
         }
       }
     });
