@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Banner, Card, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
-import { DEMO, apiKeyStatus, masterStatus } from "./flow-model.js";
+import { Linking } from "react-native";
+import { Banner, Button, Card, CodeDisplay, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
+import { MOCK } from "../../src/real/box";
+import { DEMO } from "./flow-model.js";
+import { createVault, openVault } from "./real-vault";
+import { claudeConnected, finishSignIn, followSignIn, saveKey, startSignIn, type Flow, type Step } from "./real-inference";
 import type { AiState, ScreenProps } from "./types";
 
 const HINT = "Prototype hint";
@@ -49,11 +53,23 @@ export function VaultIntro({ go, back, steps }: ScreenProps) {
   );
 }
 
-export function MasterConfirm({ go, back, steps }: ScreenProps) {
+export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
   const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [say, setSay] = useState("");
+  const open = async () => {
+    setBusy(true); setSay("");
+    const r = await createVault(ctx.master, ctx.reset);
+    setBusy(false);
+    if (!r.ok) { setSay(r.say); return; }
+    // The password is not needed again: the prototype keeps it only to pretend to check it on the next screen.
+    if (!MOCK) set({ master: "" });
+    go("inf.pick");
+  };
   return (
     <FlowStep steps={steps} onBack={back} title="Only you know it" lead="If you forget your master password, your vault cannot be opened, and Vyre cannot reset it."
-      primary={{ label: "Open my vault", disabled: !ok, onPress: () => go("inf.pick") }}>
+      failure={say || undefined}
+      primary={{ label: "Open my vault", disabled: !ok || busy, loading: busy, onPress: () => { void open(); } }}>
       <Card>
         <Stack row gap={3} align="center" justify="between">
           <Text strong>I understand</Text>
@@ -67,14 +83,20 @@ export function MasterConfirm({ go, back, steps }: ScreenProps) {
 
 export function MasterEnter({ ctx, set, go, back, steps }: ScreenProps) {
   const [pw, setPw] = useState("");
-  const [tried, setTried] = useState(false);
-  const wrong = tried && masterStatus(pw, ctx.master) !== "ok";
+  const [say, setSay] = useState("");
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true); setSay("");
+    const r = await openVault(pw, ctx.master);
+    setBusy(false);
+    if (r.ok) go("inf.pick"); else setSay(r.say);
+  };
   return (
     <FlowStep steps={steps} onBack={back} title="Open your vault here" lead="Type your master password once on this device. After that, Touch ID, Windows Hello or your phone's lock opens it."
-      primary={{ label: "Open my vault", disabled: !pw, onPress: () => { setTried(true); if (masterStatus(pw, ctx.master) === "ok") go("inf.pick"); } }}
+      primary={{ label: "Open my vault", disabled: !pw || busy, loading: busy, onPress: () => { void open(); } }}
       secondary={{ label: "I forgot it: use my recovery kit", onPress: () => { set({ reset: true }); go("id.recover"); } }}>
-      <PasswordField label="Master password" name="Master password" value={pw} onChangeText={(v) => { setPw(v); setTried(false); }} error={wrong ? "That is not your master password. Try again, or use your recovery kit to set a new one." : undefined} />
-      <Banner tone="plain" icon="info">{`${HINT}: the master password in this prototype is ${ctx.master || DEMO.master}.`}</Banner>
+      <PasswordField label="Master password" name="Master password" value={pw} onChangeText={(v) => { setPw(v); setSay(""); }} error={say || undefined} />
+      {MOCK ? <Banner tone="plain" icon="info">{`${HINT}: the master password in this prototype is ${ctx.master || DEMO.master}.`}</Banner> : null}
     </FlowStep>
   );
 }
@@ -87,50 +109,94 @@ const PROVIDERS = [
 
 export function InfPick({ ctx, set, go, back, steps }: ScreenProps) {
   const ai = ctx.ai;
-  const grokTries = useRef(0);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const tries = useRef<Record<string, number>>({});
+  const alive = useRef(true);
+  const [open, setOpen] = useState<Record<string, { flow: Flow; step: Extract<Step, { step: "open" }> }>>({});
+  const [says, setSays] = useState<Record<string, string>>({});
+  const [pasted, setPasted] = useState<Record<string, string>>({});
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  // A Claude account that is already signed in on this home shows as signed in.
+  useEffect(() => { void claudeConnected().then((c) => { if (c && alive.current) put("claude", "connected"); }); }, []);
   const put = (id: string, state: AiState) => set((c) => ({ ai: { ...c.ai, [id]: state } }));
+  const say = (id: string, text: string) => setSays((m) => ({ ...m, [id]: text }));
+  const settle = (id: string, flow: Flow, step: Step) => {
+    if (!alive.current) return;
+    if (step.step === "done") { put(id, "connected"); setOpen((m) => { const { [id]: _gone, ...rest } = m; return rest; }); say(id, ""); }
+    else if (step.step === "failed") { put(id, "failed"); say(id, step.say); setOpen((m) => { const { [id]: _gone, ...rest } = m; return rest; }); }
+    else if (step.step === "retry") say(id, step.say);
+    else if (step.step === "open") { put(id, "working"); say(id, ""); setOpen((m) => ({ ...m, [id]: { flow, step } })); if (!step.paste) void followSignIn(flow, () => alive.current).then((s) => settle(id, flow, s)); }
+    else void followSignIn(flow, () => alive.current).then((s) => settle(id, flow, s));
+  };
   const connect = (id: string) => {
-    put(id, "working");
-    timers.current.push(setTimeout(() => {
-      put(id, id === "grok" && grokTries.current++ === 0 ? "failed" : "connected");
-    }, 900));
+    put(id, "working"); say(id, "");
+    void startSignIn(id, tries.current[id] ?? 0).then(({ flow, step }) => { tries.current[id] = (tries.current[id] ?? 0) + 1; settle(id, flow, step); });
+  };
+  const bring = (id: string) => {
+    const o = open[id];
+    if (o) void finishSignIn(o.flow, pasted[id] ?? "").then((s) => settle(id, o.flow, s));
   };
   const failed = PROVIDERS.find((p) => ai[p.id] === "failed");
   const count = Object.values(ai).filter((s) => s === "connected").length;
   return (
     <FlowStep steps={steps} onBack={back} title="Connect your AI" lead="Pick one or more. Each sign-in is saved to your personal vault, not to any server."
-      failure={failed ? `${failed.title} did not finish signing in. Check that you are signed in to it in your browser, then try again, or add an API key instead.` : undefined}
+      failure={failed ? says[failed.id] || `${failed.title} did not finish signing in. Check that you are signed in to it in your browser, then try again, or add an API key instead.` : undefined}
       primary={{ label: count ? "Continue" : "Continue without an account", onPress: () => { set({ aiSkipped: !count }); go("space.choice"); } }}
       secondary={count ? undefined : { label: "Skip for now", onPress: () => { set({ aiSkipped: true }); go("space.choice"); } }}>
       <Card flush>
         {PROVIDERS.map((p) => (
           <Stack key={p.id} gap={0}>
-            <ProviderRow provider={p.id} title={p.title} sub={p.sub} state={ai[p.id] ?? "idle"} problem="Sign-in did not finish." onConnect={() => connect(p.id)} onTest={() => showToast(`${p.title} answered one small prompt in 2 s.`)} />
+            <ProviderRow provider={p.id} title={p.title} sub={p.sub} state={ai[p.id] ?? "idle"} problem={says[p.id] || "Sign-in did not finish."} onConnect={() => connect(p.id)} onTest={MOCK ? () => showToast(`${p.title} answered one small prompt in 2 s.`) : undefined} />
             <Divider inset={60} />
           </Stack>
         ))}
-        <ProviderRow icon="key" title="An API key" sub="Anthropic, OpenAI or OpenRouter." state={ai.key === "connected" ? "connected" : "idle"} action="Add a key" onConnect={() => go("inf.key")} onTest={() => showToast("The key answered one small prompt in 2 s.")} />
+        <ProviderRow icon="key" title="An API key" sub="Anthropic, OpenAI or OpenRouter." state={ai.key === "connected" ? "connected" : "idle"} action="Add a key" onConnect={() => go("inf.key")} onTest={MOCK ? () => showToast("The key answered one small prompt in 2 s.") : undefined} />
       </Card>
+      {PROVIDERS.filter((p) => open[p.id]).map((p) => {
+        const o = open[p.id];
+        return (
+          <Card key={p.id}>
+            <Stack gap={3}>
+              <Text strong>{`Finish signing in to ${p.title}`}</Text>
+              <Text tone="muted">{o.step.paste ? "Open the page, sign in, and copy the code it shows. Paste the code here." : "Open the page and approve the sign-in. This screen moves on by itself."}</Text>
+              <Stack row gap={2} wrap>
+                <Button size="sm" label="Open the sign-in" onPress={() => { void Linking.openURL(o.step.link).catch(() => say(p.id, "The sign-in page did not open. Copy the link from your browser's address bar, or try again.")); }} />
+              </Stack>
+              {o.step.code ? <CodeDisplay label="Code to type on the page" code={o.step.code} /> : null}
+              {o.step.paste ? (
+                <Stack gap={2}>
+                  <Field label="Code from the page" value={pasted[p.id] ?? ""} onChangeText={(v) => { setPasted((m) => ({ ...m, [p.id]: v })); say(p.id, ""); }} error={says[p.id] || undefined} />
+                  <Button size="sm" kind="primary" label="Connect" disabled={!(pasted[p.id] ?? "").trim()} onPress={() => bring(p.id)} />
+                </Stack>
+              ) : null}
+            </Stack>
+          </Card>
+        );
+      })}
       <Text size="caption" tone="label">You can skip this and connect an account later from Settings.</Text>
-      <Banner tone="plain" icon="info">{`${HINT}: Grok fails the first time you try it, so you can see the failure. Try again and it works.`}</Banner>
+      {MOCK ? <Banner tone="plain" icon="info">{`${HINT}: Grok fails the first time you try it, so you can see the failure. Try again and it works.`}</Banner> : null}
     </FlowStep>
   );
 }
 
-export function InfKey({ ctx, set, go, back, steps }: ScreenProps) {
+export function InfKey({ set, go, back, steps }: ScreenProps) {
   const [kind, setKind] = useState<"Anthropic" | "OpenAI" | "OpenRouter">("Anthropic");
   const [key, setKey] = useState("");
-  const [tried, setTried] = useState(false);
-  const bad = tried && apiKeyStatus(key) !== "ok";
+  const [say, setSay] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true); setSay("");
+    const r = await saveKey(kind, key);
+    setBusy(false);
+    if (!r.ok) { setSay(r.say); return; }
+    set((c) => ({ ai: { ...c.ai, key: "connected" } }));
+    go("inf.pick");
+  };
   return (
     <FlowStep steps={steps} onBack={back} title="Add an API key" lead="The key is saved to your personal vault. It runs wherever your sessions run."
-      primary={{ label: "Save to my vault", disabled: !key, onPress: () => { setTried(true); if (apiKeyStatus(key) === "ok") { set((c) => ({ ai: { ...c.ai, key: "connected" } })); go("inf.pick"); } } }}>
+      primary={{ label: "Save to my vault", disabled: !key || busy, loading: busy, onPress: () => { void save(); } }}>
       <Segmented label="Provider" fill options={[["Anthropic", "Anthropic"], ["OpenAI", "OpenAI"], ["OpenRouter", "OpenRouter"]]} value={kind} onChange={setKind} />
-      <Field label="API key" kind="password" mono value={key} onChangeText={(v) => { setKey(v); setTried(false); }} placeholder="sk-..."
-        error={bad ? `That does not look like a ${kind} key. Keys start with sk-. Copy it again from the provider's page, or go back and sign in instead.` : undefined} />
-      <Banner tone="plain" icon="info">{`${HINT}: any key that starts with sk- and has 8 or more characters works.`}</Banner>
+      <Field label="API key" kind="password" mono value={key} onChangeText={(v) => { setKey(v); setSay(""); }} placeholder="sk-..." error={say || undefined} />
+      {MOCK ? <Banner tone="plain" icon="info">{`${HINT}: any key that starts with sk- and has 8 or more characters works.`}</Banner> : null}
     </FlowStep>
   );
 }
