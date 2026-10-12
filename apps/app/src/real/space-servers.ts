@@ -1,7 +1,7 @@
 // Which paired server hosts which Space, for a device paired to more than one (the phone, the browser, Windows): the map is built from what each server says it hosts (its own spaces.list), and the call that
 // asks (src/real/box.ts tool) routes by it (server-route.js). With one pairing there is nothing to route, so the map is empty and every call goes where it always went. A server that did not answer keeps what
 // was known of it, so one server being offline never loses the other's Spaces.
-import { serverFor, spaceServersFrom } from "./server-route.js";
+import { mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 
 type Rows = Array<{ id?: unknown; member?: unknown } | null>;
 
@@ -16,17 +16,32 @@ async function pairedBoxes(): Promise<string[]> {
   return (boxes ??= (await listPairings()).map((p) => p.box));
 }
 
-/** Ask every paired server what it hosts and rebuild the map. Safe to call often; one pairing means no map. */
-export async function refreshSpaceServers(): Promise<Record<string, string>> {
+/** The servers that did not answer the last time they were asked (box ids): the switcher says "Offline" for them and keeps the rest. */
+let offline: string[] = [];
+export const offlineServers = (): string[] => offline;
+
+/** Ask every paired server what it hosts and rebuild the map. Safe to call often; one pairing means no map. Returns what each server answered. */
+async function askAll(): Promise<Record<string, Rows>> {
   const ids = await pairedBoxes();
-  if (ids.length < 2) { map = {}; known = {}; return map; }
+  if (ids.length < 2) { map = {}; known = {}; offline = []; return {}; }
   const { peerCall } = await import("./peer");
   const got = await Promise.allSettled(ids.map((id) => peerCall<Rows>("spaces.list", {}, id)));
   const next: Record<string, Rows> = {};
-  ids.forEach((id, n) => { const r = got[n]; next[id] = r.status === "fulfilled" && Array.isArray(r.value) ? r.value : known[id] ?? []; });
+  const down: string[] = [];
+  ids.forEach((id, n) => { const r = got[n]; if (r.status === "fulfilled" && Array.isArray(r.value)) next[id] = r.value; else { down.push(id); next[id] = known[id] ?? []; } });
   known = next;
+  offline = down;
   map = spaceServersFrom(known);
-  return map;
+  if (down.length === ids.length) { const first = got.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined; throw first?.reason ?? new Error("No server answered."); }
+  return known;
+}
+
+export async function refreshSpaceServers(): Promise<Record<string, string>> { await askAll().catch(() => {}); return map; }
+
+/** The Spaces of every paired server, each row tagged with its server; null when the device has fewer than two servers (the caller then asks its one server as it always did). A server that is down keeps its last known rows. */
+export async function listAllSpaces(): Promise<Array<Record<string, any>> | null> {
+  if ((await pairedBoxes()).length < 2) return null;
+  return mergeSpaceLists(await askAll());
 }
 
 /** Which server a call goes to. `server` is a box id when the call names one. Throws nothing: an error comes back to the caller to refuse in words. */

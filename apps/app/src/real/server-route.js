@@ -35,3 +35,21 @@ export function spaceServersFrom(lists) {
   }
   return out;
 }
+
+/**
+ * Every paired server's Spaces as one list (the switcher): each row keeps what its server said and gains `server`, the box id it is on. A Space listed by two servers appears once, under the first.
+ * @param {Record<string, Array<Record<string, any> | null> | undefined>} lists by box id
+ * @returns {Array<Record<string, any>>}
+ */
+export function mergeSpaceLists(lists) {
+  /** @type {Array<Record<string, any>>} */ const out = [];
+  const seen = new Set();
+  for (const [box, rows] of Object.entries(lists)) {
+    for (const r of rows ?? []) {
+      if (!r || typeof r.id !== "string" || seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push({ ...r, server: box });
+    }
+  }
+  return out;
+}

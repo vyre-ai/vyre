@@ -69,7 +69,9 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     // With several servers paired, the call goes to the one that hosts its Space (or the one it names); one pairing goes where it always went.
-    const { routeCall } = await import("./space-servers");
+    const { routeCall, listAllSpaces } = await import("./space-servers");
+    // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
+    if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
     const route = await routeCall({ input, showing: useSpaces.getState().space, server: opts.server });
     if (route.error) throw new BoxError(route.error.code, route.error.message);
     const to = route.box;
