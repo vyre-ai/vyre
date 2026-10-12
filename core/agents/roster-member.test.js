@@ -42,7 +42,7 @@ test("seesFull fails closed: a call whose chain cannot be read is not given the 
   void real;
 });
 
-test("a remote call with no person on it (a device, visiting Space or tailnet node) gets the roster, never the whole row; the owner's local surfaces still do", { timeout: 120_000 }, async t => {
+test("a remote call with no person on it (a device, visiting Space or tailnet node) gets no list and the next step, never the roster or the whole row; the owner's local surfaces still do", { timeout: 120_000 }, async t => {
   const { tool, d } = await boot(t);
   const OWNER = d.kernel.id.owner;
   const BEN = "per_" + "c".repeat(26);
@@ -51,8 +51,9 @@ test("a remote call with no person on it (a device, visiting Space or tailnet no
   const full = await tool("agents.list", {});
   for (const caller of ["device:bcdefghijklmnopq", "space:ben@spc_team", "tailnet-guest:ben@example.com", "tailnet:ben@example.com"]) {
     const r = await d.registry.call("agents.list", {}, caller, {});
-    assert.ok(Array.isArray(r.data) && r.data.length === full.length, `${caller}: the roster is listed: ${JSON.stringify(r).slice(0, 160)}`);
-    for (const row of r.data) for (const k of HIDDEN) assert.ok(!(k in row), `${caller}: no person on the call, so no ${k}`);
+    assert.ok(!r.data && r.error && r.error.code === "denied", `${caller}: no list: ${JSON.stringify(r).slice(0, 160)}`);
+    assert.match(String(r.error.message), /vyre relay mark/, `${caller}: and says how to mark the device`);
+    assert.ok(!full.some(/** @type {any} */ x => String(r.error.message).includes(x.name)), "the refusal names no agent");
   }
   for (const caller of ["cli", "local", "deck"]) {
     const r = await d.registry.call("agents.list", {}, caller, {});
