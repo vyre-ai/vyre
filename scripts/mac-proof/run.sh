@@ -121,8 +121,9 @@ if (!cfg) { console.error("core.json is not trusted"); process.exit(1); }
 const hello = await coreHello(cfg.socket);
 if (!hello) { console.error("core did not say hello"); process.exit(1); }
 const keys = createCoreKeys();
-if (await keys.exists()) { console.error("keys existed before ensure"); process.exit(1); }
-if (!(await keys.ensure())) { console.error("ensure made nothing"); process.exit(1); }
+// With its modules running (the vault makes core's keys at its start) the keys may already be there: ensure is the same call either way.
+if (!(await keys.exists()) && !(await keys.ensure())) { console.error("ensure made nothing"); process.exit(1); }
+if (!(await keys.exists())) { console.error("the keys are not there after ensure"); process.exit(1); }
 const pub = await keys.boxPub();
 const peer = crypto.generateKeyPairSync("x25519");
 const remote = peer.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
@@ -133,9 +134,10 @@ const sig = await keys.routeSign(Buffer.from("hello"));
 const rp = await keys.routePub();
 if (!crypto.verify(null, Buffer.from("hello"), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rp]), format: "der", type: "spki" }), sig)) { console.error("signature does not verify"); process.exit(1); }
 const peerVerdict = await coreTool("keys.exists", {}, { socket: cfg.socket });
-console.log(JSON.stringify({ name: hello.name, version: hello.version, keys: peerVerdict.data }));
+console.log(JSON.stringify({ name: hello.name, version: hello.version, keys: peerVerdict.data, pub: Buffer.from(pub).toString("hex") }));
 JS
-"$node_bin" "$work/probe.mjs" || bad "core did not answer as it should"
+"$node_bin" "$work/probe.mjs" >"$work/probe1.out" || bad "core did not answer as it should"
+cat "$work/probe1.out"
 # A model's process gets nothing: the same call from a process named claude is refused by core.
 cat >"$work/neg.mjs" <<'JS'
 import { coreTool, readCoreConfig } from "/Library/Application Support/Vyre/current/lib/vyre-core-client.js";
@@ -172,7 +174,8 @@ echo "::group::reinstall"
 env PATH="$PATH_MIN" sh "$script" --yes
 echo "::endgroup::"
 sudo launchctl print system/com.vyre.core >/dev/null || bad "core is gone after a second install"
-"$node_bin" "$work/probe.mjs" 2>/dev/null && bad "the second install should find the keys already there" || true
+"$node_bin" "$work/probe.mjs" >"$work/probe2.out" 2>&1 || { cat "$work/probe2.out"; bad "core did not answer after the second install"; }
+[ "$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pub' "$work/probe1.out")" = "$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pub' "$work/probe2.out")" ] || bad "the second install changed core's keys"
 ok "installing again repairs and keeps core's keys"
 
 # Uninstall.
