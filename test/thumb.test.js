@@ -52,7 +52,7 @@ test("attachments.get answers the file, its preview, or no preview, and only for
     drive: { list: async () => Object.entries(files).map(([path, b]) => ({ path, size: b.length })), get: async (/** @type {any} */ _c, /** @type {string} */ p) => files[p] },
   };
   /** @type {Record<string, any>} */ const tools = {};
-  registerAttachments({ tool: (/** @type {string} */ n, /** @type {any} */ d) => { tools[n] = d; }, events: { emit() {} } }, { door: { open: async () => ({ gateway, chain: {} }) } });
+  registerAttachments({ tool: (/** @type {string} */ n, /** @type {any} */ d) => { tools[n] = d; }, events: { emit() {} }, call: async () => ({ data: { root: "proj" } }) }, { door: { open: async () => ({ gateway, chain: {} }) } });
   const get = (/** @type {any} */ i) => tools["attachments.get"].run({ thread: "c1", ...i }, {});
   const full = await get({ id: "att_aaaaaaaaaaaaaaaaaaaaaa" });
   assert.equal(full.thumb, false);

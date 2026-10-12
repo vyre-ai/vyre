@@ -881,7 +881,9 @@ export class Registry {
     const forSpace = (/** @type {string} */ id) => {
       const base = h.for(id);
       if (!base || base.hosted !== true || !base.gateway) return base; // a remote Space is reached by its own client, not by a module tool here
-      return Object.freeze({ ...base, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
+      // A module's view of a Space's gateway mints the module's OWN service chain, whatever name it asks for: the raw gateway's serviceChain(name) would give it any keeper's standing (work's, the Flows', the planner's).
+      const gateway = Object.freeze({ ...base.gateway, serviceChain: () => base.gateway.serviceChain(m.name) });
+      return Object.freeze({ ...base, gateway, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
     };
     // an own-key copy, getters kept live (`owner` follows an adoption), so the handle shows exactly the keys the kernel gave it (kernel/home.test.js)
     return Object.freeze(Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(h), for: { value: forSpace, enumerable: true } }));

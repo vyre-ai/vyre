@@ -207,6 +207,7 @@ export default {
     ctx.tool("work.file.list", { description: "The files this chat has, received (chat/) and made (made/): name, size, time, shared with the project or not. Only for someone in the chat.",
       input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         const k = kernelOf(), chain = await chainOf(extra), chat = String(i.chat);
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat: name a chat you are in"), { code: "not_found" });   // the same answer every route gives a person outside the chat
         const rec = (await chatRows(chain, { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } }))[0];
         const root = rec && rec.data && rec.data.drive ? String(rec.data.drive) : "";
         if (!root) return { files: [], root: "" };

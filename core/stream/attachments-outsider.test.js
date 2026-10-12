@@ -51,6 +51,8 @@ test("a member outside a chat names its id: attachments and the stream answer no
   assert.ok(put.error && !leaks(put.error), "put: refused with no path or name: " + JSON.stringify(put).slice(0, 200));
   const sent = await mal("stream.send", { chat, text: "this", attachments: [pdf] });
   assert.ok(sent.error && !leaks(sent.error), "the stream: refused with no path or name: " + JSON.stringify(sent).slice(0, 200));
+  const files = await mal("work.file.list", { chat });
+  assert.ok(files.error && files.error.code === "not_found" && !leaks(files.error), "work.file.list: refused like the others, with no path: " + JSON.stringify(files).slice(0, 200));
   // the owner, in the chat, still has her files
   assert.deepEqual(((await owner("attachments.list", { thread: chat })).data.attachments || []).map((/** @type {any} */ a) => a.id), [pdf.id], "control: the owner lists her file");
   assert.ok((await owner("attachments.get", { thread: chat, id: pdf.id })).data, "control: and opens it");
