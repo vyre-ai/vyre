@@ -66,6 +66,7 @@ const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(S
 
 /** What the server's own terminal says about the sessions, for a wait that timed out. */
 /** @type {(() => Promise<any[]>) | null} */ let ownerView = null;
+/** @type {string[]} */ const catchupMismatches = [];
 let serverView = async () => "";
 export const setOwnerView = (/** @type {() => Promise<any[]>} */ f) => { ownerView = f; };
 export const setServerView = (/** @type {() => Promise<string>} */ f) => { serverView = f; };
@@ -98,7 +99,7 @@ async function untilAnswerTo(person, chat, said) {
       const onext = om.findIndex((/** @type {any} */ m, /** @type {number} */ k) => k > oat && /^person:/.test(String(m.author)));
       const oans = oat >= 0 ? answers(om.slice(oat + 1, onext < 0 ? undefined : onext)) : [];
       console.log(`DBG catchup-differs for "${said}": ${person.name}'s catchup has ${after.length} answers after it (her message ${at >= 0 ? "is" : "is NOT"} listed); the owner's view has ${oans.length}; ${person.name}'s tail: ${JSON.stringify(ms.slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 50)]))}`);
-      if (oans.length) return oans;
+      if (oans.length) { catchupMismatches.push(`${person.name}: "${said}"`); return oans; }
     }
     await sleep(4000);
   }
@@ -339,7 +340,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const lists = /** @type {Record<string, string>} */ ({});
     for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `vyre call skills.list '{}' 2>&1`);
     said.skills = JSON.stringify(lists).slice(0, 1500);
-    for (const [who, out] of Object.entries(lists)) assert.ok(!/exit=12[67]|not a program|takes no fd3/.test(out), `${who}'s command ran (a refused terminal says nothing about skills): ${out.slice(0, 200)}`);
+    for (const [who, out] of Object.entries(lists)) assert.ok(!/walk-term exit=(?!0\b)\d+/.test(out), `${who}'s command ran (a refused terminal says nothing about skills): ${out.slice(0, 200)}`);
     for (const who of [grace.name, edith.name]) assert.ok(!lists[who].includes("walk-owner-private"), `${who}'s turn does not list the owner's personal skill: ${lists[who].slice(0, 300)}`);
     assert.ok(lists.owner.includes("walk-owner-private") || (approved && approved.error), `the owner's turn lists the owner's own skill (or the skill could not be made: ${JSON.stringify(approved).slice(0, 200)}): ${lists.owner.slice(0, 300)}`);
     return `draft/approve: ${JSON.stringify(approved).slice(0, 120)} | lists: ${JSON.stringify(lists).slice(0, 600)}`;
@@ -360,7 +361,7 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.ok(String(own[0].text).includes(`/${await ownerUid()}`), `the owner's turn ran as the owner: ${own[0].text}`);
     await sleep(60_000);
     const files = await R(grace.name, `cd "$PWD"; echo "5s:"; cat bg5.out 2>&1; echo "50s:"; cat bg50.out 2>&1`);
-    assert.ok(!/exit=12[67]|not a program|takes no fd3/.test(start + files), `the commands ran (a refused terminal proves nothing about a leftover job): ${(start + files).slice(0, 300)}`);
+    assert.ok(!/walk-term exit=(?!0\b)\d+/.test(start + files), `the commands ran (a refused terminal proves nothing about a leftover job): ${(start + files).slice(0, 300)}`);
     said.bg = files;
     assert.ok(!/walk-owner-item|"items"\s*:\s*\[\s*\{/.test(files), `the leftover job never saw the owner's vault: ${files}`);
     return `start: ${start.slice(0, 80)} | files: ${files.slice(0, 500)}`;
@@ -376,6 +377,12 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     const hit = all.match(/.{0,60}capsule.{0,60}/i);
     assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
     return `scanned ${all.length} characters in ${seenText.length} views`;
+  }, { needs: [H], owner: "chat" });
+
+  const WM = "a member's own catchup shows her message and the answer to it, as the owner's view of the same chat does";
+  await J.step(WM, async () => {
+    assert.equal(catchupMismatches.length, 0, `the owner's view had the answer after the message but the member's catchup did not, for: ${catchupMismatches.join("; ")}`);
+    return "no difference between a member's catchup and the owner's view";
   }, { needs: [H], owner: "chat" });
 
   // ---- the vault and the folders, from a MEMBER's own session on the server (rc1-a's steps; the owner's session is the control)
