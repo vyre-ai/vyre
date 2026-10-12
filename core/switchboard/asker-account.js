@@ -72,6 +72,7 @@ export function runQueuedOver(sb, id, rows, kt, mark, now, lock) {
       sb.drainDone(id, true, lock);   // (the hop's turn may already have ended while this settled: drainDone drains again only when the thread is idle with no hop pending)
     } catch (/** @type {any} */ e) {
       // The announced turn ends FIRST (the stream's member stops running), then the room is told: a notice while a turn still runs would take the reply path with no session and be dropped.
+      try { sb.db.prepare("UPDATE threads_inbox SET via = 'refused' WHERE id = ?").run(r.id); } catch { /* the row keeps the mark it had */ }   // the row says what happened (a refused message is neither delivered nor answered); nothing runs it again by itself
       if (announced) sb.endAnnouncedTurn(id, rec ? rec.project : null);   // (nothing was announced if the target was refused first)
       sb.emit("thread.text", { message: "vyre", text: hopRefusal(e && e.code), done: true, notice: true }, id, rec ? rec.project : null);
       sb.drainDone(id, true, lock);
@@ -191,6 +192,7 @@ export function libraryPerson(sb, rec, o) {
 export function hopRefusal(code) {
   if (code === "busy") return "The chat is busy with another turn. Nothing was sent. Send the message again in a moment.";
   if (code === "no_session") return "The team's chat could not be opened for you just now, so your message was not sent. Nothing was written. Send it again in a minute.";
+  if (code === "open_elsewhere") return "This chat is open in another window or terminal on that computer, so your message was not run. Nothing was sent. Close it there, then send the message again.";
   if (code === "denied" || code === "account_required") return "That sign-in is not yours to use here. Nothing was sent. Pick your own account, or add one under AI accounts.";
   if (code === "account_unavailable" || code === "account_removed" || code === "not_found" || code === "unavailable") return "Your sign-in for that AI is not available right now. Nothing was sent. Open AI accounts to sign in again, then send the message again.";
   return "Your message could not run on your own account. Nothing was sent. Send it again, or pick another account.";

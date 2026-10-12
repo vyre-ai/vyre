@@ -34,7 +34,7 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 5000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(10); } throw new Error(`timed out waiting for ${what}`); };
 
 /** Everything that survives a daemon restart (the kernel and its sessions' turn store, the stream's own database and home) and the stream side that does not. */
-async function world(t) {
+async function world(t, sessionsExtra = {}) {
   const k = await createKernel({ space: SPACE, owner: BOB, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: BOB, path: "direct", session: "s" });   // bob owns this Space: his turns may run on the machine's own login; carol and ada have a sign-in of their own
   const g = k.gateway.grants;
@@ -73,7 +73,7 @@ async function world(t) {
     const ks = createKernelSessions({ kernel: k, turns, chats: Object.freeze({ ...kc, beginTurn: async (/** @type {string} */ tok) => { seamCalls.push("BEGIN"); return kc.beginTurn(tok); } }) });
     const db = open(p.db);
     const events = bus;
-    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: process.env.E2E_DEBUG ? (/** @type {string} */ m) => console.error("LOG", m) : () => {}, kernelFor });
+    const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false, ...sessionsExtra }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: process.env.E2E_DEBUG ? (/** @type {string} */ m) => console.error("LOG", m) : () => {}, kernelFor });
     // a person's local surface arrives as the owner's own device, as through the real socket (the Switchboard's chat gate needs a person chain)
     { const orig = reg.call.bind(reg); reg.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ m) => orig(tool, input, caller, m !== undefined ? m : (/^(cli|deck|local|capsule)$/.test(String(caller)) ? { kernelFacts: { kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s" } } : undefined)); }
     reg.deps.kernelThreads = Object.freeze({
@@ -407,6 +407,20 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
 // chat never gets a reply for it: the stream writes ada's text under bob's message (the kernel opened ada's reply under no model slot, bob's under three) and the chat ends with status "failed, couldn't resume".
 // Until 6b23d3b6a the same test failed earlier, with "This session is open somewhere else: claude process N has it open" (the previous hop's process not in `ours()`). Two queued askers pass (V2). The assertions
 // below are the claim this test always made, now per message.
+test("V2s: a session wrapped in a subreaper (tini on a box that has it): the queued turn of another asker is still answered, not refused as open somewhere else", async t => {
+  // the wrapped claude is a CHILD of the pid the Switchboard records; it must still count as ours
+  const w = await world(t, { subreaper: path.join(CORE, "switchboard", "testing", "fake-subreaper.js") });
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  const bob1 = await answered(w, watcher, "B-ONE", 90_000), carol1 = await answered(w, watcher, LONG);
+  assert.deepEqual([carol1.who, bob1.who], [CAROL, BOB], "each message was answered under its own asker");
+  assert.ok(!textOf(watcher.frames).includes("open somewhere else"), "and nobody was told the session is open somewhere else");
+});
+
 test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);

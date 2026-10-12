@@ -47,3 +47,22 @@ test("sessions survive adoption: a thread started before is still listed, a kern
   const sb = d.registry.deps.switchboard;
   if (sb && typeof sb.canonTurn === "function") assert.equal(sb.canonTurn(JSON.stringify({ chat: "c", asker: old })), JSON.stringify({ chat: "c", asker: A }));
 });
+
+test("claudesNaming: the claude a subreaper runs for us is ours (its parent is the pid we recorded); a claude of nobody ours is still named", async t => {
+  const { spawn } = await import("node:child_process");
+  const { claudesNaming } = await import("./adopt.js");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const sub = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-subreaper.js");
+  const id = "0f3c1d52-77aa-4c0e-9d11-2b6f4c9e8a10";
+  // a program that looks like a claude with this session open, run under a stand-in subreaper (as tini wraps a session) and, separately, on its own
+  const idle = ["-e", "setInterval(()=>{},1000)", "claude", "--session-id", id];
+  const wrapped = spawn(sub, ["-s", "--", process.execPath, ...idle], { stdio: "ignore", detached: true });
+  const alone = spawn(process.execPath, idle, { stdio: "ignore", detached: true });
+  t.after(() => { for (const c of [wrapped, alone]) { try { process.kill(-/** @type {number} */ (c.pid), "SIGKILL"); } catch { /* gone */ } } });
+  const until = async (/** @type {() => boolean} */ f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 50)); };
+  await until(() => claudesNaming(id, []).length >= 3);
+  const named = claudesNaming(id, [/** @type {number} */ (wrapped.pid)]);
+  assert.ok(!named.includes(/** @type {number} */ (wrapped.pid)), "the subreaper is ours");
+  assert.deepEqual(named, [alone.pid], `the claude under our subreaper is ours; only the one of nobody ours is named: ${named}`);
+});

@@ -219,9 +219,9 @@ test("a lost mark releases only its own lock and drains nothing; the revert's ow
 });
 
 test("a queued hop that fails after it was announced ends the announced turn first and then shows its notice, in fixed words", async () => {
-  /** @type {string[]} */ const order = []; /** @type {string[]} */ const words = [];
+  /** @type {string[]} */ const order = []; /** @type {string[]} */ const words = []; /** @type {any[]} */ const marks = [];
   const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
-    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, onceTarget: async () => ({}),
+    db: { prepare: (/** @type {string} */ sql) => ({ run: (/** @type {any[]} */ ...a) => { marks.push([sql, a]); return { changes: 1 }; } }) }, onceTarget: async () => ({}),
     emit: (/** @type {string} */ type, /** @type {any} */ p) => { order.push(type); if (type === "thread.text") words.push(p.text); },
     endAnnouncedTurn: () => order.push("end-announced"), drainQueued() {},
     sendOnce: async (/** @type {any} */ _i, /** @type {any} */ _t, /** @type {any} */ _s, /** @type {any} */ _o, /** @type {any} */ o) => { o.onClaim(); throw Object.assign(new Error("account 7f3a9c is not yours / path /srv/x"), { code: "denied" }); } });
@@ -230,13 +230,15 @@ test("a queued hop that fails after it was announced ends the announced turn fir
   await new Promise(r => setTimeout(r, 30));
   assert.deepEqual(order, ["thread.sent", "end-announced", "thread.text"], "announced, then ended, then the notice");
   assert.doesNotMatch(words[0], /7f3a9c|\/srv/, "no account id or path reaches the room");
+  assert.deepEqual(marks.filter(m => /via = 'refused'/.test(m[0])).map(m => m[1]), [[7]], "the refused row says so (neither delivered nor answered), and nothing runs it again");
 });
 
 test("hopRefusal names the next step for each cause and never a lookup's own message", () => {
-  for (const code of ["busy", "denied", "account_required", "account_unavailable", "account_removed", "not_found", "unavailable", undefined, "weird"]) {
+  for (const code of ["busy", "open_elsewhere", "denied", "account_required", "account_unavailable", "account_removed", "not_found", "unavailable", undefined, "weird"]) {
     const text = hopRefusal(code);
     assert.match(text, /Nothing was sent/, code);
     assert.match(text, /again|Pick|Open AI accounts|add one/, `${code}: says what to do`);
+    if (code === "open_elsewhere") assert.doesNotMatch(text, /account/, "a chat open elsewhere is not told to pick another account");
   }
 });
 
