@@ -83,3 +83,20 @@ test("a Mac preview reaches a loopback port only when every listener on it is th
   assert.equal(portIsSessions(10, 9999, { lsof, procs }), false, "nothing listening");
   assert.equal(portIsSessions(10, 3000, { lsof: () => { throw new Error("lsof gone"); }, procs }), false, "no answer from lsof is no");
 });
+
+test("killTree waits for a stop to take effect: a process that was forking when it was signalled still makes its child, and the child is ended too (the CI leak)", () => {
+  const P = (/** @type {number} */ pid, /** @type {number} */ ppid, /** @type {string} */ state) => ({ pid, ppid, pgid: pid, ticks: 0, pages: 0, pcpu: 0, kb: 0, state });
+  let reads = 0, stopAt = Infinity;
+  /** @type {[number, string][]} */ const sent = [];
+  // read 1: the root alone, running. Its stop lands only after read 4 (a loaded runner); the fork it was in the middle of shows up at read 3.
+  const procs = () => {
+    reads++;
+    const stopped = reads > stopAt;
+    const root = P(10, 1, stopped ? "T" : "R");
+    return reads < 3 ? [root] : [root, P(11, 10, stopped ? "T" : "R")];
+  };
+  const n = killTree(10, { procs, kill: (pid, sig) => { sent.push([pid, sig]); if (sig === "SIGSTOP" && stopAt === Infinity) stopAt = 4; }, sleep: () => {} });
+  assert.equal(n, 2, "the late child was found");
+  assert.ok(sent.some(([pid, sig]) => pid === 11 && sig === "SIGSTOP"), "and stopped");
+  assert.ok(sent.some(([pid, sig]) => pid === 11 && sig === "SIGKILL"), "and killed: " + JSON.stringify(sent));
+});

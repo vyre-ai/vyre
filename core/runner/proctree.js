@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 
-/** @typedef {{ pid: number, ppid: number, pgid: number, ticks: number, pages: number, pcpu: number, kb: number }} Proc */
+/** @typedef {{ pid: number, ppid: number, pgid: number, ticks: number, pages: number, pcpu: number, kb: number, state?: string }} Proc */
 
 /**
  * Every process now, as { pid, ppid, pgid, ticks (utime + stime), pages (rss) } on Linux, or { pid, ppid, pgid, pcpu, kb } on macOS.
@@ -22,7 +22,7 @@ export function allProcs(o = {}) {
     const s = proc.stat(pid); if (!s) continue;
     // the command name sits in parentheses and may hold spaces: the fields after it start two characters past the last ")"
     const f = s.slice(s.lastIndexOf(")") + 2).split(" ");
-    out.push({ pid: Number(pid), ppid: Number(f[1]), pgid: Number(f[2]), ticks: Number(f[11]) + Number(f[12]), pages: Number(f[21]), pcpu: 0, kb: 0 });
+    out.push({ pid: Number(pid), ppid: Number(f[1]), pgid: Number(f[2]), ticks: Number(f[11]) + Number(f[12]), pages: Number(f[21]), pcpu: 0, kb: 0, state: f[0] });
   }
   return out;
 }
@@ -56,18 +56,28 @@ export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs)
  * End a session's whole tree so that nothing escapes it. Signalling a tree that is still running leaks: a process forked between the snapshot and the signal is not in it, and once its parent is killed it is
  * re-parented away from the root, so the second pass of signalTree cannot find it either (the sandbox's second process outlived the reader on a loaded runner). Here every process found is first STOPPED, so none can
  * fork any more, the tree is read again until a pass finds nothing new, and only then is every one of them killed.
- * @param {number} root @param {{ procs?: () => Proc[], kill?: (pid: number, sig: NodeJS.Signals) => void, passes?: number }} [o] @returns {number} how many processes were ended
+ * @param {number} root @param {{ procs?: () => Proc[], kill?: (pid: number, sig: NodeJS.Signals) => void, passes?: number, sleep?: (ms: number) => void }} [o] @returns {number} how many processes were ended
  */
 export function killTree(root, o = {}) {
   const procs = o.procs || (() => allProcs());
   const kill = o.kill || ((/** @type {number} */ pid, /** @type {NodeJS.Signals} */ s) => process.kill(pid, s));
+  const sleep = o.sleep || ((/** @type {number} */ ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait available: the next read is the wait */ } });
   // never signal this process or pid 1, whatever the walk reaches: a wrong root or a re-parented walk must not stop vyred itself
   if (!(root > 1) || root === process.pid) return 0;
   const seen = new Set();
-  for (let pass = 0; pass < (o.passes ?? 8); pass++) {
-    let fresh = 0;
-    for (const p of treeOf(root, procs())) { if (seen.has(p.pid) || p.pid <= 1 || p.pid === process.pid) continue; seen.add(p.pid); fresh++; try { kill(p.pid, "SIGSTOP"); } catch { /* gone */ } }
-    if (!fresh) break;
+  // A stop is a signal: it takes effect when the process next runs, which on a busy runner can be well after kill() returned. A process that was in the middle of forking when it was signalled still makes its child, so a
+  // pass that ran at once saw nothing new and the tree was killed with the child missing (the sandbox's second process, left holding the test's pipes). The walk goes on until every process found has stopped (or is gone)
+  // and a read after that finds nothing new. A state of undefined (macOS ps) counts as stopped: there the old pass count is all there is.
+  const settled = (/** @type {string | undefined} */ st) => st === undefined || st === "T" || st === "t" || st === "Z" || st === "X";
+  for (let pass = 0; pass < (o.passes ?? 8) + 200; pass++) {
+    let fresh = 0, pending = 0;
+    for (const p of treeOf(root, procs())) {
+      if (p.pid <= 1 || p.pid === process.pid) continue;
+      if (!seen.has(p.pid)) { seen.add(p.pid); fresh++; try { kill(p.pid, "SIGSTOP"); } catch { /* gone */ } }
+      if (!settled(p.state)) pending++;
+    }
+    if (!fresh && !pending) break;
+    if (pending) sleep(2);
   }
   for (const pid of seen) { try { kill(pid, "SIGKILL"); } catch { /* gone */ } }
   return seen.size;
