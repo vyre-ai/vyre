@@ -316,9 +316,9 @@ test("spawner terminal: /bin/sh without the terminal role is refused as before, 
   await assert.rejects(spawnAsAgent(["/bin/sh", "-lc", "true"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "a login shell flag");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true", "extra"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "more arguments");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, role: "terminal" }), /a terminal runs as an account/, "not as the agent's own uid");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, shared: true, fd3: "k", role: "terminal" }), /takes no fd3 or seed/, "no credential descriptor even with the shared flag");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, fd3: "sk-secret", role: "terminal" }), /takes no fd3 or seed/, "no credential descriptor");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, seed: { "a.txt": "x" }, role: "terminal" }), /takes no fd3 or seed/, "no seed files");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, shared: true, role: "terminal" }), /takes no fd3, seed or shared/, "no shared group");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, fd3: "sk-secret", role: "terminal" }), /takes no fd3/, "no credential descriptor");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, seed: { "a.txt": "x" }, role: "terminal" }), /takes no fd3/, "no seed files");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: "/etc", account: 2000, role: "terminal" }), /cwd must be under/, "the same folder rule");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2999, role: "terminal" }), /account must be a uid from/, "the same account range");
 });
@@ -337,6 +337,6 @@ for (const shared of [false, true]) {
     assert.equal(code, 0, "the shell ran: " + out);
     assert.match(out, /^nokey\|nooauth\|nofd\|/, "no credential in its environment");
     assert.match(out, /fd3closed/, "and no descriptor 3: " + out);
-    assert.deepEqual(ran.map(w => [w.uid, w.groups.length]), [[2000, shared ? 1 : 0]], "as the account, in the shared group only when its session is");
+    assert.deepEqual(ran.map(w => [w.uid, w.groups.length]), [[2000, 0]], "as the account, and in no supplementary group: the terminal never joins the shared project group, whatever its session does");
   });
 }

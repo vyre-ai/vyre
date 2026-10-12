@@ -153,8 +153,7 @@ export async function serve(o) {
       // started under this role, and the shell is started under no other: the allow list below is unchanged.
       if (req.argv.length !== 3 || req.argv[0] !== "/bin/sh" || req.argv[1] !== "-c" || req.argv[2].length > 65536) return "a terminal runs /bin/sh -c and one command line";
       if (req.account === undefined) return "a terminal runs as an account";
-      // `shared` is not a credential: it is the account's join of the shared project group, the same flag its session runs with (a member's terminal in a /work project needs it to write there). fd3 and seed are credentials and files.
-      if (req.fd3 !== undefined || req.seed !== undefined) return "a terminal takes no fd3 or seed";
+      if (req.fd3 !== undefined || req.seed !== undefined || req.shared !== undefined) return "a terminal takes no fd3, seed or shared";
     } else if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
     if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
     if (req.seed !== undefined) {
