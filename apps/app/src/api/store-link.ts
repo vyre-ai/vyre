@@ -6,7 +6,9 @@ import { call, listen, send } from "./box";
 import { tool as heldTool } from "../real/box";
 import { NOT_FOR_MEMBERS_YET, chatSpace, memberChatWire } from "../real/with-space.js";
 import { createStoreRoute } from "../real/store-route.js";
-import { joinedHere } from "../real/team-join";
+import { joinedHere, teamCall } from "../real/team-join";
+import { startEventPoll } from "../real/event-poll.js";
+import { appVisible } from "../real/visible";
 import { withSpace } from "../real/with-space.js";
 import { useSpaces } from "../../screens/shell/state";
 
@@ -39,14 +41,31 @@ const plainRpc = {
 };
 
 /** The Store's rpc: a call naming a team Space this device joined goes through the team's door; every other call is plainRpc, unchanged (src/real/store-route.js). */
+/** The team Space a Store call is for: the one it names, else the one its record address names, else the one showing. */
+const spaceOfCall = (name: string, input: Record<string, unknown>): string | null => {
+  const urn = /^vyre:\/\/(spc_[a-z2-7]{12})\//.exec(String(input.urn ?? input.record ?? ""));
+  return chatSpace(named(name, urn && !input.space ? { ...input, space: urn[1] } : input), useSpaces.getState().space);
+};
 const routed = createStoreRoute({
-  joinedSpace: async (input) => { const sp = chatSpace(named("records.list", input), useSpaces.getState().space); return sp && (await joinedHere(sp)) ? sp : null; },
-  door: async (name, input) => { try { return await heldTool(name, named(name, input)); } catch (e) { const x = e as { code?: string; message?: string }; throw storeError({ code: x.code, message: x.message }); } },
+  joinedSpace: async (name, input) => { const sp = spaceOfCall(name, input); return sp && (await joinedHere(sp)) ? sp : null; },
+  door: (name, input) => { const sp = spaceOfCall(name, input); return heldTool(name, named(name, sp && !input.space ? { ...input, space: sp } : input)); },
   wired: (name) => memberChatWire(name) !== null,
   notYet: NOT_FOR_MEMBERS_YET,
+  fail: (e) => { const x = e as { code?: string; message?: string }; return storeError({ code: x.code, message: x.message }); },
   plain: { read: plainRpc.read, write: plainRpc.write },
 });
-export const boxRpc = { read: routed.read, write: routed.write, events: plainRpc.events } as typeof plainRpc;
+
+/** The Store's "something changed" signal: the box's own stream as ever, and, while a joined team is showing, the team's events asked for through its door (a member has no team stream in her app). */
+const events = (on: (e: unknown) => void) => {
+  const plain = plainRpc.events(on);
+  const stopPoll = startEventPoll({
+    spaceNow: async () => { const sp = chatSpace({}, useSpaces.getState().space); return sp && (await joinedHere(sp)) ? sp : null; },
+    ask: (space, input) => teamCall(space, "records.events", [input]),
+    onEvent: on, visible: appVisible,
+  });
+  return () => { stopPoll(); plain(); };
+};
+export const boxRpc = { read: routed.read, write: routed.write, events } as typeof plainRpc;
 
 if (process.env.EXPO_PUBLIC_VYRE_MOCK === "1") allowMock();
 else setStore(createGatewayStore({ rpc: boxRpc as never }));
