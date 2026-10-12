@@ -1254,6 +1254,14 @@ uninstall() {
   comp=$(docker ps -aq --filter network=vyre-computers 2>/dev/null || true)
   # shellcheck disable=SC2086 # one container id per word
   [ -z "$comp" ] || docker rm -f $comp >/dev/null
+  # A Space's record store is a stack of its own (project vyre-spc-<id>-twenty: the database, the cache, the server and its worker), started by the Space helper, not by this compose project: `compose down`
+  # never knew it, and an uninstall used to leave it running with its images and network. It goes now whatever is chosen about the data; the data is the volumes, and those follow the choice below.
+  sc=$(docker ps -a --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^vyre-spc-[a-z0-9-]+-twenty$/ { print $1 }' || true)
+  # shellcheck disable=SC2086 # one container id per word
+  [ -z "$sc" ] || docker rm -f $sc >/dev/null 2>&1 || true
+  sn=$(docker network ls --format '{{.Name}}' 2>/dev/null | grep -E '^vyre-spc-[a-z0-9-]+-twenty_' || true)
+  # shellcheck disable=SC2086 # one network name per word
+  [ -z "$sn" ] || docker network rm $sn >/dev/null 2>&1 || true
   compose down --remove-orphans
   # Vyre's own images (the box and the computers, and the one kept for a rollback) are not data: a
   # gigabyte of layers with no use once Vyre is gone. Docker itself stays.

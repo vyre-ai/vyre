@@ -796,3 +796,29 @@ test("install-box.sh rc.3: a stack that fails to start ends the install in words
   assert.match(r.stderr, /then run: vyre up/);
   assert.doesNotMatch(r.stdout, /Vyre is running on this server/);
 });
+
+test("vyre uninstall stops and removes every Space's record store stack (project vyre-spc-<id>-twenty) and its networks, and leaves other people's containers alone; the data follows the choice", t => {
+  const mk = () => {
+    const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "volume ls") printf '%s\\n' vyre_vyre-home vyre-spc-abc-twenty_db-data ;; "ps -a") printf '%s\\n' 's1 vyre-spc-abc-twenty' 's2 vyre-spc-abc-twenty' 's3 vyre-spc-def-twenty' 'x9 someones-app' 'v1 vyre' ;; "network ls") printf '%s\\n' vyre-spc-abc-twenty_store bridge someones_default ;; esac; exit 0` });
+    fs.mkdirSync(b.dir, { recursive: true });
+    fs.writeFileSync(path.join(b.dir, "compose.yml"), "name: vyre\n");
+    fs.mkdirSync(path.dirname(b.env.VYRE_WRAPPER), { recursive: true });
+    fs.copyFileSync(BOXVYRE, b.env.VYRE_WRAPPER);
+    return b;
+  };
+  const keep = mk();
+  const k = uninstall(keep, ["--keep-data"]);
+  assert.equal(k.status, 0, k.stderr);
+  const kc = keep.calls();
+  assert.ok(kc.includes("rm -f s1 s2 s3"), "the Spaces' containers go: " + kc);
+  assert.ok(!/rm -f .*x9|rm -f .*v1/.test(kc), "nobody else's container, and not Vyre's own project's");
+  assert.ok(kc.includes("network rm vyre-spc-abc-twenty_store"), "and the Space's network, nothing else: " + kc);
+  assert.ok(!/network rm .*(bridge|someones_default)/.test(kc));
+  assert.ok(!kc.includes("volume rm"), "the data is kept when asked to keep it");
+  const del = mk();
+  const d = uninstall(del, ["--delete-data"]);
+  assert.equal(d.status, 0, d.stderr);
+  const dc = del.calls();
+  assert.ok(dc.includes("rm -f s1 s2 s3"));
+  assert.ok(dc.indexOf("rm -f s1 s2 s3") < dc.indexOf("volume rm"), "containers first, then their volumes");
+});
