@@ -10,17 +10,17 @@ import http from "node:http";
  * every request { path, body }. Close with server.close().
  * @param {Array<(n: number) => any>} steps
  * @param {{ isMain?: (body: any) => boolean }} [o] default: the request offers tools
- * @returns {Promise<{ server: import("node:http").Server, log: Array<{ path: string|undefined, body: any }>, url: string }>}
+ * @returns {Promise<{ server: import("node:http").Server, log: Array<{ path: string|undefined, body: any, headers?: Record<string, any> }>, url: string }>}
  */
 export function fakeApi(steps, { isMain = b => Array.isArray(b.tools) && b.tools.length > 0 } = {}) {
-  /** @type {Array<{ path: string|undefined, body: any }>} */
+  /** @type {Array<{ path: string|undefined, body: any, headers?: Record<string, any> }>} */
   const log = [];
   const server = http.createServer((req, res) => {
     let body = "";
     req.on("data", c => { body += c; });
     req.on("end", () => {
       const b = body ? JSON.parse(body) : {};
-      log.push({ path: req.url, body: b });
+      log.push({ path: req.url, body: b, headers: req.headers });
       if (!req.url?.startsWith("/v1/messages") || req.url.includes("count_tokens")) {
         res.writeHead(req.url?.includes("count_tokens") ? 200 : 404, { "content-type": "application/json" });
         return res.end(JSON.stringify({ input_tokens: 1 }));
