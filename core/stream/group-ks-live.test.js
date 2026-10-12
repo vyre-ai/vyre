@@ -455,6 +455,27 @@ test("CU1: the catchup rule is what others said since you last read: a sender's 
   assert.equal(c.data.unread, ms.length, "unread counts what others said, each entry once");
 });
 
+test("S1: a notice that arrives when a process starts with no turn in flight (the Switchboard's 'Back on ...' line after a hop back, a replayed session) is shown to the room and never opens a reply under the previous asker: no 'couldn't resume', and the next message is answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watcher, "C-FIRST", 60_000);
+  const thread = kitThread(b, chat.id);
+  await until(async () => (await b.reg.call("threads.get", { thread }, "cli")).data.thread.status !== "working", "carol's turn to end", 30_000);
+  for (const id of b.ks.list()) await b.ks.end(id);   // the previous asker's session is gone, as it is some seconds after her turn
+  // a process starts for no turn (status working), and says a line as Vyre
+  b.events.emit("threads", "thread.status", { status: "working", chat: chat.id }, { thread });
+  b.events.emit("threads", "thread.text", { message: "vyre", text: "Back on the usual account. Nothing was lost.", done: true, notice: true }, { thread });
+  await until(() => textOf(watcher.frames).includes("Back on the usual account"), "the line to reach the room", 20_000);
+  await sleep(500);
+  b.events.emit("threads", "thread.status", { status: "waiting", chat: chat.id }, { thread });
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "nothing says the reply could not resume");
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-SECOND", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "C-SECOND", 60_000)).who, CAROL, "and the next message is answered under its own asker");
+});
+
 test("E1: three people queued behind the owner's turn, and that turn is stopped (it ends abnormally): the queued messages are not dropped, each is answered under its own asker", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);

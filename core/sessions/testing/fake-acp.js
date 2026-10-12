@@ -15,6 +15,7 @@
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
+// FAKE_ACP_REPLAY: on session/load, send this many agent_message_chunk updates before answering, as a real agent replays the conversation it loads.
 // FAKE_ACP_RPC_LOG: one line per request the client sent, by method name.
 // FAKE_ACP_LOG: one line per launch (argv, HOME, client capabilities) and per set_mode.
 import fs from "node:fs";
