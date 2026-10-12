@@ -35,7 +35,7 @@ test("communication and team-member: a member reads her own mail and her project
   K.kernelFor({ name: "work", needs: { kernel: { membership: true, work: true, attrs: true, actions: ["records.read", "records.create", "records.update", "records.remove"] } } });
   const svc = gw.serviceChain("work");
   const need = (await gw.definitions(ownerChain)); const have = new Set((need.types || need).map((/** @type {any} */ x) => x.name));
-  const add = [CORE.COMMUNICATION, CORE.ORGANIZATION, CORE.CONTACT, CORE.PROJECT, CORE.TEAM_MEMBER].filter((/** @type {any} */ x) => x && !have.has(x.name));
+  const add = [CORE.COMMUNICATION, CORE.ORGANIZATION, CORE.CONTACT, CORE.PROJECT, CORE.TEAM_MEMBER, CORE.TASK].filter((/** @type {any} */ x) => x && !have.has(x.name));
   if (add.length) await gw.records.define(ownerChain, { add_types: add });
   const comm = (/** @type {string} */ subject, /** @type {any} */ extra = {}, /** @type {any} */ opts = {}) => gw.records.create(ownerChain, "communication", { kind: "email", at: new Date().toISOString(), subject, source_key: "k:" + subject, ...extra }, opts);
 
@@ -86,4 +86,28 @@ test("communication and team-member: a member reads her own mail and her project
   // a type that is not listed reads exactly as before: an organization made by the owner is read by every member
   await gw.records.create(ownerChain, "organization", { name: "ORG-ALL" });
   for (const p of [ANA, BEN, ZED]) assert.ok((await gw.records.query(chainOf(p), "organization", { page: { limit: 50 } })).rows.some((/** @type {any} */ r) => r.data.name === "ORG-ALL"), `an unlisted type: ${p.slice(4, 8)} reads it`);
+
+  // a project is its team's: its owner, the people on its team, staff. A member lists and opens hers, not another's
+  const anaProj = await gw.records.create(ownerChain, "project", { name: "ANA-OWN-PROJECT", slug: "ana-own", status: "active", memory_scope: "project:ana-own", owner: { actor: { kind: "person", id: ANA, space: SPACE } } });
+  const projNames = async (/** @type {string} */ p) => (await gw.records.query(chainOf(p), "project", { page: { limit: 50 } })).rows.map((/** @type {any} */ r) => r.data.name).sort();
+  assert.deepEqual(await projNames(ANA), ["ANA-OWN-PROJECT"], "Ana lists the project she owns and no other");
+  assert.deepEqual(await projNames(ZED), ["Harlow"], "Zed lists the one she is on");
+  assert.deepEqual(await projNames(BEN), ["Elsewhere"], "Ben lists the one he is on");
+  assert.deepEqual((await gw.records.query(ownerChain, "project", { page: { limit: 50 } })).rows.map((/** @type {any} */ r) => r.data.name).sort(), ["ANA-OWN-PROJECT", "Elsewhere", "Harlow"], "staff list all of them");
+  assert.ok(await gw.records.get(chainOf(ANA), "project", anaProj.id), "Ana opens her own project");
+  assert.equal(await gw.records.get(chainOf(ANA), "project", proj.id), null, "and not another's, by get");
+  for (const [route, read] of Object.entries({ gateway: async (/** @type {string} */ p) => projNames(p), door: async (/** @type {string} */ p) => rowsOf(await door(p, "records.query", "project", { page: { limit: 50 } })).map((/** @type {any} */ r) => r.data.name).sort() })) assert.deepEqual(await read(ANA), ["ANA-OWN-PROJECT"], `${route}: Ana's projects`);
+  assert.ok(!(await door(ANA, "records.get", "project", proj.id)).v, "door get of another's project");
+  assert.ok(!JSON.stringify(await door(ANA, "records.search", { text: "Harlow", page: { limit: 20 } })).includes("Harlow"), "door search finds none of another's project");
+
+  // a task is for its doer and whoever gave it, and for its project's owner and team: read and write name the same people
+  await gw.records.create(ownerChain, "task", { title: "PROJECT-TASK", project: { urn: proj.urn } });
+  await gw.records.create(ownerChain, "task", { title: "OWNER-ONLY-TASK" });
+  await gw.records.create(chainOf(ANA), "task", { title: "ANA-OWN-TASK" });
+  const taskTitles = async (/** @type {string} */ p) => (await gw.records.query(chainOf(p), "task", { page: { limit: 50 } })).rows.map((/** @type {any} */ r) => r.data.title).sort();
+  assert.ok((await taskTitles(ZED)).includes("PROJECT-TASK"), "Zed, on the project, reads its task");
+  assert.ok(!(await taskTitles(ANA)).includes("PROJECT-TASK") && !(await taskTitles(ANA)).includes("OWNER-ONLY-TASK"), "Ana reads neither a project she is not on nor the owner's own task");
+  assert.ok((await taskTitles(ANA)).includes("ANA-OWN-TASK"), "Ana reads the task she made");
+  assert.ok(!(await taskTitles(BEN)).includes("ANA-OWN-TASK") && !(await taskTitles(BEN)).includes("PROJECT-TASK"), "Ben reads neither");
+  assert.ok((await gw.records.query(ownerChain, "task", { page: { limit: 50 } })).rows.length >= 3, "staff read every task");
 });

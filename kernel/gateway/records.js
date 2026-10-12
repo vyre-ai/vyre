@@ -219,22 +219,36 @@ export function createRecords(cfg) {
   const keeperOk = (chain, type) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && (KEEPERS[type] || []).includes(String(chain.hops[0].actor.id));
   /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
-  // Types read by a rule of their own, per record (class 3): the person whose mailbox a communication came from, the team of the project it concerns, and staff; a team row by its project. A type NOT listed here reads as ever.
+  // Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
+  // people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
   const seatOf = projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u));
-  const onProject = async (/** @type {string} */ me, /** @type {any} */ link) => { const t = link && link.urn ? await seatOf(String(link.urn)) : null; return Boolean(t && (t.owner === me || t.team.includes(me))); };
-  /** @type {Record<string, (me: string, rec: any) => Promise<boolean>>} */
+  const idOfA = (/** @type {any} */ a) => (a && typeof a === "object" ? (a.actor && a.actor.id) || a.id || null : typeof a === "string" ? a : null);
+  const onProject = async (/** @type {string} */ me, /** @type {any} */ link) => { const ref = link && (link.urn || (typeof link === "string" ? link : null)); const t = ref ? await seatOf(String(ref)) : null; return Boolean(t && (t.owner === me || t.team.includes(me))); };
+  const taskFacts = async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; };
+  /** @type {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>} */
   const PRIVATE_READS = {
     communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
     "team-member": (me, rec) => onProject(me, rec.data && rec.data.project),
+    project: async (me, rec) => (rec.data && rec.data.personal_of ? String(rec.data.personal_of) === me : onProject(me, { urn: rec.urn })),
+    task: async (me, rec, chain) => {
+      const t = await taskFacts(rec.id), acting = isChain(chain) ? chain.hops.map((/** @type {any} */ h) => h.actor) : [];
+      const mine = (/** @type {any} */ a) => { const id = idOfA(a), kind = a && typeof a === "object" ? (a.actor ? a.actor.kind : a.kind) : null; return Boolean(id) && acting.some((/** @type {any} */ x) => x.id === id && (!kind || x.kind === kind)); };
+      if (t && (mine(t.doer) || mine(t.assigned_by))) return true;
+      const ref = (rec.data && rec.data.project) || (t && t.project) || null;
+      return ref ? onProject(me, ref) : false;
+    },
   };
-  /** May this chain read this row of a listed type: a service with no person, an owner or an admin as themselves, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
+  /** An owner or an admin as a person, whatever the chain's shape: what the chain may do is the authorizer's to narrow, this is only whether the PERSON is staff. @param {string} person */
+  const staffPerson = (person) => { if (!members || typeof members.membership !== "function") return false; const r = (members.membership({ kind: "person", id: person, space }) || {}).role; return r === "owner" || r === "admin"; };
+  const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
+  /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec) => {
     const rule = PRIVATE_READS[type];
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
-    if (!who) return isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
-    if (adminish(chain)) return true;
-    try { return await rule(String(who.actor.id), rec); } catch { return false; }
+    if (!who) return serviceOnly(chain);
+    if (staffPerson(String(who.actor.id))) return true;
+    try { return await rule(String(who.actor.id), rec, chain); } catch { return false; }
   };
   /** @type {Set<string> | null} */ let protectedTypes = null;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
@@ -1428,7 +1442,7 @@ export function createRecords(cfg) {
     },
     mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type),
     /** Whether this chain may see events about one record of a listed type (the record gone: staff and services only). */
-    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (adminish(chain) || (isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service"))); },
+    mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!PRIVATE_READS[type]) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || (isChain(chain) && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && staffPerson(String(h.actor.id))))); },
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if (PRIVATE_READS[type] && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
@@ -1444,7 +1458,7 @@ export function createRecords(cfg) {
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
-      if (PRIVATE_READS[type] && !adminish(chain) && !(isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service"))) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
+      if (PRIVATE_READS[type] && !serviceOnly(chain) && !(isChain(chain) && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && staffPerson(String(h.actor.id))))) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
       return api.aggregate(chain, type, spec);
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
