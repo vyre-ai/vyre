@@ -105,7 +105,7 @@ export async function planStore(o) {
  * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
  * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
  * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
- * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
+ * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number, makeStore?: (o: { space: string, name: string, p: any }) => any }} cfg
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
 /** What the first start is doing, in words a person can read, for each phase the provisioning reports (stores/twenty/provision.js `phase`). */
@@ -176,12 +176,13 @@ export function createStoreFor(cfg) {
     const timer = setInterval(() => { checkKey().catch((e) => log(`the daily key check failed: ${e.message}`)); }, (cfg.keyCheckEveryMs ?? 24 * 3600 * 1000)); timer.unref();
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
-    const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
+    // `cfg.makeStore` (a test seam) stands in for the Twenty store and its core types, so the attach paths can be exercised without a Twenty.
+    const store = cfg.makeStore ? cfg.makeStore({ space, name, p }) : createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     const tc = Date.now();
     { const g = progress.get(space); if (g) g.phase = "core types"; }
     log("phase core types: started");
-    await defineCore(store, log);
+    if (!cfg.makeStore) await defineCore(store, log);
     log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });

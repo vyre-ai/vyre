@@ -292,12 +292,34 @@ test("rc.3: while the record store is setting itself up the status says it is bu
   assert.match(f.unavailable.reason, /compose file/);
 });
 
-test("rc.3: the record of a failed attempt is removed as soon as the store opens, before attach() replays the definitions and starts the waiting modules (which takes minutes on a first start)", () => {
-  const src = fs.readFileSync(new URL("./space-store.js", import.meta.url), "utf8");
-  // In both success paths (the retry and the first open that ran late) the removal comes before the attach call.
-  for (const re of [/const real = await open\(space, w\.meta\);[\s\S]*?stateFile\(w\.dir\)[\s\S]*?await w\.store\.attach\(real\)/, /opening\.then\(async \(real\) => \{[\s\S]*?stateFile\(w\.dir\)[\s\S]*?await w\.store\.attach\(real\)/]) {
-    assert.match(src, re);
-  }
-  const attempt = src.slice(src.indexOf("const attempt = async"), src.indexOf("const storeFor = async"));
-  assert.ok(attempt.indexOf("stateFile(w.dir)") < attempt.indexOf("await w.store.attach(real)"), "attempt(): removal before attach");
+test("rc.3: attempt 1 fails, the opener attaches later: store-state.json is gone as soon as the store opens, while attach() is still replaying, and the status never says it is not available", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const { storeStatus } = await import("../store-status.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  let ok = false;
+  const real = createMemoryStore({});
+  // The replay of what the kernel defined while the store was away is slow (minutes on a first start).
+  const define = real.define.bind(real);
+  real.define = async (/** @type {any} */ ...a) => { await new Promise((r) => setTimeout(r, 600)); return define(...a); };
+  const f = createStoreFor({ home, mode: "twenty", degrade: true, retryBaseMs: 20, retryMaxMs: 40, log: () => {}, helper: false, rotate: /** @type {any} */ (async () => ({})),
+    preflight: async () => (ok ? { ok: true, reasons: [] } : { ok: false, reasons: ["compose file could not be regenerated"], facts: {} }),
+    provision: async () => ({ url: "http://127.0.0.1:1", keyFile: "x", webhookSecretFile: "y" }), makeStore: () => real });
+  const st = await f(SP, { personal: true });           // attempt 1 fails
+  await st.define({ add_types: [{ name: "task_x", fields: [] }] });   // remembered, replayed on attach
+  f.bootDone();
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "store-state.json"), "utf8")).state, "unavailable");
+  ok = true;                                              // the next retry opens a real store
+  const t0 = Date.now();
+  while (fs.existsSync(path.join(dir, "store-state.json")) && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false, "the record is gone");
+  assert.equal(f.waiting().length, 1, "and it went while attach() was still replaying, not after");
+  const s = /** @type {any} */ (await storeStatus({ root: home, store: st, env: { VYRE_STORE: "twenty" } }));
+  assert.doesNotMatch(String(s.note || ""), /not available yet/);
+  assert.equal(s.unavailable, undefined);
+  // and it finishes: attached, nothing waiting.
+  const t1 = Date.now();
+  while (!st.attached() && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(st.attached(), true);
+  assert.ok((await st.types()).some((x) => x.name === "task_x"), "the definition made while the store was away was applied");
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false);
 });
