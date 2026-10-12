@@ -25,6 +25,7 @@
 // session yet — that part is sessions' (core/sessions/switchboard), queued behind their rc.2
 // work per the lead.
 
+import { bareTerminal } from "../modules/index.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -1383,7 +1384,7 @@ export default {
         const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
         const owner0 = K && typeof K.owner === "string" ? K.owner : "";
         const viaChain = await chainPerson();
-        const asker0 = viaChain || (K && owner0 && (meta.caller === "cli" || meta.caller === "local") ? owner0 : null);
+        const asker0 = viaChain || (K && owner0 && bareTerminal(meta) ? owner0 : null);
         if (asker0 && K) {
           const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
           const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));

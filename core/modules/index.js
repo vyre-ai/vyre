@@ -618,6 +618,14 @@ export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(cal
  */
 export const ownerDevice = caller => ownerOverTailnet(caller) || deviceLabel(caller);
 
+/**
+ * A call from the box's own terminal that carries no proof of a person: it reached the daemon's 0600 socket (only the daemon's own uid connects; a session runs as another uid with no socket), with
+ * no session token and no kernel facts. That is the owner at a terminal whose ancestry the daemon could not read (tmux, ssh): a module that must name WHO asked takes the home's owner for it. A call
+ * that carries a token or facts is judged by its chain, never by this.
+ * @param {any} meta the running call's meta @returns {boolean}
+ */
+export const bareTerminal = meta => Boolean(meta) && (meta.caller === "cli" || meta.caller === "local") && !meta.token && !meta.kernelFacts && !meta.person;
+
 /** A device paired through Wink or the relay, exactly `device:<id>` (the id is 16 base32 characters). Case, spacing, a prefix or a suffix is never one. */
 export const deviceLabel = caller => /^device:[a-z2-7]{16}$/.test(String(caller));
 
