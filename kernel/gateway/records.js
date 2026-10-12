@@ -202,9 +202,13 @@ export function createRecords(cfg) {
   /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   /** @type {Set<string> | null} */ let protectedTypes = null;
+  // The set is never staler than the store's definitions: every define that reaches the store resets it at its start and at its end (the gateway's own, and `typesChanged` for the kernel's own and a module's types), and a load that a define overlapped is redone.
+  let typesGen = 0;
+  const typesChanged = () => { typesGen++; protectedTypes = null; };
+  if (typeof rawDefine === "function" && !rawDefine.__typesHook) { const hooked = async function (/** @type {any[]} */ ...a) { typesChanged(); try { return await rawDefine.apply(store, a); } finally { typesChanged(); } }; hooked.__typesHook = true; try { store.define = hooked; } catch { /* a sealed store: the gateway's own define still resets */ } }
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
-    if (!protectedTypes) { try { protectedTypes = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); } catch { return false; } }
+    while (!protectedTypes) { const g = typesGen; try { const set = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (g === typesGen) protectedTypes = set; } catch { return false; } }
     return protectedTypes.has(type);
   };
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
@@ -771,11 +775,11 @@ export function createRecords(cfg) {
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
-      protectedTypes = null;
+      typesChanged();
       let was = null;
       try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
-      try { res = await store.define(diff); } catch (e) { throw mapError(e); }
+      try { res = await store.define(diff); } catch (e) { throw mapError(e); } finally { typesChanged(); }
       if (res.applied) {
         try { log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision }); }
         catch (e) {
@@ -1375,6 +1379,7 @@ export function createRecords(cfg) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
+    typesChanged,
     mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type),
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
