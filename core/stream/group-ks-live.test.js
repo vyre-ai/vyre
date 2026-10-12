@@ -891,6 +891,10 @@ test("AN1: a member answers the question her own turn raised and the room moves 
   const openAsks = async () => ((await b.realCall("threads.asks", { thread }, "cli")).data || []);
   await until(async () => (await openAsks()).some((/** @type {any} */ a) => a.tool === "Bash"), "carol's permission question");
   const ask = (await openAsks()).find((/** @type {any} */ a) => a.tool === "Bash");
+  // the room is told whose turn is waiting: the ask frame carries the asker (the app shows everyone else a read-only "Waiting for <name>" card from it, src/chat/ChatRows.tsx askAudience)
+  await until(() => watcher.frames.some((/** @type {any} */ f) => f.type === "chat.ask"), "the ask frame to reach bob", 15_000);
+  const askFrame = watcher.frames.find((/** @type {any} */ f) => f.type === "chat.ask");
+  assert.equal(askFrame.acts_for, `person:${CAROL}`, "the question names the person whose turn raised it");
   // another person in the chat (bob, who did not ask this turn) and a person outside it cannot answer it
   const bobs = await b.as("bob")("stream.answer", { chat: chat.id, ask: ask.id, decision: "allow" });
   assert.ok(bobs.error && /whose turn|ask them/i.test(bobs.error.message) || (bobs.error && bobs.error.code === "denied"), `another person's turn: ${JSON.stringify(bobs.error)}`);
