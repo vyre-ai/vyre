@@ -13,6 +13,7 @@ import { connection } from "../state/connection";
 import { relayCrypto, relayKeyStore, loadPairing, about } from "./relay";
 import { makeBox } from "./wire";
 import { peerCall, peerWanted } from "../real/peer";
+import { peerInput } from "../real/peer-input.js";
 
 let base = "";
 let paths: string[] | undefined;
@@ -77,7 +78,7 @@ const b = makeBox(async () => {
       };
     },
   };
-}, { wanted: peerWanted, call: (tool, input) => peerCall(tool, input) });
+}, { wanted: peerWanted, call: (tool, input, o) => peerCall(tool, peerInput(input, o)) });
 
 export const { connect, listen, call, send, prove, disconnect, socket } = b;
 

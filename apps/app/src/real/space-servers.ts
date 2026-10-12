@@ -1,7 +1,7 @@
 // Which paired server hosts which Space, for a device paired to more than one (the phone, the browser, Windows): the map is built from what each server says it hosts (its own spaces.list), and the call that
 // asks (src/real/box.ts tool) routes by it (server-route.js). With one pairing there is nothing to route, so the map is empty and every call goes where it always went. A server that did not answer keeps what
 // was known of it, so one server being offline never loses the other's Spaces.
-import { approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
+import { approvalServersFrom, mergeAmbiguous, chatServersFrom, itemSpacesFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 
 type Rows = Array<{ id?: unknown; member?: unknown } | null>;
 
@@ -20,13 +20,22 @@ let watching = false;
 /** What this file asks of the device: its pairings and one call to a named server. The app's own are loaded when none are set; a Node test sets fakes. */
 export type Ports = { listPairings: () => Promise<Array<{ box: string }>>; subscribePairings: (cb: () => void) => () => void; peerCall: <T = unknown>(tool: string, input: Record<string, unknown>, box?: string) => Promise<T> };
 let ports: Ports | null = null;
-export function setPorts(p: Ports | null): void { ports = p; map = {}; known = {}; boxes = null; chatMap = {}; itemMap = {}; approvalMap = {}; missed = []; offline = []; watching = false; }
+export function setPorts(p: Ports | null): void { ports = p; multi = false; primed = null; map = {}; known = {}; boxes = null; chatMap = {}; itemMap = {}; approvalMap = {}; missed = []; offline = []; watching = false; }
 const io = async (): Promise<Ports> => ports ?? { ...(await import("../api/relay")), peerCall: (await import("./peer")).peerCall };
+
+/** Is this device paired to more than one server? A flag a synchronous caller can read; primeServers() sets it before the first call. */
+let multi = false;
+export const multiServers = (): boolean => multi;
+let primed: Promise<void> | null = null;
+/** Read the pairings once (and again after every change) so multiServers() is true before the first call is made. */
+export function primeServers(): Promise<void> { return (primed ??= pairedBoxes().then(() => undefined, () => undefined)); }
 
 async function pairedBoxes(): Promise<string[]> {
   const { listPairings, subscribePairings } = await io();
-  if (!watching) { watching = true; subscribePairings(() => { boxes = null; }); }
-  return (boxes ??= (await listPairings()).map((p) => p.box));
+  if (!watching) { watching = true; subscribePairings(() => { boxes = null; void pairedBoxes(); }); }
+  const got = (boxes ??= (await listPairings()).map((p) => p.box));
+  multi = got.length > 1;
+  return got;
 }
 
 /** The servers that did not answer the last time they were asked (box ids): the switcher says "Offline" for them and keeps the rest. */
@@ -119,13 +128,13 @@ export function noteItems(answer: unknown, space: string | undefined): void {
   const got = itemSpacesFrom(answer, space);
   const ids = Object.keys(got);
   if (!ids.length) return;
-  itemMap = { ...itemMap, ...got };
+  itemMap = mergeAmbiguous(itemMap, got);
   const all = Object.keys(itemMap);
   if (all.length > 20000) for (const k of all.slice(0, all.length - 20000)) delete itemMap[k];
 }
 
 /** A chat just made on a server is known to be there. */
-export function noteChat(chat: string, box: string | undefined): void { if (chat && box) chatMap[chat] = box; }
+export function noteChat(chat: string, box: string | undefined): void { if (chat && box) chatMap = mergeAmbiguous(chatMap, { [chat]: box }); }
 
 /** Which server a call goes to. `server` is a box id when the call names one. Throws nothing: an error comes back to the caller to refuse in words. */
 export async function routeCall(o: { tool?: string; input: Record<string, unknown>; showing: string; server?: string }) {

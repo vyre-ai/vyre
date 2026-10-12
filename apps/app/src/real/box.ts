@@ -5,7 +5,7 @@
 
 import { REUSE_OPS } from "../../../../lib/one-yes-ops.js";
 import { call } from "../api/box";
-import { peerCall, peerWanted } from "./peer";
+import { ACTIVE, peerCall, peerWanted } from "./peer";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
@@ -89,13 +89,13 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     // The chats list is every server's under All spaces. A new chat belongs to a Space on one server, so with several servers it is made only when a Space is showing (never guessed onto the active one).
     if (name === "work.chat.list" && !to && !opts.server) { const all = await listAllChats(input); if (all) return all as T; }
     if (name === "work.chat.create" && !to && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) throw new BoxError("pick_a_space", "Pick the Space this chat is for first, then start it. A chat belongs to one Space on one server. Nothing was made.");
-    try { const out = await peerCall<T>(name, input, to); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); else noteItems(out, typeof input.space === "string" ? input.space : undefined); return out; }
+    try { const out = await peerCall<T>(name, input, to ?? ACTIVE); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); else noteItems(out, typeof input.space === "string" ? input.space : undefined); return out; }
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
       const held = heldAsk(x, name, input);
       // The same act again with the approval id beside it, as an extra input key on the peer wire (the door strips it before the tool sees it).
-      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}, to), (approval) => peerCall<T>(name, { ...input, approval }, to));
+      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}, to ?? ACTIVE), (approval) => peerCall<T>(name, { ...input, approval }, to ?? ACTIVE));
       throw new BoxError(x.code ?? "error", x.message ?? "");
     }
   }

@@ -17,9 +17,12 @@ let memoryFlag = false;
 export const peerWanted = (): boolean => { try { return localStorage.getItem(FLAG) === "1" || memoryFlag; } catch { return memoryFlag; } };
 
 /** The saved pairing of the server named (its box id), or of the active one when none is named. A named server this device is not paired to is refused with the next step, never answered by another server. */
+/** The box id that means "the active server, on purpose": tool() has already routed the call and found no server to name, so it must not be routed again. */
+export const ACTIVE = "@active";
+
 async function pairingOf(box?: string) {
   const { loadPairing, loadPairingFor } = await import("../api/relay");
-  const pairing = box ? await loadPairingFor(box) : await loadPairing();
+  const pairing = box && box !== ACTIVE ? await loadPairingFor(box) : await loadPairing();
   if (!pairing) throw Object.assign(new Error(box ? "This device is not paired to that server. Add it in Settings, Servers, then try again." : "This device is not paired to a server."), { code: box ? "server_not_paired" : "unreachable" });
   return pairing;
 }
@@ -56,6 +59,14 @@ export function setPeerFake(f: typeof fake): void { fake = f; }
 export const peerCall = <T = unknown>(tool: string, input: Record<string, unknown> = {}, box?: string): Promise<T> => peerCallOnce<T>(tool, input, box);
 
 async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unknown> = {}, box?: string): Promise<T> {
+  // A call that names no server (a screen's direct call, not tool()) is routed here, so no path to a server skips the rule: it goes to the server of its Space, its chat or its approval, or is refused.
+  if (!box) {
+    const { routeCall } = await import("./space-servers");
+    const showing = (await import("../../screens/shell/state")).useSpaces.getState().space;
+    const route = await routeCall({ tool, input, showing });
+    if (route.error) throw Object.assign(new Error(route.error.message), { code: route.error.code });
+    box = route.box ?? ACTIVE;
+  }
   const id = (await pairingOf(box)).box;
   if (fake) return (await fake(tool, input, id)) as T;
   let p = await openPeer(id);

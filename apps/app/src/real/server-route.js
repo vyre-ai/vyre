@@ -7,6 +7,8 @@ import { chatsFrom } from "../../screens/chats/chats-model.js";
 
 const SPACE = /^spc_[a-z2-7]{12}$/;
 const ADDRESS = /^vyre:\/\/(spc_[a-z2-7]{12})\//;
+/** Two servers list the same id: it is ambiguous and is never guessed. */
+export const MANY = { error: { code: "id_on_many_servers", message: "This item is on more than one server. Open it from its Space, so Vyre knows which one you mean. Nothing was changed." } };
 const NOT_PAIRED = "This device is not paired to that server. Add it in Settings, Servers, then try again.";
 
 /**
@@ -45,6 +47,7 @@ export function serverFor(o) {
   const chat = o.input && typeof o.input.chat === "string" ? o.input.chat : "";
   if (chat && o.paired.length > 1) {
     const at = (o.chatServers ?? {})[chat];
+    if (at === "") return MANY;
     if (!at) return { error: { code: "chat_unknown_server", message: "Vyre does not know which server this chat is on yet. Open Chats to refresh the list, then try again. Nothing was sent." } };
     return o.paired.includes(at) ? { box: at } : refuse();
   }
@@ -53,8 +56,9 @@ export function serverFor(o) {
     const ids = [o.input?.id, ...(Array.isArray(o.input?.decisions) ? o.input.decisions.map((/** @type {any} */ d) => d && d.id) : [])].filter((v) => typeof v === "string" && v);
     if (ids.length) {
       const boxes = ids.map((id) => (o.approvalServers ?? {})[/** @type {string} */ (id)]);
+      if (boxes.includes("")) return MANY;
       /** @type {string[]} */ const known = [];
-      for (const b of boxes) if (typeof b === "string") known.push(b);
+      for (const b of boxes) if (typeof b === "string" && b) known.push(b);
       if (known.length !== boxes.length) return { error: { code: "approval_unknown_server", message: "Vyre does not know which server holds this approval. Open Approvals to refresh the list, then try again. Nothing was answered." } };
       const only = [...new Set(known)];
       if (only.length > 1) return { error: { code: "approval_mixed_servers", message: "These approvals are on different servers. Answer them one server at a time. Nothing was answered." } };
@@ -66,6 +70,7 @@ export function serverFor(o) {
     const idv = ID_KEYS.map((k) => (o.input ? o.input[k] : undefined)).find((v) => typeof v === "string" && v);
     if (typeof idv === "string") {
       const sp = (o.itemSpaces ?? {})[idv];
+      if (sp === "") return MANY;
       if (!sp) return { error: { code: "item_unknown_server", message: "Vyre does not know which Space this belongs to. Open the Space it is in, so its list loads, then try again. Nothing was changed." } };
       const at = o.spaceServers[sp];
       if (!at) return { error: { code: "space_unknown_server", message: "Vyre does not know which server holds that Space yet. Open Settings, Servers, wait a moment and try again. Nothing was changed." } };
@@ -76,6 +81,7 @@ export function serverFor(o) {
   const named = urn ? urn[1] : o.input && typeof o.input.space === "string" ? o.input.space : "";
   const space = SPACE.test(named) ? named : SPACE.test(o.showing ?? "") ? /** @type {string} */ (o.showing) : "";
   const box = space ? o.spaceServers[space] : undefined;
+  if (box === "") return MANY;
   if (!box && o.paired.length > 1 && needsSpace(o.tool)) {
     // An action on a record, file, task, rule, flow or project goes to the server that holds its Space and nowhere else: with no Space, or one whose server is unknown, it is refused, never sent to the active server.
     return space
@@ -87,7 +93,7 @@ export function serverFor(o) {
 }
 
 /**
- * The Space-to-server map from what each paired server says it hosts (its own spaces.list). A row for a team the person only JOINED (`member`) is not hosted there; a Space listed by two servers stays with the first.
+ * The Space-to-server map from what each paired server says it hosts (its own spaces.list). A row for a team the person only JOINED (`member`) is not hosted there; a Space listed by two servers is ambiguous ("") and is never guessed.
  * @param {Record<string, Array<{ id?: unknown, member?: unknown } | null> | undefined>} lists by box id
  * @returns {Record<string, string>}
  */
@@ -96,7 +102,7 @@ export function spaceServersFrom(lists) {
   for (const [box, rows] of Object.entries(lists)) {
     for (const r of rows ?? []) {
       const id = r && typeof r.id === "string" ? r.id : "";
-      if (SPACE.test(id) && r && r.member !== true && !out[id]) out[id] = box;
+      if (SPACE.test(id) && r && r.member !== true) out[id] = out[id] === undefined || out[id] === box ? box : "";
     }
   }
   return out;
@@ -121,13 +127,13 @@ export function mergeSpaceLists(lists) {
 }
 
 /**
- * The chat-to-server map from what each server's work.chat.list answered. A chat listed by two servers stays with the first.
+ * The chat-to-server map from what each server's work.chat.list answered. A chat listed by two servers is ambiguous ("") and is never guessed.
  * @param {Record<string, any>} lists by box id (the raw answers)
  * @returns {Record<string, string>}
  */
 export function chatServersFrom(lists) {
   /** @type {Record<string, string>} */ const out = {};
-  for (const [box, data] of Object.entries(lists)) for (const c of data ? chatsFrom(data) : []) if (!out[c.id]) out[c.id] = box;
+  for (const [box, data] of Object.entries(lists)) for (const c of data ? chatsFrom(data) : []) out[c.id] = out[c.id] === undefined || out[c.id] === box ? box : "";
   return out;
 }
 
@@ -145,19 +151,19 @@ export function itemSpacesFrom(answer, space) {
     const sp = addr ? addr[1] : SPACE.test(String(r.space ?? "")) ? String(r.space) : space && SPACE.test(space) ? space : "";
     if (!sp) continue;
     const last = typeof r.urn === "string" ? r.urn.split("/").pop() : "";
-    for (const id of [r.id, r.slug, r.task, last]) if (typeof id === "string" && id) out[id] = sp;
+    for (const id of [r.id, r.slug, r.task, last]) if (typeof id === "string" && id) out[id] = out[id] === undefined || out[id] === sp ? sp : "";
   }
   return out;
 }
 
 /**
- * The approvals inbox's held acts by the server that listed them. An id listed by two servers stays with the first.
+ * The approvals inbox's held acts by the server that listed them. An id listed by two servers is ambiguous ("") and is never guessed.
  * @param {Record<string, any>} lists by box id (arrays of rows)
  * @returns {Record<string, string>}
  */
 export function approvalServersFrom(lists) {
   /** @type {Record<string, string>} */ const out = {};
-  for (const [box, rows] of Object.entries(lists)) for (const r of Array.isArray(rows) ? rows : []) if (r && typeof r.id === "string" && r.id && !out[r.id]) out[r.id] = box;
+  for (const [box, rows] of Object.entries(lists)) for (const r of Array.isArray(rows) ? rows : []) if (r && typeof r.id === "string" && r.id) out[r.id] = out[r.id] === undefined || out[r.id] === box ? box : "";
   return out;
 }
 
@@ -165,4 +171,14 @@ export function approvalServersFrom(lists) {
 export function urnSpace(input) {
   const m = input && typeof input.urn === "string" ? ADDRESS.exec(input.urn) : null;
   return m ? m[1] : "";
+}
+
+/**
+ * Add what a later call learned to what is known. An id seen in two different places (two Spaces, two servers) becomes ambiguous ("") and stays so: it is never routed by guess.
+ * @param {Record<string, string>} known @param {Record<string, string>} learned @returns {Record<string, string>}
+ */
+export function mergeAmbiguous(known, learned) {
+  const out = { ...known };
+  for (const [id, where] of Object.entries(learned)) out[id] = out[id] === undefined || out[id] === where ? where : "";
+  return out;
 }

@@ -9,6 +9,7 @@ import { MyCloudCard } from "../screens/settings/MyCloudCard";
 import { savePairing, loadPairings, removePairingFor } from "../src/api/relay";
 import { setPeerFake, usePeer } from "../src/real/peer";
 import { setBoxOverride, tool } from "../src/real/box";
+import { call } from "../src/api/box";
 import { setPorts } from "../src/real/space-servers";
 import { useSpaces } from "../screens/shell/state";
 import { placeTag } from "../src/state/space-name.js";
@@ -79,6 +80,8 @@ export default function TwoServersProof() {
           <Btn id="b-vault" label="Team Space showing: vault list" f={() => { useSpaces.getState().setShowing(B); void run("vault", () => tool("vault.list"))(); }} />
           <Btn id="b-record" label="A showing: edit a team record" f={() => { useSpaces.getState().setShowing(A); void run("edit", () => tool("records.update", { urn: `vyre://${B}/contact/01a1`, patch: {} }))(); }} />
           <Btn id="approvals" label="Approvals: list, then answer the team's" f={() => void run("approvals", async () => { const l = await tool<any>("approvals.pending"); const a = await tool("approvals.answer", { id: "appr_b1", approve: true }); return { listed: l.approvals.map((x: any) => `${x.id}@${x.server}`), answered: a }; })()} />
+          <Btn id="direct-vault" label="Direct call (as the screens make them), All spaces: vault list" f={() => { useSpaces.getState().setShowing("all"); void run("direct-vault", async () => { const r = await call("vault.list"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; })(); }} />
+          <Btn id="direct-answer" label="Direct call: answer the team's approval" f={() => void run("direct-answer", async () => { await tool("approvals.pending"); const r = await call("approvals.answer", { id: "appr_b1", approve: true }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; })()} />
           <Btn id="log" label="Which server got what" f={() => setOut(`log: ${log.filter((l) => !["spaces.list", "work.chat.list"].includes(l.tool)).map((l) => `${l.tool}@${l.box}`).join(",")}`)} />
         </View>
         <Text testID="out">{out}</Text>

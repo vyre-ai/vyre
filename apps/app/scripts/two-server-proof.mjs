@@ -58,12 +58,17 @@ try {
     await press(page, "approvals", { text: "approvals:" });
     const ap = await out(page);
     check(/appr_b1@boxb/.test(ap), `the held act on the team's server shows in the inbox, tagged with that server (${ap})`);
+    // the screens call api/box directly, not tool(): that path is routed too
+    await press(page, "direct-vault", { text: "REFUSED" });
+    check(/pick_a_space/.test(await out(page)), "a screen's direct call for the vault under All spaces is refused too");
+    await press(page, "direct-answer", { text: "direct-answer:" });
     await press(page, "log", { text: "log:" });
     const log = await out(page);
     check(/vault\.list@boxb/.test(log) && !/vault\.list@boxa/.test(log), `the team's vault was read on the team's server only (${log})`);
     check(/records\.update@boxb/.test(log) && !/records\.update@boxa/.test(log), "an edit of a team record while the first Space is showing reached the team's server only");
     check(/approvals\.answer@boxb/.test(log) && !/approvals\.answer@boxa/.test(log), "the approval was answered on the server that holds it");
     check(!/records\.create@|vault\.list@boxa/.test(log), "nothing refused under All spaces was sent anywhere");
+    check((log.match(/approvals\.answer@boxb/g) || []).length === 2 && !/approvals\.answer@boxa/.test(log), "the direct call answered the team's approval on the team's server as well");
     check(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
   }
   // a window that runs on a server, nothing paired

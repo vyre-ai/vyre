@@ -158,8 +158,8 @@ test("a chat just made on a server is known to be there without asking", { skip:
 
 test("every send path in tool() hands the routed server to the wire, and the chat stream follows its chat's server", () => {
   const box = fs.readFileSync(new URL("./box.ts", import.meta.url), "utf8");
-  assert.match(box, /peerCall<T>\(name, input, to\)/);
-  assert.match(box, /\(approval\) => peerCall<T>\(name, \{ \.\.\.input, approval \}, to\)/);
+  assert.match(box, /peerCall<T>\(name, input, to \?\? ACTIVE\)/);
+  assert.match(box, /\(approval\) => peerCall<T>\(name, \{ \.\.\.input, approval \}, to \?\? ACTIVE\)/);
   const stream = fs.readFileSync(new URL("../chat/box-stream.ts", import.meta.url), "utf8");
   assert.match(stream, /routeCall\(\{ input: \{ chat: session \}/);
   assert.match(stream, /peerDuplex\(session, from, route\.box\)/);
