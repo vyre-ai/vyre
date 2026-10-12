@@ -223,10 +223,9 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   const mineRow = await listed(B);
   // the chat is filed in its creator's private Personal project (R031-03): Bob is in the chat, but the project is not his to read, so its name is not shown to him
   assert.deepEqual([mineRow.title, mineRow.open, mineRow.project_name], ["Docket check", true, null]);
-  const outsider = await listed(C);
-  assert.ok(outsider, "an admin or member sees that the chat exists");
-  assert.equal(outsider.open, undefined, "but not that it is open to them");
-  assert.ok(!("providers" in outsider) && !("last_line" in outsider), "and nothing the engine knows");
+  // a chat is private to its people, its project's team and the owner and admins (class 3): a member who is none of them does not see that it exists
+  assert.equal(await listed(C), undefined, "a member outside the chat, its project and the owner's admins does not see the chat in her list");
+  assert.ok(await listed(O), "the owner sees it");
   assert.equal((await call(C, "work.chat.get", { chat })).error.code, "not_found");
   assert.equal((await call(C, "work.chat.rename", { chat, title: "mine now" })).error.code, "not_found", "a person outside cannot rename it");
   assert.equal((await call(O, "work.chat.get", { chat })).data.slots.length, 0);

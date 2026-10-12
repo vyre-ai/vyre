@@ -109,7 +109,7 @@ test("her own project's files: she puts a file in the project's files area and r
 test("another member's project: she cannot rename it and cannot take its owner field", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const bens = await w.as(BEN, "project-create", { name: "Ben's matter" });
-  const row = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === bens.slug);
+  const row = (await w.projects(w.d.kernel.id.owner)).find((/** @type {any} */ r) => r.data.slug === bens.slug);   // the owner reads it: Ana cannot (class 3: a project is its team's)
   await assert.rejects(w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { name: "Renamed by Ana" }, row.version), "renaming another member's project is refused");
   await assert.rejects(w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { owner: { actor: { kind: "person", id: ANA, space: w.space } } }, row.version), "taking its owner field is refused");
 });
@@ -117,15 +117,15 @@ test("another member's project: she cannot rename it and cannot take its owner f
 test("what a member can do to ANOTHER member's project is the Space's rule today: written down, not assumed", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const bens = await w.as(BEN, "project-create", { name: "Ben's matter" });
-  const row = (await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === bens.slug);
-  assert.ok(row, "Ana can read Ben's project record (members hold records.read)");
+  assert.ok(!(await w.projects(ANA)).find((/** @type {any} */ r) => r.data.slug === bens.slug), "Ana cannot read Ben's project record any more (class 3: a project is its team's)");
+  const row = (await w.projects(w.d.kernel.id.owner)).find((/** @type {any} */ r) => r.data.slug === bens.slug);
   let changed = null, why = "";
   try { changed = await w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { name: "Renamed by Ana" }, row.version); } catch (e) { why = String(/** @type {Error} */ (e).message); }
   console.log(`# Ana renaming Ben's project: ${changed ? "ALLOWED" : "refused: " + why}`);
   let took = null, why2 = "";
-  try { const fresh = (await w.projects(ANA)).find((/** @type {any} */ r) => r.id === row.id); took = await w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { owner: { actor: { kind: "person", id: ANA, space: w.space } } }, fresh.version); } catch (e) { why2 = String(/** @type {Error} */ (e).message); }
+  try { const fresh = (await w.projects(w.d.kernel.id.owner)).find((/** @type {any} */ r) => r.id === row.id); took = await w.d.kernel.gateway.records.update(w.chainOf(ANA), "project", row.id, { owner: { actor: { kind: "person", id: ANA, space: w.space } } }, fresh.version); } catch (e) { why2 = String(/** @type {Error} */ (e).message); }
   console.log(`# Ana taking Ben's project's owner field: ${took ? "ALLOWED" : "refused: " + why2}`);
-  assert.ok(true, "recorded above; the decision is the lead's");
+  assert.ok(!changed && !took, "she changes neither the name nor the owner of a project she cannot see");
 });
 
 test("what a member can do to ANOTHER member's team-member row and task today: measured and printed, not assumed", { timeout: 150_000 }, async t => {

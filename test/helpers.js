@@ -258,3 +258,13 @@ export function pairDevice(d, id, identity) {
   db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run(id);
   db.prepare("INSERT OR REPLACE INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created, confirmed_by) VALUES (?, ?, 'phone', 'phone', 'identity', ?, 1, ?)").run(id, identity, identity, identity);
 }
+
+/**
+ * The Wink record a real install has for the OWNER's own paired device (adoption, or the three words): the device a rig paired through the relay is named as the home's owner, confirmed by the owner. The relay's own row
+ * is left as the pairing made it. For a rig that stands for the owner's first device AFTER adoption; a rig for a path that leaves the device nameless must not call it.
+ * @param {any} d the started daemon @param {string} id the device id (the part after "device:")
+ */
+export function nameAsOwner(d, id) {
+  const identity = d.kernel.id.owner;
+  d.registry.deps.db.prepare("INSERT OR REPLACE INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created, confirmed_by) VALUES (?, ?, 'phone', 'phone', 'identity', ?, 1, ?)").run(id, identity, identity, identity);
+}

@@ -29,7 +29,7 @@ test("a record's timeline shows a linked chat only to its people until they shar
   const call = async (/** @type {any} */ c, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await as(c));
   const client = await d.kernel.gateway.records.create(ownerChain, "organization", { name: "Northwind Bakery" });
   const chat = await grants.chats.create(bob, {});
-  await until(async () => ((await d.kernel.gateway.records.query(bob, "chat-record", { filter: { field: "chat", op: "eq", value: chat.id }, page: { limit: 1 } })).rows || [])[0], "the chat record");
+  await until(async () => ((await d.kernel.gateway.records.query(d.kernel.gateway.serviceChain("work"), "chat-record", { filter: { field: "chat", op: "eq", value: chat.id }, page: { limit: 1 } })).rows || [])[0], "the chat record");
   const titles = async (/** @type {any} */ c) => { const r = await call(c, "work.timeline", { record: client.urn }); assert.ok(r.data, JSON.stringify(r.error)); return r.data.entries.map((/** @type {any} */ e) => [e.type, e.title, e.mine === true]); };
   assert.deepEqual(await titles(ownerChain), [], "nothing is linked yet");
   assert.ok((await call(dan, "work.chat.link", { chat: chat.id, record: client.urn })).error, "someone outside the chat cannot link it");

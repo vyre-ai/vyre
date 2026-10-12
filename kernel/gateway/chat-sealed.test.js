@@ -39,9 +39,11 @@ async function rig() {
   const dev = (person, id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person, path: "direct" });
   const g = k.gateway.grants;
   for (const [p, role] of [[BOB, "member"], [CAROL, "member"], [ADA, "admin"], [DAN, "member"]]) { const r = { person: p, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
-  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read"] } } });
+  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read", "records.create", "records.remove"] } } });
   await k.gateway.records.define(owner, { add_types: [FILE_SHARE] });
-  const share = (who, path) => k.gateway.records.create(who, "file-share", { path });
+  // a share is the work module's own record, written for the sharer (created_for): the kernel judges it by her
+  const work = k.gateway.serviceChain("work");
+  const share = (who, path) => k.gateway.records.create(work, "file-share", { path }, { on_behalf: who });
   const bob = dev(BOB, "d-b"), carol = dev(CAROL, "d-c"), ada = dev(ADA, "d-a"), dan = dev(DAN, "d-d");
   const chat = await g.chats.create(bob, { people: [CAROL] });
   held.set(chat.id, createRing(chat.id, { [holder]: dev0.publicJwk }).keys);
@@ -85,7 +87,7 @@ test("sealed chat folders: Share to project is a file-share record plus a key wr
   const sh = await share(bob, `${dir}/shared.txt`);
   assert.equal(dec(await D.get(dan, `${dir}/shared.txt`)), "for the project");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" });
-  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
+  await k.gateway.records.remove(k.gateway.serviceChain("work"), "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" });
   assert.equal(dec(await D.get(bob, `${dir}/shared.txt`)), "for the project", "the participant still reads it after the key rotated");
   assert.ok(ada && raw);
@@ -119,7 +121,7 @@ test("sealed chat folders: a share taken back while the chat is locked stops ope
   const versions = () => Math.max(...[...raw.files.entries()].filter(([p]) => p.startsWith(`${dir}/`) && !p.endsWith("/.names") && !p.endsWith("names")).map(([, v]) => v.length));
   assert.equal(versions(), 1);
   held.delete(chat.id);   // nobody holds the chat's key now
-  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
+  await k.gateway.records.remove(k.gateway.serviceChain("work"), "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused at once, though the key could not be rotated");
   assert.equal(versions(), 1, "the rotation is owed, not done");
   held.set(chat.id, ring);   // a participant unlocks the chat

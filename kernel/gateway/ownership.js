@@ -133,6 +133,18 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   throw no("a task is changed by whoever it is for, whoever gave it, or its project's owner or team. Ask one of them.");
 }
 
+/** May this chain READ this task (one rule, for the Records routes and the tasks service): its doer, giver, checkers, the owner or team of its project, an owner or admin. Only the chain's person counts, never a later hop; a chain with no person is not judged.
+ * @param {any} chain @param {any} t @param {{ staff: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, checkers?: any[] }} ctx */
+export async function mayReadTask(chain, t, ctx) {
+  const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
+  if (!me || ctx.staff) return true;
+  // only the chain's PERSON counts, never a later hop: an assistant acting for her reads what she reads
+  const is = (/** @type {any} */ a) => { const x = a && a.actor ? a.actor : a; return Boolean(x) && x.kind === "person" && String(x.id) === String(me.id); };
+  if (is(t.doer) || is(t.assigned_by) || (ctx.checkers || []).some(is)) return true;
+  const ref = refOf(t.project), pr = ref ? await ctx.project(ref).catch(() => null) : null;
+  return Boolean(pr && (pr.owner === String(me.id) || pr.team.includes(String(me.id))));
+}
+
 /** The owner or an admin acting as themselves (or through a service they started), or the owning service's own one-hop chain. @param {any} chain @param {(a: any) => string | null | undefined} roleOf */
 export function isTrustedChain(chain, roleOf) {
   const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];

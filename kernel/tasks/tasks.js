@@ -297,7 +297,7 @@ export function createTasks(cfg) {
   const requestOnce = (/** @type {any} */ c, /** @type {any} */ s) => api._requestOnce(c, s);
   api = {
     /** A task's doer, giver and project for the ownership rule: no gate, for the gateway's own use. @param {string} id */
-    facts(id) { const t = tasks.get(id); return t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null } : null; },
+    facts(id) { const t = tasks.get(id); return t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null, checkers: checkersOf(t) } : null; },
     async request(/** @type {any} */ chain, /** @type {any} */ spec, /** @type {{ idem?: string }} */ opts = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       return idem.once(chain, "request", opts.idem, spec, () => requestOnce(chain, spec));
@@ -356,7 +356,9 @@ export function createTasks(cfg) {
     async get(/** @type {any} */ chain, /** @type {string} */ id) {
       try { await gate(chain, "tasks.read", urnOf(cfg.space, id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       const t = tasks.get(id);
-      return t ? overlay(t) : null;
+      if (!t) return null;
+      const v = await overlay(t);
+      return !cfg.mayReadTask || await cfg.mayReadTask(chain, v, checkersOf(t)) ? v : null;
     },
 
     /**
@@ -378,7 +380,9 @@ export function createTasks(cfg) {
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
-        out.push(await overlay(t));
+        const v = await overlay(t);
+        if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, v, checkersOf(t)))) continue;   // a task is for its doer, its giver, its checkers, its project's people and staff
+        out.push(v);
       }
       return out;
     },
@@ -686,6 +690,7 @@ export function createTasks(cfg) {
     async card(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.read", urnOf(cfg.space, id));
       const t = await overlay(get_(id));
+      if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(get_(id))))) throw new KernelError("not_found", "no such task");
       const b = bodies.get(id);
       return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },

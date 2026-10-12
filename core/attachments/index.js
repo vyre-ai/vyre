@@ -15,6 +15,8 @@ const fail = (/** @type {string} */ message, /** @type {string} */ code) => Obje
 /** @param {any} ctx @param {{ door?: any }} [seam] a test hands in the Space door */
 export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
   const door = seam.door || createDoor(ctx);
+  // The module has no chain of its own to read a chat's record: it asks the work module for the folder's path (and folderOf asks the kernel whether the person is in the chat before it returns one).
+  const files = (/** @type {any} */ d) => ({ ...d.gateway, folderRoot: async (/** @type {string} */ chat) => { const r = /** @type {any} */ (await ctx.call("work.chat.folder", { chat })); return r && r.data && typeof r.data.root === "string" ? r.data.root : ""; } });
   ctx.tool("attachments.put", {
     description: "Add a file to a chat: { thread, name, mime?, data } with data as base64. Returns { id, name, mime, bytes } to attach to the next message.",
     input: obj({ thread: str, name: str, mime: str, data: str }, ["thread", "name", "data"]), callers: PERSON,
@@ -25,7 +27,7 @@ export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
       if (Math.floor(text.replace(/\s+/g, "").length / 4) * 3 > LIMITS.fileBytes + 3) throw fail(`a file here is at most ${LIMITS.fileBytes / 1048576} MB`, "bad_input");
       const d = await door.open({}, meta);
       const bytes = new Uint8Array(Buffer.from(text, "base64"));
-      const a = await put(d.gateway, d.chain, String(i.thread || ""), { name: String(i.name || ""), mime: i.mime ? String(i.mime) : undefined, bytes });
+      const a = await put(files(d), d.chain, String(i.thread || ""), { name: String(i.name || ""), mime: i.mime ? String(i.mime) : undefined, bytes });
       ctx.events.emit("attachment.added", { thread: String(i.thread), id: a.id, name: a.name, mime: a.mime, bytes: a.bytes }, { thread: String(i.thread) });
       return a;
     },
@@ -35,7 +37,7 @@ export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
     input: obj({ thread: str }, ["thread"]), callers: PERSON,
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open({}, meta);
-      return { attachments: (await list(d.gateway, d.chain, String(i.thread || ""))).map(({ path: _p, ...a }) => a) };
+      return { attachments: (await list(files(d), d.chain, String(i.thread || ""))).map(({ path: _p, ...a }) => a) };
     },
   });
   ctx.tool("attachments.get", {
@@ -44,10 +46,10 @@ export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open({}, meta);
       const thread = String(i.thread || ""), id = String(i.id || "");
-      const { path: _p, ...attachment } = await find(d.gateway, d.chain, thread, id);
-      if (!i.thumb) return { attachment, data: (await read(d.gateway, d.chain, thread, id)).toString("base64"), thumb: false };
+      const { path: _p, ...attachment } = await find(files(d), d.chain, thread, id);
+      if (!i.thumb) return { attachment, data: (await read(files(d), d.chain, thread, id)).toString("base64"), thumb: false };
       if (!/^image\//.test(attachment.mime)) return { attachment, data: null, thumb: false };
-      const bytes = await read(d.gateway, d.chain, thread, id);
+      const bytes = await read(files(d), d.chain, thread, id);
       const t = thumbOf(bytes, attachment.mime);
       return t ? { attachment, mime: t.mime, data: Buffer.from(t.bytes).toString("base64"), thumb: true } : { attachment, data: bytes.toString("base64"), thumb: false };
     },

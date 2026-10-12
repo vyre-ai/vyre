@@ -43,7 +43,10 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
   /** Everything that links to a record as one story, newest first: the rows that link to it, the stages it moved through and, for a project, the files shared from its chats. A chat the caller is not in shows only when it is shared, by its title. @param {any} chain @param {string} urn @param {number} limit */
   async function entries(chain, urn, limit) {
     const k = kernelOf();
-    const { rows, truncated } = await k.records.linked(chain, urn, { limit });
+    const linkedRows = await k.records.linked(chain, urn, { limit });
+    const { truncated } = linkedRows;
+    // chats are the work module's to serve (kernel/gateway/records.js KEEPERS): their rows come under its own chain, and the test below shows a chat only to its people or, by title, when its people shared it
+    const rows = [...linkedRows.rows, ...((await k.records.linked(k.serviceChain("work"), urn, { limit, type: "chat-record" }).catch(() => ({ rows: [] }))).rows || [])];
     /** @type {any[]} */ const out = [];
     const seen = new Set();
     for (const x of rows) {
@@ -77,8 +80,11 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
       }
       const root = proj && proj.data && proj.data.drive_path ? String(proj.data.drive_path) : "";
       if (root) {
-        for (const r of (await k.records.query(chain, "file-share", { page: { limit: 200 } })).rows || []) {
+        const who = me(chain);
+        for (const r of (await k.records.query(k.serviceChain("work"), "file-share", { page: { limit: 200 } })).rows || []) {
           const path = String(r.data.path || "");
+          const chatId = (/^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(path) || [])[1];
+          if (!(who && ((chatId && inChat(chain, chatId)) || await hub().mayViewShare(who, r, false)))) continue;
           if (path.startsWith(`${root}/`)) out.push({ type: "file-share", kind: "file", id: r.id, urn: r.urn, title: path.split("/").pop() || path, line: `File shared: ${path.split("/").pop() || path}`, at: Number(r.updated_at || 0) });
         }
       }
