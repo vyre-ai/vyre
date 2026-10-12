@@ -835,7 +835,7 @@ export class Switchboard {
   async accountFor(q, resuming = null) {
     const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
     if (r.error) {
-      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used was removed; pick another to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
+      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used is not available to this turn: it was removed, or it is not yours to use. Pick your own to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
       throw Object.assign(new Error(r.error.message), { code: r.error.code || "bad_input" });
     }
     return r.data && !r.data.synthetic ? r.data : null;

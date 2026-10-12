@@ -465,6 +465,26 @@ test("FAILBACK: the switch back after carol's hop fails twice: the chat goes dor
   assert.equal(watcher.frames.filter(f => /session stopped while switching back/.test(JSON.stringify(f.data || {})) && f.type === "chat.text-done").length <= 1, true, "told once");
 });
 
+test("R1: a message the Switchboard refuses (the sender has no sign-in of their own) is not left silent: the room gets a notice with the next step, the message is shown as not sent, and the outbox gives it up; the next person's message is still answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  db.prepare("DELETE FROM sessions_accounts WHERE label = ?").run("carol's Claude");   // her sign-in is gone: the Switchboard will refuse her turn
+  const carol = await b.as("carol")("stream.send", { chat: chat.id, text: "C-NOACCT", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!carol.error, carol.error && carol.error.message);
+  await until(() => watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text))), "the room to be told", 60_000);
+  const told = watcher.frames.filter(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text)));
+  assert.equal(told.length, 1, "once");
+  assert.match(String(told[0].data.text), /send it again|sign in|ask the owner/i, "with the next step: " + told[0].data.text);
+  assert.ok(!replyOf(watcher.frames, "C-NOACCT"), "and no reply to words that were never run");
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-AFTER", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-AFTER", 60_000)).who, BOB, "the next message is still answered");
+});
+
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
   const w = await world(t);
   const b = await world0(w, t);

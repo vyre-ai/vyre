@@ -839,11 +839,26 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     } else if (mayQueue) take();
     q.outDone.run(row.uuid);
   }
+  /** A delivery that was refused with a reason: the outbox gives it up, the message shows as cancelled, and the room is told in words with the next step. @param {Member} m @param {any} row @param {any} err */
+  function refusedRow(m, row, err) {
+    log(`deliver to ${row.who} in ${row.grp}: refused (${err.code}): ${err.message}; given up`);
+    try { q.outDone.run(row.uuid); } catch { /* already done */ }
+    try { shown(String(row.grp), messageOf(row), "cancelled", String(row.text), String(row.asker)); } catch { /* the notice below still tells */ }
+    const id = `refused.${String(row.uuid)}`;
+    const words = `A message was not sent: ${String(err.message || "it was refused").replace(/\.$/, "")}. It is not kept, so send it again once that is fixed.`;
+    noticeToRoom(m, { kind: "text-delta", data: { message: id, index: 0, text: words, notice: true } });
+    noticeToRoom(m, { kind: "text-done", data: { message: id, index: 0, notice: true } });
+  }
   /** One delivery at a time per assistant, in the order asked. @param {any} row */
   function schedule(row) {
     const m = group(String(row.grp)).bots.get(String(row.who));
     if (!m) return Promise.resolve();
-    const p = m.q.then(() => deliver(row)).catch(err => { log(`deliver to ${row.who} in ${row.grp}: ${/** @type {Error} */ (err).message} (kept in the outbox)`); });
+    const p = m.q.then(() => deliver(row)).catch(err => {
+      // The Switchboard (or the stream) REFUSED the message, with a reason: it would be refused again at the next start, so it is given up here, the sender sees it was not sent and why, and the room is told once.
+      // Anything without a reason (the stream stopping, an exception) stays in the outbox for the next start, as before.
+      if (err && typeof err.code === "string" && err.code) { refusedRow(m, row, err); return; }
+      log(`deliver to ${row.who} in ${row.grp}: ${/** @type {Error} */ (err).message} (kept in the outbox)`);
+    });
     m.q = p;
     return p;
   }
