@@ -316,9 +316,27 @@ test("spawner terminal: /bin/sh without the terminal role is refused as before, 
   await assert.rejects(spawnAsAgent(["/bin/sh", "-lc", "true"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "a login shell flag");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true", "extra"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "more arguments");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, role: "terminal" }), /a terminal runs as an account/, "not as the agent's own uid");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, shared: true, role: "terminal" }), /takes no fd3, seed or shared/, "no shared group");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, fd3: "sk-secret", role: "terminal" }), /takes no fd3/, "no credential descriptor");
-  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, seed: { "a.txt": "x" }, role: "terminal" }), /takes no fd3/, "no seed files");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, shared: true, fd3: "k", role: "terminal" }), /takes no fd3 or seed/, "no credential descriptor even with the shared flag");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, fd3: "sk-secret", role: "terminal" }), /takes no fd3 or seed/, "no credential descriptor");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, seed: { "a.txt": "x" }, role: "terminal" }), /takes no fd3 or seed/, "no seed files");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: "/etc", account: 2000, role: "terminal" }), /cwd must be under/, "the same folder rule");
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2999, role: "terminal" }), /account must be a uid from/, "the same account range");
 });
+
+// The request a REAL session's terminal makes: spawnSession with the account the Switchboard gives it ({ uid, shared } with `shared` a boolean, false or true) and the credential the session holds in its
+// environment. The earlier terminal tests used a bare account number, so a flag only a real session sends reached the spawner for the first time on a real install (walk-7b): refused as "takes no fd3, seed or shared".
+for (const shared of [false, true]) {
+  test(`a real session's terminal (account { uid, shared: ${shared} }, a picked credential in its environment) runs as the account, holding no credential`, async t => {
+    const { spawnSession } = await import("../sessions/spawn.js");
+    const { socket, acct, ran } = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 } }, NO_SHELL);
+    const env = { PATH: "/usr/bin:/bin", HOME: path.join(acct, "2000"), ANTHROPIC_API_KEY: "sk-ant-api03-stand-in", CLAUDE_CODE_OAUTH_TOKEN: "oat-stand-in", CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: "3", VYRE_SOCKET: "/run/x.sock" };
+    const p = spawnSession("/bin/sh", ["-c", 'echo "${ANTHROPIC_API_KEY:-nokey}|${CLAUDE_CODE_OAUTH_TOKEN:-nooauth}|${CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR:-nofd}|$(if { true <&3; } 2>/dev/null; then echo fd3open; else echo fd3closed; fi)"'],
+      { cwd: path.join(acct, "2000"), env, account: { uid: 2000, shared }, spawner: true, spawnerSocket: socket, terminal: true, seed: { "a.txt": "x" } });
+    let out = ""; p.stdout.on("data", (/** @type {any} */ d) => { out += d; });
+    const code = await new Promise(res => p.on("close", res));
+    assert.equal(code, 0, "the shell ran: " + out);
+    assert.match(out, /^nokey\|nooauth\|nofd\|/, "no credential in its environment");
+    assert.match(out, /fd3closed/, "and no descriptor 3: " + out);
+    assert.deepEqual(ran.map(w => [w.uid, w.groups.length]), [[2000, shared ? 1 : 0]], "as the account, in the shared group only when its session is");
+  });
+}
