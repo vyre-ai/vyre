@@ -13,6 +13,7 @@ import { ChatsList } from "./ChatsList";
 import { UNSUPPORTED, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 /** /u/chats: every chat you can see, the ones that need you first. One row type for solo, group and people-only chats; a row for a chat you are not in is greyed and does not open. */
 export default function ChatsScreen() {
@@ -37,6 +38,7 @@ export default function ChatsScreen() {
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
+      <PlaceTag of="showing" />
       {view.banner && gap ? (
         <Banner icon="info">
           <View className="gap-s2">

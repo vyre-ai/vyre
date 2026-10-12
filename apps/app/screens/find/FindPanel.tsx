@@ -9,6 +9,7 @@ import { NAV } from "../shell/nav";
 import { find } from "./source-real";
 import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName };
 
@@ -127,6 +128,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
+      <PlaceTag of="home" />
       <Composer label="Find or ask" placeholder={`Ask ${assistant}, find, or run`} value={q} onChangeText={setQ} onSend={() => void run()} sendLabel="Run" />
       <Segmented label="Search in" value={scope} onChange={setScope} options={SCOPES} />
       {line && cmd.kind !== "ask" ? <Text size="secondary" tone="label" accessibilityLiveRegion="polite">{planLine(cmd, targetName, assistant)}</Text> : line ? <Text size="secondary" tone="label">{`Enter asks ${assistant}.`}</Text> : <Text size="caption" tone="faint">p projects, t chats, u people</Text>}

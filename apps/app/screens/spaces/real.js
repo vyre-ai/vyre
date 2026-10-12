@@ -14,7 +14,7 @@ export function homeWords(/** @type {any} */ home) {
   return k === "this-computer" ? "this computer" : k === "server" || k === "vps" ? "your server" : k ? String(k) : "an unknown home";
 }
 
-import { spaceName } from "../../src/state/space-name.js";
+import { placeTag, spaceName } from "../../src/state/space-name.js";
 
 /** @param {any} data spaces.list: an array, only spaces that have their home. */
 export function shapeSpaces(data) {
@@ -23,6 +23,7 @@ export function shapeSpaces(data) {
     id: s.id,
     // the same name the switcher shows: Personal, My Cloud, or the team's own name (never an id)
     name: spaceName(s),
+    tag: placeTag(s),
     address: s.name,
     zone: typeof s.time_zone === "string" && s.time_zone ? s.time_zone : null,
     role: s.role === "owner" ? "owner" : s.role || "member",

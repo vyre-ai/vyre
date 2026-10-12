@@ -5,6 +5,7 @@ import { Avatar, Button, Card, Divider, Row, Switch, Text, showToast, markRef } 
 import { Group, Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { deviceSub, spacesLine } from "./wink.js";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 /** Devices under your identity: each joins each space on its own. */
 export function DevicesScreen() {
@@ -15,6 +16,7 @@ export function DevicesScreen() {
   return (
     <Page title="Devices" sub="Each device joins each space on its own." back="/u/settings"
       actions={<Button kind="primary" icon="plus" label="Add a device" onPress={() => router.push("/u/wink/add" as never)} />}>
+      <PlaceTag of="home" />
       {devices.length ? (
         <Card flush>
           {devices.map((d, i) => (

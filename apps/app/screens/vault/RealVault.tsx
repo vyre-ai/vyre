@@ -18,6 +18,7 @@ import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
 import { searchItems, NEW_KINDS, fieldWord, putProblems, personalUnlockRefusal, itemsOf, slugName, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type Filter, type ListRow, type NewItem, type RealItem, type UseRow } from "./real-model";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -197,6 +198,7 @@ export default function RealVault() {
 
   return (
     <Frame title="Vault" sub="Assistants use these and never see them." actions={<>{addMenu}<AssistantAreaMenu area="vault" label="the Vault" /></>}>
+      <PlaceTag of="home" />
       {ready && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={SECTIONS} fill={phone} /> : null}
       {ready && section === "sharing" ? <SharingPage rows={rows!} reload={load} openItem={openFrom} /> : null}
       {ready && section === "browsers" ? <DevicesPage rows={rows!} reload={load} openItem={openFrom} /> : null}
