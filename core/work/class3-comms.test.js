@@ -110,4 +110,13 @@ test("communication and team-member: a member reads her own mail and her project
   assert.ok((await taskTitles(ANA)).includes("ANA-OWN-TASK"), "Ana reads the task she made");
   assert.ok(!(await taskTitles(BEN)).includes("ANA-OWN-TASK") && !(await taskTitles(BEN)).includes("PROJECT-TASK"), "Ben reads neither");
   assert.ok((await gw.records.query(ownerChain, "task", { page: { limit: 50 } })).rows.length >= 3, "staff read every task");
+
+  // a file's events (written, read, moved, deleted) are judged like the file: someone who may not open it learns nothing of it, not its path, size or who touched it. Events read from the start of the log, on both routes.
+  const secretPath = `Projects/${proj.id}/FILE-EVENT-SECRET.txt`, anaPath = `Projects/${anaProj.id}/ANA-FILE.txt`;
+  await gw.drive.put(ownerChain, secretPath, new TextEncoder().encode("owner's file in the Harlow project"));
+  await gw.drive.put(ownerChain, anaPath, new TextEncoder().encode("a file in Ana's project"));
+  await gw.drive.get(ownerChain, secretPath);   // a read is an event too
+  const evOf = async (/** @type {string} */ p) => JSON.stringify([await door(p, "events.read", {}), await door(p, "events.read", { limit: 500 }), await door(p, "events.read", { since: 0 }), (await gw.events.read(chainOf(p), { since: 0, limit: 500 }))]);
+  for (const who of [ANA, BEN]) assert.ok(!(await evOf(who)).includes("FILE-EVENT-SECRET"), `${who.slice(4, 8)}: no event of a file in a project she is not on`);
+  assert.ok(JSON.stringify(await gw.events.read(ownerChain, { since: 0, limit: 500 })).includes("FILE-EVENT-SECRET"), "the owner sees them");
 });
