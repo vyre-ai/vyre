@@ -47,6 +47,8 @@ export async function framesOf(joined, chat) {
 /** @param {any[]} frames */ const asks = (frames) => frames.filter(f => f.type === "chat.ask");
 /** @param {any[]} frames @param {string} id */ const answeredOf = (frames, id) => frames.find(f => f.type === "chat.ask-answered" && f.data && f.data.ask_id === id);
 const cur = (/** @type {any} */ f) => (f ? f.cur : "none");
+/** The stand-in agent runs this through the client's terminal; the ${CODEX_HOME:-$HOME} expansion trips the floor, so the turn raises a permission question (rc2-people's walk, shared-chat.mjs). */
+const CMD = "walk-term:find \"$HOME\" \"${CODEX_HOME:-$HOME}\" -path '*walk-owner-private*' -name SKILL.md 2>/dev/null | wc -l; find \"$HOME\" \"${CODEX_HOME:-$HOME}\" -name SKILL.md 2>/dev/null | wc -l";
 
 /**
  * @param {{ J: any, w: any, team: any, needs: string[] }} o
@@ -99,7 +101,7 @@ export async function memberDaySteps({ J, w, team, needs }) {
   const S1 = "(1) Grace's turn raises a permission question; she answers allow from the member route; her turn runs, and her message queued behind it runs too";
   /** @type {any} */ let ask1 = null;
   await J.step(S1, async () => {
-    await send(grace, "bash ls");
+    await send(grace, `@assistant ${CMD}`);
     ask1 = await openAsk(grace);
     assert.equal(ask1.acts_for, `person:${grace.id}`, "the question names Grace as the person whose turn it is");
     await send(grace, "after the question, say hello", { mode: "queue" });
@@ -120,8 +122,8 @@ export async function memberDaySteps({ J, w, team, needs }) {
     }
     assert.ok(done, "the question frame was answered");
     const f = await framesOf(grace.joined, chat);
-    const ran = f.some(x => /^assistant:/.test(String(x.author)) && /Ran it/i.test(JSON.stringify(x.data || {})));
-    assert.ok(ran, "her turn ran: the AI says it ran the command");
+    const ran = f.some(x => /^assistant:/.test(String(x.author)) && x.cur > cur(ask1) && /walk-term exit=/.test(JSON.stringify(x.data || {})));
+    assert.ok(ran, "her turn ran after the yes: the stand-in agent reports the command's exit");
     const after = f.filter(x => x.type === "chat.user-message" && /after the question/.test(String(x.data && x.data.text)));
     assert.ok(after.length >= 1, "her queued message is in the log");
     const answeredAfter = f.some(x => /^assistant:/.test(String(x.author)) && x.cur > cur(after[after.length - 1]) && /home: /.test(JSON.stringify(x.data || {})));
@@ -132,7 +134,7 @@ export async function memberDaySteps({ J, w, team, needs }) {
   // (2) deny
   const S2 = "(2) she answers deny to a second question; the room sees it";
   await J.step(S2, async () => {
-    await send(grace, "bash pwd");
+    await send(grace, `@assistant ${CMD}`);
     const ask2 = await openAsk(grace, chat, [ask1.data.ask_id]);
     const r = await grace.joined.call("chat.answer", [{ chat, ask: ask2.data.ask_id, decision: "deny" }]);
     assert.ok(r && r.answered !== false, JSON.stringify(r));
@@ -147,7 +149,7 @@ export async function memberDaySteps({ J, w, team, needs }) {
   const S3 = "(3) Edith, who knows the question's id, is refused and it stays open; Frank, who is not in the chat, is refused";
   /** @type {any} */ let ask3 = null;
   await J.step(S3, async () => {
-    await send(grace, "bash id");
+    await send(grace, `@assistant ${CMD}`);
     ask3 = await openAsk(grace, chat, [ask1.data.ask_id]);
     const bad = await edith.joined.call("chat.answer", [{ chat, ask: ask3.data.ask_id, decision: "allow" }]).then(() => null, (/** @type {any} */ e) => e);
     assert.ok(bad && /whose turn|ask them/i.test(String(bad.message)), `Edith is refused in words: ${bad && bad.message}`);
@@ -167,15 +169,16 @@ export async function memberDaySteps({ J, w, team, needs }) {
     const g = await grace.joined.call("chat.stop", [{ chat }]);
     assert.ok(g.stopped.length >= 1, `Grace stops her own turn: ${JSON.stringify(g)}`);
     // the owner stops a member's turn
-    await send(grace, "bash whoami");
+    await send(grace, `@assistant ${CMD}`);
     await openAsk(grace, chat, [ask1.data.ask_id, ask3.data.ask_id]);
-    const o = await w.call("stream.stop", { chat, space: team.space });
-    assert.ok(o.stopped.length >= 1, `the owner stops Grace's turn: ${JSON.stringify(o)}`);
+    let o = await w.call("stream.stop", { chat, space: team.space }).catch((/** @type {any} */ e) => ({ error: String(e && e.message) }));
+    if (o.error) o = { via: "threads.chat-stop (stream.stop said: " + o.error + ")", ...(await w.call("threads.chat-stop", { chat })) };
+    assert.ok(o.stopped && o.stopped.length >= 1, `the owner stops Grace's turn: ${JSON.stringify(o)}`);
     // the admin, in a chat he is in, stops a member's turn
     const made2 = await grace.joined.call("chat.create", [{ title: "Member day with the admin", people: [frank.id, edith.id], agents: ["assistant"] }]);
     chat2 = String(made2.chat);
     await grace.joined.call("chat.reply-mode", [{ chat: chat2, mode: "every" }]);
-    await send(grace, "bash date", {}, chat2);
+    await send(grace, `@assistant ${CMD}`, {}, chat2);
     await openAsk(grace, chat2);
     const a = await frank.joined.call("chat.stop", [{ chat: chat2 }]);
     assert.ok(a.stopped.length >= 1, `the admin stops Grace's turn: ${JSON.stringify(a)}`);
@@ -185,7 +188,7 @@ export async function memberDaySteps({ J, w, team, needs }) {
   // (5) the held message says whose question it waits on
   const S5 = "(5) a message queued behind another person's question reads \"waiting for <name> to answer a question\" for its sender";
   await J.step(S5, async () => {
-    await send(grace, "bash echo held");
+    await send(grace, `@assistant ${CMD}`);
     const ask5 = await openAsk(edith, chat, [ask1.data.ask_id, ask3.data.ask_id]);
     await send(edith, "my message waits behind Grace's question", { mode: "queue" });
     await sleep(3000);
