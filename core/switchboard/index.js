@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, projectMay, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1064,7 +1064,7 @@ export class Switchboard {
       // A driver with no SessionStart hook (Codex, Grok over ACP) gets the project's own context as the third layer of its first prompt; Claude's hook adds it itself.
       let context = "";
       if (rec.provider && rec.provider !== "claude") {
-        const c = (await this.projectMay(rec, o)) ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
+        const c = (await projectMay(this, rec, o)) ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
         context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
       }
       const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone }).filter(([, v]) => v));
@@ -1388,7 +1388,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project && await this.projectMay(rec, o) ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project && await projectMay(this, rec, o) ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
@@ -2004,21 +2004,10 @@ export class Switchboard {
    * and `since` (ms) cuts them to what a returning provider missed.
    * @param {{ chain: string[], rec: { project?: string|null, cwd: string, agent?: string|null }, thread?: string|null, roll?: number, kind?: "roll"|"switch"|"back", since?: number }} o
    */
-  /**
-   * May the person this thread is for use its project's memory, brief and skills? True with no project, or with no person to judge (the owner's own terminal); otherwise the work module answers: the Space's owner or an
-   * admin, or the project's owner or team. An answer that cannot be had counts as no, and a no costs her the project's room, never her turn. @param {any} rec @param {any} [o]
-   */
-  async projectMay(rec, o = {}) {
-    if (!rec || !rec.project) return true;
-    const who = libraryPerson(this, rec, o);
-    if (who === undefined || who === null) return true;
-    return this.deps.call("work.project.may-read", { project: rec.project, person: String(who) }).then(r => Boolean(r && !r.error && r.data && r.data.ok === true), () => false);
-  }
-
   async seedFor({ chain, rec, thread = null, roll = 1, kind = "roll", since = 0 }) {
     const [ptr, dec] = await Promise.all([
       this.deps.call("recall.pointers", { sessions: chain, tail_chars: Math.floor((kind === "roll" ? ROLL : SWITCH).tailChars * 0.8), lines: ROLL.lines }).catch(() => null),
-      (await this.projectMay(rec)) ? this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null) : null,
+      (await projectMay(this, rec)) ? this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null) : null,
     ]);
     const held = ptr && !ptr.error && ptr.data && Array.isArray(ptr.data.tail) && ptr.data.tail.length ? ptr.data : null;
     const decisions = dec && !dec.error && dec.data && Array.isArray(dec.data.decisions)

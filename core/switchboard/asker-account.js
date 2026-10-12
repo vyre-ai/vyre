@@ -208,3 +208,14 @@ export async function agentLaunchGuard(sb, i, who, owner) {
   if (owner && sb.canon(who) === sb.canon(owner)) return;
   throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
 }
+
+/**
+ * May the person this thread is for use its project's memory, brief and skills? True with no project, or with no person to judge (the owner's own terminal); otherwise the work module answers: the Space's owner or an
+ * admin, or the project's owner or team. An answer that cannot be had counts as no, and a no costs her the project's room, never her turn. @param {any} sb @param {any} rec @param {any} [o]
+ */
+export async function projectMay(sb, rec, o = {}) {
+  if (!rec || !rec.project) return true;
+  const who = libraryPerson(sb, rec, o);
+  if (who === undefined || who === null) return true;
+  return sb.deps.call("work.project.may-read", { project: rec.project, person: String(who) }).then((/** @type {any} */ r) => Boolean(r && !r.error && r.data && r.data.ok === true), () => false);
+}
