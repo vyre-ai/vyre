@@ -37,7 +37,7 @@ import * as C from "../../../kernel/identity/chain.js";
 import { enrolDevice } from "../../../apps/app/src/identity/enrol-device.js";
 import { openInvite, callTeam } from "../../../apps/app/src/real/join-team.js";
 import { kernelWire } from "../../../apps/app/src/real/kernel-wire.js";
-import { createTeamInvite, listTeamInvites } from "../../../apps/app/src/real/team-invite.js";
+import { createTeamInvite, listTeamInvites, confirmTeamInvite } from "../../../apps/app/src/real/team-invite.js";
 import { openServerPeer } from "../../../relay/client/peerclient.js";
 import { WORDS } from "../../../relay/client/words.js";
 import { serveEnrolWith } from "../../../apps/app/src/real/enrol-serve.js";
@@ -290,6 +290,20 @@ export function createApp(o) {
   }
 
   /**
+   * The inviter confirms the words the invitee reads to them (an admin or owner invite waits for this), as the app does it: over the paired peer stream, the home asking this app's key for its yes.
+   * @param {{ space: string, id: string, words: string, signPresence: (card: any) => Promise<any> }} a
+   */
+  async function confirmInvite(a) {
+    if (!me || !pairing) throw new Error("this app has no identity or no server yet");
+    const conn = connect({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: o.label, crypto: relayCrypto, keyStore });
+    const peer = await openServerPeer(conn);
+    try {
+      const wire = kernelWire(peer, a.space, { person: me.id, signPresence: a.signPresence });
+      return await confirmTeamInvite({ wire, fetch: globalThis.fetch.bind(globalThis), base: o.directory }, a.id, a.words);
+    } finally { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } }
+  }
+
+  /**
    * "Join a team": paste the invite; this identity has no server of its own and joins through the team's server (apps/app/src/real/join-team.js openInvite, accept, callTeam), the same code team-join.ts
    * gives the app. `signPresence` and `presenceKey` are this app's yes key (the walk hands in a development software signer).
    * @param {{ link: string, signPresence: (req: any) => Promise<any>, presenceKey: (invite: string) => Promise<any> }} a
@@ -333,7 +347,7 @@ export function createApp(o) {
   }
 
   return {
-    nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, confirmInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
