@@ -33,10 +33,10 @@ test("the proof page and the app workflow are gated the same way: the page draws
   const page = fs.readFileSync(new URL("../../app/two-servers-proof.tsx", import.meta.url), "utf8");
   assert.match(page, /process\.env\.EXPO_PUBLIC_VYRE_PROOF === "1" \? <TwoServersProof \/> : null/);
   const wf = fs.readFileSync(new URL("../../../../.github/workflows/app.yml", import.meta.url), "utf8");
-  assert.match(wf, /EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof/);
+  assert.match(wf, /EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof --clear/);
   assert.match(wf, /two-server-proof\.mjs --dist dist-proof/);
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" dist\b/, "the release web export is searched for the marker");
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" "\$RUNNER_TEMP\/apk"/, "the release APK is searched for it");
   assert.match(wf, /grep -rl "vyre-peer-fake-enabled" "\$app"/, "and the iOS release build");
-  assert.match(wf, /EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p \$os --output-dir "dist-hermes-\$os"/, "a flagged Hermes bundle must SHOW the marker (the positive control)");
+  assert.match(wf, /EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p \$os --output-dir "dist-hermes-\$os" --clear/, "a flagged Hermes bundle must SHOW the marker (the positive control), with the Metro cache cleared: it keeps the value an earlier export inlined");
 });
