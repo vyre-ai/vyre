@@ -121,6 +121,7 @@ does not have it by design.
 | [Password field](components/password-field.md) | not used | built | not used |
 | [Choice list](components/choice-list.md) | not used | built | not used |
 | [Provider row](components/provider-row.md) | not used | built | not used |
+| [Vyre mark](components/vyre-mark.md) | not used | built | not used |
 | [States](components/states.md) | partial | partial | partial |
 
 ### Shared pieces

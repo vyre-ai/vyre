@@ -3,7 +3,7 @@ import { Banner, Card, Divider, EmptyState, FlowStep, Row, Segmented, Switch, To
 import { MOCK } from "../../src/real/box";
 import { SCREENS, stepLabels } from "./flow-model.js";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
-import { InfKey, InfPick, MasterEnter, MasterSet } from "./VaultInferenceScreens";
+import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
 import { Compute, CreateCode, CreateConfirm, CreateName, CreateRun, CreateServer, CreateSetup, CreateVault, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
 import type { Ctx, ScreenProps } from "./types";
 
@@ -11,7 +11,7 @@ const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", 
 
 function Start({ ctx, set, go }: ScreenProps) {
   return (
-    <FlowStep title="Try the new setup" lead="A click-through of how a person gets into Vyre. Nothing is saved and no server is called. Choose what to look at, then start."
+    <FlowStep hero mark="intro" title="Try the new setup" lead="A click-through of how a person gets into Vyre. Nothing is saved and no server is called. Choose what to look at, then start."
       primary={{ label: "Start", onPress: () => go(ctx.later ? "space.choice" : "id.choice") }}>
       <Segmented label="Which path" fill options={[["first", "First time on a device"], ["later", "Add a space later"]]} value={ctx.later ? "later" : "first"} onChange={(v) => set({ later: v === "later" })} />
       <Segmented label="This device" fill options={[["computer", "Computer"], ["phone", "Phone or browser"]]} value={ctx.device} onChange={(v) => set({ device: v })} />
@@ -20,7 +20,7 @@ function Start({ ctx, set, go }: ScreenProps) {
         <Divider />
         <Row dense title="Back is on every screen" sub="Except this one. Failures are reachable on each screen, with a hint." />
       </Card>
-      <Banner tone="plain" icon="info">Phone and browser skip Compute. Adding a space later skips Identity, Master password and Inference.</Banner>
+      <Banner tone="plain" icon="info">Phone and browser skip Compute. Adding a space later skips Identity, Vault and Inference.</Banner>
     </FlowStep>
   );
 }
@@ -28,7 +28,7 @@ function Start({ ctx, set, go }: ScreenProps) {
 const VIEWS: Record<string, (p: ScreenProps) => React.JSX.Element> = {
   start: Start,
   "id.choice": IdChoice, "id.signin": IdSignin, "id.approve": IdApprove, "id.recover": IdRecover, "id.new": IdNew, "id.kit": IdKit,
-  "master.set": MasterSet, "master.enter": MasterEnter,
+  "vault.intro": VaultIntro, "master.set": MasterSet, "master.confirm": MasterConfirm, "master.enter": MasterEnter,
   "inf.pick": InfPick, "inf.key": InfKey,
   "space.choice": SpaceChoice, "create.name": CreateName, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.vault": CreateVault, "create.setup": CreateSetup,
   "join.code": JoinCode, "join.review": JoinReview, "join.sealing": JoinSealing,

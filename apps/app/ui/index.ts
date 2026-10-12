@@ -77,6 +77,8 @@ export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
 export { Meter } from "./components/Meter";
 
 // The guided-flow kit (setup, create a space, join a space, invite people).
+export { VyreMark } from "./components/VyreMark";
+export type { MarkState, MarkSize } from "./components/VyreMark";
 export { Stack } from "./components/Stack";
 export type { StackGap } from "./components/Stack";
 export { FlowStep } from "./components/FlowStep";

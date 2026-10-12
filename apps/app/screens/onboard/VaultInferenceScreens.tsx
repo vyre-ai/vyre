@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Banner, Card, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Text, passwordStrength, showToast } from "@vyre/ui";
+import { Banner, Card, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
 import { DEMO, apiKeyStatus, masterStatus } from "./flow-model.js";
 import type { AiState, ScreenProps } from "./types";
 
@@ -12,7 +12,7 @@ function usePair() {
   const [tried, setTried] = useState(false);
   const weak = passwordStrength(a).score < 3;
   const differ = a !== b;
-  const failure = tried && weak ? "That password is too easy to guess. Add a few more words, then try again." : undefined;
+  const failure = tried && weak ? "That password is too easy to guess, so Vyre will not accept it. Add a few more words, then try again." : undefined;
   const fields = (
     <Stack gap={4}>
       <PasswordField label="Master password" name="Master password" meter value={a} onChangeText={(v) => { setA(v); setTried(false); }} />
@@ -25,11 +25,42 @@ function usePair() {
 export function MasterSet({ ctx, set, go, back, steps }: ScreenProps) {
   const pair = usePair();
   return (
-    <FlowStep steps={steps} onBack={back} title={ctx.reset ? "Set a new master password" : "Set your master password"} lead="It locks your AI accounts and passwords. Vyre cannot reset it."
+    <FlowStep steps={steps} onBack={back} title={ctx.reset ? "Create a new master password" : "Create your master password"} lead="Choose something only you would think of. A phrase of four words is easy to remember and hard to guess."
       failure={pair.failure}
-      primary={{ label: "Set master password", disabled: !pair.ready, onPress: () => { if (pair.check()) { set({ master: pair.value, reset: false }); go("inf.pick"); } } }}>
+      primary={{ label: "Continue", disabled: !pair.ready, onPress: () => { if (pair.check()) { set({ master: pair.value }); go("master.confirm"); } } }}>
       {pair.fields}
-      <Banner tone="plain" icon="vault">Your recovery kit carries what is needed to recover it. Touch ID or your device's lock opens it day to day.</Banner>
+      <Banner tone="plain" icon="vault">Touch ID or your device's lock opens your vault day to day. You type this password once on each new device.</Banner>
+    </FlowStep>
+  );
+}
+
+export function VaultIntro({ go, back, steps }: ScreenProps) {
+  return (
+    <FlowStep steps={steps} onBack={back} title="Let's set up your vault" lead="Your vault holds your AI accounts, passwords and keys, locked so that only you can open it."
+      primary={{ label: "Create my master password", onPress: () => go("master.set") }}>
+      <Card flush>
+        <Row dense lead={<IconTile name="lock" />} title="Only you can open it" sub="One master password, typed once on each device." />
+        <Divider inset={60} />
+        <Row dense lead={<IconTile name="devices" />} title="It lives with you" sub="On your devices, and sealed inside each space you join." />
+        <Divider inset={60} />
+        <Row dense lead={<IconTile name="shield" />} title="Vyre cannot see inside" sub="Not your servers, not your team, not us." />
+      </Card>
+    </FlowStep>
+  );
+}
+
+export function MasterConfirm({ go, back, steps }: ScreenProps) {
+  const [ok, setOk] = useState(false);
+  return (
+    <FlowStep steps={steps} onBack={back} title="Only you know it" lead="If you forget your master password, your vault cannot be opened, and Vyre cannot reset it."
+      primary={{ label: "Open my vault", disabled: !ok, onPress: () => go("inf.pick") }}>
+      <Card>
+        <Stack row gap={3} align="center" justify="between">
+          <Text strong>I understand</Text>
+          <Switch label="I understand that a forgotten master password cannot be reset" on={ok} onChange={setOk} />
+        </Stack>
+      </Card>
+      <Text size="caption" tone="label">Write it down and keep it with your recovery code, or use a password manager you trust.</Text>
     </FlowStep>
   );
 }

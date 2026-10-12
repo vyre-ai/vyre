@@ -6,7 +6,6 @@ export const SIGNIN_WORDS = ["otter", "lantern", "maple"];
 export const DEMO = {
   signInCode: "K7QM-4P2X",
   recoveryCode: "KIT-7QMK-4P2X-9TBN",
-  secretKey: "SK-3M9D-R7WQ-XH4L-82PB",
   master: "correct horse battery",
   spaceCode: "WINK-7QMK-4P2X",
 };
@@ -21,9 +20,11 @@ export const SCREENS = {
   "id.approve": { step: "Identity", to: ["master.enter", "id.recover"] },
   "id.recover": { step: "Identity", to: ["master.enter", "master.set", "id.approve"] },
   "id.new": { step: "Identity", to: ["id.kit"] },
-  "id.kit": { step: "Identity", to: ["master.set"] },
-  "master.set": { step: "Master password", to: ["inf.pick"] },
-  "master.enter": { step: "Master password", to: ["inf.pick", "id.recover"] },
+  "id.kit": { step: "Identity", to: ["vault.intro"] },
+  "vault.intro": { step: "Vault", to: ["master.set"] },
+  "master.set": { step: "Vault", to: ["master.confirm"] },
+  "master.confirm": { step: "Vault", to: ["inf.pick"] },
+  "master.enter": { step: "Vault", to: ["inf.pick", "id.recover"] },
   "inf.pick": { step: "Inference", to: ["inf.key", "space.choice"] },
   "inf.key": { step: "Inference", to: ["inf.pick"] },
   "space.choice": { step: "Space", to: ["create.name", "join.code"] },
@@ -51,7 +52,7 @@ export const asksCompute = (ctx) => ctx.device === "computer" && ctx.allowed;
 export const afterSpace = (ctx) => (asksCompute(ctx) ? "compute" : "ready");
 /** The steps of the flow this person is in: all six on a new device, three when adding a space later, Compute only where it is asked. */
 export function stepLabels(ctx) {
-  const all = ctx.later ? ["Space", "Compute", "Ready"] : ["Identity", "Master password", "Inference", "Space", "Compute", "Ready"];
+  const all = ctx.later ? ["Space", "Compute", "Ready"] : ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"];
   return asksCompute(ctx) ? all : all.filter((s) => s !== "Compute");
 }
 

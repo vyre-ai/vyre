@@ -8,7 +8,7 @@ const HINT = "Prototype hint";
 export function IdChoice({ go, back, steps }: ScreenProps) {
   const [pick, setPick] = useState<"signin" | "new" | "">("");
   return (
-    <FlowStep steps={steps} onBack={back} title="Sign in to Vyre" lead="Your name is how Vyre knows you on every device." primary={{ label: "Continue", disabled: !pick, onPress: () => go(pick === "signin" ? "id.signin" : "id.new") }}>
+    <FlowStep hero mark="intro" steps={steps} onBack={back} title="Sign in to Vyre" lead="Your name is how Vyre knows you on every device." primary={{ label: "Continue", disabled: !pick, onPress: () => go(pick === "signin" ? "id.signin" : "id.new") }}>
       <ChoiceList label="Sign in or start" value={pick || undefined} onChange={setPick} options={[
         { value: "signin", title: "I already have a name", sub: "Sign in on this device. You approve it from a device you already use.", icon: "person" },
         { value: "new", title: "I am new to Vyre", sub: "Pick a name and save your recovery kit.", icon: "plus" },
@@ -34,7 +34,7 @@ export function IdSignin({ ctx, set, go, back, steps }: ScreenProps) {
 export function IdApprove({ set, go, back, steps }: ScreenProps) {
   const [state, setState] = useState<"waiting" | "denied">("waiting");
   return (
-    <FlowStep steps={steps} onBack={back} title="Approve on your other device" lead="On a device where you are already signed in, Vyre asks Sign in on this device. Check the three words match, then tap Approve."
+    <FlowStep mark="working" steps={steps} onBack={back} title="Approve on your other device" lead="On a device where you are already signed in, Vyre asks Sign in on this device. Check the three words match, then tap Approve."
       failure={state === "denied" ? "Your other device did not approve this sign-in. Ask again, or use your recovery kit." : undefined}
       primary={state === "denied" ? { label: "Ask again", onPress: () => setState("waiting") } : { label: "Prototype: approve on the other device", onPress: () => { set({ reset: false }); go("master.enter"); } }}
       secondary={{ label: "Use my recovery kit instead", onPress: () => go("id.recover") }}>
@@ -83,15 +83,14 @@ export function IdNew({ ctx, set, go, back, steps }: ScreenProps) {
 export function IdKit({ go, back, steps }: ScreenProps) {
   const [saved, setSaved] = useState(false);
   return (
-    <FlowStep steps={steps} onBack={back} title="Save your recovery kit" lead="One page with your recovery code and your vault's secret key. It is shown once."
-      primary={{ label: "Continue", disabled: !saved, onPress: () => go("master.set") }}>
-      <CodeDisplay label="Recovery code" code={DEMO.recoveryCode} />
-      <CodeDisplay label="Secret key" code={DEMO.secretKey} note="Together with your master password, this opens your vault on a new device." />
+    <FlowStep steps={steps} onBack={back} title="Save your recovery kit" lead="One page with your recovery code. It is shown once, so save it before you go on."
+      primary={{ label: "Continue", disabled: !saved, onPress: () => go("vault.intro") }}>
+      <CodeDisplay label="Recovery code" code={DEMO.recoveryCode} note="If you lose access to your devices, this code lets you sign in again." />
       <Stack row gap={2} wrap>
         <Button kind="secondary" size="sm" icon="download" label="Save as a file" onPress={() => showToast("Saved vyre-recovery-kit.txt. This is a prototype: nothing was written.")} />
         <Button kind="secondary" size="sm" icon="file" label="Print" onPress={() => showToast("Printing opens here. This is a prototype.")} />
       </Stack>
-      <Banner tone="warn" icon="warning">Without this kit and your master password nobody can open your vault, and Vyre cannot reset either. Keep the page somewhere safe.</Banner>
+      <Banner tone="warn" icon="warning">Keep this page somewhere safe. Anyone with it can start to sign in as you, and Vyre cannot send you another copy.</Banner>
       <Stack row gap={3} align="center" justify="between"><Text>I saved my recovery kit</Text><Switch label="I saved my recovery kit" on={saved} onChange={setSaved} /></Stack>
     </FlowStep>
   );

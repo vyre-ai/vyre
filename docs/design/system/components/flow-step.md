@@ -18,14 +18,14 @@ The page every screen of setup, Create a space, Join a space and Invite people i
 
 ## Anatomy
 
-1. **Back**: a ghost small button with the back icon, top left. Left out on the first screen of a flow.
+1. **Header**: the [Vyre mark](vyre-mark.md) lockup at the top left (static; `working` while something waits) and Back, a ghost small button, at the right. Back is left out on the first screen of a flow. With `hero` (the first screen and Ready) the mark is large and centred above the title, and the title and lead are centred.
 2. **Step strip**: "Step 2 of 6" in the caption role, then the [stepper](stepper-checks.md) bars (`StageSteps` strip form: done, current, to come, with the current step's name once). Left out when the screen is not a step.
 3. **Title** in the page role, one **lead** line under it in the muted tone.
 4. **Body**: a column with the space-4 gap. Whatever the screen needs, from library components.
 5. **Failure**: an error [banner](banner.md) above the actions. It says what went wrong in words and what to do next. Never blames the person.
 6. **Actions**: one primary, full width, large. At most one quiet alternative under it (ghost, full width).
 
-The page scrolls, and the column stops at the reading width and sits in the middle on a wide window.
+The title, body and actions come in with the `Appear` stagger (reduced motion: a fade). The page scrolls, and the column stops at the reading width and sits in the middle on a wide window.
 
 ## States
 
@@ -38,7 +38,7 @@ The page scrolls, and the column stops at the reading width and sits in the midd
 
 ## Props
 
-`steps { labels, current }`, `title`, `lead`, `failure`, `onBack`, `primary { label, onPress, disabled, loading }`, `secondary` (same), `children`.
+`mark` (static, intro, working, done), `hero`, `steps { labels, current }`, `title`, `lead`, `failure`, `onBack`, `primary { label, onPress, disabled, loading }`, `secondary` (same), `children`.
 
 ## Accessibility
 

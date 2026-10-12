@@ -135,7 +135,7 @@ export function CreateSetup({ ctx, go, back, steps }: ScreenProps) {
   const items = ["Reaching your server", "Creating the space vault", "Setting up Records"];
   const done = useProgress(items.length, 1100);
   return (
-    <FlowStep steps={steps} onBack={back} title={`Setting up ${ctx.spaceName || SPACE}`} lead="You can carry on while Records finishes in the background."
+    <FlowStep mark={done >= items.length ? "done" : "working"} steps={steps} onBack={back} title={`Setting up ${ctx.spaceName || SPACE}`} lead="You can carry on while Records finishes in the background."
       primary={{ label: done >= items.length ? "Continue" : "Continue while it finishes", onPress: () => go(afterSpace(ctx)) }}>
       <Meter value={done / items.length} label="Space setup progress" />
       <Checks items={items} done={done} />
@@ -183,7 +183,7 @@ export function JoinSealing({ ctx, go, back, steps }: ScreenProps) {
   const items = ["Sealing your vault with your master password", `Placing it in ${SPACE}`, "Allowing your sessions there to use your AI accounts"];
   const done = useProgress(items.length, 1000);
   return (
-    <FlowStep steps={steps} onBack={back} title="Placing your vault" lead={`Your vault goes into ${SPACE}, sealed with your master password. The space cannot read it.`}
+    <FlowStep mark={done >= items.length ? "done" : "working"} steps={steps} onBack={back} title="Placing your vault" lead={`Your vault goes into ${SPACE}, sealed with your master password. The space cannot read it.`}
       primary={{ label: "Continue", disabled: done < items.length, onPress: () => go(afterSpace(ctx)) }}>
       <Checks items={items} done={done} />
     </FlowStep>
@@ -206,7 +206,7 @@ export function Ready({ ctx, go, back, steps }: ScreenProps) {
   const connected = Object.values(ctx.ai).filter((s) => s === "connected").length;
   const space = ctx.spaceName || SPACE;
   return (
-    <FlowStep steps={steps} onBack={back} title={`You are in ${space}`} lead="A few things are worth doing next."
+    <FlowStep hero mark="done" steps={steps} onBack={back} title={`You are in ${space}`} lead="A few things are worth doing next."
       primary={{ label: `Open ${space}`, onPress: () => showToast("The app opens on the space here. The prototype ends.") }} secondary={{ label: "Start the prototype again", onPress: () => go("start") }}>
       <Card flush>
         <Row dense lead={<Icon name="spark" tone="text-2" />} title="AI accounts" end={<Chip tone={connected ? "ok" : "warn"}>{connected ? `${connected} connected` : "Not connected"}</Chip>} sub={connected ? undefined : "Connect one in Settings to start a session."} />

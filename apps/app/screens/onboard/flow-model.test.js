@@ -16,8 +16,8 @@ test("a failure has a way forward: each screen that can fail leads on or back", 
   for (const id of ["id.approve", "id.recover", "master.enter", "create.confirm"]) assert.ok(SCREENS[id].to.length >= 2, `${id} needs a second way`);
 });
 test("steps follow the device and the space", () => {
-  assert.deepEqual(stepLabels({ device: "computer", allowed: true }), ["Identity", "Master password", "Inference", "Space", "Compute", "Ready"]);
-  assert.deepEqual(stepLabels({ device: "phone", allowed: true }), ["Identity", "Master password", "Inference", "Space", "Ready"]);
+  assert.deepEqual(stepLabels({ device: "computer", allowed: true }), ["Identity", "Vault", "Inference", "Space", "Compute", "Ready"]);
+  assert.deepEqual(stepLabels({ device: "phone", allowed: true }), ["Identity", "Vault", "Inference", "Space", "Ready"]);
   assert.deepEqual(stepLabels({ device: "computer", allowed: true, later: true }), ["Space", "Compute", "Ready"]);
   assert.equal(afterSpace({ device: "computer", allowed: false }), "ready");
   assert.equal(afterSpace({ device: "computer", allowed: true }), "compute");

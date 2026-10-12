@@ -28,6 +28,8 @@ function Shell() {
   // Follow the box once for the whole app, and paint Needs you and Chats from this device's cache
   // before the box answers. On the web the box is this page's origin by default; the phone
   // connects once configure({ base }) has its address.
+  // The page's splash (public/index.html, scripts/gen-splash.mjs) fades once the first screen is up.
+  useEffect(() => { (globalThis as { __vyreSplashDone?: () => void }).__vyreSplashDone?.(); }, []);
   useEffect(() => {
     connect().catch(() => {});
     startLive();
