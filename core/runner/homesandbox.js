@@ -142,7 +142,9 @@ export function seedConfig(o) {
   if (!o.temp) throw new Error("a private agent config needs the session's temp folder");
   const dir = path.join(real(o.temp), "agent-config");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  for (const f of p.credentialFiles) {
+  // A credential handed to the session on a pipe (o.secret) is the one it signs in with: the machine's own login file is not copied beside it, where a tool of the session could read it and a session
+  // could quietly sign in as the machine's person instead of the one picked.
+  for (const f of o.secret || o.noLoginFile ? [] : p.credentialFiles) {
     if (/[\\/]/.test(f) || f.startsWith("..")) throw new Error("a credential file is a name inside the agent's folder");
     const src = path.join(p.from, f);
     try { if (fs.lstatSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f)); fs.chmodSync(path.join(dir, f), 0o600); } catch {}
