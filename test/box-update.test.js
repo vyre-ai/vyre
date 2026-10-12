@@ -104,7 +104,6 @@ if (args[0] === "compose") {
     if (id !== "orig") fs.writeFileSync(db, "migrated");
     process.exit(0);
   }
-  if (sub === "logs") { if (fs.existsSync(F + "/logs-busy")) console.log("module flows: defining record types"); process.exit(0); }
   if (sub === "ps") { process.stdout.write(running() ? "running\\n" : ""); process.exit(0); }
   if (sub === "stop") { fs.rmSync(F + "/running", { force: true }); process.exit(0); }
   if (sub === "exec" || sub === "run") {
@@ -1277,13 +1276,19 @@ test("box update --check (rc.3): reads and writes nothing, says what would be in
 test("box update (rc.3): a server that is slow to answer but still working is waited for; one that is quiet is rolled back as before", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
   fs.writeFileSync(path.join(b.FAKE, "ready-after"), "6");
-  fs.writeFileSync(path.join(b.FAKE, "logs-busy"), "1");
+  // vyred's own log file, written just now (the container's output stays nearly empty on a real box: the daemon does not write there).
+  fs.mkdirSync(path.join(b.FAKE, `ctr${CHOME}`, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(b.FAKE, `ctr${CHOME}`, "logs", "2026-10-12.log"), "module flows: defining record types\n");
   const slow = /** @type {any} */ (await b.run(["update"]));
   assert.equal(slow.code, 0, slow.out);
   assert.match(slow.out, /still working/);
   assert.equal(b.db(), "migrated", "no rollback, no restore");
   const q = await box(t, { releases: [{ tag: "v0.2.0" }] });
   fs.writeFileSync(path.join(q.FAKE, "ready-after"), "6");
+  // a log file that has gone quiet (written a minute ago) is not progress
+  fs.mkdirSync(path.join(q.FAKE, `ctr${CHOME}`, "logs"), { recursive: true });
+  const old = path.join(q.FAKE, `ctr${CHOME}`, "logs", "2026-10-11.log");
+  fs.writeFileSync(old, "x\n"); const past = new Date(Date.now() - 120_000); fs.utimesSync(old, past, past);
   const quiet = /** @type {any} */ (await q.run(["update"]));
   assert.equal(quiet.code, 1, quiet.out);
   assert.match(quiet.out, /rolled back/);

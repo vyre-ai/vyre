@@ -338,8 +338,8 @@ unpack_src() {
 }
 
 # Wait for vyred to answer on its socket, UPDATE_WAIT seconds (a minute in a release; three in the source). A server that is still working is not an unhealthy one: a restart on a box that has
-# Records to set up (the types of every module) can keep vyred from answering for minutes while its log keeps moving. So at the end of the wait, if the container is running and its log has
-# moved in the last 20 s, the wait goes on, 15 s at a time, up to ten times UPDATE_WAIT in all. A log that has gone quiet, or a container that is not running, ends it at once.
+# Records to set up (the types of every module) can keep vyred from answering for minutes while its log keeps moving. So at the end of the wait, if the container is running and vyred's own log file
+# (the day's file in the container's logs folder: vyred writes there, not to the container's output) has been written in the last 20 s, the wait goes on, 15 s at a time, up to ten times UPDATE_WAIT in all. A log that has gone quiet, or a container that is not running, ends it at once.
 ready() {
   i=0
   limit=$UPDATE_WAIT
@@ -361,7 +361,7 @@ ready() {
     fi
     i=$((i + 1))
     if [ "$i" -ge "$limit" ] && [ "$limit" -lt "$cap" ] && [ "$(compose ps --format '{{.State}}' vyre 2>/dev/null | head -n 1)" = running ] \
-       && [ -n "$(compose logs --since 20s --no-log-prefix vyre 2>/dev/null | head -n 1)" ]; then
+       && [ -n "$(csh 'find "$1/logs" -type f -newermt "20 seconds ago" 2>/dev/null | head -n 1' "$CHOME" 2>/dev/null)" ]; then
       limit=$((limit + 15))
       echo "vyre: Vyre has not answered yet but is still working (its log moved in the last 20 s); waiting up to $((limit - i)) s more" >&2
     fi
