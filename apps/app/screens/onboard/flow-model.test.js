@@ -22,6 +22,12 @@ test("steps follow the device and the space", () => {
   assert.equal(afterSpace({ device: "computer", allowed: false }), "ready");
   assert.equal(afterSpace({ device: "computer", allowed: true }), "compute");
 });
+test("Compute is skipped when the space does not allow it, and asked only on a computer", () => {
+  assert.ok(!stepLabels({ device: "computer", allowed: false }).includes("Compute"));
+  assert.equal(afterSpace({ device: "computer", allowed: false }), "ready");
+  assert.equal(afterSpace({ device: "phone", allowed: true }), "ready");
+  assert.ok(reach("create.name").has("create.members"));
+});
 test("the pretend answers", () => {
   assert.equal(nameStatus("alex"), "taken");
   assert.equal(nameStatus("ab"), "invalid");

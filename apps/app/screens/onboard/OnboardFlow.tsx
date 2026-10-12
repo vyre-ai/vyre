@@ -4,10 +4,10 @@ import { MOCK } from "../../src/real/box";
 import { SCREENS, stepLabels } from "./flow-model.js";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
-import { Compute, CreateCode, CreateConfirm, CreateName, CreateRun, CreateServer, CreateSetup, CreateVault, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
+import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, CreateVault, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
 import type { Ctx, ScreenProps } from "./types";
 
-const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", master: "", reset: false, ai: {}, aiSkipped: false, spaceName: "", server: "cloud", created: false, runHere: true, role: "member", inviteName: "", inviteRole: "member" };
+const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", master: "", reset: false, ai: {}, aiSkipped: false, spaceName: "", server: "cloud", created: false, runHere: false, role: "member", inviteName: "", inviteRole: "member" };
 
 function Start({ ctx, set, go }: ScreenProps) {
   return (
@@ -16,7 +16,7 @@ function Start({ ctx, set, go }: ScreenProps) {
       <Segmented label="Which path" fill options={[["first", "First time on a device"], ["later", "Add a space later"]]} value={ctx.later ? "later" : "first"} onChange={(v) => set({ later: v === "later" })} />
       <Segmented label="This device" fill options={[["computer", "Computer"], ["phone", "Phone or browser"]]} value={ctx.device} onChange={(v) => set({ device: v })} />
       <Card flush>
-        <Row dense title="The space allows sessions on computers" sub="Turn it off to skip the Compute step." end={<Switch label="The space allows sessions on computers" on={ctx.allowed} onChange={(v) => set({ allowed: v })} />} />
+        <Row dense title="The space you join lets people use their own computers" sub="Turn it off to see the flow without the Compute step." end={<Switch label="The space you join lets people use their own computers" on={ctx.allowed} onChange={(v) => set({ allowed: v })} />} />
         <Divider />
         <Row dense title="Back is on every screen" sub="Except this one. Failures are reachable on each screen, with a hint." />
       </Card>
@@ -30,7 +30,7 @@ const VIEWS: Record<string, (p: ScreenProps) => React.JSX.Element> = {
   "id.choice": IdChoice, "id.signin": IdSignin, "id.approve": IdApprove, "id.recover": IdRecover, "id.new": IdNew, "id.kit": IdKit,
   "vault.intro": VaultIntro, "master.set": MasterSet, "master.confirm": MasterConfirm, "master.enter": MasterEnter,
   "inf.pick": InfPick, "inf.key": InfKey,
-  "space.choice": SpaceChoice, "create.name": CreateName, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.vault": CreateVault, "create.setup": CreateSetup,
+  "space.choice": SpaceChoice, "create.name": CreateName, "create.members": CreateMembers, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.vault": CreateVault, "create.setup": CreateSetup,
   "join.code": JoinCode, "join.review": JoinReview, "join.sealing": JoinSealing,
   compute: Compute, ready: Ready,
   "invite.who": InviteWho, "invite.link": InviteLink, "invite.words": InviteWords, "invite.done": InviteDone,

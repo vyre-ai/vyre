@@ -25,8 +25,21 @@ export function CreateName({ ctx, set, go, back, steps }: ScreenProps) {
   const addr = addressOf(ctx.spaceName);
   return (
     <FlowStep steps={steps} onBack={back} title="Name your space" lead="Your team sees this name. You can use your own domain later."
-      primary={{ label: "Continue", disabled: !addr, onPress: () => go("create.server") }}>
+      primary={{ label: "Continue", disabled: !addr, onPress: () => { set({ allowed: false }); go("create.members"); } }}>
       <Field label="Space name" value={ctx.spaceName} onChangeText={(v) => set({ spaceName: v })} placeholder="Harlow Legal" help={addr ? `Address: ${addr}.vyre.run` : "The address is made from the name."} />
+    </FlowStep>
+  );
+}
+
+export function CreateMembers({ ctx, set, go, back, steps }: ScreenProps) {
+  return (
+    <FlowStep steps={steps} onBack={back} title="Can members use their own computers?" lead="Your AI work can run on this space's server, or on a member's computer while it is on. You decide which people may choose that."
+      primary={{ label: "Continue", onPress: () => go("create.server") }}>
+      <ChoiceList label="Members' own computers" value={ctx.allowed ? "allow" : "deny"} onChange={(v) => set({ allowed: v === "allow" })} options={[
+        { value: "allow", title: "Allow", sub: "Each member can choose to use their own computer when it is available. Their work moves to the server when it sleeps.", icon: "laptop" },
+        { value: "deny", title: "Do not allow", sub: "All AI work runs on the space's server. Members' computers only show it.", icon: "server" },
+      ]} />
+      <Text size="caption" tone="label">You can change this later in the space's settings.</Text>
     </FlowStep>
   );
 }
@@ -192,12 +205,13 @@ function JoinSealingMock({ ctx, go, back, steps }: ScreenProps) {
 }
 
 function ComputeMock({ ctx, set, go, back, steps }: ScreenProps) {
+  const space = ctx.spaceName || SPACE;
   return (
-    <FlowStep steps={steps} onBack={back} title="Run sessions on this computer?" lead={`This applies to ${ctx.spaceName || SPACE}. You can change it later in Settings.`}
+    <FlowStep steps={steps} onBack={back} title={`Use this computer for your work in ${space}?`} lead="Your AI sessions are the chats and tasks your AI accounts do for you. You can change this later in Settings."
       primary={{ label: "Continue", onPress: () => go("ready") }}>
-      <ChoiceList label="Where sessions run" value={ctx.runHere ? "here" : "server"} onChange={(v) => set({ runHere: v === "here" })} options={[
-        { value: "here", title: "Yes, run them here", sub: "Sessions run on this computer while it is on, and move to the server when it sleeps.", icon: "laptop" },
-        { value: "server", title: "No, use the server", sub: "Sessions run on the space's server.", icon: "server" },
+      <ChoiceList label="This computer" value={ctx.runHere ? "allow" : "deny"} onChange={(v) => set({ runHere: v === "allow" })} options={[
+        { value: "allow", title: "Allow: use this computer when it is available", sub: `Your AI sessions run here while this computer is on, and on ${space}'s server when it is not.`, icon: "laptop" },
+        { value: "deny", title: "Do not allow: always use the space's server", sub: `Everything runs on ${space}'s server. This computer only shows it.`, icon: "server" },
       ]} />
     </FlowStep>
   );
@@ -214,7 +228,7 @@ export function Ready({ ctx, go, back, steps }: ScreenProps) {
         <Divider inset={60} />
         <Row dense lead={<Icon name="records" tone="text-2" />} title="Records" end={<Chip tone={ctx.created ? "ok" : "plain"}>{ctx.created ? "Ready" : "Already set up"}</Chip>} />
         <Divider inset={60} />
-        <Row dense lead={<Icon name="laptop" tone="text-2" />} title="Sessions run" end={<Chip>{ctx.runHere ? "On this computer" : "On the server"}</Chip>} />
+        <Row dense lead={<Icon name="laptop" tone="text-2" />} title="Where your AI work runs" end={<Chip>{ctx.runHere ? "Here when available" : "On the server"}</Chip>} />
         <Divider inset={60} />
         <Row dense lead={<Icon name="users" tone="text-2" />} title="Your team" sub="Invite people with a link." end={<Button kind="secondary" size="sm" label="Invite people" onPress={() => go("invite.who")} />} />
       </Card>
