@@ -145,8 +145,8 @@ export function seedConfig(o) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   // The machine's own login file is NOT copied in when a picked credential comes on the pipe (a tool of the session would read the owner's login beside it), nor when the session is a person's own account run.
   // A copy left by an earlier start of this session (it ran on the login before) goes too.
-  if (o.secret || o.noLoginCopy) for (const f of p.credentialFiles) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch {} }
-  for (const f of (o.secret || o.noLoginCopy) ? [] : p.credentialFiles) {
+  if (o.secret || o.noLoginFile || o.noLoginCopy) for (const f of p.credentialFiles) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch {} }
+  for (const f of (o.secret || o.noLoginFile || o.noLoginCopy) ? [] : p.credentialFiles) {
     if (/[\\/]/.test(f) || f.startsWith("..")) throw new Error("a credential file is a name inside the agent's folder");
     const src = path.join(p.from, f);
     try { if (fs.lstatSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f)); fs.chmodSync(path.join(dir, f), 0o600); } catch {}
