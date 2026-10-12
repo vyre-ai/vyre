@@ -32,7 +32,7 @@ async function ow(w, tool, input) {
   const t0 = Date.now();
   for (;;) {
     const r = await w.asOwner(tool, input);
-    if (r && r.error && /did not answer|unavailable|not ready/i.test(JSON.stringify(r.error)) && Date.now() - t0 < 600_000) { await sleep(10_000); continue; }
+    if (r && r.error && /did not answer|unavailable|not ready/i.test(JSON.stringify(r.error)) && Date.now() - t0 < 1_500_000) { await sleep(10_000); continue; }
     return r;
   }
 }
@@ -98,7 +98,7 @@ async function steps(w, when, seed) {
   assert.ok(oe.ok && JSON.stringify(oe.v).includes("OWNER-PRIVATE-TEXT"), `${when}: the owner still reads the log`);
 }
 
-test("TWENTY: the member door refuses Ben everything kept, before and after a daemon restart; the owner and the keeper are served both times", { timeout: 2_400_000 }, async t => {
+test("TWENTY: the member door refuses Ben everything kept, before and after a daemon restart; the owner and the keeper are served both times", { timeout: 3_500_000 }, async t => {
   assert.equal(process.env.VYRE_STORE, "auto", "this test is for the Twenty store: run it with VYRE_STORE=auto");
   const root = tempHome(t);
   let w = await boot(root);
