@@ -329,15 +329,28 @@ export default {
       return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
     };
     /**
-     * A member changes or removes only the to-dos filed for her: the owner and an admin, and a call with no person on it, any. (A reminder or a note keeps no owner of its own; a to-do's doer is the person it is for.)
+     * An item hidden from the caller (see hiddenFrom: not hers) answers as an item that is not there, the same words as a wrong id, so an id is no way in. The owner, an admin and the
+     * planner's own calls pass; an item with no doer or no maker counts as the owner's.
      * @param {any} item @param {{ chain?: any }} w
      */
-    const mayChangeTodo = async (item, w) => {
-      if (!item || !item._task || !item._doer) return;
-      const me = callerPerson(w && w.chain);
-      if (!me || me === item._doer) return;
-      if (await mayScheduleJobs(w)) return;
-      throw fail("That to-do is someone else's. Ask them, or the owner, to change it.", "denied");
+    const mayChangeTodo = async (item, w) => { if (hiddenFrom(item, await viewerOf(w))) throw fail("no such item", "not_found"); };
+    /**
+     * Whose items a call may see: null for the owner, an admin and a call with no person on it (they see all), else the calling member's id. A member sees the to-dos filed for her and the
+     * reminders and notes she made; an item made before the planner kept its person (or by the owner) is the owner's.
+     * @param {{ chain?: any }} w @returns {Promise<string|null>}
+     */
+    const viewerOf = async w => { const me = callerPerson(w && w.chain); if (!me) return null; return (await mayScheduleJobs(w)) ? null : me; };
+    /** @param {any} r @param {string|null} me */
+    const hiddenFrom = (r, me) => Boolean(me) && !!r && r.kind !== "event" && (r._task ? r._doer !== me : r.by !== me);
+    /**
+     * A chat may carry a member's reminder or note only if she is in it: the planner reads the thread as the caller, as the stream does. The owner, an admin and the chat the call came from pass.
+     * @param {string|null|undefined} thread @param {any} w
+     */
+    const mayUseThread = async (thread, w) => {
+      if (!thread || !w || !w.chain || !w.callerLabel || w.thread === thread || (await mayScheduleJobs(w))) return;
+      let r;
+      try { r = await ctx.call("threads.get", { thread: String(thread), limit: 1 }, { as: w.callerLabel }); } catch { r = null; }
+      if (!r || r.error || !r.data) throw fail("You can attach an item only to a chat you are in. Pick one of your chats, or leave the chat out.", "denied");
     };
     const memberRefusal = () => fail("Scheduling a task that starts an AI session is for this Space's owner and its admins. Add a reminder or a to-do instead, or ask the owner to schedule it.", "denied");
 
@@ -438,6 +451,7 @@ export default {
       agentKind(kind, w);
       if (kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       if (kind === "task") await taskScope({ thread: input.thread || null, project: input.project || null }, w);
+      await mayUseThread(input.thread, w);
       capped(w);
       const s = settings();
       const time = resolveTime(kind, input, s, t);
@@ -457,7 +471,7 @@ export default {
       if (kind === "event") return addEvent({ ...input, title, at: time.at, tz: time.tz || undefined }, w, t);
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
-        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name,
+        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name, by: callerPerson(w.chain),
         waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused), assignee };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
@@ -548,7 +562,7 @@ export default {
       if (i.pinned !== undefined) patch.pinned = Boolean(i.pinned);
       if (i.tags !== undefined) patch.tags = tagsOf(i.tags);
       if (i.project !== undefined) patch.project = clip(i.project, 120);
-      if (i.thread !== undefined) patch.thread = clip(i.thread, 120);
+      if (i.thread !== undefined) { if (i.thread) await mayUseThread(String(i.thread), w); patch.thread = clip(i.thread, 120); }
       if (i.parent !== undefined) { if (i.parent && !st.item(i.parent)) throw fail("no such parent item", "not_found"); patch.parent = i.parent || null; }
       if (i.waits_on !== undefined) { if (i.waits_on && !st.item(i.waits_on)) throw fail("no such item to wait on", "not_found"); patch.waits_on = i.waits_on || null; }
       if (i.paused !== undefined) patch.paused = Boolean(i.paused);
@@ -804,14 +818,14 @@ export default {
 
     // ---- Agenda -------------------------------------------------------------------------------
 
-    const agenda = async i => {
+    const agenda = async (i, me = null) => {
       const s = settings();
       const tz = s.timezone;
       const t = now();
       if (i.next !== undefined) {
         const n = Number(i.next);
         if (!Number.isInteger(n) || n < 1 || n > 100) throw fail("next is 1 to 100");
-        const ahead = await agenda({ from: t, to: t + 60 * 86_400_000 });
+        const ahead = await agenda({ from: t, to: t + 60 * 86_400_000 }, me);
         return { tz, from: t, entries: ahead.entries.filter(e => e.at >= t).slice(0, n) };
       }
       const edge = (v, end) => {
@@ -830,7 +844,7 @@ export default {
       if (to - from > 400 * 86_400_000) throw fail("an agenda covers at most 400 days");
 
       const entries = [];
-      const rows = st.all().filter(r => r.deleted_at == null && ["alarm", "timer", "reminder"].includes(r.kind)
+      const rows = st.all().filter(r => !hiddenFrom(r, me) && r.deleted_at == null && ["alarm", "timer", "reminder"].includes(r.kind)
         && (r.repeat != null || (r.at != null && r.at >= from && r.at < to) || (r.snooze_until != null && r.snooze_until >= from && r.snooze_until < to)));
       for (const r of rows) {
         const base = { source: "planner", item: r.id, kind: r.kind, title: r.title, state: r.state, repeat: Boolean(r.repeat), all_day: false,
@@ -875,7 +889,7 @@ export default {
 
       // Todos due by the end of the range, overdue ones included: what needs doing is still due.
       const toDate = dateString(localDate(to - 1, tz));
-      const todos = st.all().filter(r => r.deleted_at == null && r.kind === "todo" && r.state === "open" && ((r.at != null && r.at < to) || (r.at == null && r.due != null && r.due <= toDate)))
+      const todos = st.all().filter(r => !hiddenFrom(r, me) && r.deleted_at == null && r.kind === "todo" && r.state === "open" && ((r.at != null && r.at < to) || (r.at == null && r.due != null && r.due <= toDate)))
         .sort((a, b) => String(a.due ?? "").localeCompare(String(b.due ?? "")) || b.priority - a.priority).map(shape);
       return { tz, from, to, entries, todos };
     };
@@ -895,7 +909,7 @@ export default {
      * the key the box's push uses as its tag, so a device that rang it already replaces the push.
      * A moment already answered or ringing is left out; so is anything the box never rings.
      */
-    const upcoming = i => {
+    const upcoming = (i, me = null) => {
       const last_event = cursor();
       const hours = i.hours === undefined ? 48 : Number(i.hours);
       if (!Number.isInteger(hours) || hours < 1 || hours > 72) throw fail("hours is a whole number from 1 to 72");
@@ -906,7 +920,7 @@ export default {
         if (at <= from || at > to || st.firingAt(e.item, due)) return;
         entries.push({ key: ringKey(e.item, due), ...e, due: Math.floor(due / 1000), at, loud: e.kind === "alarm" || e.kind === "timer" });
       };
-      const rows = st.all().filter(r => r.state === "open" && r.deleted_at == null && RINGS.includes(r.kind)
+      const rows = st.all().filter(r => !hiddenFrom(r, me) && r.state === "open" && r.deleted_at == null && RINGS.includes(r.kind)
         && ((r.next_fire != null && r.next_fire <= to) || (r.snooze_until != null && r.snooze_until <= to) || r.repeat != null));
       for (const r of rows) {
         const e = { item: r.id, kind: r.kind, title: String(r.title ?? ""), ...(r.source_name ? { added_by: r.source_name } : {}) };
@@ -1059,7 +1073,8 @@ export default {
         if (!K && !local && !paired) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
         if (paired) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
-        if (!local && (!READS.has(name) || name === "planner.bin")) w.chain = await K.chain(meta).catch(() => null);
+        if (!local) w.chain = await K.chain(meta).catch(() => null);
+        w.callerLabel = meta.caller;
         // A personal reminder follows the person: a device they are using says which zone it is in (lib/time), and the planner's zone (which floating alarms are read in) moves to it, unless they turned that off.
         if (!local && K && w.person && FOLLOWS.has(callerKind(meta.caller)) && meta.zone && (role === "local" || callerKind(meta.caller) !== "cli")) {
           const here = zoneFrom(meta.zone, "");
@@ -1078,17 +1093,21 @@ export default {
 
     tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
       { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
-      async i => {
+      async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
-        const items = st.list({ ...i, limit: Math.min(500, Math.max(1, i.limit || 100)) }).map(shape);
+        const me = await viewerOf(w), want = Math.min(500, Math.max(1, i.limit || 100));
+        const items = st.list({ ...i, limit: me ? 500 : want }).filter(r => !hiddenFrom(r, me)).slice(0, want).map(shape);
         return i.cursor ? { items, last_event } : items;
       }, { agents: true });
 
     tool("planner.get", "One item and its latest firings, by item or firing id.",
       ref,
-      async i => {
+      async (i, w) => {
         const f = i.firing ? st.firing(i.firing) : null;
-        const item = st.item(f ? f.item : i.item);
+        const me = await viewerOf(w);
+        const item0 = st.item(f ? f.item : i.item);
+        if (item0 && hiddenFrom(item0, me)) throw fail("no such item", "not_found");
+        const item = item0;
         if (!item) {
           let row = cal.row(f ? f.item : i.item);
           // An event outside the window the planner rings for is still an event record.
@@ -1101,9 +1120,10 @@ export default {
 
     tool("planner.ringing", "What is ringing now, shaped like planner.fired, so a surface that connects late can show its banners. cursor: true returns { ringing, last_event }.",
       { type: "object", properties: { cursor: bool } },
-      async i => {
+      async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
-        const ringing = st.allRinging().map(f => {
+        const me = await viewerOf(w);
+        const ringing = st.allRinging().filter(f => !hiddenFrom(st.item(f.item), me)).map(f => {
         const it = st.item(f.item) || cal.row(f.item);
         return { firing: f.id, key: ringKey(f.item, f.due), item: f.item, kind: f.kind, title: it ? String(it.title || "") : "", due: f.due, ring: f.ring, missed: Boolean(f.missed), actions: ["done", "snooze"],
           ...(it && it.source_name ? { added_by: it.source_name } : {}) };
@@ -1135,10 +1155,10 @@ export default {
       { type: "object", properties: {} }, async (i, w) => ({ events: await st.cal.binned(w.chain) }), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (default today): planner items, calendar events and due todos, each with source, start and end. Returns last_event too.",
-      { type: "object", properties: { from: when, to: when, busy: { type: "boolean", description: "true returns only the merged busy intervals" }, next: { type: "integer", description: "n returns the next n entries from now" } } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
+      { type: "object", properties: { from: when, to: when, busy: { type: "boolean", description: "true returns only the merged busy intervals" }, next: { type: "integer", description: "n returns the next n entries from now" } } }, async (i, w) => { const last_event = cursor(); return { ...(await agenda(i, await viewerOf(w))), last_event }; }, { agents: true });
 
     tool("planner.upcoming", "Rings expected in the next hours, for a device to schedule as its own notifications. Returns entries (key, item, kind, title, due) and last_event.",
-      { type: "object", properties: { hours: { type: "integer", description: "default 48, 1 to 72" } } }, async i => upcoming(i), { agents: true });
+      { type: "object", properties: { hours: { type: "integer", description: "default 48, 1 to 72" } } }, async (i, w) => upcoming(i, await viewerOf(w)), { agents: true });
 
     tool("planner.calendar.sync", "Read the connected Google calendars (a day back to 14 days ahead) into the planner's copy now.",
       { type: "object", properties: {} }, async () => cal.sync(), { agents: true });

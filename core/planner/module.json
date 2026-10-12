@@ -224,6 +224,18 @@
               ]
             },
             {
+              "name": "person",
+              "kind": "text",
+              "label": "Made by (person)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
+            },
+            {
               "name": "added_by",
               "kind": "text",
               "label": "Added by (agent)",
@@ -383,6 +395,18 @@
               "name": "source",
               "kind": "text",
               "label": "Added by (caller)",
+              "hidden_from": [
+                "owner",
+                "admin",
+                "manager",
+                "member",
+                "temp"
+              ]
+            },
+            {
+              "name": "person",
+              "kind": "text",
+              "label": "Made by (person)",
               "hidden_from": [
                 "owner",
                 "admin",
