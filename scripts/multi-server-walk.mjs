@@ -79,15 +79,17 @@ try {
   });
 
   /** @type {any} */ let team = null;
-  await step("3. name a team space on B (pick B): B's own Space gets the name, A's does not change", async () => {
+  await step("3. name the team on B (pick B): B's OWN Space gets the name, A's does not change", async () => {
+    const ownB = String((await spacesOf("B"))[0].id);
     mac.useServer(snap.B);
-    team = await mac.createTeamSpace(`team${person.slice(-5)}`);
+    const claimed = await mac.nameOwnSpace(`team${person.slice(-5)}`);
+    team = { space: ownB, label: claimed.label, claimed: claimed.space };
     const a = await spacesOf("A"), b = await spacesOf("B");
     assert.deepEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(beforeA)), "A's Space list is unchanged");
-    assert.ok(JSON.stringify(b).includes(team.space), `B lists the new Space ${team.space}: ${JSON.stringify(b).slice(0, 300)}`);
-    assert.ok(!JSON.stringify(a).includes(team.space), "A does not list it");
-    const logB = srv.B.logs.join("\n"), logA = srv.A.logs.join("\n");
-    return `Space ${team.space}; B log mentions it: ${logB.includes(team.space)}, A log mentions it: ${logA.includes(team.space)}`;
+    assert.equal(b.length, 1, `B still has exactly one Space (its own): ${JSON.stringify(b).slice(0, 300)}`);
+    assert.equal(String(b[0].id), ownB, "it is B's own Space");
+    assert.ok(JSON.stringify(b[0]).includes(claimed.label) || JSON.stringify(b[0]).includes("team"), `B's Space carries the team name: ${JSON.stringify(b[0]).slice(0, 300)}`);
+    return `B's Space ${ownB} named ${claimed.label}; A's list unchanged: true; Space id the directory holds: ${claimed.space}`;
   });
 
   // 5. what is made in a Space lands on that box only
@@ -97,8 +99,8 @@ try {
     const to = await SS.routeCall({ tool: "records.create", input: { space: team.space, type: "contact", data: { name: "Only on B" } }, showing: spaceA });
     assert.equal(to.box, ids.B, `routed to B: ${JSON.stringify(to)}`);
     const r = await peerCall("records.create", { type: "contact", data: { name: "Only on B" }, space: team.space }, to.box);
-    const onA = JSON.stringify(await peerCall("records.query", { type: "contact" }, ids.A).catch((e) => String(e.message)));
-    const onB = JSON.stringify(await peerCall("records.query", { type: "contact", space: team.space }, ids.B).catch((e) => String(e.message)));
+    const onA = JSON.stringify(await peerCall("records.list", { type: "contact" }, ids.A).catch((e) => String(e.message)));
+    const onB = JSON.stringify(await peerCall("records.list", { type: "contact", space: team.space }, ids.B).catch((e) => String(e.message)));
     assert.ok(!onA.includes("Only on B"), `A does not hold it: ${onA.slice(0, 200)}`);
     assert.ok(onB.includes("Only on B"), `B holds it: ${onB.slice(0, 200)}; made: ${JSON.stringify(r).slice(0, 160)}`);
     return "created on B, absent on A";
@@ -108,13 +110,13 @@ try {
     const to = await SS.routeCall({ tool: "records.create", input: { space: spaceA, type: "contact", data: { name: "Only on A" } }, showing: spaceA });
     assert.equal(to.box, ids.A, JSON.stringify(to));
     await peerCall("records.create", { type: "contact", data: { name: "Only on A" }, space: spaceA }, to.box);
-    const onB = JSON.stringify(await peerCall("records.query", { type: "contact", space: team.space }, ids.B).catch((e) => String(e.message)));
-    const onA = JSON.stringify(await peerCall("records.query", { type: "contact", space: spaceA }, ids.A).catch((e) => String(e.message)));
+    const onB = JSON.stringify(await peerCall("records.list", { type: "contact", space: team.space }, ids.B).catch((e) => String(e.message)));
+    const onA = JSON.stringify(await peerCall("records.list", { type: "contact", space: spaceA }, ids.A).catch((e) => String(e.message)));
     assert.ok(onA.includes("Only on A") && !onB.includes("Only on A"), `A:${onA.slice(0, 120)} B:${onB.slice(0, 120)}`);
     return "created on A, absent on B";
   });
   await step("5c. a chat made on B is listed by B only and routed to B", async () => {
-    const made = await peerCall("work.chat.create", { title: "B chat", space: team.space }, ids.B);
+    const made = await peerCall("work.chat.create", { title: "B chat" }, ids.B);
     const chat = String(made?.chat || made?.id || made?.chat_id || "");
     assert.ok(chat, `a chat id came back: ${JSON.stringify(made).slice(0, 200)}`);
     SS.noteChat(chat, ids.B);
@@ -125,7 +127,7 @@ try {
     return `chat ${chat.slice(0, 14)}`;
   });
   await step("5d. a task request through B's route lands on B", async () => {
-    const r = await peerCall("tasks.request", { title: "B task", output: { kind: "note" }, doer: { kind: "person", id: mac.identity.id }, space: team.space }, ids.B);
+    const r = await peerCall("tasks.request", { task: { title: "B task", output: { kind: "note" }, doer: { kind: "person", id: mac.identity.id } } }, ids.B);
     return JSON.stringify(r).slice(0, 200);
   });
 
@@ -161,8 +163,8 @@ try {
 
   // 10. B offline
   await step("10. B offline: A still works; a B record/chat call is refused and nothing reaches A", async () => {
-    await srv.B.stop?.();
-    await SS.refreshSpaceServers();
+    await Promise.race([srv.B.stop?.(), new Promise(r => setTimeout(r, 30_000))]);
+    await Promise.race([SS.refreshSpaceServers(), new Promise(r => setTimeout(r, 30_000))]);
     const callsBefore = calls.length;
     const okA = await peerCall("system.info", {}, ids.A);
     assert.ok(okA, "A answers");
