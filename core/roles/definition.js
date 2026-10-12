@@ -27,16 +27,16 @@ export function checkRole(input, o = {}) {
   const description = input.description === undefined ? "" : String(input.description).slice(0, 300);
 
   const base = input.base;
-  if (!CUSTOM_BASES.includes(base)) throw refuse(base === "owner" ? "A custom role is never above Admin. Start it from Admin or Member." : base === "guest" || base === "temp"
+  if (!CUSTOM_BASES.includes(base)) throw refuse(base === "owner" || base === "admin" ? "A custom role starts from Member. Nothing above Member is a custom role: an Admin-based role would still count as an Admin for adding people and giving roles." : base === "guest" || base === "temp"
     ? "A custom role starts from Member or Admin. For someone who needs an end date, give this role an end date, or add them as a Guest."
-    : `A custom role starts from ${list([...CUSTOM_BASES])}.`);
+    : `A custom role starts from Member.`);
 
   const can = Array.isArray(input.can) ? [...new Set(input.can.map(String))] : null;
   if (!can || !can.length) throw refuse("Pick at least one thing the role can do (can).");
   for (const c of can) {
     const e = CAN_BY_ID[/** @type {"view"} */ (c)];
     if (!Object.hasOwn(CAN_BY_ID, c) || !e) throw refuse(`"${c}" is not something a role can do. The choices are ${list(CAN.map(x => x.id))}.`);
-    if (e.actions.some(a => !ROLE_ACTIONS[/** @type {"member"} */ (base)].includes(a))) throw refuse(`"${e.label}" is wider than a role that starts from Member. Start the role from Admin, or take it out.`, "too_wide");
+    if (e.actions.some(a => !ROLE_ACTIONS[/** @type {"member"} */ (base)].includes(a))) throw refuse(`"${e.label}" is wider than a role that starts from Member. Take it out: a role that needs it is an Admin, which is a built-in role.`, "too_wide");
   }
   can.sort();
 
@@ -133,6 +133,6 @@ export function expandRole(role, who) {
   const grants = [...out.values()];
   if (!grants.length) throw refuse("This role gives no access: pick at least one thing it can do and, if it names record types, one that is not \"none\".");
   const base = ROLE_ACTIONS[/** @type {"member"} */ (role.base)];
-  for (const g of grants) { const bad = g.actions.find((/** @type {string} */ a) => !base.includes(a)); if (bad) throw refuse(`"${bad}" is wider than this role's base. Start the role from Admin or take it out.`, "too_wide"); }
+  for (const g of grants) { const bad = g.actions.find((/** @type {string} */ a) => !base.includes(a)); if (bad) throw refuse(`"${bad}" is wider than this role's base. Take it out.`, "too_wide"); }
   return grants;
 }

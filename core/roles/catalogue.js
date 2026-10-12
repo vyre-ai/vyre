@@ -33,8 +33,8 @@ export const CAN_BY_ID = Object.freeze(Object.fromEntries(CAN.map(c => [c.id, c]
 /** Where a role reaches. `my_projects` is the projects the person is on (their seat decides it, as for a Member); `projects` is a chosen list; `mine` is only what they made. */
 export const WHERE_KINDS = Object.freeze(["space", "my_projects", "projects", "mine"]);
 export const ACCESS_LEVELS = Object.freeze(["none", "read", "edit"]);
-/** The bases a custom role may start from. A custom role is never above Admin; a Guest's reach is set per person when they are added (scope and end date), so it is not a base. */
-export const CUSTOM_BASES = Object.freeze(["admin", "member"]);
+/** The bases a custom role may start from. A custom role starts from Member, so it is a real narrowing (an Admin-based role would still count as an Admin for who may add people); a Guest's reach is set per person when they are added (scope and end date), so it is not a base. */
+export const CUSTOM_BASES = Object.freeze(["member"]);
 /** Never an id for a custom role: the built-in ones and the Guest alias. */
 export const RESERVED_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp", "guest"]);
 

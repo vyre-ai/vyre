@@ -30,8 +30,8 @@ async function rig() {
 
 test("checks: wider than the base is refused in words, above admin is refused, unknown things are refused with the choices", () => {
   assert.throws(() => checkRole(role({ can: ["view", "customize"] })), { code: "too_wide", message: /Admin/ }, "Member base cannot hold an Admin switch");
-  assert.doesNotThrow(() => checkRole(role({ base: "admin", can: ["view", "customize"] })));
-  assert.throws(() => checkRole(role({ base: "owner" })), { message: /never above Admin/ });
+  assert.throws(() => checkRole(role({ base: "admin" })), { message: /starts from Member/ }, "an Admin-based role would still rank as an Admin");
+  assert.throws(() => checkRole(role({ base: "owner" })), { message: /starts from Member/ });
   assert.throws(() => checkRole(role({ base: "guest" })), { message: /Member or Admin/ });
   assert.throws(() => checkRole(role({ can: ["upgrade"] })), { message: /The choices are/ }, "no owner-only switch exists");
   assert.throws(() => checkRole(role({ label: "Admin" })), { message: /built-in/ });
@@ -82,14 +82,14 @@ test("an end date: the role's grants stop working when it passes", async () => {
   await assert.rejects(() => R.get(b, "lead", lead.id), "after the end the grants no longer cover it");
 });
 
-test("MAY_SET holds for custom roles: an admin gives a Member-based role, never an Admin-based one", async () => {
+test("MAY_SET holds for custom roles: an admin gives a Member-based role, never an admin", async () => {
   const { k, give, o, types } = await rig();
   await give(o, ADA, "admin");
   const a = chainOf(k, ADA, "d-a");
   const mem = checkRole(role());
   await give(a, BOB, mem.base, { id: mem.id, grants: expandRole(mem, { space: SPACE, person: BOB, types }) });
-  const adm = checkRole(role({ label: "Lead", base: "admin" }));
-  await assert.rejects(() => give(a, "per_cat", adm.base, { id: adm.id, grants: expandRole(adm, { space: SPACE, person: "per_cat", types }) }), { code: "not_allowed" });
+  const adm = { ...mem, id: "lead", base: "admin" };
+  await assert.rejects(() => give(a, "per_cat", "admin", { id: adm.id, grants: expandRole(mem, { space: SPACE, person: "per_cat", types }) }), { code: "not_allowed" }, "an admin cannot make an admin, custom or not");
 });
 
 test("roles.*: create, list with holders, assign, remove refused while held, then removed; refusals name a next step", async t => {
@@ -104,7 +104,7 @@ test("roles.*: create, list with holders, assign, remove refused while held, the
   const cat = await ok("roles.catalogue", {});
   assert.deepEqual(cat.builtin.map(x => x.id), ["owner", "admin", "member", "guest"]);
   assert.equal((await refused("roles.create", { role: role({ can: ["view", "customize"] }) })).code, "too_wide");
-  assert.match((await refused("roles.create", { role: role({ base: "owner" }) })).message, /never above Admin/);
+  assert.match((await refused("roles.create", { role: role({ base: "owner" }) })).message, /starts from Member/);
   const made = (await ok("roles.create", { role: role() })).role;
   assert.equal(made.id, "intake");
   assert.equal((await refused("roles.create", { role: role() })).code, "duplicate");
