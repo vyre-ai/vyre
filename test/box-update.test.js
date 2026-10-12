@@ -1377,3 +1377,27 @@ test("box update --check (rc.3): a newest version with a quote or a backslash in
   assert.match(r.out, /not a version number/);
   assert.doesNotMatch(r.out, /"update":false,"x"/);
 });
+
+test("box update (rc.3): the floor verb reads the version from the copy it hashed: a VERSION swapped between the hash and the read changes nothing, and a link in its place is refused", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  assert.equal((/** @type {any} */ (await b.run(["update"], asPerson(b, true)))).code, 0);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  // A sha256sum that, right after it hashes, puts 99.0.0 in the stack folder's VERSION: the swap an attacker with that folder would make.
+  const real = spawnSync("sh", ["-c", "command -v sha256sum"], { encoding: "utf8" }).stdout.trim();
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sha256sum"), `#!/bin/sh\n${real} "$@"; rc=$?\nif [ -n "$SWAP_VERSION" ] && [ ! -f "$SWAP_VERSION.done" ]; then printf '99.0.0\\n' >"$SWAP_VERSION"; : >"$SWAP_VERSION.done"; fi\nexit $rc\n`, { mode: 0o755 });
+  const r = /** @type {any} */ (await b.run(["raise-floor"], { ...asRoot(), SWAP_VERSION: path.join(b.DIR, "VERSION") }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0", "the floor is the version that was hashed, not the one swapped in after");
+  assert.deepEqual(fs.readdirSync(path.join(b.U, "private")).filter(n => /^floor-version\./.test(n)), [], "root's private copy is removed");
+  // A link at that path is refused, not followed.
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.writeFileSync(path.join(b.DIR, "VERSION.real"), "0.2.0\n");
+  fs.rmSync(path.join(b.DIR, "VERSION"));
+  fs.symlinkSync(path.join(b.DIR, "VERSION.real"), path.join(b.DIR, "VERSION"));
+  fs.rmSync(path.join(b.FAKE, "bin", "sha256sum"));
+  const linked = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(linked.code, 0);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
+});

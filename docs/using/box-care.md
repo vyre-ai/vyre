@@ -155,7 +155,9 @@ the old box files and the database from step 1 all go back, and `vyre update` ex
 rolled back. Store migrations only go forward, which is why the database comes back from the
 backup. That means anything written between the backup and the rollback (a chat, a note, a
 setting) is lost, and the update says so as it rolls back. A slow start that is still working is
-waited for, so a rollback should be rare; if one happens, check `vyre logs` before you try again. Once an update has come up healthy, nothing restores the database on its own, so nothing
+waited for, so a rollback should be rare; if one happens, check `vyre logs` before you try again.
+
+The automatic updater also keeps a floor, the newest version this server has had, and refuses anything older. After an update that rolled back following its publication, the floor can sit above the version that runs; that blocks only older releases, never the forward update. `sudo vyre raise-floor` raises it to the version installed here after an update you ran yourself, and takes no version. Once an update has come up healthy, nothing restores the database on its own, so nothing
 you write after that is lost.
 
 After a healthy update, when the release carries an Android build, it brings the phone app along:

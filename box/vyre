@@ -583,10 +583,16 @@ raise_floor_root() {
     die "no signed release is published on this server, so there is nothing to raise the floor to; run: sudo vyre update"
   fi
   want=$(awk '$2 == "VERSION" || $2 == "*VERSION" { print $1; exit }' "$rel/SHA256SUMS")
-  if [ -z "$want" ] || [ ! -f "$DIR/VERSION" ] || [ -L "$DIR/VERSION" ] || [ "$want" != "$(sha256 "$DIR/VERSION")" ]; then
+  # The stack folder belongs to the person who ran the update, so the file can change between a check and a read. Root takes ONE copy (without following a link: cp -P copies a link as a link, which is then
+  # refused) into its own private folder, hashes that copy, and reads the version from the same copy.
+  vt=$(mktemp "$UPD_PRIV/floor-version.XXXXXX") || die "could not make a private copy in $UPD_PRIV; the floor was not changed"
+  rm -f "$vt"
+  if [ -z "$want" ] || ! cp -P "$DIR/VERSION" "$vt" 2>/dev/null || [ -L "$vt" ] || [ ! -f "$vt" ] || [ "$want" != "$(sha256 "$vt")" ]; then
+    rm -f "$vt"
     die "the version on record in $DIR is not the one the signed release lists, so the floor was not changed; run: sudo vyre update"
   fi
-  v=$(readf "$DIR/VERSION")
+  v=$(readf "$vt")
+  rm -f "$vt"
   case "$v" in ""|*[!0-9A-Za-z.-]*|[!0-9]*) die "the signed release's version is not a version number; the floor was not changed" ;; esac
   rf=$(readf "$UPD_PRIV/floor")
   if [ -z "$rf" ] || older "$rf" "$v"; then
