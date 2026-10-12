@@ -15,20 +15,33 @@ const SAY_AFTER_MS = 3000;
 const mappedProjects = (/** @type {any} */ sb) => mapped(() => sb.deps.call("projects.list", {}));
 
 /**
- * The project ids a session on an ACCOUNT may join. The person is the account's (an account with no person is the home's own: the owner's, who reaches every project). Anyone else gets exactly the projects
- * whose seat (work.project.seat) says owner or team. An agent's turn on that account gets the intersection with the agent's own grant (`scope.projects`: "*" or a list); an agent with no grant gets none.
- * No person that can be resolved: none. The session's own project comes first, so a person on more projects than one spawn can carry still gets the one she is working in.
- * @param {any} sb @param {{ person?: string | null }} run the account the session runs on @param {{ agent?: string | null, scope?: { projects: string[] | "*" } | null, cwd?: string }} [want]
+ * The person a session on an account is for. The account's own person; or, for an account that records none (the home's legacy accounts), the launch's VERIFIED person (a chat turn's asker) when that
+ * person is the home's owner. Nothing else is a person: an account with no person and no verified owner behind the launch is nobody's, and gets no project (never the owner's reach by default, so a
+ * member's account row that lost its person gets nothing). @param {any} sb @param {{ person?: string | null }} run @param {{ person?: string | null }} [want]
+ * @returns {{ person: string, owner: boolean } | null}
+ */
+export function personOf(sb, run, want = {}) {
+  const owner = typeof sb.deps.owner === "function" ? sb.deps.owner() : null;
+  const isOwner = (/** @type {string} */ p) => Boolean(owner) && sb.canon(p) === sb.canon(String(owner));
+  if (run && run.person) return { person: String(run.person), owner: isOwner(String(run.person)) };
+  if (want.person && isOwner(String(want.person))) return { person: String(want.person), owner: true };
+  return null;
+}
+
+/**
+ * The project ids a session on an ACCOUNT may join: the person's (personOf), by the seat rule (work.project.seat: owner or team); the home's owner reaches every project under /work. An agent's turn on that
+ * account gets the intersection with the agent's own grant (`scope.projects`: "*" or a list); an agent with no grant gets none. No resolvable person: none. The session's own project comes first, so a
+ * person on more projects than one spawn can carry still gets the one she is working in; `all` skips that cap (the seat recheck compares whole lists).
+ * @param {any} sb @param {{ person?: string | null }} run the account the session runs on @param {{ agent?: string | null, scope?: { projects: string[] | "*" } | null, cwd?: string, person?: string | null, all?: boolean }} [want]
  * @returns {Promise<string[]>}
  */
 export async function projectsFor(sb, run, want = {}) {
-  const owner = typeof sb.deps.owner === "function" ? sb.deps.owner() : null;
-  const person = run && run.person ? String(run.person) : owner ? String(owner) : "";
-  if (!person) return [];
+  const who = personOf(sb, run, want);
+  if (!who) return [];
+  const person = who.person;
   const mapped = await mappedProjects(sb);
-  const isOwner = Boolean(owner) && sb.canon(person) === sb.canon(String(owner));
   /** @type {string[]} */ let mine;
-  if (isOwner) mine = mapped.map(p => p.slug);
+  if (who.owner) mine = mapped.map(p => p.slug);
   else {
     const seats = await Promise.all(mapped.map(async p => {
       const r = /** @type {any} */ (await sb.deps.call("work.project.seat", { project: p.slug, person }).catch(() => null));
@@ -45,7 +58,7 @@ export async function projectsFor(sb, run, want = {}) {
   const cwd = want.cwd ? path.resolve(want.cwd) : "";
   const here = cwd ? mapped.find(p => p.folders.some(f => under(cwd, f))) : null;
   if (here && mine.includes(here.slug)) mine = [here.slug, ...mine.filter(s => s !== here.slug)];
-  if (mine.length > MAX_PER_SPAWN) { sb.deps.log(`threads: ${person} is on ${mine.length} projects; a session joins the first ${MAX_PER_SPAWN}, the one it works in first`); mine = mine.slice(0, MAX_PER_SPAWN); }
+  if (!want.all && mine.length > MAX_PER_SPAWN) { sb.deps.log(`threads: ${person} is on ${mine.length} projects; a session joins the first ${MAX_PER_SPAWN}, the one it works in first`); mine = mine.slice(0, MAX_PER_SPAWN); }
   return mine;
 }
 
@@ -71,26 +84,20 @@ export async function ensureFolder(sb, cwd, say, o = {}) {
 }
 
 /**
- * A seat was removed (or any team change): every running session on a person's own account is judged again against the seat rule, and one that is under a project the person no longer has a seat on is stopped.
- * Groups are fixed when a process starts, so the stop is what takes the seat away from a session already running. The folder it was started in decides which project it is "under".
+ * A seat was removed (or any team change): every running session on a person's own account is judged again. A session joined the group of EVERY project its person was on when it started
+ * (`accountRun.projects`), and a process keeps its groups, so one that has lost a seat on ANY of them, whatever folder it works in, is stopped; one that still has every seat is left alone.
  * @param {any} sb @param {{ stop: (id: string, why: string) => Promise<unknown> | unknown }} [o]
  * @returns {Promise<string[]>} the threads stopped
  */
 export async function stopLostSeats(sb, o = { stop: async (id, why) => { const rec = sb.record(id); sb.emit("thread.text", { message: "vyre", text: `${why}, so this session was stopped. Ask the project's owner to add you back, then start it again.`, done: true, notice: true }, id, rec ? rec.project : null); await sb.stop(id); } }) {
   /** @type {string[]} */ const stopped = [];
-  const owner = typeof sb.deps.owner === "function" ? sb.deps.owner() : null;
-  for (const [id, st] of sb.live) {
-    const run = st && st.launch && st.launch.accountRun;
-    if (!run || run.uid == null || !run.person) continue;
-    if (owner && sb.canon(String(run.person)) === sb.canon(String(owner))) continue;
+  for (const [id, st] of [...sb.live]) {
+    const l = st && st.launch, run = l && l.accountRun;
+    if (!run || run.uid == null || !run.person || !Array.isArray(run.projects) || !run.projects.length) continue;
     const rec = sb.record(id);
-    const cwd = rec && rec.cwd;
-    if (!cwd) continue;
-    const here = (await mappedProjects(sb)).find(p => p.folders.some(f => under(path.resolve(String(cwd)), f)));
-    if (!here) continue;
-    const r = /** @type {any} */ (await sb.deps.call("work.project.seat", { project: here.slug, person: String(run.person) }).catch(() => null));
-    const s = r && !r.error ? r.data : null;
-    if (r && !r.error && !(s && s.exists && (s.owner || s.team))) { await o.stop(id, `${run.person} is no longer on the project ${here.slug}`); stopped.push(id); }
+    const now = await projectsFor(sb, run, { agent: l.agent || (rec && rec.agent) || null, scope: l.scope || null, cwd: rec && rec.cwd, all: true });
+    const lost = run.projects.filter((/** @type {string} */ p) => !now.includes(p));
+    if (lost.length) { await o.stop(id, `${run.person} is no longer on ${lost.length === 1 ? "the project" : "the projects"} ${lost.join(", ")}`); stopped.push(id); }
   }
   return stopped;
 }
@@ -107,9 +114,12 @@ export function socketGid(run) {
  * @param {any} sb @param {any} rec @param {any} o @param {string} id
  */
 export async function launchAccess(sb, rec, o, id) {
-  await ensureFolder(sb, rec.cwd, text => sb.emit("thread.text", { message: "vyre", text, done: true, notice: true }, id, rec.project));
+  const say = (/** @type {string} */ text) => sb.emit("thread.text", { message: "vyre", text, done: true, notice: true }, id, rec.project);
+  await ensureFolder(sb, rec.cwd, say);
   if (!(o.accountRun && o.accountRun.uid != null)) return o;
-  return { ...o, accountRun: { ...o.accountRun, projects: await projectsFor(sb, o.accountRun, { agent: o.agent || rec.agent || null, scope: o.scope || null, cwd: rec.cwd }) } };
+  const want = { agent: o.agent || rec.agent || null, scope: o.scope || null, cwd: rec.cwd, person: (o.kernelTurn && o.kernelTurn.asker) || null };   // the verified chat turn's asker, never a caller's word
+  if (!personOf(sb, o.accountRun, want)) say("This AI account has no person recorded, so this session gets no project folders. Open AI accounts and sign in with your own account again, or ask the owner to check it.");
+  return { ...o, accountRun: { ...o.accountRun, projects: await projectsFor(sb, o.accountRun, want) } };
 }
 
 /** projects.sync, from the projects module: every mapped project's folders handed to their groups. Refused with a next step where there is no spawner. @param {any} sb */

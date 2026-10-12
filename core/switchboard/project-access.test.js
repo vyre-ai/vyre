@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectsFor, ensureFolder, stopLostSeats, socketGid, regroupSocket, syncProjects, launchAccess } from "./project-access.js";
+import { personOf, projectsFor, ensureFolder, stopLostSeats, socketGid, regroupSocket, syncProjects, launchAccess } from "./project-access.js";
 import { syncAll } from "../../lib/project-folders.js";
 
 const PROJECTS = [
@@ -34,9 +34,16 @@ test("the projects a session joins: a member's seats, the owner's all of the one
   assert.deepEqual(await projectsFor(sb(), { person: "cara" }), ["beta"]);
   assert.deepEqual(await projectsFor(sb(), { person: "dan" }), [], "a person with no seat has no group");
   assert.deepEqual(await projectsFor(sb(), { person: "owen" }), ["alpha", "beta", "gamma"], "the owner reaches every project");
-  assert.deepEqual(await projectsFor(sb(), { person: null }), ["alpha", "beta", "gamma"], "an account of the home's own is the owner's");
   assert.deepEqual(await projectsFor(sb({ owner: null }), { person: null }), [], "no person and no owner to stand for: never all");
   assert.deepEqual(await projectsFor(sb({ owner: "" }), {}), [], "an owner that cannot be read is no person");
+});
+
+test("an account that records no person gets no project, whoever the home's owner is; only a verified owner behind the launch makes it the owner's", async () => {
+  assert.deepEqual(await projectsFor(sb(), { person: null }), [], "a member's account row that lost its person gets nothing");
+  assert.deepEqual(await projectsFor(sb(), {}), [], "nor one with no person field at all");
+  assert.deepEqual(await projectsFor(sb(), { person: "" }, { person: "ben" }), [], "a verified MEMBER behind a person-less account is not the owner: nothing");
+  assert.deepEqual(await projectsFor(sb(), { person: null }, { person: "owen" }), ["alpha", "beta", "gamma"], "the owner's own turn on the home's legacy account: the owner's reach");
+  assert.equal(personOf(sb(), { person: null }, {}), null);
 });
 
 test("a label the caller sent decides nothing: the list comes from the account's person", async () => {
@@ -95,14 +102,15 @@ test("projects.sync: every project's folders, one that fails does not stop the r
   assert.deepEqual(second.projects.map(r => r.migrated), [0, 0, 0]);
 });
 
-test("a seat taken away stops that person's running session under the project, and only that one", async () => {
-  const mk = (/** @type {string} */ person, /** @type {number | null} */ uid) => ({ launch: { accountRun: { person, uid } } });
-  const live = new Map([["t-ben", mk("ben", 2000)], ["t-cara", mk("cara", 2001)], ["t-own", mk("owen", 2002)], ["t-agent", { launch: {} }]]);
-  const recs = { "t-ben": { cwd: "/work/projects/beta" }, "t-cara": { cwd: "/work/projects/beta/x" }, "t-own": { cwd: "/work/projects/beta" }, "t-agent": { cwd: "/work/projects/beta" } };
+test("a seat taken away stops the session that joined that project's group, whatever folder it works in; one that still has every seat is left alone", async () => {
+  const mk = (/** @type {string} */ person, /** @type {string[]} */ projects) => ({ launch: { accountRun: { person, uid: 2000, projects } } });
+  // ben is on alpha and gamma; cara on beta only. Both sessions work in alpha's or beta's folder, but joined the groups listed.
+  const live = new Map([["t-ben-both", mk("ben", ["alpha", "gamma"])], ["t-ben-lost", mk("ben", ["alpha", "beta"])], ["t-cara", mk("cara", ["beta"])], ["t-owner", mk("owen", ["alpha", "beta", "gamma"])], ["t-agent", { launch: {} }], ["t-none", mk("ben", [])]]);
+  const recs = Object.fromEntries([...live.keys()].map(k => [k, { cwd: "/work/projects/alpha" }]));
   const stopped = /** @type {string[]} */ ([]);
   const got = await stopLostSeats(sb({ live, recs }), { stop: async (id) => { stopped.push(id); } });
-  assert.deepEqual(got, ["t-ben"], "ben has no seat on beta; cara does; the owner and a box-agent session are not judged");
-  assert.deepEqual(stopped, ["t-ben"]);
+  assert.deepEqual(got, ["t-ben-lost"], "ben lost beta though his session works in alpha, where he still has a seat");
+  assert.deepEqual(stopped, ["t-ben-lost"]);
 });
 
 test("a session socket's group is its account's (gid equals uid), or the box agent's", () => {
@@ -138,4 +146,15 @@ test("the launch step: an account's launch carries its projects; a launch on no 
   assert.deepEqual(none.accountRun.projects, ["alpha", "gamma"]);
   const agent = await launchAccess(s, { cwd: "/srv/elsewhere" }, o, "t3");
   assert.equal(agent.accountRun, undefined);
+});
+
+test("a launch on an account with no person says why it gets no project folders", async () => {
+  const s = sb(), said = /** @type {string[]} */ ([]);
+  s.emit = (/** @type {string} */ _t, /** @type {any} */ p) => said.push(p.text);
+  const got = await launchAccess(s, { cwd: "/srv/elsewhere" }, { accountRun: { uid: 2000, person: null }, kernelTurn: { asker: "ben" } }, "t9");
+  assert.deepEqual(got.accountRun.projects, []);
+  assert.match(said.join(" "), /no person recorded.*no project folders.*AI accounts/);
+  said.length = 0;
+  const own = await launchAccess(s, { cwd: "/srv/elsewhere" }, { accountRun: { uid: 2000, person: null }, kernelTurn: { asker: "owen" } }, "t10");
+  assert.deepEqual(own.accountRun.projects, ["alpha", "beta", "gamma"]); assert.equal(said.length, 0);
 });
