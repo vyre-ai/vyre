@@ -234,12 +234,15 @@ export default {
     ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
       input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         const k = kernelOf(), chain = await chainOf(extra);
-        // the people of the chat the file is in take back a share, and an owner or an admin any: the records are the work module's own to remove
+        // a share is its sharer's to take back, and an owner's or an admin's: the sharer is the person the work module wrote it for (`created_for`), and the record itself is the module's own to remove
         const rows = await shareRows(chain, { filter: { field: "path", op: "eq", value: String(i.path) }, page: { limit: 50 } });
-        const me = personOf(chain), staff = me ? await hubOf().isStaff(me) : false, chatId = (/^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(String(i.path)) || [])[1];
-        const mayTake = staff || (chatId ? inChat(chain, chatId) : false);
+        const me = personOf(chain), staff = me ? await hubOf().isStaff(me) : false;
         let removed = 0;
-        if (mayTake) for (const r of rows) { try { await k.records.remove(k.serviceChain("work"), "file-share", r.id, r.version); removed++; } catch { /* already gone */ } }
+        for (const r of rows) {
+          const at = (await k.records.attrsOf(r.urn)) || {}, sharer = String(at.created_for || at.created_by || "");
+          if (!(staff || (me && sharer === `person:${me}`))) continue;
+          try { await k.records.remove(k.serviceChain("work"), "file-share", r.id, r.version); removed++; } catch { /* already gone */ }
+        }
         return { unshared: removed };
       } });
     chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",

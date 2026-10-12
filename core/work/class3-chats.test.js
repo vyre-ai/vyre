@@ -74,4 +74,16 @@ test("a chat and a file share: a member reads and changes none she is not part o
   const teamSees = async (/** @type {string} */ p) => (await titles(p)).some((/** @type {string} */ x) => /ANA-ONLY-TITLE/.test(x));
   assert.equal(await teamSees(ZED), true, "a member on the project's team sees a chat filed under it");
   assert.equal(await teamSees(BEN), false, "a member not on the project's team still does not see it");
+
+  // a file share: made by the work module for the sharer (created_for), invisible on the raw routes to every member, kept for her and the owner
+  const path = `Projects/${proj.id}/chat/${anaOnly}/SHARED-FILE.txt`;
+  const sh = await gw.records.create(gw.serviceChain("work"), "file-share", { path }, { on_behalf: chainOf(ANA) });
+  assert.equal(String(((await gw.records.attrsOf(sh.urn)) || {}).created_for), `person:${ANA}`, "the share is the sharer's");
+  for (const who of [ANA, BEN, ZED]) {
+    assert.equal(rowsOf(await door(who, "records.query", "file-share", { page: { limit: 50 } })).length, 0, `${who.slice(4, 8)}: door query of shares`);
+    assert.ok(!JSON.stringify(await door(who, "records.search", { text: "SHARED-FILE" })).includes("SHARED-FILE"), `${who.slice(4, 8)}: door search of shares`);
+    assert.ok(!(await door(who, "records.create", "file-share", { path })).ok, `${who.slice(4, 8)}: door create of a share`);
+    assert.ok(!(await door(who, "records.remove", "file-share", sh.id, sh.version)).ok, `${who.slice(4, 8)}: door remove of a share`);
+  }
+  assert.equal((await gw.records.query(ownerChain, "file-share", { page: { limit: 50 } })).rows.length, 1, "the owner reads the share");
 });
