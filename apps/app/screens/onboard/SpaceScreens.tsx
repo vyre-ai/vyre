@@ -455,6 +455,7 @@ function JoinSealingLive({ ctx, set, go, back, steps }: ScreenProps) {
 
 function ComputeLive({ ctx, set, go, back, steps }: ScreenProps) {
   const space = useActiveSpace();
+  const name = space?.name || ctx.spaceName || SPACE;
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
   const next = async () => {
@@ -464,12 +465,12 @@ function ComputeLive({ ctx, set, go, back, steps }: ScreenProps) {
     try { await lendThisComputer(space.id, true); go("ready"); } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); }
   };
   return (
-    <FlowStep steps={steps} onBack={back} title="Run sessions on this computer?" lead={`This applies to ${space?.name || ctx.spaceName || SPACE}. You can change it later in Settings.`}
+    <FlowStep steps={steps} onBack={back} title={`Use this computer for your work in ${name}?`} lead="Your AI sessions are the chats and tasks your AI accounts do for you. You can change this later in Settings."
       failure={failure}
       primary={{ label: "Continue", loading: busy, disabled: busy, onPress: () => { void next(); } }}>
-      <ChoiceList label="Where sessions run" value={ctx.runHere ? "here" : "server"} onChange={(v) => set({ runHere: v === "here" })} options={[
-        { value: "here", title: "Yes, run them here", sub: "Sessions run on this computer while it is on, and move to the server when it sleeps.", icon: "laptop" },
-        { value: "server", title: "No, use the server", sub: "Sessions run on the space's server.", icon: "server" },
+      <ChoiceList label="This computer" value={ctx.runHere ? "allow" : "deny"} onChange={(v) => set({ runHere: v === "allow" })} options={[
+        { value: "allow", title: "Allow: use this computer when it is available", sub: `Your AI sessions run here while this computer is on, and on ${name}'s server when it is not.`, icon: "laptop" },
+        { value: "deny", title: "Do not allow: always use the space's server", sub: `Everything runs on ${name}'s server. This computer only shows it.`, icon: "server" },
       ]} />
     </FlowStep>
   );
