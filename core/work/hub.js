@@ -18,6 +18,7 @@
 import os from "node:os";
 import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
 import { projectTeamOf } from "../../kernel/gateway/ownership.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat", PERSONAL = "Personal";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
@@ -163,7 +164,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
 
   const refuseFiling = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
   /** Owner or admin of the Space: they file a chat under any project. @param {string} person */
-  const isStaff = async person => { const role = typeof kernel.membership === "function" ? ((await kernel.membership(person).catch(() => null)) || {}).role : undefined; return role === "owner" || role === "admin"; };
+  const isStaff = async person => { const role = typeof kernel.membership === "function" ? ((await kernel.membership(person).catch(() => null)) || {}).role : undefined; return roleAtLeast(String(role), "admin"); };
   /** A member files a chat only under a project she owns or is on the team of: the ownership rule's own test (kernel/gateway/ownership.js projectTeamOf), one function. @param {string} person @param {any} rec the Project @param {string} label */
   async function mayFileUnder(person, rec, label) {
     if (await isStaff(person)) return;
