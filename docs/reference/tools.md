@@ -11348,7 +11348,7 @@ The paired server that hosts this space: { device }, or null when this computer 
 
 ### `spaces.servers`
 
-The servers this device is paired to, for "Set up My Cloud": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.
+The servers this device is paired to, for "Set up My Cloud": { servers: [{ id, name, online, channel? }] }, where `id` is what `spaces.create` takes as `home.device.id` and `spaces.name-here` takes as `server`, and `channel` is { relay, route, box }, where the server is reached. Empty when none is paired.
 
 - Input: none
 - Callers: any caller

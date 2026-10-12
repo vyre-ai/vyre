@@ -1769,13 +1769,19 @@ export default {
     };
     /** See `resealPortFor` (lib/spaces/upgrade.js): the sealed-value transfer through platform's seal ops. */
     const resealPort = (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval) => resealPortFor({ local: sides.local, remote: sides.remote, sealing: sides.sealing, plan_hash, approval });
-    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.", obj(), async () => {
+    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name, online, channel? }] }, where `id` is what `spaces.create` takes as `home.device.id` and `spaces.name-here` takes as `server`, and `channel` is { relay, route, box }, where the server is reached. Empty when none is paired.", obj(), async () => {
       let who = null; try { who = identity.status(); } catch { who = null; }
       /** @type {any[]} */ let rows = [];
       try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' AND removed_at IS NULL ORDER BY created, id").all(); } catch { rows = []; }
-      void who;
-      // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do
-      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name), online: null })) };
+      // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do.
+      // `channel` is where the server is reached (relay, route, box: no secret), so a screen that names its Space can say where its home is; absent when Wink has no record of it.
+      const out = [];
+      for (const r of rows) {
+        let channel = null;
+        if (who && who.exists && who.id) { try { const c = await ctx.call("wink.server.channel", { device: String(r.id), identity: who.id }); channel = c && c.data && !c.error && c.data.channel ? c.data.channel : null; } catch { channel = null; } }
+        out.push({ id: String(r.id), name: String(r.name), online: null, ...(channel ? { channel } : {}) });
+      }
+      return { servers: out };
     });
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);

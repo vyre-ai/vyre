@@ -86,8 +86,8 @@ async function device(t, { records = false, wink = false, kernelFor = undefined,
     const dir = fs.mkdtempSync(path.join(path.dirname(root), "wink-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     fs.mkdirSync(path.join(dir, "wink"));
-    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
-    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' || i.device === 'srv_paired0000000002', name: i.device === 'srv_paired0000000002' ? 'second server' : 'my server' }) }); return { async stop() {} }; } };\n");
+    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }, { name: "wink.server.channel", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' || i.device === 'srv_paired0000000002', name: i.device === 'srv_paired0000000002' ? 'second server' : 'my server' }) }); ctx.tool('wink.server.channel', { description: 'x', input: { type: 'object' }, run: async i => ({ channel: i.device === 'srv_paired0000000002' ? { relay: 'wss://relay.example', route: 'r2', box: 'b2' } : null }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
@@ -1990,6 +1990,19 @@ test("spaces.servers: the servers this device is paired to, with the id spaces.c
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("srv_box1", "server", "Home server", 2);
   db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES (?, 'per_x', ?, ?, ?)").run("ph_1", "phone", "Phone", 1);
   assert.deepEqual(await d.ok("spaces.servers"), { servers: [{ id: "srv_box1", name: "Home server", online: null }] }, "only servers, not a phone, and not one that was removed");
+  void w;
+});
+
+test("spaces.servers says where each server is reached (relay, route, box) when Wink knows, and leaves it out when it does not", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const db = d.db;
+  db.exec("CREATE TABLE IF NOT EXISTS wink_devices (id TEXT PRIMARY KEY, identity TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', owner_kind TEXT, owner_id TEXT, offers TEXT, created INTEGER NOT NULL DEFAULT 0, removed_at INTEGER)");
+  db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES ('srv_paired0000000001', 'per_x', 'server', 'one', 1)").run();
+  db.prepare("INSERT INTO wink_devices (id, identity, kind, name, created) VALUES ('srv_paired0000000002', 'per_x', 'server', 'two', 2)").run();
+  const got = await d.ok("spaces.servers");
+  assert.deepEqual(got.servers.map(x => [x.id, x.channel]), [["srv_paired0000000001", undefined], ["srv_paired0000000002", { relay: "wss://relay.example", route: "r2", box: "b2" }]], "the channel is there when Wink has it, and left out (no throw) when it does not");
   void w;
 });
 
