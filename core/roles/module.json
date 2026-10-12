@@ -10,6 +10,7 @@
       { "name": "roles.catalogue", "reach": "person", "effect": "read" },
       { "name": "roles.list", "reach": "person", "effect": "read" },
       { "name": "roles.get", "reach": "person", "effect": "read" },
+      { "name": "roles.tools", "reach": "person", "effect": "read" },
       { "name": "roles.create", "reach": "person", "effect": "write" },
       { "name": "roles.update", "reach": "person", "effect": "write" },
       { "name": "roles.remove", "reach": "person", "effect": "write" },

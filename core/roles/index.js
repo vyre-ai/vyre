@@ -4,7 +4,7 @@
 // applyRole `custom`, which refuses anything outside the base role). Every call runs under the caller's own chain (lib/gateway-door.js); nothing here decides what a person may do, the kernel does.
 import { createDoor } from "../../lib/gateway-door.js";
 import { ROLE_IDS, ROLE_MAY_SET } from "../../kernel/contracts/index.js";
-import { CAN, WHERE_KINDS, ACCESS_LEVELS, CUSTOM_BASES, TOOLS, BUILTIN_VIEW, ALIASES } from "./catalogue.js";
+import { CAN, WHERE_KINDS, ACCESS_LEVELS, CUSTOM_BASES, TOOLS, TOOL_IDS, BUILTIN_VIEW, BUILTIN_TOOLS, ALIASES } from "./catalogue.js";
 import { checkRole, expandRole } from "./definition.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -61,6 +61,16 @@ export default {
       const c = (await readRoles(d.gateway, d.chain)).get(id);
       if (!c) throw refuse(`There is no role "${id}". roles.list shows the roles of this Space.`, "not_found");
       return { role: { ...c.role, builtin: false } };
+    });
+
+    tool("roles.tools", "The tools a person has at the door through their role: all for an owner or admin, none for a Member or Guest unless a custom role turns them on. Anyone asks about themselves; an owner or admin about anyone.", obj({ space: str, person: str }), "read", async (i, d) => {
+      const ms = await people(d), mine = ms.find(m => m.person === me(d)), who = i.person ? String(i.person) : me(d);
+      if (who !== me(d) && !(mine && (mine.role === "owner" || mine.role === "admin"))) throw refuse("Only an owner or an admin asks about someone else.", "not_allowed");
+      const m = ms.find(x => x.person === who);
+      if (!m) return { tools: [] };
+      const c = m.custom ? (await readRoles(d.gateway, d.chain)).get(String(m.custom)) : null;
+      const own = c ? c.role.tools : /** @type {any} */ (BUILTIN_TOOLS)[m.role] || [];
+      return { tools: TOOL_IDS.filter(t => own.includes(t)), role: m.role, ...(m.custom ? { custom: m.custom } : {}) };
     });
 
     tool("roles.create", "Make a custom role from Member or Admin: what it can do, where, which record types and fields, which tools, an optional end date. Never wider than its base. Owner and admin only.", obj({ space: str, role: { type: "object" } }, ["role"]), "write", async (i, d) => {
