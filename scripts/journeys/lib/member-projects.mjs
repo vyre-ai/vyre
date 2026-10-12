@@ -43,8 +43,11 @@ export async function memberProjectsSteps({ J, w, people, needs }) {
 
   const D = "another member cannot rename it, take its owner field, or add herself to its team; the refusals name who can";
   await J.step(D, async () => {
-    const row = ((await edith.joined.call("records.list", [{ type: "project" }])).rows || []).find((/** @type {any} */ r) => r.data && r.data.slug === hers.slug);
-    assert.ok(row, "Edith can see the project exists (members read project records)");
+    // class 3 (a project is its team's): Edith cannot see the project at all, so the row is the owner's; her attempts on it are refused in words that say who can
+    const seen = ((await edith.joined.call("records.list", [{ type: "project" }])).rows || []).some((/** @type {any} */ r) => r.data && r.data.slug === hers.slug);
+    assert.equal(seen, false, "Edith does not see another member's project in her list");
+    const row = ((await w.operator("records.list", { type: "project" })).rows || []).find((/** @type {any} */ r) => r.data && r.data.slug === hers.slug);
+    assert.ok(row, "the owner reads the project");
     const rename = await edith.joined.call("records.update", [{ urn: row.urn, patch: { name: "Renamed by Edith" }, base_version: row.version }]).then(() => "ALLOWED", (/** @type {any} */ e) => String(e && e.message));
     assert.match(rename, /project's team|owner/i, `rename: ${rename}`);
     const take = await edith.joined.call("records.update", [{ urn: row.urn, patch: { owner: { actor: { kind: "person", id: edith.app.identity.id } } }, base_version: row.version }]).then(() => "ALLOWED", (/** @type {any} */ e) => String(e && e.message));

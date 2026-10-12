@@ -1662,18 +1662,19 @@ shardTest("a member's Store shows the team: through the app's real store route, 
   const notes = await store.list("note").catch(() => []);
   assert.ok(!names(notes).some((x) => /MARKnote/.test(x)), "the owner's private note is not hers");
   const projects = await store.list("project").catch(() => []);
-  // KNOWN OPEN (rc1-a's mayView read predicate, team/0.3.4/MEMBER-SPACE-plan.md): only WRITES are judged by the ownership rule today, so records.list and records.get still show a project owned by someone else to
-  // any member. This block pins what is true, out loud, so the day the predicate lands it is changed to "not listed, cannot open".
-  const leakedList = names(projects).some((x) => /Owner only project/.test(x));
-  const leakedGet = Boolean(await store.get(`vyre://${made.space}/project/${ownerProject.id}`).then((r) => r, () => null));
-  console.log(`# KNOWN OPEN: another person's project is listed to a member: ${leakedList}; opens for a member: ${leakedGet}`);
+  // class 3 (work/rc3/class3): a project is read by its owner, its team and staff; another person's project is neither listed to her nor opened by her
+  assert.ok(!names(projects).some((x) => /Owner only project/.test(x)), "the owner's own project, which she is not on, is not listed to her");
+  assert.equal(await store.get(`vyre://${made.space}/project/${ownerProject.id}`).then((r) => r, () => null), null, "and she cannot open it");
   // what she makes herself is hers
   const mine = await store.create("project", { name: "Ana's own project" });
   assert.ok(mine && mine.id, "she can make a project");
   assert.ok(names(await store.list("project")).some((x) => /Ana's own project/.test(x)), "and sees it");
   // a task asked of her shows in her Store
   const task = await gw.ask.request(ownerChain, { title: "Ana please review MARKtask", doer: { kind: "person", id: ana.who.id, space: made.space }, output: { kind: "note" }, source: "manual" });
+  await gw.ask.request(ownerChain, { title: "Owner only task MARKownertask", doer: { kind: "person", id: f.owner.id, space: made.space }, output: { kind: "note" }, source: "manual" });
   const tasks = await store.tasks({});
+  // KNOWN OPEN (measured on class3 df7f79915, member-records/candidate-class3-df7f79915-project-task-files.txt): the tasks API (tasks.list / tasks.get, the Store's Now and Tasks) still shows a member every task of the Space, including the owner's own; records.query of type task is hidden. Printed so the day it closes this turns into an assertion.
+  console.log(`# KNOWN OPEN: tasks that are not hers are listed to a member by tasks.list: ${names(tasks).some((x) => /MARKownertask/.test(x))}`);
   assert.ok(names(tasks).some((x) => /MARKtask/.test(x)), "her task is in her Store");
   // the team changes while she looks: the poll tells her within seconds
   const before = heard.length;
