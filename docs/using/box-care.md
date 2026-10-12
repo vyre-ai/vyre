@@ -153,7 +153,9 @@ check. Then, in order:
 If Vyre does not come up in that time, or goes quiet without answering, the update undoes itself: the old source, the old image,
 the old box files and the database from step 1 all go back, and `vyre update` exits 1 saying it
 rolled back. Store migrations only go forward, which is why the database comes back from the
-backup. Once an update has come up healthy, nothing restores the database on its own, so nothing
+backup. That means anything written between the backup and the rollback (a chat, a note, a
+setting) is lost, and the update says so as it rolls back. A slow start that is still working is
+waited for, so a rollback should be rare; if one happens, check `vyre logs` before you try again. Once an update has come up healthy, nothing restores the database on its own, so nothing
 you write after that is lost.
 
 After a healthy update, when the release carries an Android build, it brings the phone app along:

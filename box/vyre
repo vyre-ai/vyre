@@ -697,6 +697,7 @@ restore_release() {
 }
 roll_back() {
   echo "vyre: the update did not come up healthy; rolling back" >&2
+  echo "vyre: the data goes back to the backup taken just before this update, so anything written since then (chats, notes, settings) is lost" >&2
   UPD_END=rolled_back
   state running rolling-back
   if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi

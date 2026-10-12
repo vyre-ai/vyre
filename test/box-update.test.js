@@ -1292,5 +1292,6 @@ test("box update (rc.3): a server that is slow to answer but still working is wa
   const quiet = /** @type {any} */ (await q.run(["update"]));
   assert.equal(quiet.code, 1, quiet.out);
   assert.match(quiet.out, /rolled back/);
+  assert.match(quiet.out, /anything written since then \(chats, notes, settings\) is lost/, "a person is told what the rollback costs");
   assert.doesNotMatch(quiet.out, /still working/);
 });

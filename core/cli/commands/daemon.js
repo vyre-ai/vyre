@@ -16,6 +16,16 @@ import { out, dim, signal, beacon } from "../style.js";
 import { readSpace } from "../space-pref.js";
 import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
+/**
+ * The line `vyre status` prints when vyred gave no health. A vyred that is there but did not answer in time is busy (on a first start it can be, for minutes, while it sets up Records), and is not
+ * "not running": saying so sent people to `vyre up` on a server that was working. Only a refused connection is "not running".
+ * @param {{ code?: string } | null | undefined} error
+ */
+export function downLine(error) {
+  if (error && error.code === "timeout") return `  vyred ${beacon("busy")} ${dim("· it did not answer in time and is probably still setting up; try again in a minute (vyre logs shows what it is doing)")}`;
+  return `  vyred ${beacon("not running")} ${dim("· vyre up to start it")}`;
+}
+
 export default [
   {
     name: "down", order: 11, usage: "vyre down [--json]", summary: "stop it",
@@ -46,7 +56,7 @@ export default [
       }
       if (h.error) {
         if (json()) return failTool(h.error);
-        out(`  vyred ${beacon("not running")} ${dim("· vyre up to start it")}`);
+        out(downLine(h.error));
         return EXIT.UNREACHABLE;
       }
       const d = h.data;
