@@ -63,7 +63,9 @@ export async function memberDaySteps({ J, w, team, needs }) {
   await J.step(A, async () => {
     grace = await joinOne({ w, team, who: "Grace" });
     edith = await joinOne({ w, team, who: "Edith" });
-    frank = await joinOne({ w, team, who: "Frank", role: "admin" });
+    frank = await joinOne({ w, team, who: "Frank" });
+    // an invite to the admin role needs the owner to confirm the invitee's fingerprint words first; the owner makes Frank an admin once he is a member, as the Members screen does (spaces.members.set-role, the owner's yes)
+    await w.call("spaces.members.set-role", { space: team.space, person: frank.id, role: "admin" });
     const rows = (p) => p.joined.call("grants.members.list", []).then((/** @type {any} */ l) => (Array.isArray(l) ? l : l.members || []));
     const fr = (await rows(frank)).find((/** @type {any} */ m) => (m.person || m.id) === frank.id);
     assert.ok(fr && fr.role === "admin", `Frank is an admin: ${JSON.stringify(fr)}`);
