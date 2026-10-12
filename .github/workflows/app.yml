@@ -241,6 +241,13 @@ jobs:
             fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner key" + s.slice(at + line.length));'
       - run: ./gradlew --no-daemon assembleDebug assembleRelease
         working-directory: apps/app/android
+      - name: "No fake wire in the release APK (the proof's stand-in for the peer wire is compiled out unless the build is made for the proof)"
+        run: |
+          unsigned=$(ls android/app/build/outputs/apk/release/*-unsigned.apk | head -1)
+          rm -rf "$RUNNER_TEMP/apk" && mkdir -p "$RUNNER_TEMP/apk" && unzip -q "$unsigned" -d "$RUNNER_TEMP/apk"
+          test -n "$(find "$RUNNER_TEMP/apk" -name 'index.android.bundle' | head -1)" || { echo "no JS bundle in the release APK"; exit 1; }
+          if grep -rl "vyre-peer-fake-enabled" "$RUNNER_TEMP/apk"; then echo "the release APK carries the proof's fake wire"; exit 1; fi
+          echo "release APK: no fake wire"
       - name: Name the release and write android.json
         run: |
           out=android/app/build/outputs/apk
@@ -320,6 +327,13 @@ jobs:
           ws=$(ls -d *.xcworkspace | head -1); scheme=$(basename "$ws" .xcworkspace)
           xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: "No fake wire in the release simulator build"
+        run: |
+          app=$(ls -d build/Build/Products/Release-iphonesimulator/*.app 2>/dev/null | head -1)
+          test -n "$app" || { echo "no .app built"; exit 1; }
+          if grep -rl "vyre-peer-fake-enabled" "$app"; then echo "the iOS release build carries the proof's fake wire"; exit 1; fi
+          echo "iOS release build: no fake wire"
+        working-directory: apps/app/ios
       - uses: actions/upload-artifact@v4
         with:
           name: app-ios-sim-${{ github.sha }}
