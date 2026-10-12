@@ -188,7 +188,7 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage, owner_paired FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -377,10 +377,10 @@ export default {
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
       const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
-      // The owner's own present act paired it? The first device (nobody is on this box yet), the classic QR (minted with his presence), a window ticket (his screen confirmed this exact phone) and a phone's or a ring's gated ticket
-      // (he confirmed the words) are; a server's gated ticket (the server is the redeemer) and an ungated ticket a module minted are not.
-      const ownerAct = match && (match.first === true || match.via === "start" || Boolean(match.window) || match.gate === "phone" || match.gate === "ring");
-      const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.first ? "first" : match.gate ? `gate:${match.gate}` : match.window ? "window" : "start" }) : null;
+      // The owner's own present act paired it? The first device (nobody is on this box yet), a window ticket (his screen confirmed this exact phone) and a phone's or a ring's gated ticket
+      // (he confirmed the words) are; a server's gated ticket, the classic QR (a bearer ticket: any holder redeems it) and an ungated ticket a module minted are not.
+      const ownerAct = match && (match.first === true || Boolean(match.window) || match.gate === "phone" || match.gate === "ring");
+      const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.first ? "first" : match.gate ? `gate:${match.gate}` : "window" }) : null;
       db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
@@ -710,7 +710,7 @@ export default {
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
     const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
-      online: pathOf(d) !== null, path: pathOf(d), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      online: pathOf(d) !== null, path: pathOf(d), ownerPaired: Boolean(d.owner_paired), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
@@ -1148,6 +1148,28 @@ export default {
         // A legacy browser (kind web) reads its own row only: names, last seen and presence of the other devices are not its to see (reviewer-3 PA-4).
         const mine = c.startsWith("web:") ? c.slice(4) : null;
         return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)).filter(d => mine === null || d.id === mine) };
+      },
+    });
+
+    ctx.tool("relay.devices.mark", {
+      description: "Mark a paired app of yours as yours. A phone or computer that came in by a code anyone could hold, or one the box has no record of you pairing, is treated as a team member's until you mark it. Needs your presence.",
+      input: obj({ id: str }, ["id"]),
+      presence: { summary: async input => `Mark device ${String(input && input.id)} as yours` },
+      run: async (input, meta = {}) => {
+        owner(meta.caller, meta, "marking a device as yours");
+        // Only the owner's own person: the kernel's chain for this call is exactly one person hop, and she is the home's owner. A member's device gets no chain at all.
+        let mine = false;
+        try {
+          const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null;
+          mine = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && String(ctx.kernel.owner || "") !== "" && c.hops[0].actor.id === String(ctx.kernel.owner));
+        } catch { mine = false; }
+        if (!mine) throw fail("denied", "marking a device as yours is the owner's; sign in as the owner on one of your own devices, or ask the owner");
+        const id = String(input.id);
+        const row = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+        if (!row) throw fail("not_found", `no paired device ${id}; list your devices and pick one of them`);
+        if (row.kind !== "app") throw fail("bad_input", "only a phone or computer app can be marked as yours; a browser is trusted instead");
+        db.prepare("UPDATE relay_devices SET owner_paired = ? WHERE id = ? AND owner_paired IS NULL").run(JSON.stringify({ by: "owner", at: now(), path: "marked" }), id);
+        return { id, ownerPaired: true };
       },
     });
 

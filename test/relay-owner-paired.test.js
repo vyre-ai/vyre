@@ -62,13 +62,13 @@ const check = async (/** @type {any} */ w, /** @type {string} */ id, /** @type {
   assert.equal(s.body.includes(`SECRET-${path}`), owner, `${path}: the whole stream for the owner's device, the cut stream for the other`);
 };
 
-test("pairing paths: the first device, the classic QR, a confirmed window and a gated ring leave the owner's device the owner's; an ungated ticket a module minted does not", { timeout: 150_000 }, async t => {
+test("pairing paths: the first device, a confirmed window and a gated ring leave the owner's device the owner's; the classic QR (a bearer ticket: any holder redeems it) and an ungated ticket a module minted do not", { timeout: 150_000 }, async t => {
   const w = await world(t);
-  // the first device (onboarding: nobody is on the box yet) and the classic QR the owner made with his presence
+  // the first device (onboarding: nobody is on the box yet) and the classic QR, which is a bearer ticket: redeeming it confirms nothing about which device holds it, so it names no owner
   const first = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
   await check(w, first.device, true, "first");
   const start1 = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
-  await check(w, start1.device, true, "start");
+  await check(w, start1.device, false, "start");
   // the window: the redeemer is enrolled only after the screen confirms this exact phone
   const SCREEN = "device:abcdefghijklmnop", A = { proof: { method: "passkey", id: "x" }, peer: { stableId: "nodeA", node: "a" }, person: { id: "ps1" } };
   const events = []; w.d.events.on("pairing.*", (/** @type {any} */ e) => events.push([e.type, e.payload]));
@@ -81,4 +81,25 @@ test("pairing paths: the first device, the classic QR, a confirmed window and a 
   const minted = (await w.d.registry.call("relay.ticket.mint", {}, "module:wink")).data;
   const viaModule = await pairTicket(fromBase64url(minted.ticket), { relay: (await w.d.registry.call("relay.status", {}, "cli", PROOF)).data.url, name: "Handed-out phone", crypto: nodeCrypto(), keyStore: w.keys(), timeout: 20_000 });
   await check(w, viaModule.device, false, "module");
+});
+
+test("marking: a device that came in by a bearer code is the owner's only after the owner marks it, with presence; nobody else can mark", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const bearer = await pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys() });
+  await check(w, bearer.device, false, "bearer");
+  const tokenFor = async (/** @type {string} */ person) => (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person, path: "direct", session: "s" }), {})).token;
+  const mark = (/** @type {any} */ meta, /** @type {string} */ id = bearer.device) => w.d.registry.call("relay.devices.mark", { id }, "cli", meta);
+  // no person chain at all, and no presence: refused, nothing marked
+  assert.ok((await mark({})).error, "no presence, no mark");
+  const noChain = await mark(PROOF);
+  assert.ok(noChain.error && /owner/.test(noChain.error.message), `a call with no owner chain is refused: ${JSON.stringify(noChain)}`);
+  assert.equal((await info(w.d, bearer.device)).ownerPaired, false);
+  // a member's chain (a person who is not the owner) is refused
+  let memberToken = null; try { memberToken = await tokenFor("per_" + "m".repeat(26)); } catch { memberToken = null; }
+  if (memberToken) { const r = await mark({ ...PROOF, token: memberToken }); assert.ok(r.error, "a member cannot mark"); assert.equal((await info(w.d, bearer.device)).ownerPaired, false); }
+  // the owner, with presence, marks a device that exists; an id that does not exist is refused with a next step
+  assert.ok((await mark({ ...PROOF, token: await tokenFor(w.d.kernel.id.owner) }, "zzzzzzzzzzzzzzzz")).error, "an unknown device");
+  const ok = await mark({ ...PROOF, token: await tokenFor(w.d.kernel.id.owner) });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  await check(w, bearer.device, true, "marked");
 });

@@ -20,7 +20,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost, assertNotWindowsHome } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
-import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
+import { Registry, discover, ownerDevice, ownerOverTailnet, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { devAllowedPorts } from "./dev-ports.js";
 import { build, htmlWithBuild } from "./build.js";
@@ -75,8 +75,8 @@ function kernelProof(req) {
   if (!h || h.length > 5500 || !/^[A-Za-z0-9_-]+$/.test(h)) return undefined;
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
-/** Is this device row the OWNER's: Wink's record says its person is the home's owner (`homeOwner`), or the owner's own present act paired it (`ownerPaired`, written by the relay only where he was there). One statement for the caller's facts and the event bus. @param {any} device */
-export const deviceIsOwner = (device) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true);
+/** Is this device row the OWNER's: Wink's record says its person is the home's owner (`homeOwner`), or the owner's own present act paired it (`ownerPaired`, written by the relay only where he was there). One statement for the caller's facts and the event bus. @param {any} device @param {string} [owner] the home's owner id: a row that names exactly this person is the owner's too */
+export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
 
 /**
  * What the kernel may build a person's own chain from, for a call that arrived on a connection the daemon itself proved: a person's surface on the 0600 socket (only the owner can
@@ -105,7 +105,7 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (policy.caller && ownerDevice(policy.caller)) {
     // A paired device is the owner's only by `deviceIsOwner`: Wink's own record says its person IS this home's owner, or the owner's own present act paired it. Anything else gives no person facts, before an owner's identity is
     // claimed as after (a confirmed device of another member is a paired device, not the owner's).
-    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device)) return null;
+    if (String(policy.caller).startsWith("device:") && !deviceIsOwner(device, k.id.owner)) return null;
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
     return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
@@ -1654,7 +1654,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // is not the owner's on its say-so (a pairing window or a code the owner handed out can enrol a member's phone): it gets the cut stream. A browser the OWNER trusted with his presence and that names nobody is his own.
     // A removed device, a row of another kind or label, and one the home never made get nothing.
     let role = "";
-    try {
+    // The tailnet listener names only the box's verified owner (`tailnet:<login>`, ownerOverTailnet): that is the owner's own computer, the linked Mac included.
+    if (ownerOverTailnet(label)) role = "owner";
+    else try {
       const live = row && row.removed === false && label.startsWith(row.kind === "app" ? "device:" : row.kind === "web" ? "web:" : "\0");
       const roleOf = (/** @type {string} */ person) => (person === k.id.owner ? "owner" : String(k.gateway.members.roleOf({ kind: "person", id: person, space: k.id.space }) || ""));
       if (live && row.kind === "app") role = row.person ? roleOf(row.person) : row.ownerPaired === true ? "owner" : "member";
