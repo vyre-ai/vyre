@@ -12,6 +12,11 @@ import { connect as connectStream, wsDuplex } from "@vyre/stream/client.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { call, send, socket } from "../api/box";
 import { peerDuplex, peerWanted } from "../real/peer";
+import { showingJoined, teamCall, teamSession } from "../real/team-join";
+import { tool } from "../real/box";
+import { useSpaces } from "../../screens/shell/state";
+import { pollDuplex } from "./member-poll.js";
+import { AppState, Platform } from "react-native";
 import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
 import { reason } from "./reason.js";
@@ -60,9 +65,36 @@ async function write(tool: string, input: Record<string, unknown>) {
 export function boxStream(session: string): BoxStream {
   let viewer: string | undefined;
   let head = 0;
+  // A chat of a team this device JOINED (a joined team is showing and the team's door knows the chat): it is read over the member door (chat.read, polled, src/chat/member-poll.js) and written through the door's
+  // calls, never through her own home. Anything else, her own home's chats and the owner's, takes the paths below exactly as before.
+  let teamP: Promise<string | null> | null = null;
+  const teamSpace = (): Promise<string | null> => (teamP ??= (async () => {
+    try {
+      if (!(await showingJoined())) return null;
+      const sp = useSpaces.getState().space;
+      await tool("work.chat.get", { chat: session });
+      return sp;
+    } catch { return null; }
+  })());
+  const seen = () => (Platform.OS === "web" ? typeof document === "undefined" || document.visibilityState !== "hidden" : AppState.currentState === "active");
+  const writeVia = async (name: string, input: Record<string, unknown>) => {
+    if (!(await teamSpace())) return write(name, input);
+    try { return { data: await tool(name, input) } as { data?: unknown; error?: { code?: string; message?: string } }; }
+    catch (e) { const x = e as { code?: string; message?: string }; return { error: { code: x.code ?? "error", message: x.message ?? "" } }; }
+  };
   const source = streamSource({
     connect: connectStream,
     open: async ({ from }) => {
+      const team = await teamSpace();
+      if (team) {
+        const sess = await teamSession(team);
+        try {
+          const d = await pollDuplex({ call: (n, a) => sess.call(n, a), chat: session, from, visible: seen, onEnd: () => sess.close() });
+          if (typeof d.info.head === "number") head = d.info.head;
+          if (d.info.viewer) viewer = d.info.viewer;
+          return d;
+        } catch (e) { sess.close(); throw e; }
+      }
       // A device paired to its server over the relay has no WebSocket to it: the stream rides the peer wire (stream.follow), resumed by `from` like any other.
       if (peerWanted()) {
         const d = await peerDuplex(session, from);
@@ -80,13 +112,15 @@ export function boxStream(session: string): BoxStream {
     },
     // After a reset the folder starts clear; resume from the oldest frame the log still holds.
     snapshot: async () => {
+      const team = await teamSpace();
+      if (team) { const s = (await teamCall(team, "chat.read", [{ chat: session, limit: 0 }])) as { floor?: number }; return { cur: s.floor ?? 0 }; }
       const r = await call<{ floor: number }>("stream.open", { chat: session });
       return { cur: r.data?.floor ?? 0 };
     },
   });
 
   const done = async (tool: string, input: Record<string, unknown>): Done => {
-    const r = await write(tool, input);
+    const r = await writeVia(tool, input);
     if (r.error) return { ok: false, reason: reason(r.error) };
     const d = (r.data ?? {}) as Record<string, unknown>;
     if (d.unsupported || d.rewound === false || d.retried === false) return { ok: false, reason: String(d.note ?? "This session cannot go back here.") };
@@ -101,7 +135,7 @@ export function boxStream(session: string): BoxStream {
     return fn(thread);
   };
   const note = async (tool: string, input: Record<string, unknown>) => {
-    const r = await write(tool, input);
+    const r = await writeVia(tool, input);
     return r.error ? reason(r.error) : null;
   };
 
@@ -117,7 +151,7 @@ export function boxStream(session: string): BoxStream {
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
-      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.account ? { account: opts.account } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
+      const r = await writeVia("stream.send", { chat: session, text, message, surface: SURFACE, tz: viewerZone(), ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}), ...(opts.account ? { account: opts.account } : {}), ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };
@@ -130,7 +164,7 @@ export function boxStream(session: string): BoxStream {
     retry: (message) => onRun((thread) => done("threads.retry", { thread, message, surface: SURFACE })),
     branch: (at) => onRun((thread) => done("threads.branch", { thread, at, surface: SURFACE })),
     // StreamSource's own, for callers that hold only that shape: fire and forget.
-    typing() { void write("stream.typing", { chat: session }); },
+    typing() { void writeVia("stream.typing", { chat: session }); },
     send(text) { void this.sendText(text); },
     answer(ask, decision) { void this.answerAsk(ask, decision); },
     stop() { void this.stopSession(); },

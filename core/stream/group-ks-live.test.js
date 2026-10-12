@@ -841,3 +841,39 @@ test("N3: a notice outside a turn follows the room's membership: a member who wa
   await sleep(500);
   assert.ok(!textOf(watchAda.frames).includes("NOTICE-AFTER-ADA-LEFT"), "ada left before it and does not receive it");
 });
+
+test("RD1: stream.read gives a member in the chat the other person's message and the AI's answer from the start, in order and bounded; her join floor holds; a person not in the chat is refused", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const sent = await b.as("bob")("stream.send", { chat: chat.id, text: "R1-hello", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!sent.error, sent.error && sent.error.message);
+  await until(() => /R1-hello/.test(textOf(watcher.frames)), "the AI's answer to R1-hello", 60_000);
+  const read = async (/** @type {string} */ who, /** @type {any} */ input) => b.as(who)("stream.read", { chat: chat.id, ...input });
+  const r = await read("carol", { from: 0 });
+  assert.ok(!r.error, r.error && r.error.message);
+  const frames = r.data.frames;
+  assert.ok(frames.some((/** @type {any} */ f) => f.type === "chat.user-message" && String(f.data.text) === "R1-hello"), "carol reads bob's message");
+  assert.match(textOf(frames), /R1-hello/, "and the AI's answer to it");
+  assert.deepEqual(frames.map((/** @type {any} */ f) => f.cur), [...frames.map((/** @type {any} */ f) => f.cur)].sort((x, y) => x - y), "in order");
+  assert.equal(r.data.viewer, `person:${CAROL}`, "drawn for her");
+  assert.ok(r.data.next >= frames[frames.length - 1].cur, "next is the cursor to ask from");
+  // bounded: a limit of 3 gives at most 3, a huge limit at most 200, and asking from `next` gives the rest with no repeat
+  assert.ok((await read("carol", { from: 0, limit: 3 })).data.frames.length <= 3, "a small limit holds");
+  assert.ok((await read("carol", { from: 0, limit: 100000 })).data.frames.length <= 200, "the cap is 200 frames a call");
+  const tail = await read("carol", { from: r.data.next });
+  assert.equal(tail.data.frames.length, 0, "nothing after the head");
+  const behind = await read("carol", { from: r.data.head + 50 });
+  assert.equal(behind.data.reset, "ahead", "a cursor ahead of the log says reset");
+  // a person who is not in the chat is refused in words
+  const outsider = await read("ada", { from: 0 });
+  assert.ok(outsider.error, "ada is not in the chat");
+  assert.ok(!JSON.stringify(outsider).includes("R1-hello"), "and sees none of it");
+  // her join floor: ada joins now; what was said before her join comes as cursor-only placeholders, not words
+  await w.C.change(w.chains.bob, chat.id, { add_people: [ADA] });
+  const late = await read("ada", { from: 0 });
+  assert.ok(!late.error, late.error && late.error.message);
+  assert.ok(!JSON.stringify(late.data.frames).includes("R1-hello"), "ada reads none of what was said before she joined");
+  assert.ok(late.data.frames.some((/** @type {any} */ f) => f.type === "chat.hidden"), "she gets cursor-only placeholders for it");
+});

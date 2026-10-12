@@ -479,3 +479,8 @@ test("a call relayed from a device meets the server's Gate as that device: the c
   assert.equal(s.meta.kernelFacts.kind, "device");
   assert.equal(s.meta.kernelFacts.device_key_id, ID);
 });
+
+test("the default admit limits carry a team member's app: 120 a minute per Space, 240 per identity, 480 directory lookups box-wide (one stream per team call, 8 to 15 calls a screen)", async () => {
+  const src = (await import("node:fs")).readFileSync(new URL("./peer-door.js", import.meta.url), "utf8");
+  assert.match(src, /const lim = \{ perInvite: 120, perIdentity: 240, perMinute: 60_000, perBox: 480,/);
+});
