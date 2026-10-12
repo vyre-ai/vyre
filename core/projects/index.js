@@ -113,14 +113,16 @@ export default {
       run: async (input, meta = {}) => { const caller = meta.caller;
         // A member (a person who is not the owner or an admin) sees the projects she owns or is on, and not the server's folders or computers; the owner, an admin and a call with no person see what they always did.
         const K = ctx.kernel;
-        const chain = K && typeof K.chain === "function" ? await K.chain(meta).catch(() => null) : null;
+        const chain = K && typeof K.chain === "function" ? await K.chain(meta).catch(() => "unreadable") : null;
+        const unreadable = chain === "unreadable";
         const hop = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
         const member = hop ? String(hop.actor.id) : null;
         const canon = K && typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
         const role = member && K && typeof K.membership === "function" ? ((await Promise.resolve(K.membership(member, K.space)).catch(() => null)) || {}).role : null;
-        const staff = !member || (K && K.owner && canon(member) === canon(String(K.owner))) || role === "owner" || role === "admin";
+        const staff = !unreadable && (!member || (K && K.owner && canon(member) === canon(String(K.owner))) || role === "owner" || role === "admin");
         const mine = async (/** @type {any} */ out) => {
           if (staff) return out;
+          if (unreadable) return { projects: [], problems: [], sources: [] };   // a chain that cannot be read is no one
           const seats = await Promise.all((out.projects || []).map(async (/** @type {any} */ p) => { const s = await ctx.call("work.project.seat", { project: String(p.slug), person: String(member) }).then((/** @type {any} */ r) => (r && !r.error ? r.data : null), () => null); return Boolean(s && s.exists && (s.owner || s.team)); }));
           return { projects: (out.projects || []).filter((/** @type {any} */ _p, /** @type {number} */ i) => seats[i]).map(({ home: _h, workspaces: _w, machine: _m, source: _s, ...rest }) => rest), problems: [], sources: [] };
         };

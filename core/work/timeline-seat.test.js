@@ -39,6 +39,9 @@ test("a member reads the timeline of, and sees in the project list, only the pro
     assert.deepEqual(slugs, [BS], `${caller}: the project list is the projects she is on`);
     for (const p of list.data.projects) for (const k of ["home", "workspaces", "machine"]) assert.ok(!(k in p), `${caller}: no ${k} in a member's project row`);
   }
+  // a token whose chain cannot be read is no one: it never gets the owner's list
+  const lost = await call("projects.list", {}, "mcp", { token: "not-a-token" });
+  assert.deepEqual(((lost.data && lost.data.projects) || []).map((/** @type {any} */ p) => p.slug), [], "a chain that cannot be read gets no projects, not the full list");
   // the owner: every project, with its folders
   assert.deepEqual(titles(await call("work.timeline", { project: project.slug }, "cli", own)), ["OWNERS email", "OWNERS task"], "the owner reads any project's timeline");
   const all = await call("projects.list", {}, "cli", own);
