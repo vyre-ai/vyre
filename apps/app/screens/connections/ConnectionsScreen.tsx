@@ -8,6 +8,7 @@ import RealAnyApp from "./RealAnyApp";
 import RealCatalog from "./RealCatalog";
 import RealConnected from "./RealConnected";
 import RealMcp from "./RealMcp";
+import { OwnHomeNotice } from "../../src/real/OwnHomeNotice";
 
 type Tab = "all" | "add" | "any" | "mcp" | "access";
 
@@ -15,6 +16,7 @@ export default function ConnectionsScreen() {
   const [tab, setTab] = useState<Tab>("all");
   return (
     <Frame title="Connections" sub="Services, servers and accounts Vyre can use.">
+      <OwnHomeNotice screen="connections" />
       <Tabs<Tab> value={tab} onChange={setTab} items={[["all", "Connected"], ["add", "Add"], ["any", "Any app"], ["mcp", "MCP"], ["access", "Access"]]} />
       <View>
         {tab === "all" ? <RealConnected open={setTab} /> : null}

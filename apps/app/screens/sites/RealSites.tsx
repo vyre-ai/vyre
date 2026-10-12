@@ -11,6 +11,7 @@ import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
 import { SitesList } from "./SitesList";
 import { BLANK, PIPE, SOURCES, build, challengeText, decision, domainLine, heldOf, nextStep, planLines, publishRefusal, sites, stepOf, type Dep, type Draft, type Held, type Site, type Status } from "./real-model";
+import { OwnHomeNotice } from "../../src/real/OwnHomeNotice";
 
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
@@ -33,6 +34,7 @@ export function RealSites() {
   const rows = deps ? sites(deps) : [];
   return (
     <Frame title="Sites" sub="Sites and apps you publish, each one on its own." actions={<Button kind="primary" icon="plus" label="Publish" onPress={() => { setProblem(""); setDraft({ ...BLANK }); }} />}>
+      <OwnHomeNotice screen="publish" />
       {err ? <Card flush><ErrorState title="Publish did not load" reason={err} retry={load} /></Card> : null}
       {deps === null && !err ? <LoadingState rows={3} /> : null}
       {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Drive folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}

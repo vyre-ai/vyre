@@ -12,6 +12,7 @@ import RealLessons from "./RealLessons";
 import RealChromeSites from "./RealChromeSites";
 import WhySheet from "./WhySheet";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
+import { OwnHomeNotice } from "../../src/real/OwnHomeNotice";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
 /** A citation: the number in brackets, 12 mono, in the accent, set small beside the 17 answer. */
@@ -91,6 +92,7 @@ export default function MemoryScreen() {
 
   return (
     <Frame title="Memory" sub="What Vyre knows, and where each fact came from." scope={!real}>
+      <OwnHomeNotice screen="memory" />
       {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Juniper Studio never show here, and your assistants do not carry them into Mine.</Footnote> : null}
       {!real && scope === "juniper" ? <Footnote icon="shield">This is the Juniper Studio boundary. Facts here stay in Juniper Studio. Your own Mine facts are not shown.</Footnote> : null}
 
