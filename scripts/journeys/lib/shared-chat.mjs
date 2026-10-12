@@ -381,13 +381,15 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
       for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
-    const lists = /** @type {Record<string, string>} */ ({});
-    for (const who of ["owner", grace.name, edith.name]) lists[who] = await R(who, `walk-mcp:skills.list {}`);
-    said.skills = JSON.stringify(lists).slice(0, 1500);
-    for (const [who, out] of Object.entries(lists)) assert.ok(!/walk-(term|mcp) exit=(?!0\b)\d+/.test(out), `${who}'s command ran (a refused terminal says nothing about skills): ${out.slice(0, 200)}`);
-    for (const who of [grace.name, edith.name]) assert.ok(!lists[who].includes("walk-owner-private"), `${who}'s turn does not list the owner's personal skill: ${lists[who].slice(0, 300)}`);
-    assert.ok(lists.owner.includes("walk-owner-private") || (approved && approved.error), `the owner's turn lists the owner's own skill (or the skill could not be made: ${JSON.stringify(approved).slice(0, 200)}): ${lists.owner.slice(0, 300)}`);
-    return `draft/approve: ${JSON.stringify(approved).slice(0, 120)} | lists: ${JSON.stringify(lists).slice(0, 600)}`;
+    // what a launched session is handed (the person's approved skills as files in her account's home; a bare MCP session lists only the built-in five): count the owner's skill file in each person's turn
+    const counts = /** @type {Record<string, string>} */ ({});
+    for (const who of ["owner", grace.name, edith.name]) counts[who] = await R(who, `find "$HOME" "\${CODEX_HOME:-$HOME}" -path '*walk-owner-private*' -name SKILL.md 2>/dev/null | wc -l; find "$HOME" "\${CODEX_HOME:-$HOME}" -name SKILL.md 2>/dev/null | wc -l`);
+    said.skills = JSON.stringify(counts).slice(0, 600);
+    for (const [who, out] of Object.entries(counts)) assert.ok(/walk-term exit=0/.test(out), `${who}'s command ran: ${out.slice(0, 200)}`);
+    const nums = (/** @type {string} */ t) => (t.split(":").slice(1).join(":").match(/\d+/g) || []).map(Number);
+    for (const who of [grace.name, edith.name]) assert.equal(nums(counts[who])[0], 0, `${who}'s launched session does not have the owner's personal skill: ${counts[who].slice(0, 200)}`);
+    if (!(approved && approved.error)) assert.ok(nums(counts.owner)[0] >= 1, `the owner's launched session has the owner's own approved skill as a file: ${counts.owner.slice(0, 200)}`);
+    return `owner skill files (own skill, all): ${JSON.stringify(counts).slice(0, 400)} | draft/approve: ${JSON.stringify(approved).slice(0, 100)}`;
   }, { needs: [H], owner: "chat" });
 
   const WE = "a job a member's turn leaves behind calls the tool CLI after the turn: while her session still stands it has hers, after it is gone the call fails; the owner's turn between them gets none of it";
