@@ -7,11 +7,16 @@ import { useMembers } from "../../screens/spaces/state";
 import { useSpaces } from "../../screens/shell/state";
 import { tagFor } from "./place-tag.js";
 
-export function PlaceTag({ of = "showing" }: { of?: string }) {
+/** The tag's words for a list that came from one place: her own home's, or the space showing. Null until the spaces are known (and under All spaces, where each row carries its own). */
+export function usePlaceText(of: string = "showing"): string | null {
   const cards = useMembers((s) => s.spaces);
   const load = useMembers((s) => s.load);
   const showing = useSpaces((s) => s.space);
   useEffect(() => { if (!cards.length) void load(); }, [cards.length, load]);
-  const text = tagFor(cards, of, showing);
+  return tagFor(cards, of, showing);
+}
+
+export function PlaceTag({ of = "showing" }: { of?: string }) {
+  const text = usePlaceText(of);
   return text ? <View className="flex-row"><SpaceTag text={text} /></View> : null;
 }

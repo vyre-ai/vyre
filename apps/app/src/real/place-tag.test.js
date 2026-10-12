@@ -40,6 +40,14 @@ test("the ten own-home screens, the routed ones and the sidebar draw the tag", (
   assert.ok(!/OwnHomeNotice|yours, not the team/i.test(src), "the banner is gone");
 });
 
+test("the rows carry it too: chats (the block list), projects, a project's files, her vault items, her own assistants and the Space's assistants", () => {
+  const read = (/** @type {string} */ f) => fs.readFileSync(path.join(APP, f), "utf8");
+  assert.ok(/tagOf\(x\) \? <SpaceTag text=\{tagOf\(x\)\} \/>/.test(read("ui/blocks/BlockViews.tsx")), "every block list row draws its tag (its own, else the list's)");
+  assert.ok(/content: \{ \.\.\.\(tag \? \{ tag \} : \{\}\)/.test(read("screens/chats/ChatsList.tsx")), "the chats list gives its rows the tag of where they live");
+  assert.ok(/tagOf=\{\(sid\) => tagFor\(cards, sid \|\| showing, showing\)\}/.test(read("screens/projects/ProjectsScreen.tsx")) && /tagOf && tagOf\(spaceId\(i\)\)/.test(read("ui/tasks/ProjectsList.tsx")), "projects: each row says its own space, so a mixed list is right");
+  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/settings/RealAgents.tsx", "screens/settings/SpaceAssistants.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
+});
+
 test("trying to use a Space assistant or a teammate answers with the gate's own words and starts nothing", () => {
   assert.match(useRefusal({ name: "research" }, false), /research has no AI sign-in picked for it, and the owner's is not used for your request\. Ask the owner to pick one for it\. Nothing was started\./);
   assert.match(useRefusal({ name: "research", kind: "teammate" }, false), /not on this project's team\. Ask the project's owner to add you, then ask again\. Nothing was queued\./);

@@ -13,10 +13,11 @@ import { ChatsList } from "./ChatsList";
 import { UNSUPPORTED, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
-import { PlaceTag } from "../../src/real/PlaceTag";
+import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
 /** /u/chats: every chat you can see, the ones that need you first. One row type for solo, group and people-only chats; a row for a chat you are not in is greyed and does not open. */
 export default function ChatsScreen() {
+  const chatsTag = usePlaceText("showing");
   const router = useRouter();
   const chats = useChats();
   const gap = useGap();
@@ -54,7 +55,7 @@ export default function ChatsScreen() {
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
-          <ChatsList rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+          <ChatsList tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
         )}
     </Page>
   );

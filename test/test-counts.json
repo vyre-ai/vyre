@@ -1052,7 +1052,7 @@
  "test/journey-assistant-access.test.js": 6,
  "apps/app/screens/assistants/access-model.test.js": 2,
  "core/work/member-projects.test.js": 11,
- "apps/app/src/real/place-tag.test.js": 4,
+ "apps/app/src/real/place-tag.test.js": 5,
  "apps/app/screens/settings/space-agents.test.js": 1,
  "core/work/member-files.test.js": 8
 }
