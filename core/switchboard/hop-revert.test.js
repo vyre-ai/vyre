@@ -270,3 +270,14 @@ test("a queued hop past the revert wait is put back once and dropped in words th
   assert.equal(texts.length, 1, "and the room is told");
   assert.match(texts[0], /could not be started.*Send it again/);
 });
+
+test("a queued hop in a team Space chat carries the Space with it: the hop's kernel session opens in that Space's kernel, where the reply looks for it", async () => {
+  /** @type {any} */ let seen = null;
+  const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
+    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, onceTarget: async () => ({}), emit() {}, endAnnouncedTurn() {}, drainQueued() {}, deliverRow: async () => {},
+    sendOnce: async (/** @type {any} */ _i, /** @type {any} */ _t, /** @type {any} */ _s, /** @type {any} */ _o, /** @type {any} */ o) => { seen = o.kernelTurn; return { sent: true }; } });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  runQueuedOver(sb, "t", [{ id: 7, text: "A-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_ada", space: "spc_aaaaaaaaaaaa", over: { provider: "claude", account: "x", person: "per_ada" } }, () => ({ changes: 1 }), 1, LOCK);
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(seen, { chat: "c", asker: "per_ada", space: "spc_aaaaaaaaaaaa" });
+});
