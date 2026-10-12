@@ -73,7 +73,7 @@ test("a member's request for an agent that HAS a credential picked for it is ref
   await until(() => w.runs() === 1, "the owner's agent thread on its picked credential");
 });
 
-test("the team pump launches with no person on the call: the person the request recorded (for_person) is judged; automation passes; a teammate launch with a picked credential and nobody recorded is refused", { timeout: 90_000 }, async t => {
+test("the team pump launches with no person on the call: the person the request recorded (for_person) is judged; automation passes; a teammate launch with nobody recorded is not judged and starts, as before the gate", { timeout: 90_000 }, async t => {
   const w = await world(t);
   const BEN = "per_" + "b".repeat(26);
   const picked = { CLAUDE_CODE_OAUTH_TOKEN: "picked-for-the-teammate" };
@@ -81,13 +81,13 @@ test("the team pump launches with no person on the call: the person the request 
   const memberAsked = await launch({ for_person: BEN });
   assert.equal(memberAsked.error && memberAsked.error.code, "no_account", JSON.stringify(memberAsked));
   assert.match(memberAsked.error.message, /cannot be used for a teammate's request yet/);
+  assert.equal(w.runs(), 0, "the member's made no thread");
   const nobody = await launch({});
-  assert.equal(nobody.error && nobody.error.code, "no_account", "nobody recorded: " + JSON.stringify(nobody));
-  assert.match(nobody.error.message, /nobody is recorded as having asked/);
-  assert.equal(w.runs(), 0, "neither made a thread");
+  assert.ok(nobody.data && !nobody.error, "nobody recorded (a restart re-running a queued request, a duty): not judged, it starts: " + JSON.stringify(nobody.error));
+  await until(() => w.runs() === 1, "the unrecorded request's teammate thread");
   const owner = await launch({ for_person: w.d.kernel.id.owner });
   assert.ok(owner.data && !owner.error, "the owner's request: " + JSON.stringify(owner.error));
-  await until(() => w.runs() === 1, "the owner's teammate thread");
+  await until(() => w.runs() === 2, "the owner's teammate thread");
   // the check a module asks for before it queues work answers the same, and names who asked
   const check = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked }, "module:team", await w.tokenOf(w.bobChain));
   assert.equal(check.error && check.error.code, "no_account", JSON.stringify(check));

@@ -209,11 +209,9 @@ export async function agentLaunchGuard(sb, i, who, owner) {
   if (i.account || owner === undefined) return;
   const person = forPerson || who;
   if (forPerson === "automation") return;                  // an owner's or a Flow's own setting, named by the module that makes it (the duty wake, the integrator)
-  if (!person) {
-    // nobody is on the call and no module named who the work is for: a teammate launch is refused whatever credential it would run on (the pump launches from events, so it must carry the person)
-    if (launch.agent_kind === "teammate") throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used here: nobody is recorded as having asked. Ask the owner to send the request again. Nothing was started.`), { code: "no_account" });
-    return;
-  }
+  // The gate judges ONE situation: a call that carries a person who is not the owner or an admin. A call with no person on it (the owner's surfaces, a session asking a teammate, a restart re-running a queued
+  // request, a duty, the integrator, a Flow) is not judged and not refused here, as before the gate existed.
+  if (!person) return;
   if (owner && sb.canon(person) === sb.canon(owner)) return;
   // an admin's turn is the owner's kind of turn
   const role = typeof sb.deps.membershipOf === "function" ? await Promise.resolve(sb.deps.membershipOf(person)).catch(() => null) : null;
@@ -239,12 +237,10 @@ const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? 
 /**
  * The whole check of an agent or teammate launch, for the tool that launches (threads.launch) and for the check a module asks for BEFORE it queues work (threads.launch-check, team.ask): who asks is the
  * first person on the call's chain, else the person the module says the work is for (for_person; "automation" is an owner's or a Flow's own setting, named by the module); then agentLaunchGuard judges. Answers who was found.
- * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @param {string} [origin] the caller class the running call came from ("cli" and "local": the box's own terminal, the owner's) @returns {Promise<string | null>}
+ * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @returns {Promise<string | null>}
  */
-export async function checkLaunch(sb, i, chain, owner, origin) {
-  // a terminal (the command line on the box itself) carries no chain of its own through a module's hop: the daemon's listener made it the home's owner, and the work it asks for is the owner's
-  const terminal = !firstPerson(chain) && (origin === "cli" || origin === "local") && owner ? owner : null;
-  const who = firstPerson(chain) || terminal;
+export async function checkLaunch(sb, i, chain, owner) {
+  const who = firstPerson(chain);
   await agentLaunchGuard(sb, i, who, owner);
   return who || (typeof i.for_person === "string" && i.for_person && i.for_person !== "automation" ? i.for_person : null);
 }
