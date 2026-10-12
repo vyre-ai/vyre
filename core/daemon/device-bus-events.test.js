@@ -66,6 +66,9 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   for (const [label, id] of [["web:wuuuuuuuuuuuuuuu", "wuuuuuuuuuuuuuuu"], ["setup:ssssssssssssssss", "ssssssssssssssss"], ["tailnet:someone", "x"], ["web:" + ids.member, ids.member], ["device:" + wids.owner, wids.owner]]) {
     for (const p of ["/v1/events?since=0", "/v1/events/stream?since=0"]) { const r = await get(await asWeb(label, id), p); assert.equal(r.status, 404, `${label} ${p}: ${r.status} ${r.body.slice(0, 120)}`); }
   }
+  // the onboarding page's listener (no owner device yet on a fresh box): it carries its own event-type limit, so the rule leaves it alone and its stream is served
+  { const s = /** @type {http.Server} */ (await new Promise(r => { const x = http.createServer((req, res) => d.registry.deps.handler({ eventType: "onboard.*" })(req, res, "onboard", undefined)); x.listen(0, "127.0.0.1", () => r(x)); })); t.after(() => s.close());
+    const r = await get(s, "/v1/events/stream?since=0"); assert.equal(r.status, 200, "the onboarding stream is served"); assert.ok(!r.body.includes("OWNER-DEVICE-BUS-SECRET"), "and carries only onboard.* events"); }
   const main = /** @type {http.Server} */ (await serve(undefined, "x")); t.after(() => main.close());
   const m = await get(main, "/v1/events?since=0&limit=500");
   assert.equal(m.status, 200, "control: no device caller serves the bus"); assert.ok(m.body.includes("OWNER-DEVICE-BUS-SECRET"));
