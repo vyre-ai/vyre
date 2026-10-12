@@ -75,7 +75,14 @@ function kernelProof(req) {
   if (!h || h.length > 5500 || !/^[A-Za-z0-9_-]+$/.test(h)) return undefined;
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
-/** Is this device row the OWNER's: Wink's record says its person is the home's owner (`homeOwner`), or the owner's own present act paired it (`ownerPaired`, written by the relay only where he was there). One statement for the caller's facts and the event bus. @param {any} device @param {string} [owner] the home's owner id: a row that names exactly this person is the owner's too */
+/**
+ * Is this device row the OWNER's? There are exactly three ways, and this is the one place that names them; add a fourth here and nowhere else:
+ *   1. `homeOwner`: Wink's record of who confirmed the device says it is this home's owner (the typed-code app, a window phone).
+ *   2. `ownerPaired`: the relay wrote the fact because the owner was present at the pairing (the first device, a window he confirmed, a phone or ring ticket he confirmed with the words), or he marked it later (`relay.devices.mark`).
+ *   3. a named row: the row's `person` is exactly the home's owner id.
+ * A bearer code (the classic QR) and a ticket a module minted prove none of these. One statement for the caller's facts and the event bus.
+ * @param {any} device @param {string} [owner] the home's owner id
+ */
 export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
 
 /**
