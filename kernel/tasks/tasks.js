@@ -297,7 +297,7 @@ export function createTasks(cfg) {
   const requestOnce = (/** @type {any} */ c, /** @type {any} */ s) => api._requestOnce(c, s);
   api = {
     /** A task's doer, giver and project for the ownership rule: no gate, for the gateway's own use. @param {string} id */
-    facts(id) { const t = tasks.get(id); return t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null } : null; },
+    facts(id) { const t = tasks.get(id); return t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null, checkers: checkersOf(t) } : null; },
     async request(/** @type {any} */ chain, /** @type {any} */ spec, /** @type {{ idem?: string }} */ opts = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       return idem.once(chain, "request", opts.idem, spec, () => requestOnce(chain, spec));

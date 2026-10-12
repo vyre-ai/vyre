@@ -133,21 +133,15 @@ export async function mayWrite(chain, type, row, patch, ctx) {
   throw no("a task is changed by whoever it is for, whoever gave it, or its project's owner or team. Ask one of them.");
 }
 
-/**
- * May this chain READ this task: the one rule, read by the Records routes and by the tasks service. Its doer, whoever gave it (any hop of the chain: an assistant acting for a person reads what she reads), its
- * checkers, the owner or team of its project, and an owner or an admin. A task with no project is its doer's, its giver's, its checkers' and staff's. A chain with no person (a module's own) is not judged here.
- * @param {any} chain @param {{ doer?: any, assigned_by?: any, project?: any }} t
- * @param {{ staff: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, checkers?: any[] }} ctx
- */
+/** May this chain READ this task (one rule, for the Records routes and the tasks service): its doer, giver, checkers, the owner or team of its project, an owner or admin. Only the chain's person counts, never a later hop; a chain with no person is not judged.
+ * @param {any} chain @param {any} t @param {{ staff: boolean, project: (ref: string) => Promise<{ owner: string | null, team: string[] } | null>, checkers?: any[] }} ctx */
 export async function mayReadTask(chain, t, ctx) {
-  const acting = actorsOf(chain), me = acting.find((/** @type {any} */ a) => a.kind === "person");
+  const me = actorsOf(chain).find((/** @type {any} */ a) => a.kind === "person");
   if (!me || ctx.staff) return true;
-  const mine = (/** @type {any} */ a) => Boolean(a) && acting.some((/** @type {any} */ x) => x.kind === a.kind && String(x.id) === String(idOf(a)));
-  if (mine(t.doer && t.doer.kind ? t.doer : (t.doer && t.doer.actor) || null) || mine(t.assigned_by && t.assigned_by.kind ? t.assigned_by : (t.assigned_by && t.assigned_by.actor) || null)) return true;
-  if ((ctx.checkers || []).some((/** @type {any} */ c) => c && String(idOf(c)) === String(me.id))) return true;
-  const ref = refOf(t.project);
-  if (!ref) return false;
-  const pr = await ctx.project(ref).catch(() => null);
+  // only the chain's PERSON counts, never a later hop: an assistant acting for her reads what she reads
+  const is = (/** @type {any} */ a) => { const x = a && a.actor ? a.actor : a; return Boolean(x) && x.kind === "person" && String(x.id) === String(me.id); };
+  if (is(t.doer) || is(t.assigned_by) || (ctx.checkers || []).some(is)) return true;
+  const ref = refOf(t.project), pr = ref ? await ctx.project(ref).catch(() => null) : null;
   return Boolean(pr && (pr.owner === String(me.id) || pr.team.includes(String(me.id))));
 }
 

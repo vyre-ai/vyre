@@ -127,4 +127,19 @@ test("communication and team-member: a member reads her own mail and her project
   const evOf = async (/** @type {string} */ p) => JSON.stringify([await door(p, "events.read", {}), await door(p, "events.read", { limit: 500 }), await door(p, "events.read", { since: 0 }), (await gw.events.read(chainOf(p), { since: 0, limit: 500 }))]);
   for (const who of [ANA, BEN]) assert.ok(!(await evOf(who)).includes("FILE-EVENT-SECRET"), `${who.slice(4, 8)}: no event of a file in a project she is not on`);
   assert.ok(JSON.stringify(await gw.events.read(ownerChain, { since: 0, limit: 500 })).includes("FILE-EVENT-SECRET"), "the owner sees them");
+
+  // a checker who is neither the doer, the giver nor on the project reads the task she checks, on both routes; and she cannot change what only the doer may
+  const actorOf = (/** @type {string} */ id) => ({ kind: "person", id, space: SPACE });
+  const checked = await gw.ask.request(ownerChain, { title: "CHECKED-TASK", doer: actorOf(BEN), checker: actorOf(ZED), output: { kind: "note" } });
+  assert.ok((await taskTitles(ZED)).includes("CHECKED-TASK"), "the checker reads the task through records.query");
+  assert.ok(await gw.ask.get(chainOf(ZED), checked.id), "and through tasks.get");
+  assert.ok((await askTitles(ZED)).includes("CHECKED-TASK"), "and tasks.list");
+  assert.ok(!(await taskTitles(ANA)).includes("CHECKED-TASK") && (await gw.ask.get(chainOf(ANA), checked.id)) === null, "a stranger reads it by neither");
+  await assert.rejects(gw.ask.start(chainOf(ZED), checked.id), /only the doer|not_allowed|may not|not allowed/i, "the checker cannot do what only the doer does");
+  // only the chain's PERSON counts: a member's chain with an agent behind it reads as the member, the owner's as the owner
+  const kit = { kind: "agent", id: "kit", space: SPACE };
+  await gw.grants.addActor(ownerChain, kit, { presence: proof() });
+  const owned = await gw.ask.request(ownerChain, { title: "KITS-TASK", doer: kit, output: { kind: "note" } });
+  const anaWithKit = K.chains.fromFacts({ kind: "agent_session", vouched: true, person: ANA, agent: "kit", session: "sa" });
+  assert.equal(await gw.ask.get(anaWithKit, owned.id), null, "a member's chain with an agent behind it reads as the member, not as the agent's task");
 });
