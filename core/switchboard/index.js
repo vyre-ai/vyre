@@ -936,6 +936,8 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
+      // A warm session (threads.quick) is Vyre's own plumbing and is hidden from a person's list by this flag: it is set now, in the same step as the row, not after the awaits below, or the row shows in the list while it starts.
+      if (o.quick) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify({ quick: true }), id);
       at("chat");
       await this.ensureChat(id, o.kernelTurn || null);
       this.ensureSlot(id, o.slotName || null);

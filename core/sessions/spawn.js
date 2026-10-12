@@ -185,7 +185,7 @@ function viaSpawner(command, args, o) {
   const env = { ...(o.env || {}) };
   // A shell a client terminal runs (o.terminal, acp.js terminal/create) holds no credential at all: none in its environment, none named by a *_FILE_DESCRIPTOR variable, and no descriptor 3.
   const key = o.terminal ? (stripCredentials(env), undefined) : takeCredentialForFd(env);
-  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed && !o.terminal ? { seed: o.seed } : {}), ...(o.terminal ? { role: "terminal" } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
+  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, ...(o.terminal ? {} : { shared: o.account.shared }) } : {}), ...(o.seed && !o.terminal ? { seed: o.seed } : {}), ...(o.terminal ? { role: "terminal" } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
     // The spawner starts it detached: it leads a new group and session, both its pid.

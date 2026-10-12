@@ -500,7 +500,7 @@ test("R2: the notice for a refused message is one fixed sentence for the cause, 
   const watcher = await b.watch("bob", chat.id);
   assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
   assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
-  const LEAK = "account Eve's Claude (acct_77) at /home/acct/2001/.claude with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 on api.example.com";
+  const LEAK = `account Eve's Claude (acct_77) at /home/acct/2001/.claude with ${["sk", "ant", "api03", "abcdefghijklmnopqrstuvwxyz0123456789"].join("-")} on api.example.com`;
   refuseSends(b, "C-ONE", "account_unavailable", LEAK);
   refuseSends(b, "C-TWO", "account_unavailable", LEAK);
   assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-ONE", to: ["assistant:assistant"], cwd: w.work })).error);

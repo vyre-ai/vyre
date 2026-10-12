@@ -217,6 +217,16 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
   });
 
+  test(`${driver}: a warm memory session is never in a person's list, not even while it is starting`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const ask = async (/** @type {string} */ prompt) => { const r = await w.internal("threads.quick", { purpose: "memory", system: "Answer from the facts given.", prompt }); if (r.error) throw new Error(r.error.message); return r.data; };
+    let stop = false, seen = /** @type {any} */ (null);
+    // The list is read as fast as it can be while the sessions start (the row exists, status starting, before its options are written).
+    const poll = (async () => { while (!stop) { const l = (await w.tool("threads.list", {})).data || []; const hit = l.find((/** @type {any} */ r) => r.name === "Vyre memory"); if (hit && !seen) seen = hit; await new Promise(r => setTimeout(r, 3)); } })();
+    try { await ask("who is kit"); await ask("who is juno"); await ask("who is ada"); } finally { stop = true; await poll; }
+    assert.equal(seen, null, "a Vyre memory session showed in a person's list while starting: " + JSON.stringify(seen && { id: seen.id, status: seen.status }));
+  });
+
   test(`${driver}: threads.quick spend_purpose puts that answer's cost in the ledger under the asker's own word, and a bad one is ignored`, { skip }, async t => {
     const w = await boot(t, { driver });
     const ask = async i => w.d.registry.call("threads.quick", { purpose: "memory", ...i }, "module:watchers");
