@@ -92,6 +92,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; ask.many opened to a model or a module in 3112254d5 (10 Oct 2026); the body decides: an agent asks the person several things as one card; it decides nothing (the answers are only the person's words) and any act that follows still waits for the person's yes; capped at 6 questions and 20 waiting"
  },
  {
+  "tool": "assistant.access.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; assistant.access.get opened to a model or a module in d2629ff6a (11 Oct 2026); the body decides: read-only: what the person turned off for their own assistant, so it can say why a call was refused; it answers only for the person on the call's own chain"
+ },
+ {
   "tool": "brand.draft",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; brand.draft opened to a model or a module in afde6d660 (9 Oct 2026); the body decides: read-only: builds a draft profile from HTML the caller passes in and saves nothing; saving is the separate brand.set"
  },
@@ -906,6 +910,14 @@
  {
   "tool": "publish.go",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.go opened to a model or a module in cd3f9e63b (10 Oct 2026); the body decides: gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and the one decision also approves the preview"
+ },
+ {
+  "tool": "publish.job.attention",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.job.attention opened to a model or a module in 2ca8c7e66 (11 Oct 2026); the body decides: gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+ },
+ {
+  "tool": "publish.job.runs",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.job.runs opened to a model or a module in 2ca8c7e66 (11 Oct 2026); the body decides: gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
  },
  {
   "tool": "publish.quick",

@@ -68,3 +68,18 @@ test("the models probe makes its folder under the work folder when the box has o
   assert.equal(probeBase({ tmp: "/tmp", exists: p => p === "/work" }), "/work", "the default work folder is /work");
   assert.equal(probeBase({ work: "/work", tmp: "/tmp", exists: () => false }), "/tmp");
 });
+
+test("a chat turn whose kernel session cannot be opened leaves the turn before's session alone; a turn that opens replaces it", async () => {
+  let ended = 0;
+  const old = { end: async () => { ended++; }, turn: true, asker: "per_a" };
+  const mk = (/** @type {any} */ ks) => /** @type {any} */ ({ ksCur: new Map([["t", old]]), turnAsker: new Map([["t", "per_a"]]), turnSpace: new Map(), db: { prepare: () => ({ run: () => ({}) }) }, deps: { log() {}, kernelSession: async () => { if (!ks) throw new Error("not in this chat"); return ks; } } });
+  const sb1 = mk(null);
+  assert.equal(await Switchboard.prototype.renewKernelSession.call(sb1, "t", {}, { chat: "c", asker: "per_b" }), false);
+  assert.equal(ended, 0, "the previous session was not ended by a failed open");
+  assert.equal(sb1.ksCur.get("t"), old, "and it is still the current one");
+  assert.equal(sb1.turnAsker.get("t"), "per_a", "the turn's asker is untouched");
+  const sb2 = mk({ end: async () => {} });
+  assert.equal(await Switchboard.prototype.renewKernelSession.call(sb2, "t", {}, { chat: "c", asker: "per_b" }), true);
+  assert.equal(ended, 1, "a session that opened replaces the old one, which is released");
+  assert.equal(sb2.turnAsker.get("t"), "per_b");
+});

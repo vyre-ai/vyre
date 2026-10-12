@@ -112,7 +112,8 @@ test("a model's tool with no `space` in a team turn lands in the chat's Space, n
   const assistantSaid = async () => ((await as(BEN, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
   const waitFor = async (/** @type {RegExp} */ re, /** @type {string} */ what) => { let said = /** @type {string[]} */ ([]); await until(async () => { said = await assistantSaid(); return said.some(x => re.test(x)); }, what).catch(e => { throw new Error(`${e.message} :: ${said.join(" || ").slice(0, 900)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-5).join(" | ")}`); }); return said.find(x => re.test(x)) || ""; };
   await as(ANA, "send", { chat: made.chat, text: "vyre work.chat.list {}" });
-  const listed = await waitFor(/chats|error/, "the model's work.chat.list answer");
+  // (the message grows as its words stream in: wait for the record address itself, not for the first word of the answer, or the check reads a half-streamed message on a loaded box)
+  const listed = await waitFor(/chat-record\/|error/, "the model's work.chat.list answer");
   assert.ok(listed.includes(`vyre://${firm.space}/chat-record/`), `the chat records the model's work.chat.list returned are the team Space's, not the home's: ${listed.slice(0, 300)}`);
   assert.ok(!JSON.stringify((await w.tool("work.chat.list", {})).data).includes(String(made.chat)), "and the home's own list does not have it");
   await as(ANA, "send", { chat: made.chat, text: "vyre threads.list {}" });

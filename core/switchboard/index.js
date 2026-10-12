@@ -1132,12 +1132,15 @@ export class Switchboard {
    */
   async openSocket(id, rec, turn = null) {
     // No socket on this machine (or it is off): the kernel session is still opened, because the stream's own calls on the thread (forThread) need it; there is just no socket to stamp it on.
-    if (!this.deps.threadSocket) { await this.renewKernelSession(id, rec, turn); return; }
-    if (this.socks.has(id)) { if (turn) await this.renewKernelSession(id, rec, turn); return; }
+    // A chat turn whose session cannot be opened does not start: the person is told in words (the caller's refusal) instead of the turn running with no session and its reply dropped.
+    const needed = (/** @type {boolean} */ ok) => { if (!ok && turn && turn.chat) throw Object.assign(new Error("The team's chat could not be opened for you just now. Send the message again in a minute."), { code: "no_session" }); };
+    if (!this.deps.threadSocket) { needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
+    if (this.socks.has(id)) { if (turn) needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
+    let opened = true;
     try {
       // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
       // The socket asks for the CURRENT one each call (`this.ksCur`), so a group chat's next turn, asked by another person, is stamped with that turn's own session.
-      await this.renewKernelSession(id, rec, turn);
+      opened = await this.renewKernelSession(id, rec, turn, "launch");
       const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, ...(this.deps.kernelSession ? { kernelToken: () => { const k = this.ksCur.get(id); return k ? k.token() : undefined; } } : {}), pids: async () => {
         const st = this.live.get(id);
         const g = st && st.group;
@@ -1145,11 +1148,12 @@ export class Switchboard {
       } });
       // vyred began stopping while this socket opened: stopAll has closed the others already, so this one closes now instead of keeping the process alive
       if (sock && this.closing) { await this.endKernelSession(id); await sock.close(); return; }
-      if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id); await sock.close(); } });
+      if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id, "its thread's socket closed"); await sock.close(); } });
       else await this.endKernelSession(id);
     } catch (e) {
       this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
     }
+    needed(opened);
   }
 
   /**
@@ -1167,9 +1171,18 @@ export class Switchboard {
    * asked and the chat the reply belongs to; the kernel checks that person is in that chat. With none, the thread's own session as before. The previous one is ended.
    * @param {string} id @param {any} rec @param {{ chat?: string, asker?: string } | null} turn
    */
-  async renewKernelSession(id, rec, turn) {
+  async renewKernelSession(id, rec, turn, via = "send") {
     if (!this.deps.kernelSession) return true;
+    const t0 = Date.now();
+    if (!this.renewSeq) this.renewSeq = new Map();
+    const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
+    if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
+    // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.
+    if (this.renewSeq.get(id) !== seq) { if (ks) await ks.end().catch(() => {}); return false; }
+    // A chat turn whose session could not be opened leaves the current one alone: the turn before may still be streaming its reply under it, and the row that failed is dropped with its own notice.
+    if (!ks && turn && turn.chat && this.ksCur.get(id)) return false;
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space); } else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
@@ -1182,11 +1195,11 @@ export class Switchboard {
    * Queued words whose asker could not be given a kernel session when their turn came: they are marked dropped and never written to the thread without a token, and the person is told what to do.
    * @param {string} id @param {any[]} rows the rows of the turn @param {string|null} project
    */
-  dropQueuedChatTurn(id, rows, project) {
+  dropQueuedChatTurn(id, rows, project, slow = false) {
     const drop = this.db.prepare("UPDATE threads_inbox SET via = 'dropped' WHERE id = ?");
     for (const r of rows) drop.run(r.id);
     this.endAnnouncedTurn(id, project);   // first: the stream's member stops running, so the notice below is shown in the room
-    this.emit("thread.text", { message: "vyre", text: "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
+    this.emit("thread.text", { message: "vyre", text: slow ? "A message waiting for this turn was not sent: the team's records were too slow to open this chat for you just now. Nothing was written to the session. Send it again in a minute." : "A message waiting for this turn was not sent: this chat could not be opened for you just now (you may no longer be in it). Nothing was written to the session. Send it again from the chat if you should still be in it.", done: true, notice: true }, id, project);
   }
 
   /** A thread that went dormant with queued chat turns waiting (a switch back that failed) starts again on its own base, the way a restart does: the leading row's asker opens its own session. @param {string} id */
@@ -1207,29 +1220,32 @@ export class Switchboard {
   /** The turn announced as begun for words that did not run ends here: the stream's member is not left running. @param {string} id @param {string | null} project */
   endAnnouncedTurn(id, project) { this.emitRaw("thread.status", { status: threadStatus("waiting", null) }, id, project); }
 
-  /** Open a queued turn's kernel session within a bound (10 s): false past it, or when it could not open. A session that completes AFTER the bound is ended again (its row was dropped; nobody's turn runs on it). @param {string} id @param {any} rec @param {{ chat?: string, asker?: string }} turn @param {number} [ms] */
-  async renewCapped(id, rec, turn, ms = 10_000) {
+  /** Open a queued turn's kernel session within a bound (30 s): false past it, or when it could not open. A session that completes AFTER the bound is ended again (its row was dropped; nobody's turn runs on it). @param {string} id @param {any} rec @param {{ chat?: string, asker?: string }} turn @param {number} [ms] */
+  async renewCapped(id, rec, turn, ms = 30_000, via = "drain") {
     /** @type {any} */ let timer;
-    const renewing = this.renewKernelSession(id, rec, turn).then(x => x, () => false);
+    const renewing = this.renewKernelSession(id, rec, turn, via).then(x => x, () => false);
     const first = await Promise.race([renewing, new Promise(r => { timer = setTimeout(() => r("capped"), ms); })]);
     clearTimeout(timer);
     if (first !== "capped") return Boolean(first);
-    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id); });
-    return false;
+    if (this.renewSeq) this.renewSeq.set(id, (this.renewSeq.get(id) || 0) + 1);   // the pending open is abandoned: whatever it returns later is released, not installed
+    this.deps.log(`threads: kernel session for ${String(id).slice(0, 8)} not open after ${ms} ms for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}: the row is dropped and a late session is ended`);
+    void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id, "it opened after the 30 s bound"); });
+    return "capped";
   }
 
   /** A queued row that needs no hop (the thread already is on the asker's account): its words go in as a plain drained turn, under their asker. @param {string} id @param {any} r @param {any} kt */
   async deliverRow(id, r, kt) {
     const rec = this.record(id), project = rec ? rec.project : null;
-    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker, ...(kt.space ? { space: kt.space } : {}) }) : false;
-    if (!ok) { this.dropQueuedChatTurn(id, [r], project); return; }
+    const ok = rec ? await this.renewCapped(id, rec, { chat: kt.chat, asker: kt.asker, ...(kt.space ? { space: kt.space } : {}) }, 30_000, "deliver") : false;
+    if (ok !== true) { this.dropQueuedChatTurn(id, [r], project, ok === "capped"); return; }
     this.write(id, r.text, { uuid: r.uuid || crypto.randomUUID(), askedBy: kt.asker || null, images: imagesFrom(r.images) || null, ...(r.note ? { note: r.note } : {}) });
   }
 
   /** @param {string} id */
-  async endKernelSession(id) {
+  async endKernelSession(id, why = "") {
     const k = this.ksCur.get(id);
     this.ksCur.delete(id);
+    if (k) this.deps.log(`threads: ending the kernel session of ${String(id).slice(0, 8)} (${k.asker ? String(k.asker).slice(-6) : "no turn"})${why ? `: ${why}` : ""}`);
     // vyred is stopping (a restart for an update is graceful): the open turn is NOT forgotten, so the next start reopens it for its person or says it could not. The daemon revokes the tokens at its own stop.
     if (k && !this.closing) await k.end().catch(() => {});
   }
@@ -1314,7 +1330,7 @@ export class Switchboard {
   closeSocket(id) {
     const rel = this.releases.get(id); if (rel) { this.releases.delete(id); rel().catch(() => {}); }   // the session's egress proxy goes with its socket
     const sock = this.socks.get(id);
-    if (!sock) { void this.endKernelSession(id); return; }
+    if (!sock) { void this.endKernelSession(id, "its thread's socket closed"); return; }
     this.socks.delete(id);
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
@@ -1770,6 +1786,8 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);   if (st) lentControl(this, id, st, kernelTurn ? kernelTurn.asker : reason === "limit" || reason === "back" ? lentHolder(this, id, st) : reason === "asked" ? by : person);   // a switch stops the process: on a person's own computer only that person may
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
+    // A person's own asked switch (threads.switch, threads.chat-switch) goes through the judgement a turn does: a member names only an account that is hers, none named is her own of that provider, none of hers is refused.
+    if (reason === "asked" && by) { const judged = await memberAccount(this, { ...rec, provider }, { account, provider, kernelTurn: { asker: by }, resume: true }, id); account = judged.account || null; person = person || by; }
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(person ? { person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
@@ -1792,7 +1810,7 @@ export class Switchboard {
     // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
     if (reason === "back" && !had && seed) this.carry.set(id, [seed, this.carry.get(id)].filter(Boolean).join("\n\n"));   // a fresh session for an account that lost its own: it is handed the whole conversation
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}), ...(reason === "asked" && by ? { person: by } : {}), ...(!kernelTurn && person ? { skillsPerson: this.canon(person) } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
@@ -2288,7 +2306,7 @@ export class Switchboard {
     this.resumeTried.delete(id);
     this.turnAsker.delete(id);
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
-    { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id); }, 30_000); t.unref?.(); } }
+    { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
     if (this.live.get(id) !== st || st.stopping) return;
     // One turn on another provider is over: the session goes back to its own, and carries what was said.
@@ -2321,9 +2339,9 @@ export class Switchboard {
    *   - the thread is no longer idle by the time the asker is confirmed: drainDone(true);
    *   - a queued hop (kt.over): runQueuedOver waits for the hop back, checks the target, tells the stream the turn began, runs the hop; a hop that needs no move delivers the words plainly (deliverRow);
    *     a hop that cannot start says so, ends the announced turn and drains the rest; past the revert wait the row is put back once, dropped in words the second time;
-   *   - a plain turn: the asker's session opens within 10 s (else the row is dropped in words), the words are written; a write that throws is logged, told to the room and drained past;
+   *   - a plain turn: the asker's session opens within 30 s (else the row is dropped in words), the words are written; a write that throws is logged, told to the room and drained past;
    *   - a hop back that failed twice: the base is written back, the hop's process stopped, the room told once, and rows waiting resume on the base (resumeWaiting), judged as any resume;
-   *   - a session that opens after the 10 s bound is ended again (renewCapped); a hop row that needs no hop is delivered plainly (deliverRow); a write or an asker check that throws is logged and told, never thrown;
+   *   - a session that opens after the 30 s bound is ended again (renewCapped); a hop row that needs no hop is delivered plainly (deliverRow); a write or an asker check that throws is logged and told, never thrown;
    *   - a plain send with no chat turn waits for the revert and the drain lock (revertSettled), is refused in words past the wait, and never rides a finished turn's session;
    *   - turnEnded: a hop in flight (once) is handed to revertOnce and recorded in reverting, whose end (settled or thrown) drains again; otherwise steers run first, then this drain;
    *   - sendOnce: an early throw (target refused, keyboard held, a hop already owning the thread) leaves no lock and no base change; the once entry is claimed in the same tick it is checked and a failing call touches only its own;
@@ -2366,12 +2384,14 @@ export class Switchboard {
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) { this.drainDone(id, true, lock); return; }
-    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
+    // The turn is announced to the stream (its member starts answering for this asker) only once the asker's own kernel session is open: a reply that opened before it would find none.
+    const announce = () => { for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project); };
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
     const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), askedBy: (kt0 && kt0.asker) || null, images: images.length ? images : null, ...(note ? { note } : {}) });
     // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
-    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok) { deliver(); this.drainDone(id, false, lock); } else { this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } }); return; } }
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewCapped(id, rec0, kt).then(ok => { try { if (ok === true) { announce(); deliver(); this.drainDone(id, false, lock); } else { this.dropQueuedChatTurn(id, taken, project, ok === "capped"); this.drainDone(id, true, lock); } } catch (e) { this.deps.log(`threads: could not start a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); } }); return; } }
+    announce();
     try { deliver(); } catch (e) { this.deps.log(`threads: could not write a queued turn on ${id.slice(0, 8)}: ${/** @type {Error} */ (e).message}`); this.dropQueuedChatTurn(id, taken, project); this.drainDone(id, true, lock); }   // (logged here, not thrown into whatever ended the turn)   // a write that throws (lent, not live) releases the lock and the rows behind it still run
     this.drainDone(id, false, lock);
   }
@@ -2648,8 +2668,8 @@ export class Switchboard {
     this.once.set(id, mine);
     try { const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)); kept.hopBack = back; this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id); } catch { /* a restart would then find no hop to end: the old behaviour */ }
     try {
-      if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours: only now is the turn announced to the stream (true by construction); inside the try, so a throw reverts only what this call owns
       await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", person: over.person || null, ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
+      if (typeof o.onClaim === "function") o.onClaim();   // the hop is ours and its launch has opened the asker's own kernel session: only now is the turn announced to the stream, so a reply it opens finds that session; inside the try, so a throw reverts only what this call owns
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
       if (!r.sent) throw no(String(r.note || "The turn did not start."), "busy");
