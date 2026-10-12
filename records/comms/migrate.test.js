@@ -40,3 +40,17 @@ test("a Space that never had the participant type has nothing to move", async ()
   await host.defineCore();
   assert.deepEqual(await migrateParticipants(host.kernel, host.ownerChain()), { migrated: 0, communications: 0 });
 });
+
+test("participants made in the same millisecond come out in a fixed order: ids made in one millisecond sort by their random part, so the text a person reads used to change from run to run", async () => {
+  for (let run = 0; run < 40; run++) {
+    const host = createRecordsHost({ space: SPACE, owner: "per_owner", store: createMemoryStore() });
+    await host.defineCore();
+    const R = host.kernel.records, c = host.ownerChain();
+    await R.define(c, { add_types: [PARTICIPANT] });
+    const mail = await R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: `gmail:order${run}`, subject: "Order" });
+    // made one after another with no pause, in address order: the order a person reads is that one whether or not they share a millisecond
+    for (const address of ["alex@x.test", "bob@x.test", "carl@x.test", "dina@x.test"]) await R.create(c, "participant", { communication: { urn: mail.urn }, how: "to", address });
+    await migrateParticipants(host.kernel, c);
+    assert.equal((await R.get(c, "communication", mail.id)).data.to, "alex@x.test, bob@x.test, carl@x.test, dina@x.test", `run ${run}`);
+  }
+});

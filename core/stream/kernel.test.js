@@ -4,6 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { leaks } from "../../test/holds.js";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -133,7 +134,7 @@ test("per-role filtering through the real stream: a manager and a member in one 
   assert.deepEqual([cite(mgr).block, cite(mgr).label, cite(mgr).value], ["field", "Fee", { amount: 4200, currency: "USD" }], "the manager sees the value");
   assert.equal(cite(mem).block, "field");
   assert.equal(cite(mem).placeholder, true, "the member sees the chip");
-  assert.ok(!JSON.stringify(mem).includes("4200"), "no value on the member's wire");
+  assert.ok(!leaks(mem, "4200"), "no value on the member's wire");
   assert.ok(!JSON.stringify(mem).includes("field-ref"), "and the ref frame is not what they got");
   assert.deepEqual(seen.map(s => [s.viewer.id, s.viewer.roles]).sort(), [[`person:${BOB}`, ["manager"]], [`person:${CAROL}`, ["member"]]], "roles come from the kernel's members");
   assert.deepEqual(mem.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), mgr.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), "same cursors for both");

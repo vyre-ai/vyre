@@ -461,11 +461,9 @@ test("acp: Grok is given the Space's skills folder with agent --plugin-dir, betw
   const s = open(w);
   await s.until(m => m.type === "system" && m.subtype === "init", "init");
   await s.proc.stop(1000);
-  // the folder Grok is given is a copy inside the session's own folder, because Vyre's file and terminal tools refuse anything in Vyre's home
-  const inFolder = path.join(w.cwd, ".vyre", "library", "lib-abc");
-  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", inFolder, "stdio"]);
-  assert.equal(fs.readFileSync(path.join(inFolder, "skills", "greeting", "SKILL.md"), "utf8"), "---\nname: greeting\n---\nthe code\n");
-  assert.equal(fs.readFileSync(path.join(w.cwd, ".vyre", "library", ".gitignore"), "utf8"), "*\n");
+  // the folder Grok is given is exactly the one the Switchboard staged for it (private to the session); nothing is copied into the project's folder, which the project's other accounts can read
+  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", lib, "stdio"]);
+  assert.ok(!fs.existsSync(path.join(w.cwd, ".vyre", "library")), "and no copy of the library is left in the project folder");
 });
 
 test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {

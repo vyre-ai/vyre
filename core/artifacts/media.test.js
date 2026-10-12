@@ -26,7 +26,8 @@ const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { ef
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fake png body ".repeat(50))]);
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42"), Buffer.alloc(4), Buffer.alloc(100000, 7)]);
 
-const settle = () => new Promise(r => setTimeout(r, 400));
+/** Resolves when the artifact called `title` has been made (its event is emitted after its media is attached): a clock can meet the row between its insert and its media on a loaded runner. */
+const madeEvent = (/** @type {any} */ events, /** @type {string} */ title) => new Promise((res, rej) => { const t = setTimeout(() => { off(); rej(new Error(`the artifact ${title} was never made`)); }, 20_000); const off = events.on("artifact.created", (/** @type {any} */ ev) => { if (ev.payload && ev.payload.title === title) { off(); clearTimeout(t); res(undefined); } }); });
 const folder = t => { const d = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "media-"))); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 
 async function boot(t) {
@@ -108,8 +109,9 @@ test("media: a file the folder watcher sees is kept once, and a later register f
   const dir = folder(t);
   await asVyre("artifacts.capture.register", { thread: "t2", dir });
   fs.writeFileSync(path.join(dir, "cat.png"), PNG);
+  const catMade = madeEvent(events, "cat");
   events.emit("sessions", "floor.wrote", { thread: "t2", path: path.join(dir, "cat.png"), bytes: PNG.length });
-  await settle();
+  await catMade;
   let list = await ok("artifacts.list", { kind: "image" });
   assert.equal(list.length, 1);
   assert.deepEqual([list[0].media.provider, list[0].media.prompt, list[0].media.source], ["codex", null, "file"], "the watcher knows the provider from the thread, not the prompt");
@@ -261,8 +263,11 @@ test("media: a project and a thread each have a cap, with a plain refusal; and a
   // A burst of folder events for one file is one artifact, read once it has settled.
   _test.mediaCaps = { project: 1e9, thread: 1e9 };
   fs.writeFileSync(path.join(dir, "burst.png"), PNG);
+  // Wait for the artifact's own "created" event, which is emitted after its media is attached: a list taken on a clock can meet the row between its insert and its media (a loaded runner did), where media is still null.
+  const made = madeEvent(events, "burst");
   for (let i = 0; i < 12; i++) events.emit("sessions", "floor.wrote", { thread: "t1", path: path.join(dir, "burst.png"), bytes: PNG.length });
-  await new Promise(r => setTimeout(r, 300));
+  await made;
+  await new Promise(r => setTimeout(r, 150));   // a second read of the same file would show here as a second artifact
   assert.equal((await ok("artifacts.list", { kind: "image" })).filter(x => x.media.session === "t1" && x.title === "burst").length, 1);
 });
 
