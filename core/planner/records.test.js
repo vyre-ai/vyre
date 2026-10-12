@@ -252,8 +252,8 @@ test("records: the engine's own fields are hidden from every role and the remind
   const types = await w.k.store.types();
   const rem = types.find(/** @type {any} */ x => x.name === "reminder"), note = types.find(/** @type {any} */ x => x.name === "note");
   const hidden = (/** @type {any} */ def) => def.fields.filter(/** @type {any} */ f => Array.isArray(f.hidden_from) && f.hidden_from.length === 5).map(/** @type {any} */ f => f.name).sort();
-  assert.deepEqual(hidden(rem), ["added_by", "created", "date", "floating", "last_result", "next_fire", "run_count", "source", "updated", "waits_on_fired", "wall"]);
-  assert.deepEqual(hidden(note), ["added_by", "created", "source", "updated"]);
+  assert.deepEqual(hidden(rem), ["added_by", "created", "date", "floating", "last_result", "next_fire", "person", "run_count", "source", "updated", "waits_on_fired", "wall"]);
+  assert.deepEqual(hidden(note), ["added_by", "created", "person", "source", "updated"]);
   for (const person of ["title", "kind", "state", "at", "snooze_until", "body", "list", "priority", "pinned", "tags"]) assert.ok(!rem.fields.find(/** @type {any} */ f => f.name === person).hidden_from, `${person} is the person's`);
   assert.equal(rem.fields.find(/** @type {any} */ f => f.name === "at").kind, "datetime");
   const cal = rem.views.find(/** @type {any} */ v => v.type === "calendar");

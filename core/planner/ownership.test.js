@@ -61,3 +61,35 @@ test("a member's to-do is filed FOR HER, never as the owner's; another member ca
   assert.ok((await asMember(w, "planner.update", { item: made.id, title: "she edits" })).data, "and she still changes her own");
   assert.ok(!(await asMember(w, "planner.delete", { item: made.id })).error, "and removes it");
 });
+
+test("a member's planner reads show her own items, not the owner's or another member's; the owner sees all", async t => {
+  const { w } = await rig(t);
+  const OTHER = MEMBERS[1];
+  const as2 = (/** @type {string} */ tool, /** @type {any} */ input) => w.callAs(memberFacts(OTHER), tool, input);
+  const at = "2027-01-01T10:00:00Z";
+  await w.call("planner.add", { kind: "reminder", title: "OWNER reminder", at });
+  await w.call("planner.add", { kind: "note", title: "OWNER note" });
+  await w.call("planner.add", { kind: "todo", title: "OWNER todo" });
+  const hers = (await asMember(w, "planner.add", { kind: "note", title: "HER note" })).data;
+  const herTodo = (await asMember(w, "planner.add", { kind: "todo", title: "HER todo" })).data;
+  await as2("planner.add", { kind: "reminder", title: "THIRD reminder", at });
+  const titles = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ x) => x.title).sort();
+  assert.deepEqual(await titles(await asMember(w, "planner.list", { state: "all" })), ["HER note", "HER todo"], "she lists only hers");
+  assert.deepEqual(await titles(await as2("planner.list", { state: "all" })), ["THIRD reminder"]);
+  assert.equal((await titles(await w.call("planner.list", { state: "all" }))).length, 6, "the owner sees every item");
+  const others = (await w.call("planner.list", { state: "all" })).data.find((/** @type {any} */ x) => x.title === "OWNER note");
+  const peek = await asMember(w, "planner.get", { item: others.id });
+  assert.ok(peek.error, "planner.get of the owner's note refused: " + JSON.stringify(peek).slice(0, 160));
+  assert.ok((await asMember(w, "planner.get", { item: hers.id })).data, "and her own is readable");
+  assert.ok(herTodo.id);
+  const up = await asMember(w, "planner.upcoming", { hours: 72 });
+  assert.ok(!JSON.stringify(up).includes("OWNER"), "upcoming holds none of the owner's");
+});
+
+test("a member's reminder goes only on a chat she is in", async t => {
+  const { w } = await rig(t);
+  const r = await asMember(w, "planner.add", { kind: "reminder", title: "into the owner's chat", at: "2027-01-01T10:00:00Z", thread: "thr_not_hers" });
+  assert.ok(r.error, "refused: " + JSON.stringify(r).slice(0, 200));
+  assert.match(String(r.error.message), /chat you are in/);
+  assert.ok((await w.call("planner.add", { kind: "reminder", title: "owner may", at: "2027-01-01T10:00:00Z", thread: "thr_any" })).data, "the owner is not held to it");
+});
