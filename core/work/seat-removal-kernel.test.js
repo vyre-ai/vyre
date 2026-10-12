@@ -10,7 +10,7 @@ import path from "node:path";
 import { stopLostSeats } from "../switchboard/project-access.js";
 
 test("removing a member's seat reaches the Switchboard's recheck, and her session that joined that project's group is stopped", { timeout: 150_000 }, async t => {
-  const { d, tool, project } = await boot(t);
+  const { d, tool, project, logs } = await boot(t);
   // the box keeps its projects under /work; here that is the temp home's projects folder, so the project counts as mapped (a project outside it is no project of the box's)
   const was = process.env.VYRE_WORK; process.env.VYRE_WORK = path.dirname(String((await tool("projects.list", {})).projects.find((/** @type {any} */ p) => p.slug === project.slug).home));
   t.after(() => { if (was === undefined) delete process.env.VYRE_WORK; else process.env.VYRE_WORK = was; });
@@ -29,7 +29,8 @@ test("removing a member's seat reaches the Switchboard's recheck, and her sessio
   real.run = async (/** @type {any} */ i, /** @type {any} */ m) => { heard.push("recheck"); return orig(i, m); };
   t.after(() => { real.run = orig; });
   await R.remove(oc, "team-member", row.id, row.version);
-  await until(() => heard.length > 0, "the work module to ask the Switchboard to recheck after team-member.removed");
+  // 60 s, not the fixture's 15: a box running other test files beside this one is slow to deliver the kernel's event, and a miss says what the daemon logged
+  await until(() => heard.length > 0, "the work module to ask the Switchboard to recheck after team-member.removed", 60_000).catch((/** @type {Error} */ e) => { throw new Error(`${e.message}; the daemon logged: ${logs.slice(-15).join(" | ").slice(0, 1500)}`); });
   assert.equal((await seat()).team, false, "off the team: the seat rule says so");
 
   // her running session (it joined the group of this project when it started) is judged by the real seat answer
