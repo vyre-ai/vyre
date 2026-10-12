@@ -2,6 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
+import { onTypesChanged } from "../store/types-signal.js";
 import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
@@ -24,8 +25,15 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   "project-template": ["work"],
   "def-watcher": ["watchers"],
   planner_state: ["planner"], planner_firing: ["planner"],
+  // A reminder or a note is read by the person it is for, through the planner (which shows each person her own): where the type is defined `protected` (the planner's own definition) the raw Records route is the owner's
+  // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
+  reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
+  goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
+
+/** The Space's set-up: a member reads these and never writes them. */
+const SETUP_TYPES = new Set(["agent", "template", "playbook"]);
 
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
@@ -204,15 +212,25 @@ export function createRecords(cfg) {
     const role = (members.membership({ kind: "person", id: rest.join(":"), space }) || {}).role;
     return role === "owner" || role === "admin";
   };
-  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install", ...Object.keys(KEEPERS)]);
+  const BY_DEFINITION = new Set(["reminder", "note"]);   // kept only where the type is defined `protected`
+  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install", ...Object.keys(KEEPERS).filter(k => !BY_DEFINITION.has(k))]);
   /** The chain of the service that KEEPS this type (a pure service chain of that module, by name): it passes where no person hop is there to be owner or admin. @param {any} chain @param {string} type */
   const keeperOk = (chain, type) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && (KEEPERS[type] || []).includes(String(chain.hops[0].actor.id));
   /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   /** @type {Set<string> | null} */ let protectedTypes = null;
+  /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
+  let typesGen = 0;
+  const typesChanged = () => { protectedTypes = null; typesGen++; };
+  onTypesChanged(store, typesChanged);
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
-    if (!protectedTypes) { try { protectedTypes = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); } catch { return false; } }
+    if (!protectedTypes) {
+      if (typeof store.types !== "function") return false;
+      const gen = typesGen;
+      // while the definitions cannot be read (the store is away) every type counts as protected: an owner, an admin and a keeper are served as ever, anyone else is refused, and nothing is remembered
+      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { return true; }
+    }
     return protectedTypes.has(type);
   };
   const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
@@ -618,6 +636,8 @@ export function createRecords(cfg) {
     { const mv = cfg.isMoved ? cfg.isMoved() : null; if (mv) throw new KernelError("moved", "this space moved to My Cloud; work there", { to: mv.to }); }
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
+    // The Space's set-up (an agent, a template, a playbook): a member reads, only an owner or an admin writes, on every route. A service's own chain has no person and passes.
+    if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `only an owner or an admin changes a ${type}; ask one of them`); }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
     if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
@@ -779,11 +799,11 @@ export function createRecords(cfg) {
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
-      protectedTypes = null;
+      typesChanged();
       let was = null;
       try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
-      try { res = await store.define(diff); } catch (e) { throw mapError(e); }
+      try { res = await store.define(diff); } catch (e) { throw mapError(e); } finally { typesChanged(); }
       if (res.applied) {
         try { log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision }); }
         catch (e) {
@@ -792,6 +812,7 @@ export function createRecords(cfg) {
             const names = new Set([...(diff.add_types || []), ...(diff.change_types || [])].map((/** @type {any} */ t) => t.name).concat(diff.remove_types || []));
             const back = { add_types: [...names].filter(n => had.has(n)).map(n => had.get(n)), remove_types: [...names].filter(n => !had.has(n)) };
             try { await store.define(back); } catch { /* the type stays defined; the caller is still told it failed */ }
+            typesChanged();
           }
           throw e;
         }
@@ -945,7 +966,8 @@ export function createRecords(cfg) {
         }
       }
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
-      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
+      // (a path into a field, `fee.amount` of a money field, needs the whole field `fee` in the cut row)
+      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)].flatMap((/** @type {string} */ k) => [k, String(k).split(".")[0]]));
       // Folded a row at a time: memory is the number of groups (capped), never the number of rows; the scan is capped at 40 pages (20,000 rows) and in time, and says so (`unsupported`) rather than totalling a part.
       // The store already applied the filter; rows are cut to the fields the total uses, so the filter must not be applied again to the cut row.
       const agg = createAggregator({ ...spec, filter: undefined }, { maxGroups: AGG_MAX_GROUPS });

@@ -379,6 +379,24 @@ export default {
     const hashOf = o => createHash("sha256").update(JSON.stringify(o)).digest("hex").slice(0, 24);
     /** The person a call is for: its chain's first hop when that is a person, else the Space's owner (the CLI and the Deck are the owner's). */
     const personOf = async meta => { if (!K) return ""; try { const c = await K.chain(meta); const h = c && c.hops && c.hops[0]; if (h && h.actor.kind === "person") return h.actor.id; } catch { /* no chain: the owner's surface */ } return String(K.owner || ""); };
+    /**
+     * Whether a call may see an agent's whole row (its instructions, tools, projects, credentials' mode): a call with no person on its chain (the owner's surfaces, the daemon), the owner, or an admin. Any other
+     * person on the chain, a member, sees the roster only (see rosterRow).
+     * @param {any} meta @returns {Promise<boolean>}
+     */
+    const seesFull = async meta => {
+      if (!K) return true;
+      let person = null;
+      try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; person = h ? String(h.actor.id) : null; } catch { return true; }
+      if (!person) return true;
+      const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+      if (K.owner && canon(person) === canon(String(K.owner))) return true;
+      const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
+    };
+    /** What a member sees of an agent: who it is and whether it is busy. Never its instructions, tools, projects, computer, credentials' mode, thread or uid. @param {any} r */
+    const rosterRow = r => ({ id: r.id, name: r.name, kind: r.kind, ...(r.role ? { role: r.role } : {}), model: r.model, status: r.status });
+    const ownerOnly = (/** @type {string} */ what) => Object.assign(new Error(`Only the owner or an admin ${what}. Ask them, or use the roster (agents.list) for who is here.`), { code: "denied" });
     const versionsOf = name => db.prepare("SELECT * FROM agents_versions WHERE agent = ? ORDER BY n DESC").all(name);
     /** Write the new field values, and the version that says what they were and are. */
     const writeVersion = (a, after, { by = null, approved_by = null, note = null } = {}) => {
@@ -454,8 +472,9 @@ export default {
     ctx.tool("agents.versions", {
       description: "An agent's versions, newest first: what changed, who proposed it and who said yes. Roll back with agents.update { agent, rollback: n }.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
-      run: async (i, { caller }) => {
-        guard(caller, "read an agent's versions");
+      run: async (i, meta) => {
+        guard(meta.caller, "read an agent's versions");
+        if (!(await seesFull(meta))) throw ownerOnly("reads what an agent's instructions were");
         const a = must(String(i.agent));
         return { agent: a.name, owner: a.owner, versions: versionsOf(a.name).slice(0, Math.min(Number(i.limit) || 20, 100)).map(v => ({ n: v.n, by: v.by, approved_by: v.approved_by, note: v.note, at: v.at, before: JSON.parse(String(v.before)), after: JSON.parse(String(v.after)) })) };
       },
@@ -464,15 +483,17 @@ export default {
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
-      run: async (_, { caller }) => {
+      run: async (_, meta) => {
+        const { caller } = meta;
         guard(caller, "list agents");
+        const full = await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
-          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
+          auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) }) : rosterRow({ ...a, ...(a.builtin ? { role: a.name } : {}), ...(await status(a)) }))));
       },
     });
 
@@ -484,6 +505,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (i, meta) => {
         const { caller } = meta;
+        if (!(await seesFull(meta))) throw ownerOnly("adds an agent to the Space");
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -518,6 +540,7 @@ export default {
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
       run: async (i, meta) => {
         const { caller } = meta;
+        if (!(await seesFull(meta))) throw ownerOnly("changes an agent");
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           // A model never edits an agent: it proposes, and the agent's owner says yes on one card (R031-09).
           throw Object.assign(new Error('changing agents is the person\'s; to ask for a change, propose it: flows.propose { what: "agent", agent: "<name>", patch: { instructions?, skills?, model?, effort?, tags? } }. Its owner approves; each approved change is a version you can roll back'), { code: "denied" });
@@ -729,7 +752,7 @@ export default {
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, meta) => { const { caller } = meta; guard(caller, "read other agents"); if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads another agent's threads"), { code: "denied" }); must(agent); return use("threads.list", { agent }); },
+      run: async ({ agent }, meta) => { const { caller } = meta; guard(caller, "read other agents"); if (!(await seesFull(meta))) throw ownerOnly("reads another agent's threads"); if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads another agent's threads"), { code: "denied" }); must(agent); return use("threads.list", { agent }); },
     });
 
     ctx.tool("agents.usage", {
@@ -738,6 +761,7 @@ export default {
       run: async ({ agent, since }, meta) => {
         const { caller } = meta;
         guard(caller, "read other agents' usage");
+        if (!(await seesFull(meta))) throw ownerOnly("reads what agents have used");
         if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' usage"), { code: "denied" });
         if (agent) must(agent);
         const rows = await use("threads.usage", { ...(agent ? { agent } : {}), ...(since ? { since } : {}) });
@@ -762,6 +786,7 @@ export default {
       run: async ({ agent, limit, before }, meta) => {
         const { caller } = meta;
         guard(caller, "read other agents' conversations");
+        if (!(await seesFull(meta))) throw ownerOnly("reads other agents' conversations");
         if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' conversations"), { code: "denied" });
         if (agent) must(agent);
         return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
@@ -774,6 +799,7 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ agent, id }, meta) => {
+        if (!(await seesFull(meta))) throw ownerOnly("removes an agent");
         const a = must(agent);
         if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id (agents.list shows them; leave id out to go by name)`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays; agents.stop stops its threads instead`), { code: "denied" });
@@ -825,7 +851,9 @@ export default {
     ctx.tool("agents.stop", {
       description: "Stop every running thread of an agent. Its record and transcripts stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller, ...meta }) => {
+      run: async ({ agent }, meta0) => {
+        const { caller, ...meta } = meta0;
+        if (!(await seesFull(meta0))) throw ownerOnly("stops an agent");
         guard(caller, "stop agents");
         if (!modelMay({ caller, ...meta })) throw Object.assign(new Error("stopping an agent is the assistant's or the person's, not another session's"), { code: "denied" });
         must(agent);
@@ -844,7 +872,9 @@ export default {
       description: "Resume one of an agent's threads (its latest by default) with its credentials and scope. A thread already running is left as it is ({ running: true }).",
       callers: ["cli", "local", "deck", "capsule", "module"],
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
-      run: async ({ agent, thread }, { caller }) => {
+      run: async ({ agent, thread }, meta0) => {
+        const { caller } = meta0;
+        if (!(await seesFull(meta0))) throw ownerOnly("resumes an agent");
         const a = must(agent);
         if (String(caller || "").startsWith("module:")) {
           if (!thread) throw new Error("thread is required");

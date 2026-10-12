@@ -11,12 +11,14 @@ import { tempHome, present } from "./helpers.js";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 
-const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 45_000, /** @type {(() => Promise<string>) | undefined} */ missing = undefined) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`J6 ${what}: timed out after ${Math.round((Date.now() - t0) / 1000)} s${missing ? `; ${await missing().catch((/** @type {any} */ e) => `(could not say what is missing: ${e && e.message})`)}` : ""}`); await new Promise(r => setTimeout(r, 100)); } };
+// On the real Twenty store (VYRE_STORE=auto, the journey that runs a Flow on the real thing) every call is a round trip and a new Space is still defining types; the waits are longer there.
+const TWENTY = process.env.VYRE_STORE === "auto" || process.env.VYRE_STORE === "twenty";
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = TWENTY ? 300_000 : 45_000, /** @type {(() => Promise<string>) | undefined} */ missing = undefined) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`J6 ${what}: timed out after ${Math.round((Date.now() - t0) / 1000)} s${missing ? `; ${await missing().catch((/** @type {any} */ e) => `(could not say what is missing: ${e && e.message})`)}` : ""}`); await new Promise(r => setTimeout(r, 100)); } };
 const DOSSIER = { name: "dossier", label: "Dossier", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement"] }], stages: [{ name: "Intake" }, { name: "Engagement" }] };
 const NOTE = { name: "filing-note", label: "Filing note", fields: [{ name: "body", kind: "text", label: "Body" }] };
 const ALL_DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, shows on the timeline, replays true; a business-hours schedule fires on its own", { timeout: 900_000 }, async t => {
+test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, shows on the timeline, replays true; a business-hours schedule fires on its own", { timeout: TWENTY ? 2_400_000 : 900_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
@@ -29,6 +31,8 @@ test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, s
   await until(async () => { try { await d.kernel.store.types(); return true; } catch { return false; } }, "the record store to start", 600_000);
   // the Flows host makes its own record types (flow-state, def-flow ...) when the store joins; a Flow written before they exist reads "no type flow-state", or a record written while a type is still being made comes back different
   await until(async () => !(await call("flows.list")).error, "the Flows record types to exist", 600_000);
+  // on Twenty the modules go on defining their types (a metadata call each, serial) after the Flows' own: the Flow starts when they are all there, so what is timed is the Flow
+  if (TWENTY) await until(async () => { const names = new Set(((await d.kernel.store.types()) || []).map((/** @type {any} */ x) => x.name)); return ["project", "chat-record", "reminder", "note", "planner_state", "planner_firing"].every(n => names.has(n)); }, "the modules' record types to be defined", 1_200_000);
   await d.kernel.gateway.records.define(admin, { add_types: [DOSSIER, NOTE] });
   const install = async (/** @type {any} */ flow) => {
     const r = await call("flows.define", { flow });

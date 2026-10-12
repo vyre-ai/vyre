@@ -485,6 +485,7 @@ export class Switchboard {
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** @type {Map<string, Promise<any>>} a thread's hop back in flight: the next person's turn is judged only after it has finished (revertSettled in asker-account.js) */ this.reverting = new Map();
+    /** @type {Set<string>} threads whose waiting chat turns were already tried to be started again since their last finished turn: once, never in a loop (resumeWaiting) */ this.resumeTried = new Set();
     /** @type {Map<string, symbol>} threads with a queued turn being handed over now, and the drain that owns the lock: one drain at a time, so two never start two hops; drainDone releases only its own */ this.draining = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
@@ -1192,7 +1193,8 @@ export class Switchboard {
   resumeWaiting(id) {
     if (this.closing || this.live.has(id)) return;
     let waiting; try { waiting = this.db.prepare("SELECT 1 AS n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL AND kturn IS NOT NULL").get(id); } catch { return; }
-    if (!waiting) return;
+    if (!waiting || this.resumeTried.has(id)) return;
+    this.resumeTried.add(id);
     // Launched with NO turn of its own, never with the first row's: on a resume the stored opts carry the base account, which memberAccount would judge a member's turn against and refuse. The drain gives each row
     // its own session and its own hop afterwards. (The one place a chat thread still opens the default session until the first row's session replaces it: the known housekeeping gap.) Tried once, never in a loop.
     void this.launch({ resume: id }).catch((/** @type {Error} */ e) => {
@@ -2208,6 +2210,8 @@ export class Switchboard {
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
     const rec = this.record(id);
     this.emit("thread.stopped", { code: code ?? null, reason }, id, rec ? rec.project : null);
+    // The process ended with people's chat turns still waiting behind the one that was running (it was stopped, crashed, or died with the turn): they are not stranded, the thread starts again for them
+    if (!this.closing && !this.once.has(id)) this.resumeWaiting(id);
   }
 
   /**
@@ -2280,6 +2284,7 @@ export class Switchboard {
    */
   turnEnded(id, st, project) {
     st.turn = null;
+    this.resumeTried.delete(id);
     this.turnAsker.delete(id);
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id); }, 30_000); t.unref?.(); } }

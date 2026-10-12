@@ -1,4 +1,5 @@
 // @ts-check
+import { typesChanged } from "../../kernel/store/types-signal.js";
 // A record store that is not there yet. When a Space's Twenty cannot be set up (no Docker for the helper, a compose file the helper refuses, a full disk), the
 // daemon must not die and be started again forever: it keeps running, every record call answers `unavailable` in plain words, and the stores layer keeps trying
 // in the background. When the real store is ready it is attached and everything the kernel did meanwhile at start (`define`, the kernel's own types) is played
@@ -18,6 +19,7 @@ const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why),
 export function createDeferredStore(o) {
   const log = o.log ?? (() => {});
   /** @type {any} */ let real = null;
+  /** @type {any} */ let self = null;
   let booting = true;
   /** @type {any[]} definitions to play when the store attaches: a diff, or a function that is given the real store and defines on it (it reads what the store holds first, so it cannot be made before the store is there) */ const defs = [];
   let attaching = false;
@@ -56,6 +58,7 @@ export function createDeferredStore(o) {
         while (defs.length) { const d = defs.shift(); if (typeof d === "function") { try { await d(store); } catch (e) { log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`); } } else await store.define(/** @type {any} */ (d)); }
         if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
+        if (self) typesChanged(self);   // the replay put definitions onto the real store behind the gateway
         log("the record store is ready; the definitions made while it was away were applied");
         for (const f of ready.splice(0)) { const t0 = Date.now(); try { await f(); log(`phase waiting work after the store joined: ${((Date.now() - t0) / 1000).toFixed(1)}s`); } catch (e) { log(`something waiting for the record store failed: ${/** @type {Error} */ (e).message}`); } }
       } finally { attaching = false; }
@@ -84,7 +87,7 @@ export function createDeferredStore(o) {
     async types() { if (real) return real.types(); if (!booting && await settle()) return real.types(); throw refuse(); },
     async health() { return real ? real.health() : { ok: false, detail: o.reason() }; },
   };
-  return new Proxy(own, {
+  self = new Proxy(own, {
     get(target, prop, receiver) {
       if (prop === "then") return undefined;   // an `await store` must not wait on us
       if (real && !(prop in target)) { const v = real[prop]; return typeof v === "function" ? v.bind(real) : v; }
@@ -95,4 +98,5 @@ export function createDeferredStore(o) {
       return (/** @type {any[]} */ ..._a) => { throw refuse(); };
     },
   });
+  return self;
 }
