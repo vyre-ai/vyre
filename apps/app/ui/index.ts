@@ -10,6 +10,7 @@ export { Icon, ICON_NAMES } from "./components/Icon";
 export type { IconName } from "./components/Icon";
 export { Button, IconButton } from "./components/Button";
 export { Chip } from "./components/Chip";
+export { SpaceTag } from "./components/SpaceTag";
 export { ProviderBadge } from "./components/ProviderBadge";
 export { providerName, providerOfModel } from "./marks/provider.js";
 export { Fab } from "./components/Fab";

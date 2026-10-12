@@ -19,7 +19,7 @@ export type NavItem = Omit<PureItem, "icon"> & { icon: IconName };
 export type NavGroup = { name: string; items: NavItem[] };
 /** The places the shell draws: main, then each named group, then More, then the bottom. Groups are the ones a person named in the sidebar editor (screens/shell/sidebar). */
 export type NavDef = { items: NavItem[]; more: NavItem[]; bottom: NavItem[]; groups?: NavGroup[] };
-export type ShellSpace = { id: string; name: string; sub: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
+export type ShellSpace = { id: string; name: string; sub: string; /** The small tag that says where it lives: "Personal - Home", "Personal - Cloud" or the team space's name (placeTag). */ tag?: string; /** A personal space with no server: Records, flows and the planner need a server (screens/shell/basic.js). */ basic?: boolean; /** The space's home time zone (an IANA name), when it has one; times that belong to the space also show in it. */ zone?: string };
 export type ShellProps = NavDef & {
   /** The path now showing (usePathname). */
   current: string;

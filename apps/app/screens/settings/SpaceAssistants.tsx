@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, LoadingState, Text, markRef } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
+import { PlaceTag } from "../../src/real/PlaceTag";
 import { showingJoined } from "../../src/real/team-join";
 import { askWords, spaceAgents, spaceTeammates } from "./space-agents-model.js";
 
@@ -24,7 +25,7 @@ export function SpaceAssistants() {
   if (!joined) return null;
   return (
     <View className="gap-s2">
-      <Text size="caption" strong tone="label">This Space's assistants and teammates</Text>
+      <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" strong tone="label">This Space's assistants and teammates</Text><PlaceTag of="showing" /></View>
       {agents === null ? <LoadingState rows={2} /> : null}
       {agents && !agents.length && !mates.length ? <Card><EmptyState title="Nothing to show yet" body="The team's assistants and teammates show here when the owner adds them." /></Card> : null}
       {agents && agents.length ? (

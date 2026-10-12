@@ -11,7 +11,7 @@ import { TeammatesPage } from "../teammates/TeammatesPage";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
 import { showingJoined } from "../../src/real/team-join";
-import { OwnHomeNotice } from "../../src/real/OwnHomeNotice";
+import { PlaceTag } from "../../src/real/PlaceTag";
 import { SpaceAssistants } from "./SpaceAssistants";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
@@ -30,7 +30,7 @@ export function RealAssistants() {
   };
   return (
     <Page title="Assistants" back="/u/settings">
-      <OwnHomeNotice screen="assistants" />
+      <PlaceTag of="home" />
       {tab === "assistants" ? <SpaceAssistants /> : null}
       <Segmented label="Assistants" value={tab} onChange={setTab} options={[["assistants", "Assistants"], ["teammates", "Teammates"]]} />
       {tab === "teammates" ? <TeammatesPage /> : null}
@@ -73,7 +73,7 @@ export function RealAi() {
   const budgeted = us.filter((u) => u.agent && u.budget_usd != null);
   return (
     <Page title="AI accounts" back="/u/settings">
-      <OwnHomeNotice screen="providers" />
+      <PlaceTag of="home" />
       <Banner>Nobody's work runs on someone else's account. Your chats use your accounts and count against your budget.</Banner>
       {member ? null : <ConnectClaude onConnected={load} />}
       <AccountsCard />

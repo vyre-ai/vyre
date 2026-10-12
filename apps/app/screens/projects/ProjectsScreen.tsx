@@ -4,6 +4,7 @@ import { callT } from "../../src/real/call-tool";
 import { projectIdOf } from "../templates/model";
 import { newThingCall } from "./new.js";
 import { Button, ErrorState, LargeTitleScreen, LoadingState, NewMenu, ProjectsList, showToast, useStore, useUiTheme, useWork } from "@vyre/ui";
+import { PlaceTag } from "../../src/real/PlaceTag";
 
 /** /u/projects: every record of a type that holds work, in one list. */
 export default function ProjectsScreen() {
@@ -28,6 +29,7 @@ export default function ProjectsScreen() {
   return (
     <View className="min-h-0 flex-1">
       <LargeTitleScreen title="Projects" own onRefresh={q.reload}>
+        <PlaceTag of="showing" />
         {q.error && !q.data ? <ErrorState title="Projects did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <LoadingState rows={5} />
           : <><View className="flex-row"><Button kind="ghost" size="sm" icon="box" label="Templates" onPress={() => router.push("/u/templates" as never)} /></View><ProjectsList world={q.data.world} items={q.data.items} onOpen={open} onNew={create} />{phone ? <View style={{ height: 40 }} /> : null}</>}
