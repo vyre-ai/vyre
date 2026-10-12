@@ -1174,9 +1174,13 @@ export class Switchboard {
   async renewKernelSession(id, rec, turn, via = "send") {
     if (!this.deps.kernelSession) return true;
     const t0 = Date.now();
+    if (!this.renewSeq) this.renewSeq = new Map();
+    const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
+    // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.
+    if (this.renewSeq.get(id) !== seq) { if (ks) await ks.end().catch(() => {}); return false; }
     // A chat turn whose session could not be opened leaves the current one alone: the turn before may still be streaming its reply under it, and the row that failed is dropped with its own notice.
     if (!ks && turn && turn.chat && this.ksCur.get(id)) return false;
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space); } else this.turnSpace.delete(id);
@@ -1223,6 +1227,7 @@ export class Switchboard {
     const first = await Promise.race([renewing, new Promise(r => { timer = setTimeout(() => r("capped"), ms); })]);
     clearTimeout(timer);
     if (first !== "capped") return Boolean(first);
+    if (this.renewSeq) this.renewSeq.set(id, (this.renewSeq.get(id) || 0) + 1);   // the pending open is abandoned: whatever it returns later is released, not installed
     this.deps.log(`threads: kernel session for ${String(id).slice(0, 8)} not open after ${ms} ms for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}: the row is dropped and a late session is ended`);
     void renewing.then(ok => { const k = this.ksCur.get(id), run = this.live.get(id); if (ok && k && k.asker === (turn.asker || null) && !(run && run.turn)) return this.endKernelSession(id, "it opened after the 30 s bound"); });
     return "capped";
