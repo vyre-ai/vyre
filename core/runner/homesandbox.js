@@ -226,8 +226,8 @@ function planDarwin(o) {
   // then the caller's own PATH folders, then the system's. Without one, `env` falls back to /usr/bin:/bin and a node anywhere else is "No such file" (issue 109).
   const callerPath = String(o.env?.PATH || "").split(path.delimiter).filter(d => d && path.isAbsolute(d));
   const PATH = [...new Set([...(o.pathDirs || []), ...callerPath, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])].join(path.delimiter);
-  const env = { ...homeEnv(o.env, o.passEnv), PATH, ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, VYRE_SOCKET: o.sessionSocket };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
+  const env = { ...homeEnv(o.env, o.passEnv), PATH, ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, ...(o.secret ? { [o.secret.name]: "3" } : {}), VYRE_SOCKET: o.sessionSocket };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket, ...(o.secret ? { secret: { fd: 3, payload: String(o.secret.value) } } : {}) };
 }
 
 /** @param {HomeOpts} o */
@@ -241,7 +241,7 @@ function planLinux(o) {
   const shimNode = o.proxy?.socket ? [path.dirname(real(process.execPath))] : [];
   const ro = [...new Set([...(o.readOnly || []), ...shimNode])].map(real);
   const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
-  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: [...new Set([...(o.pathDirs || []), "/usr/local/bin", "/usr/bin", "/bin"])].join(":"), ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), ...(o.secret ? { [o.secret.name]: o.proxy?.socket ? "3" : "4" } : {}), VYRE_SOCKET: sock, HOME: h, PATH: [...new Set([...(o.pathDirs || []), "/usr/local/bin", "/usr/bin", "/bin"])].join(":"), ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
   const argv = [
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -265,10 +265,10 @@ function planLinux(o) {
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
     ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js"] : []),
     ...Object.entries(env).flatMap(([k, val]) => ["--setenv", k, val]),
-    ...(o.proxy?.socket ? [process.execPath, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--"] : []),
+    ...(o.proxy?.socket ? [process.execPath, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", ...(o.secret ? ["--pass-fd", "4"] : []), "--"] : []),
     o.command, ...(o.args || []),
   ];
-  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc, socket: sock };
+  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc, socket: sock, ...(o.secret ? { secret: { fd: 4, payload: String(o.secret.value) } } : {}) };
 }
 
 /** @param {HomeOpts} o */

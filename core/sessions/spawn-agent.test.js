@@ -86,3 +86,11 @@ test("spawn through the spawner as a client terminal: the shell is started under
   const err = await new Promise(r => plain.once("error", r));
   assert.match(String(/** @type {Error} */ (err).message), /\/bin\/sh is not a program the spawner starts/);
 });
+
+test("a terminal's environment holds no credential and no descriptor variable, on the sandboxed path too", async () => {
+  const { spawnSession } = await import("./spawn.js");
+  /** @type {any[]} */ const seen = [];
+  const env = { PATH: "/usr/bin", ANTHROPIC_API_KEY: "sk-ant-api03-x", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-y", CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: "3" };
+  spawnSession("/bin/sh", ["-c", "true"], { env, terminal: true, sandboxSpawn: (c, a, e, cwd, opts) => { seen.push(opts); return { pid: 1 }; } });
+  assert.equal(seen[0] && seen[0].terminal, true, "the sandbox is told it is a terminal");
+});
