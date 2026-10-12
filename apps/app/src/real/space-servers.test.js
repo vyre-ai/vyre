@@ -72,6 +72,23 @@ test("two servers, A active and B showing: vault.put and vault.list reach B only
   m.setPorts(null);
 });
 
+test("a task listed from B, decided while A is showing and active, reaches B only", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  m.setPorts(/** @type {any} */ ({ ...w.ports, peerCall: async (/** @type {string} */ t, /** @type {any} */ i, /** @type {string | undefined} */ b) => { if (t === "spaces.list") return b === "boxa" ? [{ id: "spc_aaaaaaaaaaaa" }] : [{ id: "spc_bbbbbbbbbbbb" }]; return w.ports.peerCall(t, i, b); } }));
+  // B's Space is showing and its tasks are listed: the ids are remembered with B's Space
+  m.noteItems({ tasks: [{ id: "tsk_b1" }] }, "spc_bbbbbbbbbbbb");
+  // now A is showing: the id-only decide still goes to B, told B's Space
+  const route = await m.routeCall({ tool: "tasks.decide", input: { id: "tsk_b1" }, showing: "spc_aaaaaaaaaaaa" });
+  assert.deepEqual(route, { box: "boxb", space: "spc_bbbbbbbbbbbb" });
+  await w.ports.peerCall("tasks.decide", { id: "tsk_b1", space: route.space }, route.box);
+  assert.deepEqual(w.sent.filter((x) => x[1] === "tasks.decide").map((x) => [x[0], x[2].space]), [["boxb", "spc_bbbbbbbbbbbb"]], "B only, with B's Space");
+  const unseen = await m.routeCall({ tool: "tasks.decide", input: { id: "tsk_nobody" }, showing: "spc_aaaaaaaaaaaa" });
+  assert.equal(unseen.error?.code, "item_unknown_server");
+  assert.equal(w.sent.filter((x) => x[1] === "tasks.decide").length, 1, "the unknown id sent nothing");
+  m.setPorts(null);
+});
+
 test("a chat nobody holds is refused in words and nothing is sent to any server", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({ boxa: ["chat_a"], boxb: ["chat_b"] });

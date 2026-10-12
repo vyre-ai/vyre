@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatServersFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
+import { chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -180,4 +180,50 @@ test("route: server settings follow the Space showing but are not refused under 
     assert.equal(needsSpace(tool), false, tool);
     assert.deepEqual(go({ tool, input: {}, showing: "all" }), { box: undefined }, tool);
   }
+});
+
+// The default is safe: a family nobody classified is routed and refused under All spaces; only an explicit allow-list is left alone.
+test("route: a family nobody classified (and any future one) is routed and refused under All spaces", () => {
+  for (const tool of ["chrome.act", "computers.checkout", "runner.lock", "previews.get", "glass.close", "ask.get", "hooks.open", "harness.brief", "sight.watch", "hands.act", "screen.shot", "import.start", "models.get", "pluginagent.ask", "outside.grant", "undo.run", "views.act", "vitals.advice", "voice.speak", "waiting.count", "zzz.future-thing"]) {
+    assert.equal(needsSpace(tool), true, tool);
+    assert.equal(go({ tool, input: {}, showing: "all" }).error?.code, "pick_a_space", tool);
+    assert.deepEqual(go({ tool, input: {}, showing: B }), { box: "boxb" }, `${tool} follows the Space showing`);
+  }
+});
+
+test("route: only the explicit allow-list (the device's own and the server's own settings) is never refused", () => {
+  for (const tool of ["relay.devices.revoke", "wink.pair.server", "presence.person.start-paired", "identity.status", "spaces.create", "spaces.members.add", "approvals.answer", "push.subscribe", "names.check", "onboard.finish", "settings.get", "appearance.resolve", "sidebar.edit", "update.apply", "system.info", "spend.raise", "about.text", "tips.dismiss"]) {
+    assert.equal(needsSpace(tool), false, tool);
+    assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, tool);
+  }
+});
+
+// An action that names only an id (a task, a rule, a project) goes to the Space the id was seen in, whatever is showing; an id never seen is refused when several servers are paired.
+const itemSpaces = { tsk_b1: B, tsk_a1: A };
+
+test("route: a task of B decided while A is showing reaches B, and the call is told B's Space", () => {
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "tsk_b1" }, itemSpaces, showing: A }), { box: "boxb", space: B });
+  assert.deepEqual(go({ tool: "tasks.move", input: { id: "tsk_a1" }, itemSpaces, showing: B }), { box: "boxa", space: A });
+  assert.deepEqual(go({ tool: "tasks.get", input: { id: "tsk_b1" }, itemSpaces, showing: "all" }), { box: "boxb", space: B }, "under All too");
+});
+
+test("route: an id never seen is refused with several servers, even when a Space is showing", () => {
+  const r = go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces, showing: A });
+  assert.equal(r.error?.code, "item_unknown_server");
+  assert.equal(r.box, undefined);
+  assert.match(r.error?.message ?? "", /Open the Space/);
+});
+
+test("route: a Space the screen names outright wins over the id's; one server paired never refuses", () => {
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "tsk_b1", space: A }, itemSpaces, showing: B }), { box: "boxa" });
+  assert.deepEqual(go({ tool: "tasks.decide", input: { id: "tsk_zzz" }, itemSpaces: {}, showing: A, paired: ["boxa"], spaceServers: {} }), { box: undefined });
+});
+
+test("itemSpacesFrom: the ids a list shows are remembered with the Space they were in (the row's address, its own space, else the Space asked for)", () => {
+  const m = itemSpacesFrom({ tasks: [{ id: "t1", space: B }, { id: "t2" }, { urn: `vyre://${A}/task/t3` }, null, { id: 7 }] }, C);
+  assert.deepEqual(m, { t1: B, t2: C, t3: A });
+  assert.deepEqual(itemSpacesFrom([{ id: "r1", slug: "proj-one" }], B), { r1: B, "proj-one": B });
+  assert.deepEqual(itemSpacesFrom({ id: "new1" }, A), { new1: A }, "a thing just made");
+  assert.deepEqual(itemSpacesFrom([{ id: "x" }], undefined), {}, "no Space known, nothing remembered");
+  assert.deepEqual(itemSpacesFrom("junk", A), {});
 });
