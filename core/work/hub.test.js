@@ -12,6 +12,8 @@ function fake() {
   const moves = /** @type {string[][]} */ ([]);
   const kernel = {
     space: "spc_x", owner: "per_o", serviceChain: () => ({ who: "service" }),
+    // the Space's own answer for a person: the owner is per_o, everyone else a member (the hub files a run's project hint only where the chat's creator may file it)
+    membership: async (/** @type {string} */ p) => ({ member: true, role: p === "per_o" ? "owner" : "member" }),
     records: {
       create: async (/** @type {any} */ _c, /** @type {string} */ type, /** @type {any} */ data) => { const id = `id${++n}`; const r = { id, type, urn: `vyre://spc_x/${type}/${id}`, version: 1, data }; rows.set(id, r); return r; },
       query: async (/** @type {any} */ _c, /** @type {string} */ type, /** @type {any} */ q) => ({ rows: [...rows.values()].filter(r => r.type === type && (!q.filter || JSON.stringify(r.data[q.filter.field]) === JSON.stringify(q.filter.value))) }),
