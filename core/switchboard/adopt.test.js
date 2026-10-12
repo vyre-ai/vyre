@@ -54,7 +54,7 @@ test("claudesNaming: the claude a subreaper runs for us is ours (its parent is t
   const path = await import("node:path");
   const { fileURLToPath } = await import("node:url");
   const sub = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-subreaper.js");
-  const id = "0f3c1d52-77aa-4c0e-9d11-2b6f4c9e8a10";
+  const id = (await import("node:crypto")).randomUUID();
   // a program that looks like a claude with this session open, run under a stand-in subreaper (as tini wraps a session) and, separately, on its own
   const idle = ["-e", "setInterval(()=>{},1000)", "claude", "--session-id", id];
   const wrapped = spawn(sub, ["-s", "--", process.execPath, ...idle], { stdio: "ignore", detached: true });
@@ -68,7 +68,7 @@ test("claudesNaming: the claude a subreaper runs for us is ours (its parent is t
   // a claude the model starts from a tool inside the session is a grandchild in the session's own process group: a second writer of the transcript, so it is still named (only a CHILD of ours is ours)
   const sh = spawn("/bin/sh", ["-c", `${JSON.stringify(sub)} -s -- ${JSON.stringify(process.execPath)} -e "setInterval(()=>{},1000)" claude --session-id ${id} & wait`], { stdio: "ignore", detached: true });
   t.after(() => { try { process.kill(-/** @type {number} */ (sh.pid), "SIGKILL"); } catch { /* gone */ } });
-  await until(() => claudesNaming(id, [/** @type {number} */ (sh.pid)]).length >= 1);
-  const grand = claudesNaming(id, [/** @type {number} */ (sh.pid)]).filter(p => p !== wrapped.pid && p !== alone.pid && p !== process.pid);
+  await until(() => claudesNaming(id, [/** @type {number} */ (sh.pid), /** @type {number} */ (wrapped.pid)]).length >= 2);
+  const grand = claudesNaming(id, [/** @type {number} */ (sh.pid), /** @type {number} */ (wrapped.pid)]).filter(p => p !== alone.pid);
   assert.equal(grand.length, 1, `the grandchild is named though it shares the group of our recorded pid: ${grand}`);
 });
