@@ -486,6 +486,8 @@ export function createFolder() {
     get readUpto() { return read.upto; },
     /** Queued user messages, oldest first; they leave when picked up. */
     queue: () => queueSnap,
+    /** The ids of the questions still open (not answered, not cancelled). */
+    openAsks: () => [...items.values()].filter((i) => i.kind === "ask" && i.state === "open").map((i) => String(i.ask)),
     size: () => items.size,
   };
 }

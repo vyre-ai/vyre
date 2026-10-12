@@ -44,3 +44,10 @@ test("the chat stream's own-home paths are untouched: the team branch comes firs
   assert.match(src, /if \(!\(await teamSpace\(\)\)\) return write\(name, input\);/, "not a team chat: the outbox as before");
   assert.equal((src.match(/await write\(/g) || []).length, 0, "no write goes around writeVia");
 });
+
+test("a held message says why: the queue strip reads the store's waitLine (a question that is somebody else's names them) before the plain 'waiting for the current reply'", () => {
+  const screen = fs.readFileSync(new URL("./ChatScreen.tsx", import.meta.url), "utf8");
+  assert.match(screen, /\{store\.waitLine\(\) \?\? "waiting for the current reply"\}/);
+  const st = fs.readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+  assert.match(st, /waitLine: \(\) => waitLine\(\{ open: folder\.openAsks\(\)/);
+});

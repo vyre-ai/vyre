@@ -107,6 +107,16 @@ export function askAudience({ asker, viewer, names = {} }) {
   return { mine: false, waitingFor: cap(names[asker] ?? parseWho(asker).id) };
 }
 
+/**
+ * Why a queued message is held, when a question is open: "waiting for Carol to answer a question" (somebody else's turn), or "waiting for your answer to a question". Null when no question is open (the
+ * message is just waiting for the reply). @param {{ open: string[], asker: (ask: string) => string | null | undefined, viewer: string, names?: Record<string, string> }} o
+ */
+export function waitLine({ open, asker, viewer, names = {} }) {
+  const others = open.map((a) => asker(a)).filter((x) => x && x !== viewer);
+  if (others.length) return "waiting for " + cap(names[/** @type {string} */ (others[0])] ?? parseWho(/** @type {string} */ (others[0])).id) + " to answer a question";
+  return open.length ? "waiting for your answer to a question" : null;
+}
+
 /** Which fan-out answer a tap keeps. `id` is a message id or an author. @param {Fanout | undefined} fo @param {string} id */
 export function fanoutKeep(fo, id) {
   if (!fo || fo.kept) return { ok: false, keep: /** @type {string | null} */ (null) };

@@ -1315,13 +1315,18 @@ export default {
         const person = String(h.actor.id);
         const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person)).catch(() => null) : null;
         if (!m || !m.role) throw fail("not found", "not_found");
-        const staff = person === (typeof K.owner === "string" ? K.owner : "") || m.role === "owner" || m.role === "admin";
+        const canon = typeof K.canonicalPerson === "function" ? String(K.canonicalPerson(person) || person) : person;
+        const staff = canon === (typeof K.owner === "string" ? K.owner : "") || person === (typeof K.owner === "string" ? K.owner : "") || m.role === "owner" || m.role === "admin";
         const want = i.input && typeof i.input.project === "string" && i.input.project ? i.input.project : "";
+        // staff are not asked about the project at all: one who names a project that does not exist gets an empty list, not "not found" (on purpose; do not tighten it into a refusal that tells a member a project exists)
         const seated = async (/** @type {string} */ project) => { if (staff) return true; try { const s = await use("work.project.seat", { project, person }); return Boolean(s && s.exists && (s.owner || s.team)); } catch { return false; } };
         const rows = db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT);
         if (want) {
+          // a project is named by its record address or by its short name: both forms match (the stored form is whichever team.add was given)
           const tail = (/** @type {string} */ x) => String(x).split("/").pop();
-          const mine = rows.filter(tm => tail(tm.project) === tail(want));
+          const wantSlug = await slugOf(want);
+          /** @type {typeof rows} */ const mine = [];
+          for (const tm of rows) if (tail(tm.project) === tail(want) || (await slugOf(tm.project)) === wantSlug) mine.push(tm);
           const probe = mine.length ? mine[0].project : want;
           if (!(await seated(probe))) throw fail("No project like that that you can open. Ask the project's owner to add you.", "not_found");
           return { teammates: mine.map(tm => ({ project: tm.project, role: tm.role, agent: tm.agent, state: tm.state })) };

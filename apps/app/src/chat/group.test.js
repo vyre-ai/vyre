@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createGroup, parseWho, authorLabel, avatarStack, unreadDivider, presenceLine, askAudience, fanoutKeep, textMentions, sealedNoteSeen, markSealedNoteSeen, sealedNoteText } from "./group.js";
+import { createGroup, waitLine, parseWho, authorLabel, avatarStack, unreadDivider, presenceLine, askAudience, fanoutKeep, textMentions, sealedNoteSeen, markSealedNoteSeen, sealedNoteText } from "./group.js";
 
 const V = "person:alex";
 let cur = 0;
@@ -218,4 +218,13 @@ test("no internal words: a participant whose only name is an id shows as Someone
   const lines = f.rows.map((r) => JSON.stringify(f.item(r.key)));
   assert.ok(lines.some((t) => /Someone set replies/.test(t)));
   for (const t of lines) assert.doesNotMatch(t, /per[_ ][a-z2-7]{12,}|tfbsa6hid/i, "an id never reaches a person");
+});
+
+test("waitLine: a queued message says whose question it waits on, or that it waits on its own sender's answer; with no question open it says nothing", () => {
+  const names = { "person:per_carol": "carol" };
+  const askerOf = (/** @type {Record<string, string>} */ m) => (/** @type {string} */ a) => m[a];
+  assert.equal(waitLine({ open: ["a1"], asker: askerOf({ a1: "person:per_carol" }), viewer: "person:per_bob", names }), "waiting for Carol to answer a question");
+  assert.equal(waitLine({ open: ["a1"], asker: askerOf({ a1: "person:per_bob" }), viewer: "person:per_bob", names }), "waiting for your answer to a question");
+  assert.equal(waitLine({ open: ["a1", "a2"], asker: askerOf({ a1: "person:per_bob", a2: "person:per_carol" }), viewer: "person:per_bob", names }), "waiting for Carol to answer a question", "somebody else's question is the one named");
+  assert.equal(waitLine({ open: [], asker: askerOf({}), viewer: "person:per_bob", names }), null);
 });

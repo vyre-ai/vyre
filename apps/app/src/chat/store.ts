@@ -15,7 +15,7 @@ import { isKind } from "./frame-type.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
-import { createGroup } from "./group.js";
+import { createGroup, waitLine } from "./group.js";
 
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
@@ -39,6 +39,8 @@ export type ChatStore = {
   answer(ask: string, decision: "approve" | "deny"): Promise<string | null>;
   /** The group side: authors, presence, reactions, pins, threads, the read marker, fan-out sets (group.js). */
   readonly group: ReturnType<typeof createGroup>;
+  /** Why queued messages are held when a question is open ("waiting for Carol to answer a question"); null when none is. */
+  waitLine(): string | null;
   subscribeGroup(f: () => void): () => void;
   /** Say this person is typing (the others see it for a few seconds). */
   typing(): void;
@@ -203,6 +205,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       return () => { s!.delete(f); if (!s!.size) rowSubs.delete(k); };
     },
     subscribeMeta(f) { metaSubs.add(f); return () => void metaSubs.delete(f); },
+    waitLine: () => waitLine({ open: folder.openAsks(), asker: (a) => group.asker(a), viewer: group.viewer, names: group.names() }),
     rows: () => folder.rows,
     item: (k) => folder.item(k),
     rowRev: (k) => local.get(k) ?? 0,

@@ -368,7 +368,7 @@ export function ChatScreen(p: ChatScreenProps) {
             <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>
               <Text numberOfLines={1} style={{ flex: 1 }}>{q.text}</Text>
-              <Text size="caption" tone="label">waiting for the current reply</Text>
+              <Text size="caption" tone="label">{store.waitLine() ?? "waiting for the current reply"}</Text>
             </View>
           ))}
         </View>

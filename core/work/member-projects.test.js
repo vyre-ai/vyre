@@ -200,7 +200,9 @@ test("team.list on the door: a member sees the teammates of the projects she is 
   assert.ok(!JSON.stringify(hers).includes("SECRET BRIEF"));
   const err = await list(ANA, { project: bens.project }).then(() => null, (/** @type {any} */ e) => e);
   assert.ok(err && err.code === "not_found", `another member's project: ${err && err.code}`);
-  assert.deepEqual((await list(ANA, { project: mine.project })).teammates.map((/** @type {any} */ x) => x.role), ["reviewer"]);
+  assert.deepEqual((await list(ANA, { project: mine.project })).teammates.map((/** @type {any} */ x) => x.role), ["reviewer"], "named by its record address");
+  assert.deepEqual((await list(ANA, { project: mine.slug })).teammates.map((/** @type {any} */ x) => x.role), ["reviewer"], "named by its short name");
+  assert.equal((await list(ANA, { project: bens.slug }).then(() => null, (/** @type {any} */ e) => e)).code, "not_found", "another member's project by its short name");
   assert.deepEqual((await list(BEN)).teammates.map((/** @type {any} */ x) => x.role), ["drafter"]);
   assert.deepEqual((await list(w.OWNER)).teammates.map((/** @type {any} */ x) => x.role).sort(), ["drafter", "reviewer"], "the owner sees every project's");
   await assert.rejects(tools.team.list(w.chainOf(ZED), {}), /not found/i, "a person who is not a member");
