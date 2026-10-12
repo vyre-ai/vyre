@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectsFor, ensureFolder, stopLostSeats, socketGid } from "./project-access.js";
+import { projectsFor, ensureFolder, stopLostSeats, socketGid, regroupSocket, syncProjects, launchAccess } from "./project-access.js";
 import { syncAll } from "../../lib/project-folders.js";
 
 const PROJECTS = [
@@ -87,11 +87,11 @@ test("a first launch that takes a while says what it is doing", async () => {
 test("projects.sync: every project's folders, one that fails does not stop the rest, a second run changes nothing", async () => {
   const done = new Set(), seen = /** @type {string[]} */ ([]);
   const ask = /** @type {any} */ (async (/** @type {string} */ p, /** @type {string} */ f) => { seen.push(f); if (p === "beta") throw new Error("not a real folder"); const fresh = !done.has(f); done.add(f); return { migrated: fresh }; });
-  const call = sb().deps.call;
-  const first = await syncAll(call, ask);
+  const list = () => sb().deps.call("projects.list", {});
+  const first = await syncAll(list, ask);
   assert.deepEqual(first.projects.map(r => [r.project, r.folders, r.migrated, r.error ? "error" : "ok"]), [["alpha", 2, 2, "ok"], ["beta", 1, 0, "error"], ["gamma", 1, 1, "ok"]]);
   assert.match(String(first.projects[1].error), /not a real folder/);
-  const second = await syncAll(call, ask);
+  const second = await syncAll(list, ask);
   assert.deepEqual(second.projects.map(r => r.migrated), [0, 0, 0]);
 });
 
@@ -110,4 +110,32 @@ test("a session socket's group is its account's (gid equals uid), or the box age
   const was = process.env.VYRE_AGENT_GID;
   try { delete process.env.VYRE_AGENT_GID; assert.equal(socketGid(null), 1001); process.env.VYRE_AGENT_GID = "1500"; assert.equal(socketGid(undefined), 1500); process.env.VYRE_AGENT_GID = "x"; assert.equal(socketGid(null), 1001); }
   finally { if (was === undefined) delete process.env.VYRE_AGENT_GID; else process.env.VYRE_AGENT_GID = was; }
+});
+
+test("a socket kept across a hop is given the new account's group, and one that already has it is left; a refusal is logged, not thrown", () => {
+  const calls = /** @type {number[]} */ ([]), log = /** @type {string[]} */ ([]);
+  const have = { gid: 2000, setGroup: (/** @type {number} */ g) => calls.push(g) };
+  regroupSocket(have, { uid: 2001 }, m => log.push(m)); assert.deepEqual(calls, [2001]); assert.equal(have.gid, 2001);
+  regroupSocket(have, { uid: 2001 }, m => log.push(m)); assert.deepEqual(calls, [2001], "the same group: nothing");
+  regroupSocket({ gid: 1, setGroup() { throw new Error("EPERM"); } }, { uid: 2002 }, m => log.push(m)); assert.match(log[0], /EPERM/);
+  regroupSocket(null, { uid: 1 }, m => log.push(m)); regroupSocket({ gid: 1 }, { uid: 2 }, m => log.push(m));
+});
+
+test("projects.sync where sessions do not run through the spawner is refused with where to run it", async () => {
+  const was = process.env.VYRE_SESSIONS_SPAWNER;
+  try { delete process.env.VYRE_SESSIONS_SPAWNER; await assert.rejects(syncProjects(sb()), (/** @type {any} */ e) => e.code === "unavailable" && /team server's box/.test(e.message)); }
+  finally { if (was !== undefined) process.env.VYRE_SESSIONS_SPAWNER = was; }
+});
+
+test("the launch step: an account's launch carries its projects; a launch on no account carries none and asks only for its folder", async () => {
+  const s = sb(); const o = { agent: null, scope: null };
+  const rec = { cwd: "/work/projects/gamma", project: "gamma" };
+  s.emit = () => {};
+  const got = await launchAccess(s, rec, { ...o, accountRun: { uid: 2000, person: "ben" } }, "t1").catch(e => e);
+  // the folder step asks the real spawner, which is not there on a test box: the refusal names the next step
+  assert.equal(got.code, "sandbox_failed"); assert.match(got.message, /owned by Vyre and is inside/);
+  const none = await launchAccess(s, { cwd: "/srv/elsewhere" }, { ...o, accountRun: { uid: 2000, person: "ben" } }, "t2");
+  assert.deepEqual(none.accountRun.projects, ["alpha", "gamma"]);
+  const agent = await launchAccess(s, { cwd: "/srv/elsewhere" }, o, "t3");
+  assert.equal(agent.accountRun, undefined);
 });

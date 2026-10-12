@@ -30,8 +30,7 @@ import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from "../sessions/config.js";
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
-import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { ensureFolder, projectsFor, socketGid, stopLostSeats } from "./project-access.js";
+import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js"; import { accessTools, launchAccess, regroupSocket, socketGid } from "./project-access.js";
 import { prepareSandbox, sessionCliEnv, pickedFirst } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
@@ -988,13 +987,7 @@ export class Switchboard {
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
-    // Project folders on a team server (core/switchboard/project-access.js): the folder this session starts in is handed to its project's group (the first launch there), and a session on an account
-    // joins the groups of the projects its ACCOUNT's person has a seat on, never a caller's word. No person that can be resolved is no project.
-    if (usesSpawner()) {
-      at("project folder access");
-      await ensureFolder(this, rec.cwd, text => this.emit("thread.text", { message: "vyre", text, done: true, notice: true }, id, rec.project));
-      if (o.accountRun && o.accountRun.uid != null) o = { ...o, accountRun: { ...o.accountRun, projects: await projectsFor(this, o.accountRun, { agent: o.agent || rec.agent || null, scope: o.scope || null, cwd: rec.cwd }) } };
-    }
+    // Project folders on a team server (core/switchboard/project-access.js): this session's folder goes to its project's group, and an account's session joins only its person's projects' groups.
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
     if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
@@ -1007,6 +1000,7 @@ export class Switchboard {
         throw Object.assign(new Error("Connect an AI account to start a session."), { code: "no_account" });
       }
     }
+    if (usesSpawner()) { at("project folder access"); o = await launchAccess(this, rec, o, id); }
     at("system prompt");
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
@@ -1144,12 +1138,7 @@ export class Switchboard {
     // A chat turn whose session cannot be opened does not start: the person is told in words (the caller's refusal) instead of the turn running with no session and its reply dropped.
     const needed = (/** @type {boolean} */ ok) => { if (!ok && turn && turn.chat) throw Object.assign(new Error("The team's chat could not be opened for you just now. Send the message again in a minute."), { code: "no_session" }); };
     if (!this.deps.threadSocket) { needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
-    if (this.socks.has(id)) {
-      // kept across a fallback respawn or a hop: when the session now runs on another account, the socket is given that account's group (and no other can connect)
-      const have = /** @type {any} */ (this.socks.get(id)), want = socketGid(run);
-      if (have && have.gid !== want && typeof have.setGroup === "function") { try { have.setGroup(want); have.gid = want; } catch (e) { this.deps.log(`threads: the socket of ${id.slice(0, 8)} could not be given its account's group (${/** @type {Error} */ (e).message})`); } }
-      if (turn) needed(await this.renewKernelSession(id, rec, turn, "launch")); return;
-    }
+    if (this.socks.has(id)) { regroupSocket(this.socks.get(id), run, this.deps.log); if (turn) needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
     let opened = true;
     try {
       // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
@@ -4130,8 +4119,7 @@ export default {
     // One Chat: a terminal session's SessionStart (the Harness says `thread.started` with a `session` and no thread of ours) is a run in a chat of the person's.
     const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session).then(chat => { if (chat) ctx.events.emit("thread.chat", { session: p.session, chat, cwd: p.cwd || null }); }); });
     // The rollover settings are read at most every few seconds per project; a change is seen at once.
-    // A project made (or given a folder) on a team server is handed to its own group at once, not at its first launch: a folder made by vyred is born readable to its group and, until then, to anyone who knows the path.
-    const offProjectFolders = ctx.events.on("project.created", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (usesSpawner() && typeof p.home === "string") void ensureFolder(sb, p.home).catch((/** @type {Error} */ err) => ctx.log(`threads: project ${String(p.project || "").slice(0, 60)} could not be handed to its group yet (${err.message}); its first launch asks again`)); });
+    const offAccess = accessTools(ctx, sb);   // the seat and sync tools, and a new project's folder handed to its group (core/switchboard/project-access.js)
     const offRollSettings = ctx.events.on("settings.changed", e => { if (e.payload && String(e.payload.key || "").startsWith("sessions.rollover")) sb.rollCfgs.clear(); });
     const offGithubCleanup = ctx.events.on("thread.status", e => {
       if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
@@ -4895,12 +4883,6 @@ export default {
       run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post", safeRequest(i.request)),
     });
     // The model picker needs a provider's models before the person's first session with it: sessions asks right after a sign-in.
-    // A seat on a project was taken away (the work module hears the team change): the sessions running on that person's own account under the project are stopped, since a process keeps the groups it started with.
-    ctx.tool("threads.seats.recheck", {
-      description: "Judge every running session on a person's own account again against the project seat rule and stop the ones under a project that person is no longer on. For the work module, on a team change.", internal: true,
-      input: { type: "object", properties: {} },
-      run: async () => ({ stopped: await stopLostSeats(sb) }),
-    });
     ctx.tool("threads.providers.learn", {
       description: "Learn a provider account's models and plan without a model turn: start its agent (initialize and a session, which cost nothing), read what it offers, end the session. For sessions after a sign-in; not a public name.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str } },
@@ -5104,6 +5086,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { clearTimeout(resumeTimer); offRollSettings(); offProjectFolders(); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offRollSettings(); offAccess(); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

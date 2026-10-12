@@ -23,7 +23,9 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { windowsShellGuard } from "../../lib/agent-sandbox.js";
-import { available as spawnerHere, spawnAsAgent } from "../spawner/client.js";
+import { available as spawnerHere, spawnAsAgent, projectGroup } from "../spawner/client.js";
+/** The spawner's project-group op, for the Switchboard (a launch hands its folder to the project's group): through here so no other module reaches into the spawner. */
+export { projectGroup };
 
 /** tini on this machine, if any: the box image puts it in /usr/bin. */
 export function findSubreaper() {

@@ -4,15 +4,15 @@
 // (work.project.seat: owner or team), never from a label the caller sent. No resolvable person is no project: never all of them.
 
 import path from "node:path";
-import { projectGroup } from "../spawner/client.js";
-import { mappedProjects as mapped, workRoot, under } from "../../lib/project-folders.js";
+import { projectGroup, usesSpawner } from "../sessions/spawn.js";
+import { mappedProjects as mapped, syncAll, workRoot, under } from "../../lib/project-folders.js";
 
 /** The spawner takes at most this many project ids in one spawn (core/spawner/project-groups.js MAX_PER_SPAWN). */
 const MAX_PER_SPAWN = 64;
 /** A first launch for a project that takes longer than this says what it is doing (the folder is being handed to its group). */
 const SAY_AFTER_MS = 3000;
 
-const mappedProjects = (/** @type {any} */ sb) => mapped(sb.deps.call);
+const mappedProjects = (/** @type {any} */ sb) => mapped(() => sb.deps.call("projects.list", {}));
 
 /**
  * The project ids a session on an ACCOUNT may join. The person is the account's (an account with no person is the home's own: the owner's, who reaches every project). Anyone else gets exactly the projects
@@ -100,4 +100,50 @@ export function socketGid(run) {
   if (run && run.uid != null) return Number(run.uid);
   const g = Number(process.env.VYRE_AGENT_GID);
   return Number.isInteger(g) && g > 0 ? g : 1001;
+}
+
+/**
+ * The launch step: the folder the session starts in is handed to its project's group, and a session on an account gets the project ids it joins in `accountRun.projects`. Returns the launch options.
+ * @param {any} sb @param {any} rec @param {any} o @param {string} id
+ */
+export async function launchAccess(sb, rec, o, id) {
+  await ensureFolder(sb, rec.cwd, text => sb.emit("thread.text", { message: "vyre", text, done: true, notice: true }, id, rec.project));
+  if (!(o.accountRun && o.accountRun.uid != null)) return o;
+  return { ...o, accountRun: { ...o.accountRun, projects: await projectsFor(sb, o.accountRun, { agent: o.agent || rec.agent || null, scope: o.scope || null, cwd: rec.cwd }) } };
+}
+
+/** projects.sync, from the projects module: every mapped project's folders handed to their groups. Refused with a next step where there is no spawner. @param {any} sb */
+export async function syncProjects(sb) {
+  if (!usesSpawner()) throw Object.assign(new Error("this computer has no project groups (sessions do not run through the spawner here), so there is nothing to do; run it on the team server's box"), { code: "unavailable" });
+  return syncAll(() => sb.deps.call("projects.list", {}), projectGroup);
+}
+
+/** A socket kept across a respawn or a hop is given the group of the account the session runs on now. @param {any} have the stored socket @param {{ uid?: number | null } | null} run @param {(m: string) => void} log */
+export function regroupSocket(have, run, log) {
+  const want = socketGid(run);
+  if (!have || have.gid === want || typeof have.setGroup !== "function") return;
+  try { have.setGroup(want); have.gid = want; } catch (e) { log(`threads: a session's socket could not be given its account's group (${/** @type {Error} */ (e).message})`); }
+}
+
+/**
+ * The tools and the one listener of this part, for the Switchboard module: a seat on a project was taken away (the work module hears the team change and asks threads.seats.recheck), and projects.sync's work (the projects module asks
+ * threads.projects.sync). Both are for modules only.
+ * @param {any} ctx @param {any} sb @returns {() => void} stop listening
+ */
+export function accessTools(ctx, sb) {
+  const none = { type: "object", properties: {} };
+  ctx.tool("threads.seats.recheck", { description: "Judge every running session on a person's own account again against the project seat rule and stop the ones under a project that person is no longer on. For the work module, on a team change.", internal: true, input: none, run: async () => ({ stopped: await stopLostSeats(sb) }) });
+  ctx.tool("threads.projects.sync", { description: "Give every project's folder under /work to the project's own group (projects.sync, the owner's call, is the way in). For the projects module.", internal: true, input: none, run: async () => syncProjects(sb) });
+  return watchProjectFolders(ctx, sb);
+}
+
+/**
+ * A project made (or given a folder) on a team server is handed to its own group at once, not at its first launch: a folder made by vyred is born readable to its group and, until then, to anyone who knows the path.
+ * @param {any} ctx @param {any} sb @returns {() => void} stop listening
+ */
+function watchProjectFolders(ctx, sb) {
+  return ctx.events.on("project.created", (/** @type {any} */ e) => {
+    const p = (e && e.payload) || {};
+    if (usesSpawner() && typeof p.home === "string") void ensureFolder(sb, p.home).catch((/** @type {Error} */ err) => ctx.log(`threads: project ${String(p.project || "").slice(0, 60)} could not be handed to its group yet (${err.message}); its first launch asks again`));
+  });
 }

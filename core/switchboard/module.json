@@ -362,6 +362,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.projects.sync",
+        "reach": "modules"
+      },
+      {
         "name": "threads.live",
         "reach": "modules"
       }
