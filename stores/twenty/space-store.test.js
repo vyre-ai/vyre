@@ -291,3 +291,13 @@ test("rc.3: while the record store is setting itself up the status says it is bu
   const f = /** @type {any} */ (await storeStatus({ root: home, store: failed, env: { VYRE_STORE: "twenty" } }));
   assert.match(f.unavailable.reason, /compose file/);
 });
+
+test("rc.3: the record of a failed attempt is removed as soon as the store opens, before attach() replays the definitions and starts the waiting modules (which takes minutes on a first start)", () => {
+  const src = fs.readFileSync(new URL("./space-store.js", import.meta.url), "utf8");
+  // In both success paths (the retry and the first open that ran late) the removal comes before the attach call.
+  for (const re of [/const real = await open\(space, w\.meta\);[\s\S]*?stateFile\(w\.dir\)[\s\S]*?await w\.store\.attach\(real\)/, /opening\.then\(async \(real\) => \{[\s\S]*?stateFile\(w\.dir\)[\s\S]*?await w\.store\.attach\(real\)/]) {
+    assert.match(src, re);
+  }
+  const attempt = src.slice(src.indexOf("const attempt = async"), src.indexOf("const storeFor = async"));
+  assert.ok(attempt.indexOf("stateFile(w.dir)") < attempt.indexOf("await w.store.attach(real)"), "attempt(): removal before attach");
+});

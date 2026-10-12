@@ -207,6 +207,9 @@ export function createStoreFor(cfg) {
     if (w.timer) { clearTimeout(w.timer); w.timer = null; }
     try {
       const real = await open(space, w.meta);
+      // The record of the failed attempt stops being true the moment a real store exists. attach() replays everything the kernel defined while the store was away and starts the modules that waited
+      // for it, which takes minutes on a first start: the record must not outlive Records being ready by all that time (`vyre status` said "not available yet" for it).
+      try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
       if (real) await w.store.attach(real);
       waiting.delete(space);
       try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
@@ -238,6 +241,7 @@ export function createStoreFor(cfg) {
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
+        try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }   // before attach(), which takes minutes on a first start (see attempt)
         if (real) await w.store.attach(real);
         waiting.delete(space);
         try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
