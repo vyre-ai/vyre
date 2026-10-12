@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
+import { chatServersFrom, mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -75,4 +75,43 @@ test("mergeSpaceLists: every server's Spaces in one list, each row says which se
 
 test("mergeSpaceLists: a server that answered nothing adds nothing and never throws", () => {
   assert.deepEqual(mergeSpaceLists({ boxa: undefined, boxb: [] }), []);
+});
+
+// A chat always goes to the server that holds it, whatever is showing: a message for one server's chat must never land on another (its confidential material would).
+const chatServers = { chat_one: "boxb", chat_two: "boxa" };
+
+test("route: a chat goes to its own server even when the active server is another and All spaces is showing", () => {
+  assert.deepEqual(go({ input: { chat: "chat_one" }, showing: "all", chatServers }), { box: "boxb" });
+  assert.deepEqual(go({ input: { chat: "chat_two" }, showing: B, chatServers }), { box: "boxa" }, "the chat wins over the Space showing");
+});
+
+test("route: a chat whose server is not known is refused in words, never guessed", () => {
+  const r = go({ input: { chat: "chat_unknown" }, chatServers });
+  assert.equal(r.error?.code, "chat_unknown_server");
+  assert.equal(r.box, undefined);
+  assert.match(r.error?.message ?? "", /Chats/);
+});
+
+test("route: a chat on a server that is no longer paired is refused naming the next step", () => {
+  const r = go({ input: { chat: "chat_one" }, chatServers, paired: ["boxa"] });
+  assert.equal(r.error?.code, "server_not_paired");
+  assert.match(r.error?.message ?? "", /Settings, Servers/);
+});
+
+test("route: with one server paired a chat needs no map and goes where it always went", () => {
+  assert.deepEqual(go({ input: { chat: "chat_unknown" }, chatServers: {}, paired: ["boxa"], spaceServers: {} }), { box: undefined });
+});
+
+test("route: a record address names its Space, so a record action goes to that Space's server under All spaces", () => {
+  assert.deepEqual(go({ input: { urn: `vyre://${B}/contact/01a1` }, showing: "all" }), { box: "boxb" });
+  assert.deepEqual(go({ input: { urn: `vyre://${A}/contact/01a1` }, showing: B }), { box: "boxa" }, "the address wins over the Space showing");
+});
+
+test("chatServersFrom: each server's chat list names the chats it holds; a chat listed twice stays with the first server", () => {
+  const m = chatServersFrom({
+    boxa: { chats: [{ chat: "c1" }, { id: "vyre://spc_aaaaaaaaaaaa/chat/c2" }] },
+    boxb: { chats: [{ chat: "c3" }, { chat: "c1" }] },
+  });
+  assert.deepEqual(m, { c1: "boxa", c2: "boxa", c3: "boxb" });
+  assert.deepEqual(chatServersFrom({ boxa: undefined, boxb: [] }), {});
 });
