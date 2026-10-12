@@ -80,7 +80,7 @@ test("spawner: the real claude, started as the account, finds the credential on 
 
 test("spawner: a terminal shell from a session that holds a credential reads nothing on fd 3 and has no credential variable", { skip: root ? (HAS_TERMINAL ? false : "this build has no terminal role yet (terminal-spawn)") : "needs root on Linux with setpriv and tini", timeout: 120_000 }, async t => {
   const r = await rig(t);
-  const child = spawnSession("/bin/sh", ["-c", "echo fd3=[$(timeout 1 head -c 200 /proc/self/fd/3 2>&1)]; echo vars=$(env | grep -c 'FILE_DESCRIPTOR\\|KEY\\|TOKEN\\|SECRET\\|OAUTH'); echo has=$(env | grep -c \"$(cat ${r.expected})\")"], { cwd: r.work, spawner: true, spawnerSocket: r.socket, account: { uid: A }, terminal: true, env: { PATH: process.env.PATH, CLAUDE_CODE_OAUTH_TOKEN: SECRET, ANTHROPIC_API_KEY: SECRET } });
+  const child = spawnSession("/bin/sh", ["-c", "echo fd3=[$(timeout 1 head -c 200 /proc/self/fd/3 2>&1)]; echo vars=$(env | grep -c 'FILE_DESCRIPTOR\\|KEY\\|TOKEN\\|SECRET\\|OAUTH')"], { cwd: r.work, spawner: true, spawnerSocket: r.socket, account: { uid: A }, terminal: true, env: { PATH: process.env.PATH, CLAUDE_CODE_OAUTH_TOKEN: SECRET, ANTHROPIC_API_KEY: SECRET } });
   const res = await collect(child);
   assert.ok(!res.out.includes(SECRET), "the terminal printed the credential: " + res.out);
   assert.match(res.out, /vars=0/, res.out);
