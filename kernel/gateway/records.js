@@ -949,7 +949,8 @@ export function createRecords(cfg) {
         }
       }
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
-      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
+      // (a path into a field, `fee.amount` of a money field, needs the whole field `fee` in the cut row)
+      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)].flatMap((/** @type {string} */ k) => [k, String(k).split(".")[0]]));
       // Folded a row at a time: memory is the number of groups (capped), never the number of rows; the scan is capped at 40 pages (20,000 rows) and in time, and says so (`unsupported`) rather than totalling a part.
       // The store already applied the filter; rows are cut to the fields the total uses, so the filter must not be applied again to the cut row.
       const agg = createAggregator({ ...spec, filter: undefined }, { maxGroups: AGG_MAX_GROUPS });
