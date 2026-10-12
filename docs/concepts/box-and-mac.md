@@ -122,7 +122,7 @@ On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault
 
 ### The agents' computers
 
-Agents get their own containers ([Specification](../architecture/spec.md#79-computers--workstream), Section 7.9) through `docker-api`, Vyre's own Docker proxy (`core/dockerproxy`, run from the same image). It is off until the `computers` profile is on; turning it on is in [Box care](../using/box-care.md#turn-on-agents-computers).
+Agents get their own containers ([Specification](../architecture/spec.md#79-computers--workstream), Section 7.9) through `docker-api`, Vyre's own Docker proxy (`core/dockerproxy`, run from the same image). It is off until the `computers` profile is on; turning it on is in [Box care](../using/box-care.md#agents-computers).
 
 - The host's Docker socket is mounted into the proxy and nowhere else. vyred reaches it at `http://docker-api:2375` on an internal network.
 - The proxy allows only what agents' computers use (create, start, stop, pause, unpause, inspect, list, remove, exec on a computer, volume inspect) and refuses every other endpoint.
