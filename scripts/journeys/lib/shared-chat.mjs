@@ -113,7 +113,9 @@ async function untilAnswerTo(person, chat, said) {
 /**
  * @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: Grace and Edith, each { name, app, joined }
  */
-export async function sharedChatSteps({ J, w, team, people, needs }) {
+export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
+  // J9_SHORT=1: the chat up to the queue step only (people, sign-ins, group chat, five turns, three queued, one more message); the steps in between are not run
+  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => /tool call in a member|lists that person's skills|leftover|retired product|catchup is what|from a member's session/.test(name) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
   setOwnerView(async () => (await w.call("stream.catchup", { chat, space: team.space })).messages || []);
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
@@ -381,6 +383,14 @@ export async function sharedChatSteps({ J, w, team, people, needs }) {
     assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
     void sleeper;
     return got.join(", ");
+  }, { needs: [H], owner: "chat" });
+
+  const WZ = "one more message after the queued ones is answered on its person's account (the thread is not wedged)";
+  await J.step(WZ, async () => {
+    await speak(grace.name, "whoami walkZ");
+    const a = await untilAnswerTo(grace, chat, "walkZ");
+    assert.ok(String(a[0].text).includes(`/${accounts[grace.name].uid}`), `walkZ ran as Grace's account: ${a[0].text}`);
+    return String(a[0].text).slice(0, 80);
   }, { needs: [H], owner: "chat" });
 
   const WM = "catchup is what others said since you last read: a member's catchup holds the others' messages and the answers and not her own, and on the stream every person's message is followed by its answer in order";
