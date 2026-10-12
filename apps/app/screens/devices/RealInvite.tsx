@@ -10,10 +10,11 @@ import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { InviteRolePicker } from "../roles/InviteRolePicker";
 import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
 import { invitesHere } from "../../src/real/team-join";
-import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
+import { createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
 
 const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
 
@@ -24,6 +25,7 @@ export function RealInvite() {
   const roles = card ? invitable(card.role) : [];
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
+  const [projects, setProjects] = useState<string[]>([]);
   const [to, setTo] = useState("");
   const [anyone, setAnyone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,7 +52,7 @@ export function RealInvite() {
     setBusy(true);
     // This app keeps the name and the server holds none: the invite is made by this app, answering the home's yes with the name's key (src/real/team-invite.js).
     void (async () => {
-      const input = createInput({ space: card.id, role, to, anyone, days: Number(days) });
+      const input = createInput({ space: card.id, role, to, anyone, days: Number(days), projects });
       return (await invitesHere()) ? (await import("../../src/real/team-join")).makeTeamInvite({ space: card.id, name: card.name, role: input.role, ...(input.to ? { to: input.to } : {}), ...(input.expires ? { expires: input.expires } : {}) }) : tool("spaces.invites.create", input);
     })().then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
       setProblem(why(e));
@@ -100,9 +102,7 @@ export function RealInvite() {
         </Card>
       ) : (
         <Card className="max-w-read gap-s3">
-          <Segmented label="What they can do" value={role} onChange={setRole} options={roles.map((r) => [r.id, r.label] as [string, string])} />
-          <Text size="caption" tone="label">{roles.find((r) => r.id === role)?.line}</Text>
-          {role === "temp" ? <Segmented label="Access lasts" value={days} onChange={setDays} options={TEMP_DAYS as [string, string][]} /> : null}
+          <InviteRolePicker actor={card.role} role={role} onRole={setRole} projects={projects} onProjects={setProjects} days={days} onDays={setDays} />
           <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
           {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}

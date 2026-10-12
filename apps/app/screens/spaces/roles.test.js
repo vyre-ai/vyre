@@ -2,15 +2,15 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ROLES, assignable, ownerMoveLine, canManage, endDate, endingSoon, extend, tempLine, withRole } from "./roles.js";
+import { ROLES, assignable, roleLabel, ownerMoveLine, canManage, endDate, endingSoon, extend, tempLine, withRole } from "./roles.js";
 
 test("there are five fixed roles", () => {
   assert.deepEqual(ROLES.map((r) => r.id), ["owner", "admin", "manager", "member", "temp"]);
 });
 
 test("an owner gives any role but Owner, an admin only below admin, others none", () => {
-  assert.deepEqual(assignable("owner"), ["admin", "manager", "member", "temp"]);
-  assert.deepEqual(assignable("admin"), ["manager", "member", "temp"]);
+  assert.deepEqual(assignable("owner"), ["admin", "member", "temp"]);
+  assert.deepEqual(assignable("admin"), ["member", "temp"]);
   assert.deepEqual(assignable("member"), []);
 });
 
@@ -21,6 +21,13 @@ test("nobody edits themselves here, and an admin cannot touch an owner or anothe
   assert.equal(canManage("admin", "admin"), false);
   assert.equal(canManage("admin", "owner"), false);
   assert.equal(canManage("manager", "member"), false);
+});
+
+test("a screen says Guest for temp and Manager is not offered", () => {
+  assert.equal(roleLabel("temp"), "Guest");
+  assert.equal(ROLES.find((r) => r.id === "temp")?.label, "Guest");
+  assert.equal(roleLabel("manager"), "Manager", "a person who already is one is still named");
+  assert.ok(!assignable("owner").includes("manager"));
 });
 
 test("dates count from 3 Oct 2026", () => {

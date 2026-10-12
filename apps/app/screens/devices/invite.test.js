@@ -6,10 +6,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createInput, inviteRefusal, inviteRow, liveServers, invitable, joinedLine, madeNote } from "./invite.js";
 
-test("an owner invites as admin, manager, member or temp; an admin below admin; anyone else cannot", () => {
-  assert.deepEqual(invitable("owner").map((r) => r.id), ["admin", "manager", "member", "temp"]);
-  assert.deepEqual(invitable("admin").map((r) => r.id), ["manager", "member", "temp"]);
+test("an owner invites as admin, member or guest (temp); an admin below admin; anyone else cannot; manager is not offered", () => {
+  assert.deepEqual(invitable("owner").map((r) => r.id), ["admin", "member", "temp"]);
+  assert.deepEqual(invitable("admin").map((r) => r.id), ["member", "temp"]);
   assert.deepEqual(invitable("member"), []);
+});
+
+test("an invite carries the chosen projects, and none when none are chosen", () => {
+  assert.deepEqual(createInput({ space: "s", role: "paralegal", anyone: true, projects: ["p1", "p2"] }), { space: "s", role: "paralegal", projects: ["p1", "p2"] });
+  assert.deepEqual(createInput({ space: "s", role: "member", anyone: true, projects: [] }), { space: "s", role: "member" });
 });
 
 test("the create input carries the name only when given, and a temp invite an end date", () => {
