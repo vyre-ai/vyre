@@ -10,6 +10,7 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
+import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
@@ -53,10 +54,10 @@ export async function defineWithRetry(o) {
       if (n >= tries) {
         o.log(n === tries ? `${o.label} could not be defined after ${n} tries (${why}); still trying every ${Math.round(slow / 60_000)} min, or restart Vyre once Records are up` : `${o.label} are still not defined (${why}); trying again in ${Math.round(slow / 60_000)} min`);
         if (n === tries) { if (o.onExhausted) o.onExhausted(); if (o.onDone) o.onDone(false); }
-        const ts = setTimeout(() => { if (o.timers) o.timers.delete(ts); void attempt(n + 1); }, slow); ts.unref?.(); if (o.timers) o.timers.add(ts);
+        const ts = setTimeout(() => { if (o.timers) o.timers.delete(ts); void attempt(n + 1); }, retryAfter(n, { tries, slow })); ts.unref?.(); if (o.timers) o.timers.add(ts);
         return false;
       }
-      const wait = Math.min(base * 2 ** (n - 1), max);
+      const wait = retryAfter(n - 1, { base, max });
       o.log(`${o.label} are not defined yet (${why}); trying again in ${Math.round(wait / 1000)} s`);
       const t = setTimeout(() => { if (o.timers) o.timers.delete(t); void attempt(n + 1); }, wait); t.unref?.(); if (o.timers) o.timers.add(t);
       return false;

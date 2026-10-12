@@ -39,9 +39,11 @@ async function rig() {
   const bob = dev(BOB, "d-b"), carol = dev(CAROL, "d-c"), ada = dev(ADA, "d-a"), dan = dev(DAN, "d-d");
   const asst = (person, session) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "kit", session });
   // the work module's `file-share` type, and its service chain that the kernel reads shares with
-  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read"] } } });
+  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read", "records.create", "records.remove"] } } });
   await k.gateway.records.define(owner, { add_types: [FILE_SHARE] });
-  const share = (/** @type {any} */ who, /** @type {string} */ path) => k.gateway.records.create(who, "file-share", { path });
+  // a share is the work module's own record, written for the sharer (created_for): the kernel judges it by her
+  const work = k.gateway.serviceChain("work");
+  const share = (/** @type {any} */ who, /** @type {string} */ path) => k.gateway.records.create(work, "file-share", { path }, { on_behalf: who });
   const chat = await g.chats.create(bob, { people: [CAROL], assistants: ["kit"] });
   const dir = `Projects/p1/chat/${chat.id}`, made = `Projects/p1/made/${chat.id}`;
   return { k, drive, D: k.gateway.drive, g, owner, bob, carol, ada, dan, asst, chat, dir, made, share };
@@ -114,10 +116,10 @@ test("unsharing takes the file back at once: the share record is removed (by who
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   const sh = await share(bob, `${dir}/shared.txt`);
   assert.ok(await D.get(dan, `${dir}/shared.txt`));
-  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
+  await k.gateway.records.remove(k.gateway.serviceChain("work"), "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused again");
   const again = await share(bob, `${dir}/shared.txt`);
-  await k.gateway.records.remove(ada, "file-share", again.id, again.version);
+  await k.gateway.records.remove(k.gateway.serviceChain("work"), "file-share", again.id, again.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "an admin may take a share back");
 });
 

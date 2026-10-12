@@ -115,6 +115,14 @@ would. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a r
 with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
 uses the site instead (`https://vyre.run/box/` by default), as it always has.
 
+To look without changing anything, run `vyre update --check` on the server. It says which version
+an update would install and from which channel, and whether the server already runs it. It exits 0
+when the server is current and 1 when a newer release waits. `vyre update --check --json` prints one
+line, `{ "current", "channel", "latest", "update", "source" }`. It downloads nothing but the release
+list, and writes nothing. When the server already runs the newest release, `vyre update` says "already
+on" that version and stops: it does not restart the server. `vyre update --reinstall` puts the same
+version on again anyway.
+
 Vyre looks for a newer release once a day and keeps the answer, so Settings can say "Update available" and show what changed. On a server set up by the install line, Settings also has an **Update to 0.x** button. It does not run anything itself: it drops a one-line request into `/var/lib/vyre-update/request`, a folder that only Vyre can write to and that root owns along with every folder above it, and a small systemd unit on the host (`vyre-update.path`, owned by root) runs `vyre update` for it. That update never accepts `--allow-unsigned`, never goes back to an older version than the newest this server has had (a version the host keeps in a file only root writes), waits at least ten minutes between updates, backs up your data first, and puts the old version back on its own if the new one does not start. The card shows each step and the result. The command above always works too, and a server with no systemd shows only the command.
 
 Turn on **Update automatically** in Settings (off by default) and Vyre asks for a new release by itself between 2 and 5 in the morning, once per version, the same way. The channel is the host's own: set `VYRE_CHANNEL=beta` in the server's `.env`, or leave it on stable. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look. On a Mac there is no update button: run `vyre update` (see Update Vyre on a Mac, below).
@@ -138,12 +146,18 @@ check. Then, in order:
 4. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE` and `VYRE_SOURCE` is
    `/srv/vyre/src`, it swaps in the new `vyre.tgz` and keeps the old one as `/srv/vyre/src.prev`,
    then rebuilds the image with fresh base images. Otherwise it pulls the new image.
-5. It recreates what changed and waits up to a minute for Vyre.
+5. It recreates what changed and waits up to a minute for Vyre. A server that has not answered yet
+   but is still working (its log moved in the last 20 seconds) is waited for, up to ten minutes in
+   all, since setting up the Records types after a restart can take that long.
 
-If Vyre does not come up in that minute, the update undoes itself: the old source, the old image,
+If Vyre does not come up in that time, or goes quiet without answering, the update undoes itself: the old source, the old image,
 the old box files and the database from step 1 all go back, and `vyre update` exits 1 saying it
 rolled back. Store migrations only go forward, which is why the database comes back from the
-backup. Once an update has come up healthy, nothing restores the database on its own, so nothing
+backup. That means anything written between the backup and the rollback (a chat, a note, a
+setting) is lost, and the update says so as it rolls back. A slow start that is still working is
+waited for, so a rollback should be rare; if one happens, check `vyre logs` before you try again.
+
+The automatic updater also keeps a floor, the newest version this server has had, and refuses anything older. After an update that rolled back following its publication, the floor can sit above the version that runs; that blocks only older releases, never the forward update. `sudo vyre raise-floor` raises it to the version installed here after an update you ran yourself, and takes no version. Once an update has come up healthy, nothing restores the database on its own, so nothing
 you write after that is lost.
 
 After a healthy update, when the release carries an Android build, it brings the phone app along:

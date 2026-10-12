@@ -52,7 +52,11 @@ const count = n => { const f = F + "/" + n; const c = (Number(fs.existsSync(f) ?
 const target = () => fs.readFileSync(process.env.VYRE_DIR + "/.env", "utf8").includes("compose.build.yml") ? "vyre:local" : "ghcr.io/vyre-ai/vyre:latest";
 function vyre(cmd) {
   const [c, a] = cmd;
-  if (c === "status") process.exit(running() && !bad().includes(running()) ? 0 : 1);
+  if (c === "status") {
+    // ready-after N: vyred answers only from the Nth ask on (a server busy setting up its Records types).
+    if (fs.existsSync(F + "/ready-after") && count("asks") < Number(fs.readFileSync(F + "/ready-after", "utf8"))) process.exit(1);
+    process.exit(running() && !bad().includes(running()) ? 0 : 1);
+  }
   if (c === "version") { process.stdout.write((fs.existsSync(F + "/cur") ? fs.readFileSync(F + "/cur", "utf8") : "0.1.0") + "\\n"); process.exit(0); }
   if (c === "backup") { fs.copyFileSync(db, ctr(a)); process.exit(0); }
   if (c === "restore") { fs.copyFileSync(ctr(a), db); process.exit(0); }
@@ -82,7 +86,11 @@ if (args[0] === "run") {
 if (args[0] === "image") {
   const [, op, a, b] = args;
   if (op === "inspect") process.exit(has(a) ? 0 : 1);
-  if (op === "tag") { if (!has(a)) process.exit(1); fs.copyFileSync(img(a), img(b)); process.exit(0); }
+  if (op === "tag") {
+    // Real docker will not tag an image AS a digest reference.
+    if (/@sha256:/.test(b)) { console.error("Error response from daemon: refusing to create a tag with a digest reference"); process.exit(1); }
+    if (!has(a)) process.exit(1); fs.copyFileSync(img(a), img(b)); process.exit(0);
+  }
   if (op === "rm") { fs.rmSync(img(a), { force: true }); process.exit(0); }
 }
 if (args[0] === "compose") {
@@ -96,6 +104,7 @@ if (args[0] === "compose") {
     if (id !== "orig") fs.writeFileSync(db, "migrated");
     process.exit(0);
   }
+  if (sub === "ps") { process.stdout.write(running() ? "running\\n" : ""); process.exit(0); }
   if (sub === "stop") { fs.rmSync(F + "/running", { force: true }); process.exit(0); }
   if (sub === "exec" || sub === "run") {
     let i = 2;
@@ -1182,4 +1191,227 @@ test("IR-8 two root runs preparing at once never fail on a shared temp name (no 
   assert.match(fs.readFileSync(path.join(RUNF, "compose.env"), "utf8"), /^DOCKER_GID=998$/m);
   assert.deepEqual(fs.readdirSync(RUNF).filter(n => /\.new$|\.[A-Za-z0-9]{6}$/.test(n)), [], "no temp file is left behind");
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+// rc.3 install-update: a same-version update does nothing, a digest-pinned box rolls back, and --check reads without writing.
+const writeCur = (/** @type {any} */ b, /** @type {string} */ v) => fs.writeFileSync(path.join(b.FAKE, "cur"), v + "\n");
+const NO_CHANGE = /^compose (stop|up|pull|build)\b|vyre backup|image tag/;
+
+test("box update (rc.3): the same version again does nothing, says so, and exits 0, on either channel and by hand", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  writeCur(b, "0.2.0");
+  for (const args of [["update"], ["update", "--channel", "beta"], ["update", "--to", "0.2.0"]]) {
+    const r = /** @type {any} */ (await b.run(args));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /already on 0\.2\.0/);
+  }
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c)), [], "no stop, start, pull, build, backup or retag");
+  assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
+  assert.equal(b.read(b.WRAPPER), WRAPPER_SRC);
+});
+
+test("box update (rc.3): a server too busy to say what it runs is still known by the version the host wrote, so it is not restarted", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(b.DIR, "VERSION"), "0.2.0\n");
+  fs.rmSync(path.join(b.FAKE, "running"));
+  const r = /** @type {any} */ (await b.run(["update", "--channel", "beta"]));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /already on 0\.2\.0/);
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c)), []);
+});
+
+test("box update (rc.3): --reinstall puts the same version on again", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  writeCur(b, "0.2.0");
+  const r = /** @type {any} */ (await b.run(["update", "--reinstall"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(b.calls().includes("compose build --pull"));
+});
+
+test("box update (rc.3): a box pinned by digest rolls back without ever tagging an image as a digest, and --rollback does too", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  const pinned = "ghcr.io/vyre-ai/vyre@sha256:" + "b".repeat(64);
+  const name = (/** @type {string} */ ref) => path.join(b.FAKE, "images", ref.replace(/[/:]/g, "_"));
+  fs.writeFileSync(path.join(b.DIR, "compose.yml"), COMPOSE.replace(/^( *image: *).*$/gm, `$1${pinned}`));
+  fs.writeFileSync(name(pinned), "orig");
+  // The new container never answers: the update rolls back.
+  fs.writeFileSync(path.join(b.FAKE, "bad"), "pulled-1\n");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /rolled back to the release before/);
+  assert.doesNotMatch(r.out, /refusing to create a tag/);
+  assert.deepEqual(b.calls().filter(c => /^image tag \S+ \S+@sha256:/.test(c)), [], "nothing is tagged AS a digest");
+  assert.equal(b.read(path.join(b.DIR, "compose.yml")).includes(pinned), true, "the box files that go back name the old digest");
+  // And by hand, after a healthy update.
+  fs.rmSync(path.join(b.FAKE, "bad"));
+  assert.equal((/** @type {any} */ (await b.run(["update"]))).code, 0);
+  const back = /** @type {any} */ (await b.run(["update", "--rollback"]));
+  assert.equal(back.code, 0, back.out);
+  assert.doesNotMatch(back.out, /refusing to create a tag/);
+  assert.deepEqual(b.calls().filter(c => /^image tag \S+ \S+@sha256:/.test(c)), []);
+});
+
+test("box update --check (rc.3): reads and writes nothing, says what would be installed from which channel, exit 1 when newer, 0 when current", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.3.0-beta.1", pre: true }, { tag: "v0.2.0" }] });
+  const before = fs.readdirSync(b.DIR).sort().join(",");
+  const stable = /** @type {any} */ (await b.run(["update", "--check"]));
+  assert.equal(stable.code, 1, stable.out);
+  assert.match(stable.out, /0\.2\.0 is available on the stable channel \(this server runs 0\.1\.0\)/);
+  const beta = /** @type {any} */ (await b.run(["update", "--check", "--channel", "beta"]));
+  assert.equal(beta.code, 1, beta.out);
+  assert.match(beta.out, /0\.3\.0-beta\.1 is available on the beta channel/);
+  const json = /** @type {any} */ (await b.run(["update", "--check", "--json"]));
+  assert.equal(json.code, 1);
+  assert.deepEqual(JSON.parse(json.out.trim().split("\n").pop()), { current: "0.1.0", channel: "stable", latest: "0.2.0", update: true, source: "github" });
+  writeCur(b, "0.2.0");
+  const cur = /** @type {any} */ (await b.run(["update", "--check"]));
+  assert.equal(cur.code, 0, cur.out);
+  assert.match(cur.out, /up to date: this server runs 0\.2\.0/);
+  assert.equal(fs.readdirSync(b.DIR).sort().join(","), before, "no file written");
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c) || /^compose (exec .*(backup|up))/.test(c)), []);
+  assert.ok(!b.hits.some(h => /vyre\.tgz|\/release\.json|\/vyre$/.test(h)), "no release file was downloaded");
+  assert.equal((/** @type {any} */ (await b.run(["update", "--json"]))).code, 1, "--json alone is refused");
+});
+
+test("box update (rc.3): a server that is slow to answer but still working is waited for; one that is quiet is rolled back as before", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(b.FAKE, "ready-after"), "6");
+  // vyred's own log file, written just now (the container's output stays nearly empty on a real box: the daemon does not write there).
+  fs.mkdirSync(path.join(b.FAKE, `ctr${CHOME}`, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(b.FAKE, `ctr${CHOME}`, "logs", "2026-10-12.log"), "module flows: defining record types\n");
+  const slow = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(slow.code, 0, slow.out);
+  assert.match(slow.out, /still working/);
+  assert.equal(b.db(), "migrated", "no rollback, no restore");
+  const q = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(q.FAKE, "ready-after"), "6");
+  // a log file that has gone quiet (written a minute ago) is not progress
+  fs.mkdirSync(path.join(q.FAKE, `ctr${CHOME}`, "logs"), { recursive: true });
+  const old = path.join(q.FAKE, `ctr${CHOME}`, "logs", "2026-10-11.log");
+  fs.writeFileSync(old, "x\n"); const past = new Date(Date.now() - 120_000); fs.utimesSync(old, past, past);
+  const quiet = /** @type {any} */ (await q.run(["update"]));
+  assert.equal(quiet.code, 1, quiet.out);
+  assert.match(quiet.out, /rolled back/);
+  assert.match(quiet.out, /anything written since then \(chats, notes, settings\) is lost/, "a person is told what the rollback costs");
+  assert.doesNotMatch(quiet.out, /still working/);
+});
+
+// The update floor (the oldest release the automatic updater accepts) is root's. A hand-run update by a person asks root through sudo, the root verb takes NO version, and when sudo
+// cannot, the update says so in words.
+const asPerson = (/** @type {any} */ b, /** @type {boolean} */ sudoWorks) => {
+  const uid = process.getuid();
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sudo"), `#!/bin/sh\nif [ "$1" = -n ]; then shift; fi\necho "sudo $*" >>"${b.FAKE}/sudo-calls"\n${sudoWorks ? `exec env VYRE_ROOT_UID=${uid} "$@"` : "exit 1"}\n`, { mode: 0o755 });
+  return { VYRE_ROOT_UID: String(uid + 1), ...KEY };
+};
+const asRoot = () => ({ VYRE_ROOT_UID: String(process.getuid()), ...KEY });
+
+test("box update (rc.3): a hand-run update by a person raises the floor through sudo, with no version for anyone to name", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  const r = /** @type {any} */ (await b.run(["update"], asPerson(b, true)));
+  assert.equal(r.code, 0, r.out);
+  const sudos = b.read(path.join(b.FAKE, "sudo-calls")).split("\n").filter(l => /raise-floor/.test(l));
+  assert.equal(sudos.length, 1);
+  assert.match(sudos[0], /raise-floor$/, "sudo vyre raise-floor, and nothing after it");
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
+  assert.match(r.out, /^vyre: the update floor is now 0\.2\.0$/m, "root says what it did");
+});
+
+test("box update (rc.3): the floor verb takes no version, is root's, goes only to the installed version, and never lowers", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  // No signed release published yet: nothing to raise to.
+  const none = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(none.code, 0);
+  assert.match(none.out, /no signed release is published/);
+  assert.equal((/** @type {any} */ (await b.run(["update"], asPerson(b, true)))).code, 0);
+  const floor = () => b.read(path.join(b.U, "private", "floor")).trim();
+  assert.equal(floor(), "0.2.0");
+  // A version named by the caller is refused, whoever the caller is.
+  for (const arg of ["99.0.0", "0.2.0", "../x"]) {
+    const named = /** @type {any} */ (await b.run(["raise-floor", arg], asRoot()));
+    assert.notEqual(named.code, 0, arg);
+    assert.match(named.out, /takes no version/);
+  }
+  assert.equal(floor(), "0.2.0");
+  // Not root: refused.
+  const person = /** @type {any} */ (await b.run(["raise-floor"], { VYRE_ROOT_UID: String(process.getuid() + 1), ...KEY }));
+  assert.notEqual(person.code, 0);
+  assert.match(person.out, /root's/);
+  // The installed version below the floor leaves it alone and says so.
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.5.0\n");
+  const below = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.equal(below.code, 0, below.out);
+  assert.match(below.out, /stays at 0\.5\.0: the version installed here, 0\.2\.0, is below it/);
+  assert.equal(floor(), "0.5.0");
+  // A VERSION file a person edited (99.0.0) is not the one the signed release lists: nothing changes.
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.writeFileSync(path.join(b.DIR, "VERSION"), "99.0.0\n");
+  const forged = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(forged.code, 0);
+  assert.match(forged.out, /not the one the signed release lists/);
+  assert.equal(floor(), "0.1.0");
+});
+
+test("box update (rc.3): when sudo cannot raise the floor the update says so in words and prints no mktemp error", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.chmodSync(path.join(b.U, "private"), 0o500);
+  t.after(() => { try { fs.chmodSync(path.join(b.U, "private"), 0o700); } catch { /* already removed */ } });
+  const r = /** @type {any} */ (await b.run(["update"], asPerson(b, false)));
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /mktemp|Permission denied/);
+  assert.match(r.out, /update floor .* was not raised to 0\.2\.0, because only root can raise it/);
+  assert.match(r.out, /Run: sudo vyre raise-floor$/m);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
+});
+
+test("box update --check (rc.3): a newest version with a quote or a backslash in it is refused, never printed into the JSON", async t => {
+  const b = await box(t, { releases: [], site: "0.2.0" });
+  fs.writeFileSync(path.join(b.DL, "site", "VERSION"), '0.2.0","update":false,"x":"\\\n');
+  const r = /** @type {any} */ (await b.run(["update", "--check", "--json"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /not a version number/);
+  assert.doesNotMatch(r.out, /"update":false,"x"/);
+});
+
+test("box update (rc.3): the floor verb reads the version from the copy it hashed: a VERSION swapped between the hash and the read changes nothing, and a link in its place is refused", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  assert.equal((/** @type {any} */ (await b.run(["update"], asPerson(b, true)))).code, 0);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  // A sha256sum that, right after it hashes, puts 99.0.0 in the stack folder's VERSION: the swap an attacker with that folder would make.
+  const real = spawnSync("sh", ["-c", "command -v sha256sum"], { encoding: "utf8" }).stdout.trim();
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sha256sum"), `#!/bin/sh\n${real} "$@"; rc=$?\nif [ -n "$SWAP_VERSION" ] && [ ! -f "$SWAP_VERSION.done" ]; then printf '99.0.0\\n' >"$SWAP_VERSION"; : >"$SWAP_VERSION.done"; fi\nexit $rc\n`, { mode: 0o755 });
+  const r = /** @type {any} */ (await b.run(["raise-floor"], { ...asRoot(), SWAP_VERSION: path.join(b.DIR, "VERSION") }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0", "the floor is the version that was hashed, not the one swapped in after");
+  assert.deepEqual(fs.readdirSync(path.join(b.U, "private")).filter(n => /^floor-version\./.test(n)), [], "root's private copy is removed");
+  // A link at that path is refused, not followed.
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.writeFileSync(path.join(b.DIR, "VERSION.real"), "0.2.0\n");
+  fs.rmSync(path.join(b.DIR, "VERSION"));
+  fs.symlinkSync(path.join(b.DIR, "VERSION.real"), path.join(b.DIR, "VERSION"));
+  fs.rmSync(path.join(b.FAKE, "bin", "sha256sum"));
+  const linked = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(linked.code, 0);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
+});
+
+test("box update (rc.3): a FIFO put at the stack folder's VERSION is refused at once, not waited on", { timeout: 20_000 }, async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  assert.equal((/** @type {any} */ (await b.run(["update"], asPerson(b, true)))).code, 0);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.rmSync(path.join(b.DIR, "VERSION"));
+  assert.equal(spawnSync("mkfifo", [path.join(b.DIR, "VERSION")]).status, 0);
+  const r = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /not the one the signed release lists/);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
 });

@@ -35,7 +35,7 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
-import { failure, requiresFailure, reported, stubTools, startWaiting } from "./store-waiting.js";
+import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -603,6 +603,9 @@ export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(c
  */
 const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
 
+/** The raw kernel of a hosted Space, keyed by the view a module holds for it. Module-private: only routedKernel reads it. @type {WeakMap<object, any>} */
+const HOSTED_KERNEL = new WeakMap();
+
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
  * verified owner `tailnet:<login>` (core/names/service.js); a guest is `tailnet-guest:` and an
@@ -862,7 +865,7 @@ export class Registry {
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      if (rec.state === "waiting") stubTools(this, m, rec.error);
+      if (rec.state === "waiting") { stubTools(this, m, rec.error); armWaiting(this); }
       this.deps.log(`module ${m.name} ${rec.state === "waiting" ? "is waiting for the records" : "failed to start"}: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
@@ -881,7 +884,14 @@ export class Registry {
     const forSpace = (/** @type {string} */ id) => {
       const base = h.for(id);
       if (!base || base.hosted !== true || !base.gateway) return base; // a remote Space is reached by its own client, not by a module tool here
-      return Object.freeze({ ...base, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
+      // A module's view of a Space's gateway mints the module's OWN service chain, whatever name it asks for: the raw gateway's serviceChain(name) would give it any keeper's standing (work's, the Flows', the planner's).
+      const gateway = Object.freeze({ ...base.gateway, serviceChain: () => base.gateway.serviceChain(m.name) });
+      // The view carries no `kernel`: the Space's raw kernel would let a module ask its gateway for any keeper's chain or build any chain itself. It holds only `chats` (this module's own chat calls there) and the registry keeps the raw kernel aside, keyed by the view.
+      const { kernel: raw, ...rest } = base;
+      const view = { ...rest, gateway, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) };
+      if (raw && typeof raw.kernelFor === "function") { let chats; Object.defineProperty(view, "chats", { enumerable: true, get: () => (chats ??= raw.kernelFor(m).chats) }); }
+      if (raw) HOSTED_KERNEL.set(Object.freeze(view), raw);
+      return view;
     };
     // an own-key copy, getters kept live (`owner` follows an adoption), so the handle shows exactly the keys the kernel gave it (kernel/home.test.js)
     return Object.freeze(Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(h), for: { value: forSpace, enumerable: true } }));
@@ -955,7 +965,7 @@ export class Registry {
       if (!sp) return home;
       let h = hostedHandles.get(sp);
       if (!h) {
-        const k = home.for(sp).kernel;
+        const k = HOSTED_KERNEL.get(home.for(sp));
         if (!k || typeof k.kernelFor !== "function") return home;
         h = reg.withCrossSpace(m, k.kernelFor(m));
         hostedHandles.set(sp, h);
@@ -2014,7 +2024,7 @@ export class Registry {
     return r.error ? { error: r.error } : { data: r };
   }
 
-  async stop() {
+  async stop() { this.stopping = true; if (this.waitTimer) { clearTimeout(this.waitTimer); this.waitTimer = null; }
     for (const d of /** @type {Map<string, any>} */ (this.spaceDbs || new Map()).values()) { try { d.close(); } catch { /* closed */ } }
     this.spaceDbs = null;
     for (const [name, r] of [...this.modules.entries()].reverse()) {

@@ -5,13 +5,15 @@
 // A server with no member but the owner has nobody to keep out, so nothing is gated there (asked on every call, nothing cached).
 import { MEMBER_MAY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
+import { WEB_REACH } from "./agent-reach.js";
 
 /**
  * The labels that are a person's or a model's only on proof. On a team server a call under one of them with no proof on it (no session token, no facts the daemon proved) is a member's until shown otherwise:
  * a model's session, and a device, tailnet node, Space or app label the daemon found no proof for (a member enrols a device of her own, and a People session is not proof of the owner). The owner's own
- * devices and nodes carry the daemon's proven facts, so they are claimed. `web:` and `setup:` are not here: each reaches only its own short list (core/modules/agent-reach.js), before this gate.
+ * devices and nodes carry the daemon's proven facts, so they are claimed. Every label the daemon builds for a remote caller is here: device, web, setup, space, invitee, tailnet and tailnet-guest. A browser's
+ * own short list (WEB_REACH in core/modules/agent-reach.js, about itself only) is let through in the gate below, so a browser still finishes its own pairing; the setup page is a one-person home, where the gate is off.
  */
-const UNPROVEN_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:|device:|tailnet|space:|deck|mobile)/;
+const UNPROVEN_LABEL = /^(?:mcp:thread:|mcp:agent:|harness:thread:|harness:agent:|cli:agent:|device:|web:|setup:|space:|invitee:|tailnet|deck|mobile)/;
 
 /**
  * A session's own call that the daemon relays into a team Space as `module:vyred` (core/daemon/index.js, a model's tool call in a team chat): the call began as the session's, so it is judged as the session's, the
@@ -63,6 +65,7 @@ export function createDoorGate(k) {
   };
   const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
     if (PLUMBING.has(tool) || MEMBER_MAY.has(tool) || SELF_GATED.has(tool)) return null;
+    if (WEB_REACH.has(tool) && String(caller).startsWith("web:")) return null; // a browser's own short list, about itself only; agent-reach holds it to that list next
     return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
   };
   /** Does this caller get a member's tool list (the owner's tools left off)? */

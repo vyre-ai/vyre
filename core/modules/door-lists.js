@@ -10,7 +10,7 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
-  "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
+  "agents.create", "agents.delete", "agents.history", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "computer.targets",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
@@ -23,7 +23,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
-  "presence.person.locked", "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
+  "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
   "previews.get", "previews.list", "previews.share",
   "projects.list",
   "providers.list",
@@ -37,7 +37,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
   "stream.send", "stream.typing",
   "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
-  "team.ask", "team.notes", "team.status",
+  "team.ask", "team.notes",
   "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
   "threads.interrupt", "threads.items", "threads.kill-task", "threads.list", "threads.model", "threads.queue", "threads.rename", "threads.retry", "threads.rewind",
   "threads.send", "threads.send-now", "threads.stop", "threads.switch", "threads.tasks", "threads.thinking", "threads.unarchive", "threads.unqueue", "threads.unwatch",
@@ -52,7 +52,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  "agents.ask", "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
+  "agents.ask", "agents.list", "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
   "appmods.connection", "appmods.domain.add", "appmods.domain.list", "appmods.domain.remove", "appmods.hosts", "appmods.install", "appmods.logs", "appmods.open",
   "appmods.remove", "appmods.start", "appmods.stop",
@@ -139,7 +139,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "planner.agenda", "planner.calendar.create", "planner.calendar.sync", "planner.delete", "planner.dismiss", "planner.done", "planner.get", "planner.settings",
   "planner.snooze", "planner.update",
   "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.status",
-  "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.renew-allow", "presence.person.revoke", "presence.person.rotate",
+  "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.locked", "presence.person.renew-allow", "presence.person.revoke", "presence.person.rotate",
   "presence.person.sessions", "presence.remove",
   "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",
   "previews.signin", "previews.signin-done", "previews.signin-get", "previews.step", "previews.stop", "previews.thumb", "previews.url",
@@ -195,7 +195,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "team.add", "team.cancel", "team.charter.accept", "team.charter.diff", "team.charter.draft", "team.charter.get", "team.charter.history", "team.charter.revert",
   "team.charter.set", "team.default.get", "team.default.set", "team.done", "team.duties.create", "team.duties.delete", "team.duties.disable", "team.duties.enable",
   "team.duties.list", "team.duties.run-now", "team.duties.start", "team.duties.update", "team.fail", "team.list", "team.merge", "team.project-append",
-  "team.project-has-any", "team.retire", "team.role.fill",
+  "team.project-has-any", "team.retire", "team.role.fill", "team.status",
   "term.attach", "term.close", "term.list", "term.open",
   "threads.answer", "threads.branch", "threads.chat-of", "threads.chat-switch", "threads.continue-here", "threads.fork", "threads.lease", "threads.mode", "threads.of-chat",
   "threads.release", "threads.remember", "threads.roll", "threads.roll-session", "threads.rolls", "threads.shell", "threads.start", "threads.undo-edit",

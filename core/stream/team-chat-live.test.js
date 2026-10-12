@@ -89,7 +89,10 @@ test("a team chat's open turn is reopened after a restart, in the team Space's o
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   await as(ANA, "send", { chat: made.chat, text: `go ${"slowly ".repeat(60)}` });
   await until(() => w.d.registry.deps.kernelSessionCount() > 0, "the team turn's session to open");
-  const open = JSON.stringify(w.d.registry.deps.db.prepare("SELECT body FROM kernel_turns").all());
+  // the session is counted a little before its turn is stored (the kernel begins the chat's turn in between), so wait for the stored turn itself, not for the count
+  /** @type {string} */ let open = "";
+  await until(() => { open = JSON.stringify(w.d.registry.deps.db.prepare("SELECT body FROM kernel_turns").all()); return open.includes(firm.space); }, "the turn to be stored with its Space")
+    .catch(e => { throw new Error(`${e.message} :: ${open.slice(0, 300)}`); });
   assert.match(open, new RegExp(firm.space), "the stored turn says which Space it belongs to");
   await w.d.stop();
   /** @type {string[]} */ const after = [];

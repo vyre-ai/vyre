@@ -9,6 +9,7 @@ import { tempHome } from "../../test/helpers.js";
 import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { refusal } from "./door-gate.js";
 import { request } from "../daemon/client.js";
+import { WEB_REACH } from "./agent-reach.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const MEMBER = "per_" + "bcdefghijklmnopqrstuvwxyza";
@@ -120,7 +121,9 @@ test("a device or node with no proof on a team server is a member's; the moment 
   const tail = await d.registry.call("mail.accounts", {}, "tailnet-guest:n1", {});
   assert.equal(tail.error && tail.error.message, refusal("mail.accounts"));
   const web = await d.registry.call("mail.accounts", {}, "web:b1", {});
-  assert.ok(!(web.error && web.error.message === refusal("mail.accounts")), "a web page keeps its own list, which is not this gate's");
+  assert.equal(web.error && web.error.message, refusal("mail.accounts"), "a web page with no proof is a member's too: an owner tool is refused in words");
+  const own = await d.registry.call("wink.phone.wait", {}, "web:bcdefghijklmnopq", {});
+  assert.ok(!(own.error && own.error.message === refusal("wink.phone.wait")), "a web page still reaches its own short list (the pairing it is finishing)");
   const after = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
   assert.ok(!(after.error && after.error.message === refusal("mail.accounts")), "the owner is served after the second person joins");
 });
@@ -170,4 +173,64 @@ test("an outward tool is on a member's list only with a reason: whose yes her ac
   assert.deepEqual(bare, [], `these outward tools are on MEMBER_MAY (a member's call lands a held card in the owner's approvals): move them to OWNER_ONLY, or give each a reason in MEMBER_OUTWARD saying whose yes it waits for: ${bare.join(", ")}`);
   const stale = Object.keys(MEMBER_OUTWARD).filter(n => !outward.includes(n));
   assert.deepEqual(stale, [], `named in MEMBER_OUTWARD but not an outward tool on MEMBER_MAY: ${stale.join(", ")}`);
+});
+
+const SIGN_IN = ["presence.person.start", "presence.person.start-paired", "presence.person.pair-challenge", "presence.person.status", "wink.server.adopt", "wink.server.pair.answer", "wink.phone.wait", "wink.phone.pair.answer", "wink.phone.pairing"];
+
+test("the sign-in and pairing tools on a member's list are reachable for a device with no proof, and each does nothing without its own proof", { timeout: 200_000 }, async t => {
+  const { d, as } = await rig(t);
+  for (const tool of SIGN_IN) assert.ok(MEMBER_MAY.has(tool), `${tool} is on MEMBER_MAY`);
+  assert.ok(OWNER_ONLY.has("presence.person.locked") && !MEMBER_MAY.has("presence.person.locked"), "presence.person.locked is the owner's");
+  const locked = await as("member", "presence.person.locked", {}, "device:bcdefghijklmnopq", "");
+  assert.equal(locked.error && locked.error.message, refusal("presence.person.locked"));
+  const db = d.registry.deps.db;
+  const rows = () => db.prepare("SELECT COUNT(*) AS n FROM relay_devices").get().n;
+  const before = rows();
+  for (const tool of SIGN_IN) {
+    const r = await as("member", tool, {}, "device:bcdefghijklmnopq", "");
+    assert.ok(!(r.error && r.error.message === refusal(tool)), `${tool}: reachable, not refused by the gate: ${JSON.stringify(r).slice(0, 200)}`);
+    // useless without its own proof: an error (a passkey, a signature, a code or a ticket is asked for), or the one plain answer that says nothing is signed in
+    if (tool === "presence.person.status") assert.deepEqual(r, { data: { signed: false } }, `${tool}: says only that nobody is signed in`);
+    else assert.ok(r.error && !r.data, `${tool}: asks for its own proof and hands over nothing: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  assert.equal(rows(), before, "no device row was made by a call with no proof");
+});
+
+test("the tools that still show other people's matter are refused to a member, in words that name a next step, until each is scoped to her", { timeout: 200_000 }, async t => {
+  const { d, as } = await rig(t);
+  const held = ["agents.list", "team.list", "team.status", "planner.agenda", "planner.get", "planner.update", "planner.delete", "planner.done", "planner.snooze", "planner.dismiss"];
+  for (const tool of held) {
+    assert.ok(!MEMBER_MAY.has(tool) && OWNER_ONLY.has(tool), `${tool} is the owner's until it is scoped`);
+    assert.ok(d.registry.tools.has(tool), `${tool} is a real tool`);
+    for (const [caller, token] of /** @type {[string, string | undefined][]} */ ([["mcp:agent:assistant", undefined], ["device:bcdefghijklmnopq", ""]])) {
+      const r = await as("member", tool, {}, caller, token);
+      assert.ok(r.error && r.error.code === "denied" && r.error.message === refusal(tool), `${tool}: a member is refused in the owner's words, got ${JSON.stringify(r).slice(0, 200)}`);
+      assert.match(r.error.message, /Ask the owner or an admin to do it for you, or to give you access\./);
+    }
+  }
+  // her own to-dos, reminders and notes are scoped by the planner already and stay on her list
+  for (const tool of ["planner.add", "planner.list", "planner.upcoming", "planner.bin", "planner.ringing", "planner.parse"]) assert.ok(MEMBER_MAY.has(tool), `${tool} stays on a member's list`);
+});
+
+test("every label the daemon builds for a remote caller is a member's until proof is shown: device, web, setup, space, invitee, tailnet and tailnet-guest", { timeout: 200_000 }, async t => {
+  const { d } = await rig(t);
+  const id = "bcdefghijklmnopq";
+  const labels = [`device:${id}`, `web:${id}`, `setup:${id}`, "space:ben@spc_team", "invitee:ben@example.com", "tailnet:ben@example.com", "tailnet-guest:ben@example.com"];
+  for (const label of labels) {
+    const r = await d.registry.call("mail.accounts", {}, label, {});
+    assert.ok(r.error && r.error.code === "denied" && r.error.message === refusal("mail.accounts"), `${label}: refused by the gate in the owner's words, got ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  // a label the daemon proved for the owner (facts on the call) is served; the gate does not meet it
+  const OWNER = d.kernel.id.owner;
+  const facts = { kind: "device", device_key_id: "d-owner", person: OWNER, path: "relay", session: "s" };
+  for (const label of [`device:${id}`, "tailnet:owner@example.com"]) {
+    const r = await d.registry.call("mail.accounts", {}, label, { kernelFacts: facts });
+    assert.ok(!(r.error && r.error.message === refusal("mail.accounts")), `${label}: the owner's proven device or node is served`);
+  }
+  // a browser's own short list is still reachable: the gate leaves the tools only that class may call to agent-reach
+  for (const tool of WEB_REACH.keys()) {
+    if (!d.registry.tools.has(tool)) continue;
+    const r = await d.registry.call(tool, {}, `web:${id}`, {});
+    assert.ok(!(r.error && r.error.message === refusal(tool)), `web: ${tool} is on its own short list and is not the gate's`);
+  }
 });

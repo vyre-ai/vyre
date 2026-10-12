@@ -12,6 +12,7 @@ export const ROOT_ONLY = {
   restore_release: "starts with a read of root's private marker; a person cannot read it, so it returns before any write",
   update_from_request: "the root unit's entry point (vyre-update.service)",
   updater: "`vyre updater install` and its verbs are run with sudo",
+  raise_floor_root: "the body of `sudo vyre raise-floor`: the verb's case refuses any caller but root before it is called, and a person's update reaches it only through `sudo -n`",
 };
 const WRITE = /(^|[\s;&(])(rm|mv|rmdir|mkdir|chmod|cp|put_text|put_file|rename_over|install|ln|touch)\s|>\s*"?\$|:\s*>/;
 const TOLERANT = /\|\|\s*(true|return|\{|exit|:)|\bsudo\b/;

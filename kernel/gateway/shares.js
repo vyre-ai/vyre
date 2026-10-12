@@ -10,6 +10,6 @@ export async function sharedRead(resource, person, { space, chains, gs, records,
   if (!m || !records || !role || role === "temp") return false;
   try {
     const rows = (await records.query(chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 20 } })).rows;
-    return rows.some((/** @type {any} */ x) => { const by = String((records.attrsOf(x.urn) || {}).created_by || ""); return by.startsWith("person:") && gs.chatHas(by.slice(7), m[1]); });
+    return rows.some((/** @type {any} */ x) => { const a = records.attrsOf(x.urn) || {}, by = String(a.created_for || a.created_by || ""); return by.startsWith("person:") && gs.chatHas(by.slice(7), m[1]); });
   } catch { return false; }
 }

@@ -117,6 +117,7 @@ test("install-box.sh v2: with a code the terminal ends on the plain line", t => 
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Go back to the Vyre app to finish\./);
+  assert.match(r.stdout, /Records is still setting up and can take several minutes; the app shows when it is ready\./);
 });
 
 test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
@@ -771,4 +772,53 @@ test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command'
   assert.ok(seen.length > 0, "the installer ran the vyre command at least once");
   assert.deepEqual([...new Set(seen)], ["|"], "no run of the vyre command inherited VYRE_STORE or VYRE_CODE");
   assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the choice the line carried is in vyre.env");
+});
+
+test("install-box.sh rc.3: a kept .env from a source-build install stops a release install in words, before anything is started, and leaves the .env alone", t => {
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  const stale = `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${b.dir}/src\n`;
+  fs.writeFileSync(path.join(b.dir, ".env"), stale, { mode: 0o600 });
+  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base), VYRE_NO_UP: "0" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /earlier install that built Vyre from source/);
+  assert.match(r.stderr, /sudo mv .*\.env .*\.env\.old/, "it names the next step");
+  assert.equal(fs.readFileSync(path.join(b.dir, ".env"), "utf8"), stale, "the person's .env is not rewritten");
+  assert.ok(!/\bup\b -d|compose .* up/.test(b.calls()), "nothing was started:\n" + b.calls());
+});
+
+test("install-box.sh rc.3: a stack that fails to start ends the install in words and a nonzero exit, with the next step", t => {
+  const b = box(t, { docker: 'case "$*" in *" up -d"*) echo "unable to prepare context: path \\"/srv/vyre/src\\" not found" >&2; exit 1 ;; esac; case "$1 $2" in "compose version") echo 2.29.1 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stderr, /unable to prepare context/, "docker's own message is kept");
+  assert.match(r.stderr, /Vyre did not start/);
+  assert.match(r.stderr, /then run: vyre up/);
+  assert.doesNotMatch(r.stdout, /Vyre is running on this server/);
+});
+
+test("vyre uninstall stops and removes every Space's record store stack (project vyre-spc-<id>-twenty) and its networks, and leaves other people's containers alone; the data follows the choice", t => {
+  const mk = () => {
+    const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "volume ls") printf '%s\\n' vyre_vyre-home vyre-spc-abc-twenty_db-data ;; "ps -a") printf '%s\\n' 's1 vyre-spc-abc-twenty' 's2 vyre-spc-abc-twenty' 's3 vyre-spc-def-twenty' 'x9 someones-app' 'v1 vyre' ;; "network ls") printf '%s\\n' vyre-spc-abc-twenty_store bridge someones_default ;; esac; exit 0` });
+    fs.mkdirSync(b.dir, { recursive: true });
+    fs.writeFileSync(path.join(b.dir, "compose.yml"), "name: vyre\n");
+    fs.mkdirSync(path.dirname(b.env.VYRE_WRAPPER), { recursive: true });
+    fs.copyFileSync(BOXVYRE, b.env.VYRE_WRAPPER);
+    return b;
+  };
+  const keep = mk();
+  const k = uninstall(keep, ["--keep-data"]);
+  assert.equal(k.status, 0, k.stderr);
+  const kc = keep.calls();
+  assert.ok(kc.includes("rm -f s1 s2 s3"), "the Spaces' containers go: " + kc);
+  assert.ok(!/rm -f .*x9|rm -f .*v1/.test(kc), "nobody else's container, and not Vyre's own project's");
+  assert.ok(kc.includes("network rm vyre-spc-abc-twenty_store"), "and the Space's network, nothing else: " + kc);
+  assert.ok(!/network rm .*(bridge|someones_default)/.test(kc));
+  assert.ok(!kc.includes("volume rm"), "the data is kept when asked to keep it");
+  const del = mk();
+  const d = uninstall(del, ["--delete-data"]);
+  assert.equal(d.status, 0, d.stderr);
+  const dc = del.calls();
+  assert.ok(dc.includes("rm -f s1 s2 s3"));
+  assert.ok(dc.indexOf("rm -f s1 s2 s3") < dc.indexOf("volume rm"), "containers first, then their volumes");
 });

@@ -3,6 +3,7 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { tempHome } from "./helpers.js";
 import { storeStatus } from "../stores/store-status.js";
@@ -49,4 +50,22 @@ test("a real daemon reports records_store on /v1/health: the built-in store, fro
   assert.equal(h.records_store.from, "default");
   assert.equal(typeof h.records_store.records, "number");
   assert.equal(h.records_store.reachable, true);
+});
+
+test("rc.3: the health answer does not wait for a record store that is busy setting up: it comes within the budget and says the store is busy", async () => {
+  const { storeStatusWithin } = await import("../stores/store-status.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ss-"));
+  // A store whose every call queues behind a slow type definition.
+  const slow = new Promise(() => {});
+  const busy = { kind: "twenty", attached: () => true, health: () => slow, types: () => slow, aggregate: () => slow };
+  const t0 = Date.now();
+  const r = /** @type {any} */ (await storeStatusWithin(150, { root, store: busy, env: { VYRE_STORE: "twenty" } }));
+  assert.ok(Date.now() - t0 < 1000, "answered inside a second");
+  assert.equal(r.busy, true);
+  assert.equal(r.store, "twenty");
+  assert.match(r.note, /busy setting up; Vyre is running/);
+  // A store that answers is reported as before.
+  const quick = /** @type {any} */ (await storeStatusWithin(1500, { root, store: { kind: "twenty", attached: () => true, health: async () => ({ ok: true }), types: async () => [], aggregate: async () => [] }, env: { VYRE_STORE: "twenty" } }));
+  assert.equal(quick.busy, undefined);
+  assert.equal(quick.reachable, true);
 });
