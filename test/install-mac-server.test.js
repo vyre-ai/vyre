@@ -951,3 +951,23 @@ test("install-mac-server.sh: a system install that stops after the root step nam
   assert.match(r.stderr, /It left:[\s\S]*the system service/);
   assert.match(r.stderr, /--uninstall --yes/);
 });
+
+test("install-mac-server.sh: every dependency is checked and said in one ok line, and a missing piece is a note with its fix", t => {
+  const m = sys(t);
+  const r = run({ ...m.env }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const h of [/ok  git runs/, /ok  Node v\d+\.\d+/, /ok  Colima runs/, /ok  the Linux computer for agents is sized from this Mac: \d+ CPU, \d+ GB memory/, /ok  vyre is at /]) assert.match(r.stdout, h);
+  assert.ok(r.stdout.indexOf("ok  git runs") < r.stdout.indexOf("[2/5]"), "git is checked in step 1, before anything is installed");
+});
+
+test("install-mac-server.sh: without the Command Line Tools it stops in step 1, installs nothing, and says what to do", t => {
+  const m = mac(t);
+  const bin = path.join(m.base, "bin");
+  fs.writeFileSync(path.join(bin, "xcode-select"), "#!/bin/sh\n[ \"$1\" = -p ] && exit 2\necho \"xcode-select $*\" >>\"" + path.join(m.base, "calls.log") + "\"\nexit 0\n", { mode: 0o755 });
+  const r = run(m.env, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout, /Command Line Tools/);
+  assert.match(r.stderr, /waiting for the Command Line Tools/);
+  assert.match(m.calls(), /xcode-select --install/);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was installed");
+});

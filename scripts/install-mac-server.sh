@@ -61,7 +61,14 @@ CORE_BASE=${VYRE_CORE_BASE:-/Library/Application Support/Vyre}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
 SERVER_DIR=${VYRE_SERVER_DIR:-$HOME/.vyre-server}
 AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
-PROFILE_FILE=${VYRE_PROFILE:-$HOME/.zprofile}
+# Where the PATH line goes so every shell finds `vyre`: ~/.zshenv (zsh reads it for login, interactive and script shells alike), and ~/.bash_profile when bash is the person's shell or the file exists.
+# VYRE_PROFILE names the one file instead, for tests.
+if [ -n "${VYRE_PROFILE:-}" ]; then PROFILE_FILES=$VYRE_PROFILE
+else
+  PROFILE_FILES=$HOME/.zshenv
+  case "${SHELL:-}" in */bash) PROFILE_FILES="$PROFILE_FILES $HOME/.bash_profile" ;; *) [ ! -f "$HOME/.bash_profile" ] || PROFILE_FILES="$PROFILE_FILES $HOME/.bash_profile" ;; esac
+fi
+PROFILE_FILE=${PROFILE_FILES%% *}
 # folders already on a Mac's PATH where the vyre command is linked when the person can write there (Homebrew's); VYRE_LINK_DIRS overrides, for tests
 LINK_DIRS=${VYRE_LINK_DIRS-/opt/homebrew/bin /usr/local/bin}
 LABEL=run.vyre.server
@@ -166,7 +173,7 @@ report_left() {
     left="$left the system service (its LaunchDaemons and the _vyre account)"
     if [ -f "$0" ]; then cmd="$cmd""sh '$0' --uninstall --yes; "; else cmd="$cmd""curl -fsSL ${BASE}install-mac-server.sh | sh -s -- --uninstall --yes; "; fi
   fi
-  if [ "$PATH_ADDED" = 1 ]; then left="$left the vyre command (a line in $PROFILE_FILE)"; fi
+  if [ "$PATH_ADDED" = 1 ]; then left="$left the vyre command (a line in $PROFILE_FILES)"; fi
   printf '\nvyre: the install did not finish.\n' >&2
   if [ -z "$left" ]; then printf '  Nothing was left on this Mac.\n' >&2; return 0; fi
   printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
@@ -779,18 +786,19 @@ finish() {
 
 # add_command: `vyre` typed in a Terminal. A link in a folder that is already on PATH and that this account can write (Homebrew's), else one marked line in the shell profile; both are removed by --uninstall.
 add_command() {
-  if [ "$DRY" = 1 ]; then say "would add the vyre command: a link in $LINK_DIRS if you can write there, else a line in $PROFILE_FILE"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would add the vyre command: a link in $LINK_DIRS if you can write there, else a line in $PROFILE_FILES"; return 0; fi
   for d in $LINK_DIRS; do
     [ -d "$d" ] && [ -w "$d" ] || continue
     if [ -e "$d/vyre" ] && [ "$(readlink "$d/vyre" 2>/dev/null)" != "$BIN/vyre" ]; then continue; fi
     ln -sf "$BIN/vyre" "$d/vyre" || continue
     step "vyre is at $d/vyre"; return 0
   done
-  if ! grep -q '# vyre: command' "$PROFILE_FILE" 2>/dev/null; then
+  for pf in $PROFILE_FILES; do
+    grep -q '# vyre: command' "$pf" 2>/dev/null && continue
+    printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$pf" || { say "  note  could not write $pf; the command is $BIN/vyre"; continue; }
     PATH_ADDED=1
-    printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$PROFILE_FILE" || { PATH_ADDED=0; say "  note  could not write $PROFILE_FILE; the command is $BIN/vyre"; return 0; }
-  fi
-  step "vyre is at $BIN/vyre (a new Terminal window finds it by name)"
+  done
+  step "vyre is at $BIN/vyre (every new shell finds it by name: $PROFILE_FILES)"
 }
 
 # remove_command: what add_command added, and nothing the person wrote.
@@ -798,10 +806,12 @@ remove_command() {
   for d in $LINK_DIRS; do
     [ "$(readlink "$d/vyre" 2>/dev/null)" = "$BIN/vyre" ] && rm -f "$d/vyre"
   done
-  if [ -f "$PROFILE_FILE" ] && grep -q '# vyre: command' "$PROFILE_FILE"; then
-    grep -v '# vyre: command' "$PROFILE_FILE" >"$PROFILE_FILE.vyre-new" || true
-    cat "$PROFILE_FILE.vyre-new" >"$PROFILE_FILE"; rm -f "$PROFILE_FILE.vyre-new"
-  fi
+  for pf in $PROFILE_FILES $HOME/.zprofile; do
+    if [ -f "$pf" ] && grep -q '# vyre: command' "$pf"; then
+      grep -v '# vyre: command' "$pf" >"$pf.vyre-new" || true
+      cat "$pf.vyre-new" >"$pf"; rm -f "$pf.vyre-new"
+    fi
+  done
   return 0
 }
 
@@ -845,6 +855,57 @@ verify_running() {
   done
   BUSY=1
   say "  Vyre is installed and still setting up. It starts by itself; check again in a few minutes with: vyre status"
+}
+
+# check_git: Vyre reads repositories with git. On a Mac without the Command Line Tools /usr/bin/git is only a stub that opens an install window, so the tools' folder is asked first. Checked in step 1,
+# before anything is installed, so waiting for the tools leaves nothing behind.
+check_git() {
+  if [ "$DRY" = 1 ]; then say "would check git (Apple's Command Line Tools)"; return 0; fi
+  if { ! command -v xcode-select >/dev/null 2>&1 || xcode-select -p >/dev/null 2>&1; } && git --version >/dev/null 2>&1; then step "git runs ($(git --version | head -n 1))"; return 0; fi
+  say "  git needs Apple's Command Line Tools, and this Mac does not have them. macOS shows one window to install them (it asks for no password); choose Install, then run this line again."
+  xcode-select --install >/dev/null 2>&1 || true
+  die "stopped before installing anything: waiting for the Command Line Tools"
+}
+
+# check_dependencies: everything a Mac server needs, each one checked and said in one plain line. Missing pieces were installed by the steps above (pinned and checksummed); this proves each one
+# runs. A piece that did not install says so with its fix: nothing here stops the install, the service does not need Colima to start.
+check_dependencies() {
+  [ "$DRY" = 0 ] || return 0
+  PATH="$BIN:$SERVER_DIR/lima/bin:$PATH"; export PATH
+  nb=$(wrapper_node)
+  v=$("$nb" -v 2>/dev/null || true); case "$v" in v22.*|v2[3-9].*) step "Node $v runs ($([ "$nb" = "$NODE_DIST/bin/node" ] && echo "the pinned one in $NODE_DIST" || echo "yours, $nb"))" ;; *) say "  note  Node did not run; Vyre needs Node 22.5 or newer" ;; esac
+  c=$(command -v colima 2>/dev/null || true)
+  if [ -n "$c" ]; then v=$("$c" version 2>/dev/null | head -n 1 || true); step "Colima runs${v:+ ($v)}"; else say "  note  Colima is not installed; agents get no computer until it is (see above)"; fi
+  l=$(command -v limactl 2>/dev/null || true)
+  if [ -n "$l" ]; then v=$("$l" --version 2>/dev/null | head -n 1 || true); step "Lima runs${v:+ ($v)}"; elif [ -n "$c" ] && command -v brew >/dev/null 2>&1; then step "Lima comes with Homebrew's Colima"; else say "  note  Lima is not installed; Colima needs it"; fi
+  d=$(command -v docker 2>/dev/null || true)
+  if [ -n "$d" ]; then v=$("$d" --version 2>/dev/null | head -n 1 || true); step "the Docker command runs${v:+ ($v)}; agents' computers are reached at unix://$HOME/.colima/default/docker.sock"; else say "  note  no docker command; agents get no computer until it is installed"; fi
+  if [ -x "${VYRE_MAC_SIZE_HELPER:-$BIN/vyre-runtime}" ]; then
+    rj=$("$BIN/vyre-runtime" room 1 2>/dev/null || true)
+    cpus=$(printf '%s' "$rj" | sed -n 's/.*"cpus": *\([0-9][0-9]*\).*/\1/p'); mem=$(printf '%s' "$rj" | sed -n 's/.*"memory_gib": *\([0-9][0-9]*\).*/\1/p')
+    [ -z "$cpus" ] || step "the Linux computer for agents is sized from this Mac: $cpus CPU, $mem GB memory, 40 GB disk"
+  fi
+  [ -z "$GH_BIN" ] || { v=$("$GH_BIN" --version 2>/dev/null | head -n 1 || true); step "gh runs${v:+ ($v)}"; }
+  if [ -n "$HEADSCALE_BIN" ]; then v=$("$HEADSCALE_BIN" version 2>/dev/null | head -n 1 || true); step "Headscale runs${v:+ ($v)}"; fi
+  if [ -n "$FORWARDER_BIN" ] && [ -x "$FORWARDER_BIN" ]; then step "the network node program is in place ($FORWARDER_BIN)"; fi
+  return 0
+}
+
+# check_service: what the system install set up to keep the server up, each proved from the files launchd and pmset hold.
+check_service() {
+  [ "$DRY" = 0 ] || return 0
+  [ "$SYSTEM" = 1 ] || return 0
+  d=${VYRE_DAEMONS_DIR:-/Library/LaunchDaemons}
+  for l in com.vyre.vyred com.vyre.colima; do
+    if [ -f "$d/$l.plist" ] && grep -q 'RunAtLoad' "$d/$l.plist" 2>/dev/null; then
+      case "$l" in com.vyre.vyred) step "Vyre is a system service that starts at boot, with nobody signed in" ;; *) step "Colima starts at boot ($l)" ;; esac
+    else say "  note  $d/$l.plist is not in place; $l will not start at boot"; fi
+  done
+  pm=$(pmset -g 2>/dev/null || true)
+  if [ -n "$pm" ]; then
+    sl=$(printf '%s\n' "$pm" | awk '$1 == "sleep" { print $2; exit }'); ar=$(printf '%s\n' "$pm" | awk '$1 == "autorestart" { print $2; exit }')
+    if [ "${sl:-0}" = 0 ] && [ "${ar:-1}" = 1 ]; then step "this Mac stays awake while it serves and starts again after a power cut"; else say "  note  energy settings are sleep $sl, autorestart $ar; a server wants sleep 0 and autorestart 1 (sudo pmset -a sleep 0 autorestart 1)"; fi
+  fi
 }
 
 # system_install: the one sudo (ROOT_SH above). The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
@@ -989,6 +1050,7 @@ main() {
   phase "Checking this Mac"
   filevault_gate
   disk_gate
+  check_git
   snapshot_before
   preflight
   phase "Downloading Vyre"
@@ -1000,6 +1062,7 @@ main() {
   write_env
   # only the full install is a server; the light --login-only install is My Home and stays local
   [ "$SYSTEM" = 0 ] || write_machine
+  check_dependencies
   phase "Adding the vyre command"
   write_wrapper
   add_command
@@ -1007,6 +1070,7 @@ main() {
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
+    check_service
     verify_running
     [ "$DRY" = 1 ] || say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. It also comes back by itself after a power cut (the Mac is set to start when power returns)."
     finish

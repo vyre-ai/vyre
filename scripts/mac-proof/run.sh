@@ -59,6 +59,12 @@ for h in "[1/5] Checking this Mac" "[2/5] Downloading Vyre" "[3/5] Laying out" "
 done
 grep -q "Get your space code on this Mac: vyre space up" "$work/install.out" || bad "the install did not say where to get the space code"
 if grep -q "Your space code:" "$work/install.out"; then bad "a piped install must not print the code into a log"; fi
+# Every dependency a Mac server needs, said in one line each (no Homebrew on this PATH, so each one is the pinned, checksummed download).
+for h in "ok  git runs" "ok  Node v22" "ok  Colima runs" "ok  Lima runs" "ok  the Docker command runs" "ok  gh runs" "ok  Headscale runs" "ok  the Linux computer for agents is sized" "ok  Vyre is a system service that starts at boot" "ok  Colima starts at boot" "ok  vyre is at"; do
+  grep -qF "$h" "$work/install.out" || bad "no dependency line: $h"
+done
+if grep -q "  note  " "$work/install.out"; then grep "  note  " "$work/install.out"; bad "the install left a note: something it needs is missing or failed"; fi
+ok "every dependency line is ok: git, Node, Colima, Lima, Docker, gh, Headscale, the VM size, the boot services"
 ok "the install said its five steps, the signature check, and where to get the space code"
 vyre="$VYRE_SERVER_DIR/bin/vyre"
 grep -qF "$VYRE_SERVER_DIR/bin" "$work/zprofile" || bad "the vyre command was not added to the profile"
