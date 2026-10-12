@@ -8,6 +8,7 @@ import { createGate } from "../core/gate.js";
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { mintUuid } from "../core/ids.js";
 import { KernelError } from "../core/errors.js";
+import { typesChanged } from "../store/types-signal.js";
 
 export const MEMORY_ACTIONS = Object.freeze([
   { action: "memory.file", resource_type: "memory", risk: "write", label: "file a fact", gloss: "Write a fact, with its source, into this Space's memory." },
@@ -46,6 +47,7 @@ export function createMemoryGateway(cfg) {
     if (defined) return;
     const have = typeof cfg.store.types === "function" ? (await cfg.store.types()).find((/** @type {any} */ t) => t.name === MEMORY_FACT.name) : null;
     await cfg.store.define(have ? (have.fields.some((/** @type {any} */ x) => x.name === "scope") ? { add_types: [MEMORY_FACT] } : { change_types: [MEMORY_FACT] }) : { add_types: [MEMORY_FACT] });
+    typesChanged(cfg.store);
     defined = true;
   };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => {

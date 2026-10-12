@@ -2,6 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
+import { onTypesChanged } from "../store/types-signal.js";
 import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
@@ -202,13 +203,17 @@ export function createRecords(cfg) {
   /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   /** @type {Set<string> | null} */ let protectedTypes = null;
-  /** Bumped when a define starts and when it ends: a cache built from definitions read while a define was running is used once and not kept (a define on Twenty takes minutes). */
+  /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
   let typesGen = 0;
+  const typesChanged = () => { protectedTypes = null; typesGen++; };
+  onTypesChanged(store, typesChanged);
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
     if (!protectedTypes) {
+      if (typeof store.types !== "function") return false;
       const gen = typesGen;
-      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { return false; }
+      // while the definitions cannot be read (the store is away) every type counts as protected: an owner, an admin and a keeper are served as ever, anyone else is refused, and nothing is remembered
+      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { return true; }
     }
     return protectedTypes.has(type);
   };
@@ -776,11 +781,11 @@ export function createRecords(cfg) {
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
-      protectedTypes = null; typesGen++;
+      typesChanged();
       let was = null;
       try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
-      try { res = await store.define(diff); } catch (e) { throw mapError(e); } finally { protectedTypes = null; typesGen++; }
+      try { res = await store.define(diff); } catch (e) { throw mapError(e); } finally { typesChanged(); }
       if (res.applied) {
         try { log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision }); }
         catch (e) {
@@ -789,7 +794,7 @@ export function createRecords(cfg) {
             const names = new Set([...(diff.add_types || []), ...(diff.change_types || [])].map((/** @type {any} */ t) => t.name).concat(diff.remove_types || []));
             const back = { add_types: [...names].filter(n => had.has(n)).map(n => had.get(n)), remove_types: [...names].filter(n => !had.has(n)) };
             try { await store.define(back); } catch { /* the type stays defined; the caller is still told it failed */ }
-            protectedTypes = null; typesGen++;
+            typesChanged();
           }
           throw e;
         }
