@@ -20,6 +20,8 @@ test("a member reads the Space's agents, templates and playbooks and changes non
   assert.ok(agentRow, "control: the owner's agent is a record");
   // read: yes
   for (const [type, id] of [["template", tpl.id], ["playbook", pb.id], ["agent", agentRow.id]]) assert.ok(await R.get(bc, type, id), `a member reads a ${type}`);
+  const seen = (await R.get(bc, "agent", agentRow.id)).data;
+  assert.ok(!("uid" in seen) && !("tags" in seen) && "name" in seen && "kind" in seen, "a member's agent record has name, kind, owner, model, builtin and no uid or tags: " + Object.keys(seen));
   // write: no, on the gateway route
   for (const [type, id] of [["template", tpl.id], ["playbook", pb.id], ["agent", agentRow.id]]) {
     const v = (await R.get(oc, type, id)).version;
