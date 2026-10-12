@@ -29,6 +29,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
   reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
+  goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
 
 export const RECORD_ACTIONS = Object.freeze([
