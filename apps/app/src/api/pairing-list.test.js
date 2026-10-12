@@ -69,7 +69,7 @@ test("pairing list: written and read back it is the same list, and what is writt
 
 test("pairing list: one broken record does not lose the others", { skip: !strip }, async () => {
   const { readPairings, listPairings } = await load();
-  const l = readPairings(JSON.stringify({ v: 2, items: { a: P("boxa"), b: { relay: "x" }, c: P("boxc") }, active: "b" }));
+  const l = readPairings(JSON.stringify({ v: 2, items: { boxa: P("boxa"), boxb: { relay: "x" }, boxc: P("boxc") }, active: "boxb" }));
   assert.deepEqual(listPairings(l).map((p) => p.box), ["boxa", "boxc"]);
   assert.equal(l.active, "boxa", "active falls to one that is there");
 });
