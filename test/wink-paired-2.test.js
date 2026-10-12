@@ -1673,8 +1673,8 @@ shardTest("a member's Store shows the team: through the app's real store route, 
   const task = await gw.ask.request(ownerChain, { title: "Ana please review MARKtask", doer: { kind: "person", id: ana.who.id, space: made.space }, output: { kind: "note" }, source: "manual" });
   await gw.ask.request(ownerChain, { title: "Owner only task MARKownertask", doer: { kind: "person", id: f.owner.id, space: made.space }, output: { kind: "note" }, source: "manual" });
   const tasks = await store.tasks({});
-  // KNOWN OPEN (measured on class3 df7f79915, member-records/candidate-class3-df7f79915-project-task-files.txt): the tasks API (tasks.list / tasks.get, the Store's Now and Tasks) still shows a member every task of the Space, including the owner's own; records.query of type task is hidden. Printed so the day it closes this turns into an assertion.
-  console.log(`# KNOWN OPEN: tasks that are not hers are listed to a member by tasks.list: ${names(tasks).some((x) => /MARKownertask/.test(x))}`);
+  // class 3 (a11f47ab8): the tasks service answers only what she may read: the owner's own task is not in her list, hers is
+  assert.ok(!names(tasks).some((x) => /MARKownertask/.test(x)), "the owner's own task is not listed to her");
   assert.ok(names(tasks).some((x) => /MARKtask/.test(x)), "her task is in her Store");
   // the team changes while she looks: the poll tells her within seconds
   const before = heard.length;
