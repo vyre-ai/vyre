@@ -105,7 +105,7 @@ export async function planStore(o) {
  * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
  * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
  * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
- * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
+ * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number, makeStore?: (o: { space: string, name: string, p: any }) => any }} cfg
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
 /** What the first start is doing, in words a person can read, for each phase the provisioning reports (stores/twenty/provision.js `phase`). */
@@ -176,12 +176,13 @@ export function createStoreFor(cfg) {
     const timer = setInterval(() => { checkKey().catch((e) => log(`the daily key check failed: ${e.message}`)); }, (cfg.keyCheckEveryMs ?? 24 * 3600 * 1000)); timer.unref();
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
-    const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
+    // `cfg.makeStore` (a test seam) stands in for the Twenty store and its core types, so the attach paths can be exercised without a Twenty.
+    const store = cfg.makeStore ? cfg.makeStore({ space, name, p }) : createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim(), log });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
     const tc = Date.now();
     { const g = progress.get(space); if (g) g.phase = "core types"; }
     log("phase core types: started");
-    await defineCore(store, log);
+    if (!cfg.makeStore) await defineCore(store, log);
     log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
@@ -207,6 +208,9 @@ export function createStoreFor(cfg) {
     if (w.timer) { clearTimeout(w.timer); w.timer = null; }
     try {
       const real = await open(space, w.meta);
+      // The record of the failed attempt stops being true the moment a real store exists. attach() replays everything the kernel defined while the store was away and starts the modules that waited
+      // for it, which takes minutes on a first start: the record must not outlive Records being ready by all that time (`vyre status` said "not available yet" for it).
+      try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
       if (real) await w.store.attach(real);
       waiting.delete(space);
       try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
@@ -230,18 +234,21 @@ export function createStoreFor(cfg) {
     try {
       const got = await Promise.race([opening, late]);
       clearTimeout(slow);
-      if (got !== LATE) return got;
+      // The store opened at once. A record left by an earlier process that could not (this one has no waiting entry to clear it) is no longer true.
+      if (got !== LATE) { if (!waiting.has(space)) { try { fs.rmSync(stateFile(dir), { force: true }); } catch { /* none */ } } return got; }
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
       w.reason = "the record store is still starting"; w.running = true; w.starting = true;
       if (!w.store) w.store = createDeferredStore({ ...(cfg.storeWaitMs !== undefined ? { waitMs: cfg.storeWaitMs } : {}), waits: () => w.starting === true, reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
+        try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }   // before attach(), which takes minutes on a first start (see attempt)
         if (real) await w.store.attach(real);
         waiting.delete(space);
         try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
         log(`store for ${space}: Records are available now`);
-      }, (e) => {
+      }).catch((e) => {
+        // A failed open AND an attach() that throws after it come here (a second argument to then() would not catch the attach): the record was removed when the store opened, so it is written again.
         w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
         const wait = backoff(w.attempts);
         writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });

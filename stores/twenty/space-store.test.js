@@ -253,3 +253,98 @@ test("degrade: while a retry runs the store says it is starting, not the first a
   release(); await retrying;
   assert.throws(() => st.get("t", "i"), (e) => /still no room/.test(e.message), "and when that attempt fails it says its own reason");
 });
+
+test("rc.3: a store-state.json left by an earlier process is cleared when the store opens at once, and `vyre status` does not report an attached store as not available", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  fs.mkdirSync(dir, { recursive: true });
+  const stale = { state: "unavailable", reason: "the compose file could not be regenerated", since: "2026-10-12T10:00:00Z", attempts: 3, next_try_at: "2026-10-12T10:01:00Z" };
+  fs.writeFileSync(path.join(dir, "store-state.json"), JSON.stringify(stale));
+  const { storeStatus } = await import("../store-status.js");
+  // The status alone: an attached, answering store outranks the old file.
+  const up = createMemoryStore({});
+  const alone = await storeStatus({ root: home, store: up, env: {} });
+  assert.equal(alone.reachable, true); assert.equal(alone.unavailable, undefined); assert.doesNotMatch(alone.note || "", /not available yet/);
+  // A store that is still away keeps saying why.
+  const away = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store for this space is not available yet: the compose file could not be regenerated" }), types: async () => [], aggregate: async () => [] };
+  const still = await storeStatus({ root: home, store: away, env: { VYRE_STORE: "twenty" } });
+  assert.equal(still.reachable, false); assert.match(still.unavailable.reason, /compose file/);
+  // And the opener clears the file when its store opens on the first try.
+  const f = createStoreFor({ home, mode: "sqlite", degrade: true, helper: false });
+  await f(SP, { personal: true });   // sqlite: the kernel's own store, opened at once
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false, "the earlier process's record is gone");
+});
+
+test("rc.3: while the record store is setting itself up the status says it is busy setting up, and does not repeat the reason an earlier attempt failed", async () => {
+  const home = tmp(); const dir = path.join(home, "kernel");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "store-state.json"), JSON.stringify({ state: "unavailable", reason: "the server could not up this space's store: the compose file could not be regenerated", since: "2026-10-12T14:13:42Z", attempts: 2 }));
+  const { storeStatus } = await import("../store-status.js");
+  const starting = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store is still starting: preparing its record types (about a minute the first time) (12 minutes so far)" }), types: async () => [], aggregate: async () => [] };
+  const s = /** @type {any} */ (await storeStatus({ root: home, store: starting, env: { VYRE_STORE: "twenty" } }));
+  assert.equal(s.reachable, false);
+  assert.match(s.note, /the record store is busy setting up: preparing its record types/);
+  assert.doesNotMatch(s.note, /Twenty is not answering|not available yet|compose file/);
+  assert.equal(s.unavailable, undefined);
+  // A store that failed and is waiting to try again (not starting) still says why.
+  const failed = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store for this space is not available yet: the compose file could not be regenerated" }), types: async () => [], aggregate: async () => [] };
+  const f = /** @type {any} */ (await storeStatus({ root: home, store: failed, env: { VYRE_STORE: "twenty" } }));
+  assert.match(f.unavailable.reason, /compose file/);
+});
+
+test("rc.3: attempt 1 fails, the opener attaches later: store-state.json is gone as soon as the store opens, while attach() is still replaying, and the status never says it is not available", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const { storeStatus } = await import("../store-status.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  let ok = false;
+  const real = createMemoryStore({});
+  // The replay of what the kernel defined while the store was away is slow (minutes on a first start).
+  const define = real.define.bind(real);
+  real.define = async (/** @type {any} */ ...a) => { await new Promise((r) => setTimeout(r, 600)); return define(...a); };
+  const f = createStoreFor({ home, mode: "twenty", degrade: true, retryBaseMs: 20, retryMaxMs: 40, log: () => {}, helper: false, rotate: /** @type {any} */ (async () => ({})),
+    preflight: async () => (ok ? { ok: true, reasons: [] } : { ok: false, reasons: ["compose file could not be regenerated"], facts: {} }),
+    provision: async () => ({ url: "http://127.0.0.1:1", keyFile: "x", webhookSecretFile: "y" }), makeStore: () => real });
+  const st = await f(SP, { personal: true });           // attempt 1 fails
+  await st.define({ add_types: [{ name: "task_x", fields: [] }] });   // remembered, replayed on attach
+  f.bootDone();
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "store-state.json"), "utf8")).state, "unavailable");
+  ok = true;                                              // the next retry opens a real store
+  const t0 = Date.now();
+  while (fs.existsSync(path.join(dir, "store-state.json")) && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false, "the record is gone");
+  assert.equal(f.waiting().length, 1, "and it went while attach() was still replaying, not after");
+  const s = /** @type {any} */ (await storeStatus({ root: home, store: st, env: { VYRE_STORE: "twenty" } }));
+  assert.doesNotMatch(String(s.note || ""), /not available yet/);
+  assert.equal(s.unavailable, undefined);
+  // and it finishes: attached, nothing waiting.
+  const t1 = Date.now();
+  while (!st.attached() && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(st.attached(), true);
+  assert.ok((await st.types()).some((x) => x.name === "task_x"), "the definition made while the store was away was applied");
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false);
+});
+
+test("rc.3: when the first open finishes late and attach() then throws, the failure is recorded again and retried, not left as an unhandled rejection with the record already removed", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  const real = createMemoryStore({});
+  real.define = async () => { throw new Error("define broke during the replay"); };
+  const unhandled = [];
+  const onUnhandled = (/** @type {any} */ e) => unhandled.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const f = createStoreFor({ home, mode: "twenty", degrade: true, startWaitMs: 5, retryBaseMs: 60_000, log: () => {}, helper: false, rotate: /** @type {any} */ (async () => ({})),
+      preflight: async () => { await new Promise((r) => setTimeout(r, 60)); return { ok: true, reasons: [] }; },
+      provision: async () => ({ url: "http://127.0.0.1:1", keyFile: "x", webhookSecretFile: "y" }), makeStore: () => real });
+    const st = await f(SP, { personal: true });          // the open is slow: the deferred store comes back first
+    await st.define({ add_types: [{ name: "task_x", fields: [] }] });   // queued, replayed on attach
+    f.bootDone();
+    const t0 = Date.now();
+    while (!fs.existsSync(path.join(dir, "store-state.json")) && Date.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 10));
+    const state = JSON.parse(fs.readFileSync(path.join(dir, "store-state.json"), "utf8"));
+    assert.equal(state.state, "unavailable");
+    assert.match(state.reason, /define broke during the replay/);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(unhandled, [], "no unhandled rejection");
+  } finally { process.off("unhandledRejection", onUnhandled); }
+});
