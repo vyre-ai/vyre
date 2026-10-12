@@ -485,6 +485,54 @@ test("R1: a message the Switchboard refuses (the sender has no sign-in of their 
   assert.equal((await answered(w, watcher, "B-AFTER", 60_000)).who, BOB, "the next message is still answered");
 });
 
+/** Make the Switchboard's answer to the next threads.send calls of one text an error, as a refusal with a given code and message would be. */
+function refuseSends(/** @type {any} */ b, /** @type {string} */ words, /** @type {string} */ code, /** @type {string} */ message) {
+  const real = b.reg.call.bind(b.reg);
+  let on = true;
+  b.reg.call = async (/** @type {any} */ ...a) => (on && a[0] === "threads.send" && a[1] && String(a[1].text) === words ? { error: { code, message } } : real(...a));
+  return () => { on = false; };
+}
+
+test("R2: the notice for a refused message is one fixed sentence for the cause, never the Switchboard's own words (an account label, a path, a token-shaped string stay out); two refusals inside a minute make one notice", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  const LEAK = "account Eve's Claude (acct_77) at /home/acct/2001/.claude with sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 on api.example.com";
+  refuseSends(b, "C-ONE", "account_unavailable", LEAK);
+  refuseSends(b, "C-TWO", "account_unavailable", LEAK);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-TWO", to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /was not sent/.test(String(f.data.text))), "the room to be told", 60_000);
+  await sleep(2500);
+  const notices = watcher.frames.filter(f => f.type === "chat.text-delta" && f.data.notice === true && /not sent/.test(String(f.data.text)));
+  assert.equal(notices.length, 1, "two refusals inside a minute: one notice");
+  const text = String(notices[0].data.text);
+  assert.ok(!/Eve|acct_77|\/home\/acct|sk-ant|example\.com/.test(text), "nothing of the Switchboard's message reaches the room: " + text);
+  assert.match(text, /Open AI accounts to sign in again/, "the fixed sentence for that cause, with the next step");
+  assert.ok(!JSON.stringify(watcher.frames).match(/sk-ant|acct_77|\/home\/acct/), "and nowhere in the room's frames");
+});
+
+test("R3: a refusal that may go through later (unavailable) is not given up: it stays in the outbox, and after a restart it is delivered and answered", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b1 = await w.boot();
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b1.watch("bob", chat.id);
+  assert.ok(!(await b1.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  refuseSends(b1, "B-LATER", "unavailable", "the server is busy starting");
+  assert.ok(!(await b1.as("bob")("stream.send", { chat: chat.id, text: "B-LATER", to: ["assistant:assistant"], cwd: w.work })).error);
+  await sleep(3000);
+  assert.ok(!watcher.frames.some(f => f.type === "chat.text-delta" && f.data.notice === true && /not sent|not kept/.test(String(f.data.text))), "no 'not sent' claim for a refusal that may pass");
+  await w.crash(b1);
+  const b2 = await w.boot();
+  t.after(() => b2.stop().catch(() => {}));
+  const again = await b2.watch("bob", chat.id);
+  assert.equal((await answered(w, again, "B-LATER", 90_000)).who, BOB, "delivered at the next start, and answered");
+});
+
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
   const w = await world(t);
   const b = await world0(w, t);
