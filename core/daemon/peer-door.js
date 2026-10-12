@@ -90,7 +90,8 @@ export function createPeerDoor(o) {
   /** @type {Map<string, number[]>} */ const uses = new Map();
   /** @type {Map<string, number>} "identity/entry/name" -> when the directory last had no such entry (negative cache) */ const misses = new Map();
   /** @type {number[]} when the directory was last asked on behalf of any invitee channel (the box-wide cap) */ let lookups = [];
-  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, perBox: 120, nonceMax: 5000, idleMs: 30_000, presenceMs: 120_000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
+  // A team member's app opens one stream per call and a screen load makes 8 to 15 calls (apps/app, one stream per team call), so a member needs 120 a minute per Space and 240 across Spaces; the box-wide directory lookups rise with them (480)
+  const lim = { perInvite: 120, perIdentity: 240, perMinute: 60_000, perBox: 480, nonceMax: 5000, idleMs: 30_000, presenceMs: 120_000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
   const perChannel = lim.perChannel ?? lim.perIdentity;
   const over = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
     const a = (uses.get(key) || []).filter(t => now - t < lim.perMinute);
