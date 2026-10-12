@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { boot } from "../sessions/testing/boot.js";
 import { createRing, holdersOf } from "../../lib/chat-keys.js";
+import { Switchboard } from "../switchboard/index.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const OWNER = "per_" + "abcdefghijklmnopqrstuvwxyz", ANA = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -211,4 +212,45 @@ test("a member's message queued behind another member's running turn in a team c
   const said = async () => ((await as(ANA, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
   let last = [];
   await until(async () => { last = await said(); return !last.some((/** @type {string} */ x) => /was not sent/.test(x)) && last.some((/** @type {string} */ x) => /Vyre continuation/.test(x)); }, "Ben's queued message to be answered (his turn runs on his account with the conversation handed over)", 120_000).catch(e => { throw new Error(`${e.message}; the assistant said: ${JSON.stringify(last.map((/** @type {string} */ x) => x.slice(0, 60)))}`); });
+});
+
+// 12 Oct 2026 (walk-13a): on a loaded box one kernel-session open takes seconds (Records answered in 4 to 6 s per call). A queued hop row's session open then outlasts renewCapped's 10 s bound, or the stream's reply looks
+// before the session exists, and the row is dropped. This slows the team engine's session mint for one person to about 12 s and queues that person's message behind another's running turn.
+async function slowQueuedHop(/** @type {any} */ t, /** @type {number} */ delayMs, stray = false) {
+  process.env.FAKE_CLAUDE_DELTA_MS = "20"; t.after(() => { delete process.env.FAKE_CLAUDE_DELTA_MS; });
+  const w0 = await world(t);
+  const { as, firm, lines } = w0;
+  // (the kernel and its surfaces are frozen, so the open is delayed where the Switchboard asks for it: its renewKernelSession, as a slow Records store would make it)
+  const realRenew = Switchboard.prototype.renewKernelSession;
+  Switchboard.prototype.renewKernelSession = /** @type {any} */ (async function (/** @type {any[]} */ ...a) { const turn = a[2]; if (delayMs && turn && turn.chat && turn.asker === BEN) await sleep(delayMs); return /** @type {any} */ (realRenew).apply(this, a); });
+  t.after(() => { Switchboard.prototype.renewKernelSession = realRenew; });
+  const made = await as(ANA, "create", { title: "Slow store", people: [BEN], agents: ["assistant"] });
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
+  await as(ANA, "send", { chat: made.chat, text: "SECRET " + Array(500).fill("word").join(" ") });
+  await sleep(2500);
+  await as(BEN, "send", { chat: made.chat, text: "B-SLOW question" });
+  // Words that reach the thread in the window between the row's announcement ("picked up") and its session (the process of the hop resuming, a replayed session, a line Vyre says): injected the moment the row is announced
+  const db = w0.d.registry.deps.db;
+  if (stray) {
+    const thread = await until(() => db.prepare("SELECT id FROM threads_runs WHERE chat = ? OR id IN (SELECT thread FROM threads_team)").get(made.chat)?.id || db.prepare("SELECT thread FROM threads_inbox WHERE text LIKE 'B-SLOW%'").get()?.thread, "the thread", 30_000);
+    await until(() => db.prepare("SELECT 1 FROM threads_inbox WHERE text LIKE 'B-SLOW%' AND delivered_at IS NOT NULL").get(), "the row to be announced", 60_000);
+    w0.d.events.emit("threads", "thread.text", { message: "msg_stray", block: 0, delta: "stray words in the window" }, { thread: String(thread) });
+  }
+  const said = async () => ((await as(ANA, "catchup", { chat: made.chat })).messages || []).filter((/** @type {any} */ m) => /^assistant:/.test(String(m.author))).map((/** @type {any} */ m) => String(m.text));
+  let last = /** @type {string[]} */ ([]);
+  const answered = () => last.some(x => /Vyre continuation/.test(x)) && !last.some(x => /was not sent|could not be opened/.test(x));
+  const res = await until(async () => { last = await said(); return answered() || last.some(x => /was not sent|could not be opened|couldn't resume/.test(x)) ? "settled" : false; }, "the queued message to be answered or dropped", 150_000).then(() => "settled", () => "timeout");
+  return { answered: answered(), res, last, lines };
+}
+test("a queued hop whose session open is slow (about 12 s) is still answered, or tells the room it was not: never dropped without a word", { timeout: 300_000 }, async t => {
+  const r = await slowQueuedHop(t, 12_000);
+  assert.ok(r.answered, `the slow open must not lose the message: ${r.res}; the assistant said ${JSON.stringify(r.last.map(x => x.slice(0, 70)))}`);
+});
+test("the same with a fast store is answered (the control)", { timeout: 300_000 }, async t => {
+  const r = await slowQueuedHop(t, 0);
+  assert.ok(r.answered, `the fast case: ${r.res}; ${JSON.stringify(r.last.map(x => x.slice(0, 70)))}`);
+});
+test("a queued hop whose session open is slow, with words reaching the thread between its announcement and its session: still answered", { timeout: 300_000 }, async t => {
+  const r = await slowQueuedHop(t, 12_000, true);
+  assert.ok(r.answered, `the window must not lose the message: ${r.res}; the assistant said ${JSON.stringify(r.last.map(x => x.slice(0, 70)))}`);
 });

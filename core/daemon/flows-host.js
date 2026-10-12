@@ -34,6 +34,45 @@ export function whenStoreReady(store, f) {
 }
 
 /**
+ * Define the Flow record types, and again if the store was not answering yet: a store that has just attached (stores/twenty/deferred-store.js runs this from attach) can still refuse for a while, and a define
+ * that failed once was never tried again, so Flows stayed without their types until a restart. `run` does the work and must throw when it could not finish; tries are spaced by a doubling wait (`baseMs` to
+ * `maxMs`), each said in the log, and the last failure says what to do. The first try is awaited; the later ones run in the background (the server is never held for them). `stopped()` ends the tries (the host
+ * stopped); `onDone(ok)` is told how it ended.
+ * @param {{ run: () => Promise<any>, log: (m: string) => void, label: string, tries?: number, baseMs?: number, maxMs?: number, stopped?: () => boolean, timers?: Set<any>, onDone?: (ok: boolean) => void }} o
+ * @returns {Promise<boolean>} whether the first try worked
+ */
+export async function defineWithRetry(o) {
+  const tries = o.tries ?? 12, base = o.baseMs ?? 5_000, max = o.maxMs ?? 60_000;
+  /** @param {number} n */
+  const attempt = async n => {
+    try { await o.run(); if (n > 1) o.log(`${o.label} are defined now`); if (o.onDone) o.onDone(true); return true; }
+    catch (e) {
+      const why = String((e && /** @type {Error} */ (e).message) || e);
+      if (n >= tries || (o.stopped && o.stopped())) { o.log(`${o.label} could not be defined after ${n} tries (${why}); restart Vyre once Records are up`); if (o.onDone) o.onDone(false); return false; }
+      const wait = Math.min(base * 2 ** (n - 1), max);
+      o.log(`${o.label} are not defined yet (${why}); trying again in ${Math.round(wait / 1000)} s`);
+      const t = setTimeout(() => { if (o.timers) o.timers.delete(t); void attempt(n + 1); }, wait); t.unref?.(); if (o.timers) o.timers.add(t);
+      return false;
+    }
+  };
+  return attempt(1);
+}
+
+/** The words a Flow call gets while the Flow record types are not defined yet (instead of a raw "no type flow-state"). */
+export const FLOWS_WAITING = "Flows are waiting for the team's records. Try again in a minute.";
+
+/**
+ * Every Flow tool answers FLOWS_WAITING until `ready()` says the Flow record types exist. Wraps in place.
+ * @param {Record<string, any>} tools @param {() => boolean} ready
+ */
+export function guardUntilReady(tools, ready) {
+  for (const name of Object.keys(tools)) {
+    const orig = tools[name];
+    if (typeof orig === "function") tools[name] = async (/** @type {any[]} */ ...a) => { if (!ready()) throw Object.assign(new Error(FLOWS_WAITING), { code: "unavailable" }); return orig(...a); };
+  }
+}
+
+/**
  * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
  * }} o
  */
@@ -183,7 +222,14 @@ export function createFlowsHost(o) {
       } catch (e) { log(`flows: communications for ${space} were not brought up to date: ${e && /** @type {Error} */ (e).message}`); }
     };
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
-    await whenStoreReady(k.store, setupTypes);
+    // The types are defined again if the first try met a store that was not answering yet; Flow calls made before they exist answer in words (see typesReady below).
+    let typesReady = false, stopping = false, tries = 0;
+    /** @type {Set<any>} */ const retryTimers = new Set();
+    const { FLOW_TYPES: WANT_FLOW_TYPES } = await import("../../kernel/flows/store.js");
+    const ensureTypes = () => defineWithRetry({ log, label: `flows: the Flow record types for ${space}`, stopped: () => stopping, timers: retryTimers, ...(o.retryMs ? { baseMs: o.retryMs, maxMs: o.retryMs } : {}),
+      onDone: ok => { if (ok && tries > 1) { void recover(); void wake.arm(); } },
+      run: async () => { tries++; await setupTypes(); const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name)); const lacking = WANT_FLOW_TYPES.filter((/** @type {any} */ t) => !have.has(t.name)).map((/** @type {any} */ t) => t.name); if (lacking.length) throw new Error(`still missing ${lacking.join(", ")}`); typesReady = true; } });
+    await whenStoreReady(k.store, ensureTypes);
 
     // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
@@ -281,6 +327,7 @@ export function createFlowsHost(o) {
       const orig = flows.tools[name];
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
+    guardUntilReady(flows.tools, () => typesReady);
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);
       const live = await store.active(x.flow).catch(() => null);
@@ -345,7 +392,7 @@ export function createFlowsHost(o) {
       roleOf: (/** @type {string} */ person) => { try { const r = gw.members.roleOf({ kind: "person", id: person, space }); return typeof r === "string" ? r : ""; } catch { return ""; } },
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
-      stop: () => { wake.stop(); if (typeof offDevice === "function") offDevice(); } });
+      stop: () => { stopping = true; for (const t of retryTimers) clearTimeout(t); retryTimers.clear(); wake.stop(); if (typeof offDevice === "function") offDevice(); } });
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
