@@ -73,3 +73,24 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   const m = await get(main, "/v1/events?since=0&limit=500");
   assert.equal(m.status, 200, "control: no device caller serves the bus"); assert.ok(m.body.includes("OWNER-DEVICE-BUS-SECRET"));
 });
+
+test("a fresh box: the set-up page's stream (the onboarding listener, no owner device yet) is served as it always was", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const s = /** @type {http.Server} */ (await new Promise(r => { const x = http.createServer((req, res) => d.registry.deps.handler({ eventType: "onboard.*" })(req, res, "onboard", undefined)); x.listen(0, "127.0.0.1", () => r(x)); })); t.after(() => s.close());
+  const addr = /** @type {any} */ (s.address());
+  /** @type {string[]} */ const got = [];
+  let status = 0, body = "";
+  const req = http.request({ port: addr.port, host: "127.0.0.1", path: "/v1/events/stream?type=*&since=latest", method: "GET" }, res => { status = res.statusCode || 0; res.on("data", c => { body += c; }); });
+  req.on("error", () => {}); req.end(); t.after(() => req.destroy());
+  await new Promise(r => setTimeout(r, 400));
+  const ev = d.registry.deps.events;
+  ev.emit("onboard", "onboard.stepped", { step: "link", state: "done" });
+  ev.emit("link", "link.paired", { name: "PAIRED-NAME" });
+  ev.emit("switchboard", "thread.text", { thread: "t1", text: "SETUP-CHAT-TEXT" });
+  await new Promise(r => setTimeout(r, 600));
+  for (const m of body.matchAll(/^event: (.+)$/gm)) got.push(m[1]);
+  console.log("SETUP STREAM", status, got.join(","));
+  assert.equal(status, 200);
+  assert.deepEqual(got, ["onboard.stepped"], "the set-up stream carries onboard.* only, as it always did");
+});
