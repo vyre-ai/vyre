@@ -32,6 +32,9 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
 
+/** The Space's set-up: a member reads these and never writes them. */
+const SETUP_TYPES = new Set(["agent", "template", "playbook"]);
+
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
   { action: "records.create", resource_type: "record", risk: "write", label: "add records", gloss: "Create new records." },
@@ -633,6 +636,8 @@ export function createRecords(cfg) {
     { const mv = cfg.isMoved ? cfg.isMoved() : null; if (mv) throw new KernelError("moved", "this space moved to My Cloud; work there", { to: mv.to }); }
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
+    // The Space's set-up (an agent, a template, a playbook): a member reads, only an owner or an admin writes, on every route. A service's own chain has no person and passes.
+    if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `only an owner or an admin changes a ${type}; ask one of them`); }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
     if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
