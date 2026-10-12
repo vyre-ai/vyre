@@ -44,6 +44,9 @@ export function setBoxOverride(f: ((name: string, input: Record<string, unknown>
  * A call that names its server: the Space-making calls (spaces.name-here, spaces.host-here) name a server and no Space yet. Where a device is paired to several servers `server` is the server's box id and the
  * call goes down that server's own wire; on the computer whose own daemon is the door it is the paired server's id, which the daemon's tool takes as `server`. Every other call follows the Space it is for.
  */
+/** The chat id out of what work.chat.create answered (its id, chat or urn). */
+const chatIdOfAnswer = (r: unknown): string => { const x = r as { chat?: unknown; id?: unknown; urn?: unknown } | null; const v = [x?.chat, x?.id, x?.urn].find((y) => typeof y === "string") as string | undefined; const m = v ? /\/chat\/([^/?#]+)$/.exec(v) : null; return m ? m[1] : v ?? ""; };
+
 export type ToolOptions = { server?: string };
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
@@ -69,13 +72,16 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     // With several servers paired, the call goes to the one that hosts its Space (or the one it names); one pairing goes where it always went.
-    const { routeCall, listAllSpaces } = await import("./space-servers");
+    const { routeCall, listAllSpaces, listAllChats, noteChat } = await import("./space-servers");
     // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
     if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
     const route = await routeCall({ input, showing: useSpaces.getState().space, server: opts.server });
     if (route.error) throw new BoxError(route.error.code, route.error.message);
     const to = route.box;
-    try { return await peerCall<T>(name, input, to); }
+    // The chats list is every server's under All spaces. A new chat belongs to a Space on one server, so with several servers it is made only when a Space is showing (never guessed onto the active one).
+    if (name === "work.chat.list" && !to && !opts.server) { const all = await listAllChats(input); if (all) return all as T; }
+    if (name === "work.chat.create" && !to && !opts.server && (await import("../api/relay").then((m) => m.listPairings())).length > 1) throw new BoxError("pick_a_space", "Pick the Space this chat is for first, then start it. A chat belongs to one Space on one server. Nothing was made.");
+    try { const out = await peerCall<T>(name, input, to); if (name === "work.chat.create") noteChat(chatIdOfAnswer(out), to); return out; }
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
