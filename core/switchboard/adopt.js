@@ -99,18 +99,19 @@ export function opensSession(cmd, id) {
 
 /**
  * Running claude processes that have this session open, other than ours. A process we started is ours even when something stands between us and it: the pid we record is the program we started (tini, when a
- * subreaper wraps the session), and the claude it runs is that program's child and in its process group. So a process whose parent or process group is one of ours is ours.
+ * subreaper wraps the session), and the claude it runs is that program's child. So a process whose PARENT is one of ours is ours. (Not by process group: a `claude --resume` the model runs from a tool inside the session shares the
+ * session's group but is a writer of the same transcript, and stays named.)
  * @param {string} id @param {number[]} ours
  */
 export function claudesNaming(id, ours) {
   let out = "";
-  try { out = execFileSync("ps", ["-ax", "-o", "pid=,ppid=,pgid=,command="], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); } catch { return []; }
+  try { out = execFileSync("ps", ["-ax", "-o", "pid=,ppid=,command="], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); } catch { return []; }
   const pids = [];
   for (const line of out.split("\n")) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-    if (!m || !opensSession(m[4], id) || /\bps\b -ax/.test(m[4])) continue;
-    const pid = Number(m[1]), ppid = Number(m[2]), pgid = Number(m[3]);
-    if (pid !== process.pid && !ours.includes(pid) && !ours.includes(ppid) && !ours.includes(pgid)) pids.push(pid);
+    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (!m || !opensSession(m[3], id) || /\bps\b -ax/.test(m[3])) continue;
+    const pid = Number(m[1]), ppid = Number(m[2]);
+    if (pid !== process.pid && !ours.includes(pid) && !ours.includes(ppid)) pids.push(pid);
   }
   return pids;
 }

@@ -65,4 +65,10 @@ test("claudesNaming: the claude a subreaper runs for us is ours (its parent is t
   const named = claudesNaming(id, [/** @type {number} */ (wrapped.pid)]);
   assert.ok(!named.includes(/** @type {number} */ (wrapped.pid)), "the subreaper is ours");
   assert.deepEqual(named, [alone.pid], `the claude under our subreaper is ours; only the one of nobody ours is named: ${named}`);
+  // a claude the model starts from a tool inside the session is a grandchild in the session's own process group: a second writer of the transcript, so it is still named (only a CHILD of ours is ours)
+  const sh = spawn("/bin/sh", ["-c", `${JSON.stringify(sub)} -s -- ${JSON.stringify(process.execPath)} -e "setInterval(()=>{},1000)" claude --session-id ${id} & wait`], { stdio: "ignore", detached: true });
+  t.after(() => { try { process.kill(-/** @type {number} */ (sh.pid), "SIGKILL"); } catch { /* gone */ } });
+  await until(() => claudesNaming(id, [/** @type {number} */ (sh.pid)]).length >= 1);
+  const grand = claudesNaming(id, [/** @type {number} */ (sh.pid)]).filter(p => p !== wrapped.pid && p !== alone.pid && p !== process.pid);
+  assert.equal(grand.length, 1, `the grandchild is named though it shares the group of our recorded pid: ${grand}`);
 });
