@@ -9,7 +9,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 
 /**
  * @param {ReturnType<typeof import("./journey.mjs").stepper>} J @param {string} file repo-relative test file @param {string} owner
- * @param {{ env?: Record<string, string>, timeoutMs?: number }} [o]
+ * @param {{ env?: Record<string, string>, timeoutMs?: number, label?: string }} [o]
  */
 /**
  * The reason a case failed, from its TAP diagnostics: the `error:` value, which node writes either on the line or as a block (`error: |-` and the lines under it), the assertion's message and its
@@ -59,7 +59,7 @@ export function walkTestFile(J, file, owner, o = {}) {
     if (!m) continue;
     let why = "";
     if (m[1] === "not ok") why = whyOf(lines, i + 1);
-    cases.push({ ok: m[1] === "ok", name: m[2], why });
+    cases.push({ ok: m[1] === "ok", name: m[2] + (o.label ? ` (${o.label})` : ""), why });
   }
   // A case that is the file itself ("not ok 3 - /path/x.test.js ... test failed") means the process ended badly after its cases (an uncaught error, an exit): what it printed last is the only reason there is.
   const long = out.split("\n").filter(l => l.trim() && !/^(ok|not ok) \d+ - |^\s+(duration_ms|type|location|failureType|exitCode|signal|code|name):|^\s+---$|^\s+\.\.\.$/.test(l)).slice(-14).join(" | ").slice(0, 1500);
