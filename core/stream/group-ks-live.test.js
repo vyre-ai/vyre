@@ -421,6 +421,57 @@ test("V2b: three people queue behind a running turn, one of them twice: four tur
   assert.deepEqual(askersOf(w), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
 });
 
+test("Q3: the owner's turn is running and two members queue behind it: three turns, three answers, in arrival order, each under its own asker; none dropped, none doubled", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  for (const [who, text] of [["carol", "C-Q1"], ["ada", "A-Q2"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const c = await answered(w, watcher, "C-Q1", 120_000), a = await answered(w, watcher, "A-Q2", 120_000);
+  const first = await answered(w, watcher, LONG);
+  assert.deepEqual([first.who, c.who, a.who], [BOB, CAROL, ADA]);
+  assert.ok(first.at < c.at && c.at < a.at, "in arrival order");
+  assert.deepEqual(askersOf(w), [BOB, CAROL, ADA], "exactly three turns, each opened under its own asker");
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "no reply was dropped");
+});
+
+test("CU1: the catchup rule is what others said since you last read: a sender's catchup holds the answer and the other person's message, not her own, and unread counts others only", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("carol", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-HELLO", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watcher, "C-HELLO", 60_000);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-HELLO", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watcher, "B-HELLO", 60_000);
+  const c = await b.as("carol")("stream.catchup", { chat: chat.id });
+  assert.ok(!c.error, c.error && c.error.message);
+  const ms = c.data.messages;
+  assert.ok(!ms.some((/** @type {any} */ m) => /^person:/.test(m.author) && /C-HELLO/.test(m.text) && m.author.includes(CAROL)), "her own message is not in her catchup (she knows what she wrote)");
+  assert.ok(ms.some((/** @type {any} */ m) => /echo: C-HELLO/.test(m.text)), "its answer is");
+  assert.ok(ms.some((/** @type {any} */ m) => /B-HELLO/.test(m.text)), "and the other person's message");
+  assert.equal(c.data.unread, ms.length, "unread counts what others said, each entry once");
+});
+
+test("E1: three people queued behind the owner's turn, and that turn is stopped (it ends abnormally): the queued messages are not dropped, each is answered under its own asker", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  for (const [who, text] of [["carol", "C-E1"], ["ada", "A-E1"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const kit = kitThread(b, chat.id);
+  await sleep(1500);
+  const stopped = await b.reg.call("threads.stop", { thread: kit }, "deck", { token: w.tokens.bob });   // the running turn ends abnormally
+  assert.ok(!stopped.error, stopped.error && stopped.error.message);
+  const c = await answered(w, watcher, "C-E1", 120_000), a = await answered(w, watcher, "A-E1", 120_000);
+  assert.deepEqual([c.who, a.who], [CAROL, ADA]);
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed" && /resume/.test(String(f.data.note))), "nothing says it could not resume");
+});
+
 test("V2t: the queued variant with a tool call in every turn: each tool call is stamped with the session of the person whose turn it is, per message", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);
