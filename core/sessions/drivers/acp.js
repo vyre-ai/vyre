@@ -350,7 +350,7 @@ function runAcp(entry, known, o) {
   }
 
   function update(u) {
-    if (quiet) return; // the answer to a barrier command (`mcpBarrier`) is for Vyre, not the person
+    if (quiet || !ready) return; // the answer to a barrier command (`mcpBarrier`) is for Vyre, not the person; and what an agent replays while it loads a session (the history, as updates) is not this turn's words
     const kind = u.sessionUpdate;
     // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
     if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
