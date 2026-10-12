@@ -38,3 +38,11 @@ test("the ten own-home screens, the routed ones and the sidebar draw the tag", (
   assert.ok(/SpaceTag text=\{cur\.tag\}/.test(shell), "the sidebar's space title carries it");
   assert.ok(!/OwnHomeNotice|yours, not the team/i.test(src), "the banner is gone");
 });
+
+test("the rows carry it too: chats (the block list), projects, a project's files, her vault items, her own assistants", () => {
+  const read = (/** @type {string} */ f) => fs.readFileSync(path.join(APP, f), "utf8");
+  assert.ok(/tagOf\(x\) \? <SpaceTag text=\{tagOf\(x\)\} \/>/.test(read("ui/blocks/BlockViews.tsx")), "every block list row draws its tag (its own, else the list's)");
+  assert.ok(/content: \{ \.\.\.\(tag \? \{ tag \} : \{\}\)/.test(read("screens/chats/ChatsList.tsx")), "the chats list gives its rows the tag of where they live");
+  assert.ok(/tagOf=\{\(sid\) => tagFor\(cards, sid \|\| showing, showing\)\}/.test(read("screens/projects/ProjectsScreen.tsx")) && /tagOf && tagOf\(spaceId\(i\)\)/.test(read("ui/tasks/ProjectsList.tsx")), "projects: each row says its own space, so a mixed list is right");
+  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/settings/RealAgents.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
+});
