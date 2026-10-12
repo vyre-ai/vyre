@@ -9,9 +9,24 @@ const SPACE = /^spc_[a-z2-7]{12}$/;
 const ADDRESS = /^vyre:\/\/(spc_[a-z2-7]{12})\//;
 const NOT_PAIRED = "This device is not paired to that server. Add it in Settings, Servers, then try again.";
 
+/** The families of tools that act on something inside ONE Space: a record, a file, a task, a rule, a flow, a project, a template. */
+const SPACE_BOUND = ["records.", "files.drive.space.", "files.drive.upload", "files.drive.restore", "files.drive.versions", "files.drive.link.create", "tasks.", "rules.", "flows.", "work.project.", "work.start-project", "work.template."];
+/** The families that keep a server's private data (secrets, memory, what an assistant or a connection holds, mail, publishing, documents). What is said to them, or read from them, belongs to the server that holds the Space. */
+const PRIVATE = ["vault.", "memory.", "agents.", "skills.", "planner.", "publish.", "connectors.", "mail.", "google.", "artifacts.", "threads.", "team.", "goals.", "learn.", "recall.", "documents.", "attachments.", "brand.", "appmods.", "bridges.", "github.", "mcp.", "watchers.", "sync.", "assistant.", "sessions.accounts.", "work.call"];
+/** A plain read of many (or of status) carries nothing private: under All spaces it is the active server's, as it always was. The vault has no such exemption: even its list names what a person keeps. */
+const PLAIN_READ = /\.(list|types|me|actors|library|events|status|catalog|catalogue|accounts|agenda|holders|serve|serve-create|serve-update|serve-request|serve-work)$/;
+
+/** Does this tool act on one thing inside a Space, or read or write a server's private data (so the Space, and with it the server, must be known)? @param {string | undefined} tool */
+export const needsSpace = (tool) => {
+  if (!tool) return false;
+  if (tool.startsWith("vault.")) return true;
+  if (PLAIN_READ.test(tool)) return false;
+  return SPACE_BOUND.some((p) => tool.startsWith(p)) || PRIVATE.some((p) => tool.startsWith(p));
+};
+
 /**
  * A chat goes to the server that holds it, whatever is showing, and one whose server is not known is refused (a message for one server's chat must never land on another). A record address (`urn`) names its Space.
- * @param {{ explicit?: string, input?: Record<string, unknown>, showing?: string, spaceServers: Record<string, string>, paired: string[], chatServers?: Record<string, string> }} o
+ * @param {{ tool?: string, explicit?: string, input?: Record<string, unknown>, showing?: string, spaceServers: Record<string, string>, paired: string[], chatServers?: Record<string, string> }} o
  * @returns {{ box?: string, error?: { code: string, message: string } }}
  */
 export function serverFor(o) {
