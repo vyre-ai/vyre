@@ -88,9 +88,9 @@ export const visibility = {
 /** expo/fetch streams a response body, which React Native's own fetch does not (the event stream needs it). */
 export const directFetch = expoFetch as unknown as typeof fetch;
 
-const store = makePairingStore({
+const pairingStore = makePairingStore({
   get: (k) => SecureStore.getItemAsync(k, ONLY_HERE),
   set: (k, v) => SecureStore.setItemAsync(k, v, ONLY_HERE),
   del: (k) => SecureStore.deleteItemAsync(k, ONLY_HERE),
 });
-export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = store;
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;

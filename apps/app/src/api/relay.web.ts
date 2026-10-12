@@ -44,9 +44,9 @@ export function deviceName(): string {
 export const visibility = undefined;
 export const directFetch = undefined;
 
-const store = makePairingStore({
+const pairingStore = makePairingStore({
   get: async (k) => localStorage.getItem(k),
   set: async (k, v) => localStorage.setItem(k, v),
   del: async (k) => localStorage.removeItem(k),
 });
-export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = store;
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = pairingStore;
