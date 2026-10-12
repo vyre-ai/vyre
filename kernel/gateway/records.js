@@ -700,8 +700,8 @@ export function createRecords(cfg) {
     if (op === "update" && hooks.expand) input = await hooks.expand(before);
     // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
     if (op === "create" && attrs) await attrsGate(chain, attrs);
-    // a row of a type read by a rule of its own is changed only by someone who may read it
-    if ((op === "update" || op === "remove") && before && PRIVATE_READS[type] && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
+    // a row of a type read by a rule of its own is changed only by someone who may read it (a project, a team row and a task have the ownership rule below, which says who may)
+    if ((op === "update" || op === "remove") && before && PRIVATE_READS[type] && !OWNED_TYPES.includes(type) && !(await mayView(chain, type, { ...before, urn: u }))) throw new KernelError("not_found", "no such record");
     if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
       // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
       const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
