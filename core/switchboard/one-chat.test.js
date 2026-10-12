@@ -248,7 +248,8 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   assert.deepEqual([opened.data.chat, opened.data.session], [chat, r.data.id]);
   assert.equal((await call(C, "stream.open", { chat })).error.code, "not_found");
   assert.equal((await call(O, "stream.open", { chat: r.data.id })).error.code, "not_found", "a thread id is not a chat");
-  assert.equal((await call(C, "threads.chat-switch", { chat, slot: got.slots[0].slot, model: "sonnet" })).error.code, "not_found");
+  // threads.chat-switch is the owner's for a member until it takes the asker's person into the account choice (door gate): an outsider is refused either way
+  assert.ok(["not_found", "denied"].includes((await call(C, "threads.chat-switch", { chat, slot: got.slots[0].slot, model: "sonnet" })).error.code));
   assert.equal((await call(C, "threads.chat-stop", { chat })).error.code, "not_found");
   const stopped = await call(B, "threads.chat-stop", { chat });
   assert.ok(stopped.data, JSON.stringify(stopped.error));
