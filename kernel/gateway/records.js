@@ -96,17 +96,15 @@ export function createRecords(cfg) {
   const hasPrivileged = (/** @type {string} */ type) => {
     if (noPrivileged.has(type)) return false;
     let found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
-    // a store with its own attribute map and a log that is not durable: the log may be younger than the store, so neither says "none" (rows are gated one by one, nothing is pushed down)
-    if (!found && !kattrs.anyWith && store.meta && log.durable !== true) return true;
-    if (!found && !kattrs.anyWith && !privilegedScanned.has(type)) {
-      // the map is not the whole truth: ask the log. If the log cannot say, answer "may have privileged rows" (rows are gated one by one) and remember nothing, never "none".
-      try {
-        for (const e of log.iterate({ type: `${type}.created` })) {
-          const a = e.data && typeof e.data.attrs === "object" ? e.data.attrs : null;
-          if (a && a.sensitivity === "privileged") { found = true; kattrs.set(String(e.subject), a); }
-        }
-        privilegedScanned.add(type);
-      } catch { return true; }
+    if (!found && !kattrs.anyWith) {
+      // the map is only what THIS process wrote, so the log is asked (the type's own create events, once). Where the log cannot say (it is not durable under a store with its own map, or the read fails) the answer is "may have privileged rows": rows are gated one by one, nothing is pushed down, and "none" is never remembered.
+      if (store.meta && log.durable !== true) return true;
+      if (!privilegedScanned.has(type)) {
+        try {
+          for (const e of log.iterate({ type: `${type}.created` })) { const a = e.data && typeof e.data.attrs === "object" ? e.data.attrs : null; if (a && a.sensitivity === "privileged") { found = true; kattrs.set(String(e.subject), a); } }
+          privilegedScanned.add(type);
+        } catch { return true; }
+      }
     }
     if (!found) noPrivileged.add(type);
     return found;
