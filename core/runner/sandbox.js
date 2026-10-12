@@ -184,9 +184,12 @@ function planLinux(o) {
  * @param {ReturnType<typeof plan>} p @param {import("node:child_process").SpawnOptions} [opts]
  */
 export function launch(p, opts = {}) {
-  const stdio = p.fd3 ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"];
+  // fd 3 is the seccomp filter on Linux; a credential (p.secret) rides its own pipe on the fd the plan names, written once and closed, so it is never in the program's environment or its arguments.
+  const top = Math.max(p.fd3 ? 3 : 2, p.secret ? p.secret.fd : 2);
+  const stdio = Array.from({ length: top + 1 }, (_, k) => (k === 3 && p.fd3) || (p.secret && k === p.secret.fd) || k < 3 ? "pipe" : "ignore");
   const child = spawn(p.argv[0], p.argv.slice(1), { env: p.env, cwd: p.cwd, ...opts, stdio: /** @type {any} */ (stdio) });
   if (p.fd3 && child.stdio[3]) { const w = /** @type {any} */ (child.stdio[3]); w.on("error", () => {}); w.end(p.fd3); }
+  if (p.secret && child.stdio[p.secret.fd]) { const w = /** @type {any} */ (child.stdio[p.secret.fd]); w.on("error", () => {}); w.end(p.secret.payload); }
   return child;
 }
 

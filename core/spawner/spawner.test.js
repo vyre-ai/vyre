@@ -71,7 +71,7 @@ test("spawner: its socket is the owner's alone", async t => {
 // ---- one uid per account (ADR 0030 phase 2, reviewer-2's B1)
 
 /** A spawner with account uids 2000-2063 and a HOME stat the test controls; wrap records who each child would run as. */
-async function withAccounts(t, homes) {
+async function withAccounts(t, homes, allow = ["/bin/sh"]) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-"));
   const work = path.join(dir, "work");
   const acct = path.join(dir, "acct");
@@ -80,7 +80,7 @@ async function withAccounts(t, homes) {
   const socket = path.join(dir, "s.sock");
   const ran = [], wiped = [];
   const stat = d => { const uid = path.basename(d); const h = homes[uid]; return h ? { isDirectory: () => true, isSymbolicLink: () => Boolean(h.link), uid: h.uid, ...(h.gid !== undefined ? { gid: h.gid } : {}), mode: 0o40000 | h.mode } : null; };
-  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] },
+  const srv = await serve({ socket, allow, work, agent: { uid: 1001, gid: 1001, groups: [1002] },
     wrap: (argv, cwd, who) => { ran.push(who); return argv; },
     accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, wipe: (d, who) => wiped.push([d, who.uid]) } });
   t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -294,4 +294,31 @@ test("spawner place, the real setpriv call (root on Linux only): the file belong
   assert.equal(await placeTranscript(2000, file, Buffer.from("one\ntwo\n"), { socket }), true);
   const st = fs.statSync(file);
   assert.deepEqual([st.uid, st.mode & 0o777, fs.readFileSync(file, "utf8")], [2000, 0o600, "one\ntwo\n"]);
+});
+
+// A client terminal (an ACP agent's terminal/create, after Vyre's floor judged the command) is the one place `/bin/sh` is started, under role "terminal" and as an account's uid. The allow list stays what the image names.
+const NO_SHELL = ["/usr/bin/true"];
+test("spawner terminal: role terminal runs `/bin/sh -c <line>` as the account's uid in its HOME, with no credential in its environment, though /bin/sh is not on the allow list", async t => {
+  const { socket, acct, ran } = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 } }, NO_SHELL);
+  const p = await spawnAsAgent(["/bin/sh", "-c", 'echo "$HOME|$USER|${ANTHROPIC_API_KEY:-nokey}|${OPENAI_API_KEY:-nokey}|${MY_TOKEN:-notoken}|${CLAUDE_CODE_OAUTH_TOKEN:-nooauth}|${LD_PRELOAD:-nopreload}"'],
+    { socket, cwd: path.join(acct, "2000"), account: 2000, role: "terminal", env: { ANTHROPIC_API_KEY: "sk-a", OPENAI_API_KEY: "sk-o", MY_TOKEN: "tk", CLAUDE_CODE_OAUTH_TOKEN: "oa", LD_PRELOAD: "/tmp/x.so", PATH: "/usr/bin:/bin" } });
+  assert.equal(await collect(p.stdout), `${path.join(acct, "2000")}|acct2000|nokey|nokey|notoken|nooauth|nopreload\n`);
+  await exited(p);
+  assert.deepEqual(ran.map(w => [w.uid, w.gid, w.groups]), [[2000, 2000, []]], "as that account's uid, in no supplementary group");
+});
+
+test("spawner terminal: /bin/sh without the terminal role is refused as before, and the role starts nothing but one shell line as an account", async t => {
+  const { socket, acct } = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 } }, NO_SHELL);
+  const cwd = path.join(acct, "2000");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000 }), /\/bin\/sh is not a program the spawner starts/, "no role: refused");
+  await assert.rejects(spawnAsAgent(["/usr/bin/env", "true"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs \/bin\/sh -c and one command line/, "another program under the role");
+  await assert.rejects(spawnAsAgent(["/usr/bin/true"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "even an allowed program is not a terminal");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-lc", "true"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "a login shell flag");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true", "extra"], { socket, cwd, account: 2000, role: "terminal" }), /a terminal runs/, "more arguments");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, role: "terminal" }), /a terminal runs as an account/, "not as the agent's own uid");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, shared: true, role: "terminal" }), /takes no fd3, seed or shared/, "no shared group");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, fd3: "sk-secret", role: "terminal" }), /takes no fd3/, "no credential descriptor");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2000, seed: { "a.txt": "x" }, role: "terminal" }), /takes no fd3/, "no seed files");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: "/etc", account: 2000, role: "terminal" }), /cwd must be under/, "the same folder rule");
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd, account: 2999, role: "terminal" }), /account must be a uid from/, "the same account range");
 });

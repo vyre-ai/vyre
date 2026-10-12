@@ -66,3 +66,39 @@ test("spawn through the spawner: a refusal comes back as an error event", async 
   const e = await new Promise(r => child.once("error", r));
   assert.match(String(/** @type {any} */ (e).message), /not a program the spawner starts|cwd must be under/);
 });
+
+test("spawn through the spawner as a client terminal: the shell is started under the terminal role as the account, and holds no key (not in the environment, no descriptor 3)", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spt-"));
+  const acct = path.join(dir, "acct"), work = path.join(dir, "work");
+  fs.mkdirSync(path.join(acct, "2000"), { recursive: true }); fs.mkdirSync(work, { recursive: true });
+  const socket = path.join(dir, "s.sock");
+  const stat = () => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: 2000, gid: 2000, mode: 0o40700 });
+  const srv = await serve({ socket, allow: ["/usr/bin/true"], work, agent: { uid: 0, gid: 0, groups: [] }, wrap: argv => argv, accounts: { min: 2000, max: 2063, home: acct, shared: [], stat } });
+  t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const account = { uid: 2000 };
+  const term = spawnSession("/bin/sh", ["-c", 'echo "key=${ANTHROPIC_API_KEY:-none} fd=${CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR:-none} 3=$( (echo x >&3) 2>&1 | head -c 30 )"'],
+    { spawner: true, spawnerSocket: socket, cwd: path.join(acct, "2000"), account, terminal: true, env: { PATH: "/usr/bin:/bin", ANTHROPIC_API_KEY: "sk-test-secret" } });
+  const out = await collect(term.stdout);
+  assert.match(out, /^key=none fd=none 3=/, out);
+  assert.doesNotMatch(out, /sk-test-secret/);
+  // the same shell without the terminal flag is the old refusal (a session never starts /bin/sh through the spawner)
+  const plain = spawnSession("/bin/sh", ["-c", "true"], { spawner: true, spawnerSocket: socket, cwd: path.join(acct, "2000"), account, env: { PATH: "/usr/bin:/bin" } });
+  const err = await new Promise(r => plain.once("error", r));
+  assert.match(String(/** @type {Error} */ (err).message), /\/bin\/sh is not a program the spawner starts/);
+});
+
+test("a terminal's environment holds no credential and no descriptor variable, on the sandboxed path too", async () => {
+  const { spawnSession } = await import("./spawn.js");
+  /** @type {any[]} */ const seen = [];
+  const env = { PATH: "/usr/bin", ANTHROPIC_API_KEY: "sk-ant-api03-x", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-y", CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: "3" };
+  spawnSession("/bin/sh", ["-c", "true"], { env, terminal: true, sandboxSpawn: (c, a, e, cwd, opts) => { seen.push(opts); return { pid: 1 }; } });
+  assert.equal(seen[0] && seen[0].terminal, true, "the sandbox is told it is a terminal");
+});
+
+test("a launch holding both an API key and a setup token moves one onto descriptor 3 and leaves the other in no variable", async () => {
+  const { takeCredentialForFd } = await import("./spawn.js");
+  const env = /** @type {Record<string, string>} */ ({ ANTHROPIC_API_KEY: "sk-ant-api03-a", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-b", PATH: "/usr/bin" });
+  const moved = takeCredentialForFd(env);
+  assert.equal(moved, "sk-ant-api03-a");
+  assert.deepEqual(Object.keys(env).sort(), ["CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR", "PATH"], "no credential left in the environment: " + Object.keys(env).join(","));
+});

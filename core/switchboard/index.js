@@ -31,7 +31,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from ".
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { prepareSandbox, sessionCliEnv } from "../../lib/agent-sandbox.js";
+import { prepareSandbox, sessionCliEnv, pickedFirst } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
@@ -1245,7 +1245,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: pickedFirst(() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]), cfg.credentials) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { noLoginCopy: true } : {}), ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
       this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));

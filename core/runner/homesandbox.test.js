@@ -544,3 +544,15 @@ test("home sandbox (macOS plan): the session has a PATH: the program's and inter
   const withCaller = planHome({ ...base, env: { PATH: "/Users/a/.volta/bin:relative/bin:/usr/bin" }, pathDirs: ["/opt/nvm/versions/node/v22/bin"] });
   assert.deepEqual(withCaller.env.PATH.split(":"), ["/opt/nvm/versions/node/v22/bin", "/Users/a/.volta/bin", "/usr/bin", "/opt/homebrew/bin", "/usr/local/bin", "/bin"], "the caller's absolute folders are kept, a relative one is dropped, nothing twice");
 });
+
+test("the machine's login file is not copied into the session's config folder when a credential is delivered on the pipe, or for a person's own account run", { skip: SKIP, timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const real = path.join(r.home, ".agentreal"); fs.mkdirSync(real, { recursive: true }); fs.writeFileSync(path.join(real, ".credentials.json"), '{"claudeAiOauth":{"accessToken":"SIGN-IN"}}');
+  const agent = { command: process.execPath, private: { from: real, env: "CLAUDE_CONFIG_DIR", credentialFiles: [".credentials.json"] } };
+  const copied = (/** @type {any} */ over) => { const d = seedConfig({ ...base(r, { agent }), ...over }); return fs.existsSync(path.join(d.dir, ".credentials.json")); };
+  assert.equal(copied({}), true, "control: with no pipe the login is copied, as the CLI needs it");
+  discardConfig(base(r, { agent }));
+  assert.equal(copied({ secret: { name: "ANTHROPIC_API_KEY_FILE_DESCRIPTOR", value: "k" } }), false, "a delivered credential: the machine login is not copied");
+  discardConfig(base(r, { agent }));
+  assert.equal(copied({ noLoginCopy: true }), false, "a person's own account run: not copied");
+});

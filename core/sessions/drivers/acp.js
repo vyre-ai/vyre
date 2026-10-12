@@ -566,7 +566,7 @@ function runAcp(entry, known, o) {
       const argv = Array.isArray(p.args) ? p.args.map(String) : [];
       const line = String(p.command);
       const [exe, args] = !argv.length && /\s/.test(line.trim()) ? ["/bin/sh", ["-c", line]] : [line, argv];
-      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn });
+      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, terminal: true });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };
       t.child.stdout.setEncoding("utf8"); t.child.stderr.setEncoding("utf8");
       t.child.stdout.on("data", add); t.child.stderr.on("data", add);

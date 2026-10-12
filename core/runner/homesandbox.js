@@ -33,6 +33,8 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
 /**
  * @typedef {object} HomeOpts
  * @property {"darwin"|"linux"} platform
+ * @property {"terminal-config"} [configName] a terminal shell's own, login-free config folder
+ * @property {boolean} [noLoginCopy] the machine's own login file is not copied into the session's config folder (a person's own account run)
  * @property {string} command      absolute path of the agent
  * @property {string[]} [args]
  * @property {Record<string,string>} [env]
@@ -140,9 +142,13 @@ function settingsPlan(o) {
 export function seedConfig(o) {
   const p = o.agent?.private; if (!p) return null;
   if (!o.temp) throw new Error("a private agent config needs the session's temp folder");
-  const dir = path.join(real(o.temp), "agent-config");
+  // A terminal shell the CLI asks for has a config folder of its own, with no login in it: the CLI's folder (and its login) is not the terminal's to read.
+  const dir = path.join(real(o.temp), o.configName === "terminal-config" ? "terminal-config" : "agent-config");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  for (const f of p.credentialFiles) {
+  // The machine's own login file is NOT copied in when a picked credential comes on the pipe (a tool of the session would read the owner's login beside it), nor when the session is a person's own account run.
+  // A copy left by an earlier start of this session (it ran on the login before) goes too.
+  if (o.secret || o.noLoginFile || o.noLoginCopy) for (const f of p.credentialFiles) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch {} }
+  for (const f of (o.secret || o.noLoginFile || o.noLoginCopy) ? [] : p.credentialFiles) {
     if (/[\\/]/.test(f) || f.startsWith("..")) throw new Error("a credential file is a name inside the agent's folder");
     const src = path.join(p.from, f);
     try { if (fs.lstatSync(src).isFile()) fs.copyFileSync(src, path.join(dir, f)); fs.chmodSync(path.join(dir, f), 0o600); } catch {}
@@ -226,8 +232,8 @@ function planDarwin(o) {
   // then the caller's own PATH folders, then the system's. Without one, `env` falls back to /usr/bin:/bin and a node anywhere else is "No such file" (issue 109).
   const callerPath = String(o.env?.PATH || "").split(path.delimiter).filter(d => d && path.isAbsolute(d));
   const PATH = [...new Set([...(o.pathDirs || []), ...callerPath, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])].join(path.delimiter);
-  const env = { ...homeEnv(o.env, o.passEnv), PATH, ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, VYRE_SOCKET: o.sessionSocket };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
+  const env = { ...homeEnv(o.env, o.passEnv), PATH, ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, ...(o.secret ? { [o.secret.name]: "3" } : {}), VYRE_SOCKET: o.sessionSocket };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket, ...(o.secret ? { secret: { fd: 3, payload: String(o.secret.value) } } : {}) };
 }
 
 /** @param {HomeOpts} o */
@@ -241,7 +247,7 @@ function planLinux(o) {
   const shimNode = o.proxy?.socket ? [path.dirname(real(process.execPath))] : [];
   const ro = [...new Set([...(o.readOnly || []), ...shimNode])].map(real);
   const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
-  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: [...new Set([...(o.pathDirs || []), "/usr/local/bin", "/usr/bin", "/bin"])].join(":"), ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), ...(o.secret ? { [o.secret.name]: o.proxy?.socket ? "3" : "4" } : {}), VYRE_SOCKET: sock, HOME: h, PATH: [...new Set([...(o.pathDirs || []), "/usr/local/bin", "/usr/bin", "/bin"])].join(":"), ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${inner}`, o.proxy.token || "", "/opt/vyre-proxycmd.js") } : {}) };
   const argv = [
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -265,10 +271,10 @@ function planLinux(o) {
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
     ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js"] : []),
     ...Object.entries(env).flatMap(([k, val]) => ["--setenv", k, val]),
-    ...(o.proxy?.socket ? [process.execPath, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--"] : []),
+    ...(o.proxy?.socket ? [process.execPath, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", ...(o.secret ? ["--pass-fd", "4"] : []), "--"] : []),
     o.command, ...(o.args || []),
   ];
-  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc, socket: sock };
+  return { argv, env: {}, cwd: undefined, cleanup() {}, profile: argv.join(" "), fd3: sc, socket: sock, ...(o.secret ? { secret: { fd: 4, payload: String(o.secret.value) } } : {}) };
 }
 
 /** @param {HomeOpts} o */
@@ -286,8 +292,8 @@ export function planHome(o) {
 /** Throw the session's private config folder away when the session ends (the copy of the credential goes with it). @param {HomeOpts} o */
 export function discardConfig(o) {
   if (!o.temp) return false;
-  const dir = path.join(real(o.temp), "agent-config");
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { return false; }
+  const dir = path.join(real(o.temp), "agent-config"), tdir = path.join(real(o.temp), "terminal-config");
+  try { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(tdir, { recursive: true, force: true }); } catch { return false; }
   return !fs.existsSync(dir);
 }
 

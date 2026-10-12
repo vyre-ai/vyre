@@ -146,9 +146,15 @@ export async function serve(o) {
 
   /** Is this a spawn we will run? Returns why not, or null. */
   function refuse(req) {
-    if (req.role !== undefined) { if (req.role !== "watcher") return "role is watcher or left out"; return refuseWatcher(req); }
+    if (req.role !== undefined) { if (req.role === "watcher") return refuseWatcher(req); if (req.role !== "terminal") return "role is watcher, terminal or left out"; }
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
-    if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
+    if (req.role === "terminal") {
+      // A client terminal (an ACP agent's terminal/create, after Vyre's floor judged the command): the one shell line, `/bin/sh -c <line>`, as an ACCOUNT's uid under the same wrap, folder rule and environment filter as its session. Nothing else is
+      // started under this role, and the shell is started under no other: the allow list below is unchanged.
+      if (req.argv.length !== 3 || req.argv[0] !== "/bin/sh" || req.argv[1] !== "-c" || req.argv[2].length > 65536) return "a terminal runs /bin/sh -c and one command line";
+      if (req.account === undefined) return "a terminal runs as an account";
+      if (req.fd3 !== undefined || req.seed !== undefined || req.shared !== undefined) return "a terminal takes no fd3, seed or shared";
+    } else if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
     if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
     if (req.seed !== undefined) {
       if (req.account === undefined) return "seed files are for an account";
@@ -191,6 +197,8 @@ export async function serve(o) {
     clearTimeout(s.timer);
     const env = {};
     for (const [k, v] of Object.entries(s.watcher ? {} : s.req.env || {})) if (ENV_KEYS.test(k) && typeof v === "string" && !v.includes("\0")) env[k] = v;
+    // a terminal holds no credential: whatever name it arrives under, a key, token, secret or password is not passed (the client already took its own secrets out; this is the second wall)
+    if (s.req.role === "terminal") for (const k of Object.keys(env)) if (/KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|OAUTH/i.test(k)) delete env[k];
     // Checked again here, at the moment of starting, not only when the request came in.
     const w = s.watcher ? { who: s.watcher.who, why: null } : whoFor(s.req);
     if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }

@@ -53,7 +53,7 @@ export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET, 
   const next = () => new Promise(r => { if (lines.length) r(lines.shift()); else waiting = r; });
   control.on("error", e => proc.emit("error", e));
 
-  control.write(JSON.stringify({ op: "spawn", argv, ...(role === "watcher" ? { role, ...(ro ? { ro } : {}) } : {}), ...(role !== "watcher" || Object.keys(env).length ? { env } : {}), cwd, ...(typeof fd3 === "string" ? { fd3 } : {}), ...(account !== undefined ? { account, ...(shared ? { shared: true } : {}), ...(seed ? { seed } : {}) } : {}) }) + "\n");
+  control.write(JSON.stringify({ op: "spawn", argv, ...(role === "watcher" ? { role, ...(ro ? { ro } : {}) } : role === "terminal" ? { role } : {}), ...(role !== "watcher" || Object.keys(env).length ? { env } : {}), cwd, ...(typeof fd3 === "string" ? { fd3 } : {}), ...(account !== undefined ? { account, ...(shared ? { shared: true } : {}), ...(seed ? { seed } : {}) } : {}) }) + "\n");
   const first = await next();
   if (first.error || !first.id) { control.destroy(); throw new Error(`spawner: ${first.error || "no answer"}`); }
   const stdio = /** @type {net.Socket} */ (await connect(socket));
