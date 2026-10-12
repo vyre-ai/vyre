@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch, hopMovedAway } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch, hopMovedAway, probeBase } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -2826,7 +2826,7 @@ export class Switchboard {
    */
   async learnModels(provider, account) {
     if (provider === "claude" || !(this.deps.providers && this.deps.providers.get(provider))) return { learned: false };
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-models-"));
+    const cwd = fs.mkdtempSync(path.join(probeBase({ work: process.env.VYRE_WORK, tmp: os.tmpdir(), exists: p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } } }), "vyre-models-"));
     let id = null;
     try {
       const r = await this.launch({ cwd, provider, ...(account ? { account } : {}), purpose: "job", once: true, name: `${providerName(provider)} models` });

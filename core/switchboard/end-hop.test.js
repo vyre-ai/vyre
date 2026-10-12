@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Switchboard } from "./index.js";
-import { hopMovedAway } from "./asker-account.js";
+import { hopMovedAway, probeBase } from "./asker-account.js";
 
 const BASE = { provider: "claude", account: "acct_bob", model: "opus", person: "per_bob" };
 /** a threads_runs table of one row, as much of the prepared-statement surface as the hop code uses */
@@ -61,4 +61,10 @@ test("a restart that finds a hop pending puts the thread back on the base the ho
   Switchboard.prototype.recover.call(sb);
   assert.equal(t.row.account, "acct_bob");
   assert.equal(JSON.parse(t.row.opts).hopBack, undefined);
+});
+
+test("the models probe makes its folder under the work folder when the box has one (a uid-confined account may work nowhere else), else under temp", () => {
+  assert.equal(probeBase({ work: "/work", tmp: "/tmp", exists: p => p === "/work" }), "/work");
+  assert.equal(probeBase({ tmp: "/tmp", exists: p => p === "/work" }), "/work", "the default work folder is /work");
+  assert.equal(probeBase({ work: "/work", tmp: "/tmp", exists: () => false }), "/tmp");
 });

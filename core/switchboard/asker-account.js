@@ -256,3 +256,13 @@ export async function checkLaunch(sb, i, chain, owner, origin) {
 export function hopMovedAway(at, back) {
   return (at.provider || "claude") !== back.provider || (at.account || null) !== (back.account || null);
 }
+
+/**
+ * Where a hidden job (the models probe) makes its throwaway folder. On a box whose sessions run as an account's own uid the spawner accepts a work folder only under /work or that account's home, so the probe
+ * is made under the work folder when there is one; anywhere else, the system's temp folder.
+ * @param {{ work?: string, tmp: string, exists?: (p: string) => boolean }} o
+ */
+export function probeBase(o) {
+  const work = o.work || "/work";
+  return (o.exists || (() => false))(work) ? work : o.tmp;
+}
