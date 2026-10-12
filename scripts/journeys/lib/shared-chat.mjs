@@ -71,7 +71,7 @@ const answers = (/** @type {any[]} */ ms) => ms.filter(m => /^assistant:/.test(S
 
 /** The chat's own stream as the people see it (stream_frames of the chat's session, in order): [[cur, type, text]]. @param {string} chat */
 function chatFrames(chat) {
-  const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session = ? order by cur").all(process.argv[1]).map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,200)]})))`;
+  const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select cur,json from stream_frames where session = ? order by cur").all(process.argv[1]).map(r=>{let j={};try{j=JSON.parse(r.json)}catch{};return [r.cur,j.type,String((j.data&&j.data.text)||"").slice(0,200),String(j.message||(j.data&&j.data.message)||""),String((j.data&&j.data.state)||"")]})))`;
   const r = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", script, chat]);
   if (r.status !== 0) throw new Error(`the stream could not be read: ${r.stderr}`);
   return /** @type {any[]} */ (JSON.parse(String(r.stdout).trim().split("\n").pop() || "[]"));
@@ -320,12 +320,15 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     return `answers on accounts ${got.join(", ")}`;
   }, { needs: [H], owner: "chat" });
 
-  const WBD = "each message a person typed shows once in the chat, also the three typed while a turn ran";
+  const WBD = "each message a person typed is one message with one id on the chat's stream (its states sent, queued, picked up are one message), also the three typed while a turn ran";
   await J.step(WBD, async () => {
     const f = chatFrames(chat);
-    const counts = ["walkBq1", "walkBq2", "walkBq3", "walkA1"].map(t => [t, f.filter((/** @type {any} */ x) => x[1] === "chat.user-message" && String(x[2]).includes(`whoami ${t}`)).length]);
-    assert.ok(counts.every(c => c[1] === 1), `each appears once; counted ${JSON.stringify(counts)}`);
-    return JSON.stringify(counts);
+    const rows = ["walkBq1", "walkBq2", "walkBq3", "walkA1"].map(t => {
+      const m = f.filter((/** @type {any} */ x) => x[1] === "chat.user-message" && String(x[2]).includes(`whoami ${t}`));
+      return [t, new Set(m.map((/** @type {any} */ x) => x[3])).size, m.map((/** @type {any} */ x) => x[4]).join(">")];
+    });
+    assert.ok(rows.every(r => r[1] === 1), `one message id for each typed message; found ${JSON.stringify(rows)}`);
+    return JSON.stringify(rows);
   }, { needs: [H], owner: "chat" });
 
   const WZ = "one more message after the queued ones is answered on its person's account (the thread is not wedged)";

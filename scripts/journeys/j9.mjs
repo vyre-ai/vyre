@@ -163,7 +163,7 @@ export default {
       await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
       // a member's device may call the team's server 30 times a minute: the chat steps used it up, so wait before the project steps
       if (!process.env.J9_SHORT) { await new Promise(r => setTimeout(r, 65_000)); await memberProjectsSteps({ J, w, team, people, needs: [SIGN] }); }
-      if (!process.env.J9_SHORT) {
+      if (!process.env.J9_SHORT || process.env.J9_SHORT === "2") {
         await J.step("the owner's paired app still receives a live event from the box: a project the owner makes shows on the event stream without a reload", async () => {
           const name = `live-${Date.now()}`;
           const got = await w.readEvents(25_000, (/** @type {string} */ t) => t.includes(name), async () => { await new Promise(r => setTimeout(r, 2000)); await w.call("projects.create", { name }); });
