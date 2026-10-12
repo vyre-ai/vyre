@@ -163,13 +163,6 @@ function JoinCodeMock({ set, go, back, steps }: ScreenProps) {
   const [tried, setTried] = useState(false);
   const st = inviteStatus(text);
   const failure = tried && st === "short" ? "That does not look like an invite. Paste the whole link, or type the code your inviter read to you." : tried && st === "expired" ? "That invite has expired or was already used. Ask the person who invited you for a new one." : undefined;
-  // A link the person opened from outside the app is read once here, and skips the typing.
-  useEffect(() => {
-    if (opened.current) return;
-    opened.current = true;
-    const held = takeJoin();
-    if (held) { setText(held); void next(held); }
-  }, []);
   return (
     <FlowStep steps={steps} onBack={back} title="Join a space" lead="Paste the invite link, or type the invite code someone read to you."
       failure={failure}
@@ -407,6 +400,13 @@ function JoinCodeLive({ set, go, back, steps }: ScreenProps) {
       go("join.review");
     } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); setAck(""); }
   };
+  // A link the person opened from outside the app is read once here, and skips the typing.
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    const held = takeJoin();
+    if (held) { setText(held); void next(held); }
+  }, []);
   return (
     <FlowStep steps={steps} onBack={back} title="Join a space" lead="Paste the invite link, or type the invite code someone read to you."
       failure={failure}
