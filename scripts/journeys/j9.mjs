@@ -4,6 +4,7 @@
 // the line turns green by itself when the piece lands. Proof (the transcript) is written to <out>/j9/ and copied to team/0.3.3/proof/team-day/ by whoever signs it off.
 //   VYRE_JOURNEY_BOX=1 node scripts/journeys/run.mjs J9      (a throwaway test box or a CI runner; see scripts/proof-dev-droplet.mjs --journeys J9)
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { createApp } from "../lib/proof/app.mjs";
 import { bringUp } from "./lib/world.mjs";
@@ -170,6 +171,46 @@ export default {
           assert.equal(got.status, 200, `the event stream opens for the owner's app (status ${got.status}): ${String(got.text).slice(0, 200)}`);
           assert.ok(got.text.includes(name), `an event naming the new project arrived on the stream (got ${got.text.length} characters: ${got.text.slice(0, 200)})`);
           return `status 200, ${got.text.length} characters, the event for ${name} arrived`;
+        }, { needs: [SIGN], owner: "trust" });
+      }
+      if (process.env.J9_BEARER) {
+        // rc1-a's measurement: the classic start code (relay.pair.start) is a bearer ticket; whoever holds the string redeems it. Redeemed twice with fresh device keys (nothing in the redeem names an identity), then the rows and what each device can do.
+        /** @type {Record<string, any>} */ const got = {};
+        const dumpRows = () => {
+          const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});const cols=db.prepare("pragma table_info(relay_devices)").all().map(c=>c.name);console.log(JSON.stringify({relay_cols:cols.filter(c=>/owner|paired|trust|kind/.test(c)),relay:db.prepare("select * from relay_devices").all().map(r=>({id:r.id,name:r.name,kind:r.kind,trusted:r.trusted,removed_at:r.removed_at,owner_paired:r.owner_paired,paired_at:r.paired_at})),wink:db.prepare("select id,identity,kind,name,owner_kind,owner_id,confirmed_by,key_storage from wink_devices").all()}))`;
+          return String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "node", "--experimental-sqlite", "-e", script], { encoding: "utf8" }).stdout).trim();
+        };
+        await J.step("bearer pairing: the classic start code (relay.pair.start) redeemed by two other devices", async () => {
+          const { pairOffer, connect } = await import("../../relay/client/client.js");
+          const { parsePairUrl } = await import("../../core/relay/pairing.js");
+          const { nodeCrypto, fileKeyStore } = await import("../../relay/client/nodecrypto.js");
+          const fs = await import("node:fs"), os = await import("node:os");
+          const out = /** @type {string[]} */ ([]);
+          for (const who of ["stranger", "second"]) {
+            const minted = await mac.callTool("relay.pair.start", {});
+            const url = String((minted && (minted.url || (minted.data && minted.data.url))) || "");
+            assert.ok(url, `relay.pair.start gave a url (keys: ${minted && Object.keys(minted).join(",")})`);
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), `bearer-${who}-`));
+            const crypto = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "keys.json"));
+            const paired = /** @type {any} */ (await pairOffer(parsePairUrl(url), { crypto, keyStore, name: `Bearer ${who}` }));
+            got[who] = { device: paired.device, pending: Boolean(paired.pending), keys: Object.keys(paired).join(",") };
+            out.push(`${who}: device ${paired.device}${paired.pending ? " (pending: a person must confirm)" : ""}`);
+            // what the device itself can do: the event stream and a person-reach tool, as that device (no sign-in)
+            const conn = connect({ relay: paired.relay, route: paired.route, box: paired.box, name: `Bearer ${who}`, crypto, keyStore });
+            try {
+              const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 4000);
+              const r = await conn.fetch("/v1/events/stream?type=*&since=0", { method: "GET", headers: {}, signal: ac.signal }).catch((/** @type {any} */ e) => ({ status: `err ${String(e && e.message).slice(0, 80)}`, body: null }));
+              let size = 0; if (r.body) { try { for await (const c of /** @type {any} */ (r.body)) { size += c.length; if (size > 200_000) break; } } catch { /* aborted */ } }
+              clearTimeout(t);
+              const tool = await conn.fetch("/v1/tools/vault.list", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then(async (/** @type {any} */ x) => `${x.status} ${String(await x.text()).slice(0, 120)}`).catch((/** @type {any} */ e) => `err ${String(e && e.message).slice(0, 80)}`);
+              got[who].stream = { status: r.status, bytes: size }; got[who].tool = tool;
+              out.push(`  ${who} as device: GET /v1/events/stream -> ${r.status}, ${size} bytes in 4 s; POST vault.list -> ${tool}`);
+            } finally { try { conn.close(); } catch { /* closed */ } }
+          }
+          const rows = dumpRows();
+          console.log(`DBG BEARER-ROWS ${rows}`);
+          console.log(`DBG BEARER-DEVICES ${JSON.stringify(got)}`);
+          return out.join(" | ") + ` | rows: ${rows.slice(0, 1200)}`;
         }, { needs: [SIGN], owner: "trust" });
       }
       if (process.env.J9_PHONE) {
