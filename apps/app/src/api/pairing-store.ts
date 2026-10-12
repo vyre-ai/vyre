@@ -11,6 +11,7 @@ export type KeyedText = { get(key: string): Promise<string | null>; set(key: str
 
 export function makePairingStore(io: KeyedText) {
   let chain: Promise<unknown> = Promise.resolve();
+  const listeners = new Set<() => void>();
   /** One change at a time, in the order asked; a failed one does not stop the next. */
   const inOrder = <T>(f: () => Promise<T>): Promise<T> => { const r = chain.then(f, f); chain = r.catch(() => {}); return r; };
 
@@ -27,7 +28,7 @@ export function makePairingStore(io: KeyedText) {
       await io.del(OLD_KEY);
     } catch { /* nothing kept; the person pairs again */ }
   }
-  const change = (f: (l: Pairings) => Pairings) => inOrder(async () => { await write(f(await loadPairings())); });
+  const change = (f: (l: Pairings) => Pairings) => inOrder(async () => { await write(f(await loadPairings())); for (const cb of [...listeners]) { try { cb(); } catch { /* a listener never stops a save */ } } });
 
   return {
     loadPairings,
@@ -38,6 +39,8 @@ export function makePairingStore(io: KeyedText) {
     /** Add a server (or replace its record); null forgets the active one. */
     savePairing: (p: Pairing | null): Promise<void> => change((l) => (p ? addPairing(l, p) : l.active ? removePairing(l, l.active) : l)),
     removePairingFor: (box: string): Promise<void> => change((l) => removePairing(l, box)),
+    /** Called after every change to the list; returns the way to stop. */
+    subscribePairings: (cb: () => void): (() => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; },
     setActivePairing: (box: string): Promise<void> => change((l) => setActive(l, box)),
   };
 }

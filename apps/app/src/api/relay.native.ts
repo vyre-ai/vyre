@@ -93,4 +93,4 @@ const store = makePairingStore({
   set: (k, v) => SecureStore.setItemAsync(k, v, ONLY_HERE),
   del: (k) => SecureStore.deleteItemAsync(k, ONLY_HERE),
 });
-export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing } = store;
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = store;

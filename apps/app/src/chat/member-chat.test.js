@@ -39,7 +39,7 @@ test("the chat stream's own-home paths are untouched: the team branch comes firs
   const at = (/** @type {string} */ s) => { const i = src.indexOf(s); assert.ok(i >= 0, `missing: ${s}`); return i; };
   assert.ok(at("const team = await teamSpace();") < at("if (peerWanted())"), "the team branch is first");
   assert.ok(at("if (peerWanted())") < at('call<{ path: string; viewer?: string; head?: number; session?: string }>("stream.open"'), "her own home over the relay, then the ticketed socket: as before");
-  assert.match(src, /peerDuplex\(session, from\)/);
+  assert.match(src, /peerDuplex\(session, from(, [^)]*\))?\)/);
   assert.match(src, /await tool\("work\.chat\.get", \{ chat: session \}\)/, "a chat is the team's only when the team's door knows it");
   assert.match(src, /if \(!\(await teamSpace\(\)\)\) return write\(name, input\);/, "not a team chat: the outbox as before");
   assert.equal((src.match(/await write\(/g) || []).length, 0, "no write goes around writeVia");

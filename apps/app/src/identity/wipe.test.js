@@ -12,7 +12,7 @@ function fakePage(/** @type {{ dbs?: boolean, failDb?: string }} */ o = {}) {
   /** @type {Set<string>} */ const dbs = new Set(["vyre-identity", "vyre-agree", "vyre-person", "vyre-resilience", "something-else"]);
   const store = () => { /** @type {Map<string, string>} */ const m = new Map(); return { m, clear: () => m.clear(), getItem: (/** @type {string} */ k) => m.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => m.set(k, v), get length() { return m.size; } }; };
   const localStorage = store(), sessionStorage = store();
-  for (const k of ["vyre.relay.pairing", "vyre.peer", "vyre.appearance", "vyre.push"]) localStorage.setItem(k, "x");
+  for (const k of ["vyre.relay.pairing", "vyre.relay.pairings", "vyre.peer", "vyre.appearance", "vyre.push"]) localStorage.setItem(k, "x");
   sessionStorage.setItem("vyre.unlock", "x");
   /** @type {Set<string>} */ const cacheNames = new Set(["app-shell-v1", "precache-v3"]);
   let registrations = 1;

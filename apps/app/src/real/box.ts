@@ -40,7 +40,13 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
 let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
 export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
 
-export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+/**
+ * A call that names its server: the Space-making calls (spaces.name-here, spaces.host-here) name a server and no Space yet. Where a device is paired to several servers `server` is the server's box id and the
+ * call goes down that server's own wire; on the computer whose own daemon is the door it is the paired server's id, which the daemon's tool takes as `server`. Every other call follows the Space it is for.
+ */
+export type ToolOptions = { server?: string };
+
+export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
   if (override) return (await override(name, given)) as T;
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
@@ -59,19 +65,26 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     if (space && (await (await import("./team-join")).joinedHere(space))) throw new BoxError("not_allowed", NOT_FOR_MEMBERS_YET);
   }
   // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
-  const input = withSpace(name, given, useSpaces.getState().space);
+  let input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
-    try { return await peerCall<T>(name, input); }
+    // With several servers paired, the call goes to the one that hosts its Space (or the one it names); one pairing goes where it always went.
+    const { routeCall } = await import("./space-servers");
+    const route = await routeCall({ input, showing: useSpaces.getState().space, server: opts.server });
+    if (route.error) throw new BoxError(route.error.code, route.error.message);
+    const to = route.box;
+    try { return await peerCall<T>(name, input, to); }
     catch (e) {
       const x = e as { code?: string; message?: string; detail?: unknown };
       // An act held for the owner's yes: the phone approves it, the server runs it, and the result comes back here (no proof is carried by this browser).
       const held = heldAsk(x, name, input);
       // The same act again with the approval id beside it, as an extra input key on the peer wire (the door strips it before the tool sees it).
-      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}), (approval) => peerCall<T>(name, { ...input, approval }));
+      if (held) return yesThenRetry<T>(held, (t, i) => peerCall<any>(t, i ?? {}, to), (approval) => peerCall<T>(name, { ...input, approval }, to));
       throw new BoxError(x.code ?? "error", x.message ?? "");
     }
   }
+  // On the computer whose own daemon is the door, a call that names a server hands it on as `server` (the daemon asks that paired server).
+  if (opts.server) input = { ...input, server: opts.server };
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   // The relay says the owner removed this device: it forgets everything it held and pairs again.
   if (r.error?.code === "relay_removed") await (await import("../identity/removed")).ifRemoved("relay_removed");

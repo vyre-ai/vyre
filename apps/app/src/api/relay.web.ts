@@ -49,4 +49,4 @@ const store = makePairingStore({
   set: async (k, v) => localStorage.setItem(k, v),
   del: async (k) => localStorage.removeItem(k),
 });
-export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing } = store;
+export const { loadPairing, loadPairings, listPairings, loadPairingFor, savePairing, removePairingFor, setActivePairing, subscribePairings } = store;

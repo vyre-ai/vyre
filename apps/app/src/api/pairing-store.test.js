@@ -73,3 +73,17 @@ test("pairing store: a store that throws is an empty list and a save that fails 
   await s.savePairing(P("boxa"));
   await s.savePairing(null);
 });
+
+test("pairing store: a listener hears every change and a throwing listener does not stop a save", { skip: !strip }, async () => {
+  const { makePairingStore } = await load();
+  const s = makePairingStore(memory().io);
+  let n = 0;
+  const off = s.subscribePairings(() => { n++; });
+  s.subscribePairings(() => { throw new Error("bad listener"); });
+  await s.savePairing(P("boxa")); await s.savePairing(P("boxb"));
+  assert.equal(n, 2);
+  assert.equal((await s.listPairings()).length, 2);
+  off();
+  await s.removePairingFor("boxa");
+  assert.equal(n, 2, "stopped listening");
+});

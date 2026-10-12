@@ -97,7 +97,10 @@ export function boxStream(session: string): BoxStream {
       }
       // A device paired to its server over the relay has no WebSocket to it: the stream rides the peer wire (stream.follow), resumed by `from` like any other.
       if (peerWanted()) {
-        const d = await peerDuplex(session, from);
+        // with several servers paired, the chat is followed on the server that hosts the Space showing (a chat's own Space is not on its id; under All spaces it is the active server)
+        const { serverOfSpace } = await import("../real/space-servers");
+        const showing = (await import("../../screens/shell/state")).useSpaces.getState().space;
+        const d = await peerDuplex(session, from, serverOfSpace(showing) ?? undefined);
         if (typeof d.info.head === "number") head = d.info.head;
         if (d.info.viewer) viewer = d.info.viewer;
         return d;

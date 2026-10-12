@@ -27,3 +27,5 @@ export function loadPairings(): Promise<import("./pairing-list").Pairings>;
 export function loadPairingFor(box: string): Promise<Pairing | null>;
 export function removePairingFor(box: string): Promise<void>;
 export function setActivePairing(box: string): Promise<void>;
+/** Called after every change to the saved pairings; returns the way to stop. */
+export function subscribePairings(cb: () => void): () => void;
