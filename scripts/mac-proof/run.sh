@@ -67,7 +67,7 @@ i=0; until "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || [ $i 
 ok "vyre status reaches running"
 # the modules start one at a time after vyred answers: give the network module a minute, as the installer's own wait does
 i=0; until "$vyre" space up >"$work/space.out" 2>&1 && grep -q "Your space code:" "$work/space.out" || [ $i -ge 30 ]; do sleep 2; i=$((i+1)); done
-grep -q "Your space code:" "$work/space.out" || { cat "$work/space.out"; bad "vyre space up printed no space code"; }
+grep -q "Your space code:" "$work/space.out" || { cat "$work/space.out"; "$vyre" status 2>&1 | head -n 20; "$vyre" modules 2>&1 | head -n 60; bad "vyre space up printed no space code"; }
 ok "vyre space up prints a space code"
 
 # Account and tree.
