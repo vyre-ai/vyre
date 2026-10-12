@@ -84,7 +84,7 @@ export function createGateway(cfg) {
   async function canSee(/** @type {any} */ chain, /** @type {any} */ e) {
     if (!(await allowed(chain, "events.read", e.subject))) return false;
     // an event about a record of a type a module keeps (its create event carries the data) is the keeper's and the owner's and admins' alone: subject vyre://<space>/<type>/<id>
-    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/[^/]+$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; }
+    { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; if (m && !(await records.mayViewRow(chain, m[1], m[2]))) return false; }
     const vis = e.vis;
     if (vis === "space") return true;
     if (vis === "subject") return allowed(chain, "records.read", e.subject);
