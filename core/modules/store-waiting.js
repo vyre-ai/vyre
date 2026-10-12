@@ -5,7 +5,7 @@
 // must never show as a failed module.
 
 import { toolEntries } from "../../packages/module-sdk/manifest.js";
-import { storeStarting } from "../../lib/store-away.js";
+import { storeStarting, retryAfter } from "../../lib/store-away.js";
 
 /** What a module that threw at start becomes: waiting when only the record store was away (the store's own refusal, stores/twenty/deferred-store.js), failed otherwise: other starts throw `unavailable` for reasons that are not the store. @param {any} e @returns {{ state: string, error: string, waitsForStore: boolean }} */
 export function failure(e) {
@@ -61,7 +61,7 @@ export function startWaiting(reg) {
  */
 export function armWaiting(reg, n = 0) {
   if (reg.waitTimer || reg.stopping) return;
-  const ms = Math.min((reg.deps && reg.deps.waitRetryMs ? reg.deps.waitRetryMs : 60_000) * 2 ** n, 300_000);
+  const ms = retryAfter(n, { base: reg.deps && reg.deps.waitRetryMs ? reg.deps.waitRetryMs : 60_000, max: 300_000 });
   reg.waitTimer = setTimeout(async () => {
     reg.waitTimer = null;
     // A store that has not joined yet holds a starting module's first query for up to a minute before it refuses it; the join starts the module the moment it comes, so the timer waits for the store and never sits in that hold.
