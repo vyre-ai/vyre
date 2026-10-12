@@ -34,5 +34,15 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
   await R.create(ownerChain, "team-member", { name: "ana", actor: person(ANA, SPACE), kind: "person", project: { urn: `vyre://${SPACE}/project/${(await R.query(ownerChain, "project", { filter: { field: "slug", op: "eq", value: "owners-matter" }, page: { limit: 1 } })).rows[0].id}` } });
   assert.equal(await may(ANA), true, "on the team: she may");
   assert.equal(await may(BEN), false, "another member still may not");
+  // removed from the team, she may not again
+  const seat = (await R.query(ownerChain, "team-member", { filter: { field: "kind", op: "eq", value: "person" }, page: { limit: 20 } })).rows.find((/** @type {any} */ r) => r.data.name === "ana");
+  await R.remove(ownerChain, "team-member", seat.id, seat.version);
+  assert.equal(await may(ANA), false, "removed from the team: she may not any more");
+  // a member's own memory tools asked for the owner's project room (the room argument) are refused: personal memory is read only by its person
+  const benToken = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "relay" }), {})).token;
+  for (const tool of ["memory.relevant", "memory.facts", "memory.context"]) {
+    const r = await d.registry.call(tool, { text: "plan", room: "owners-matter", project: "owners-matter" }, "cli", { token: benToken });
+    assert.ok(r.error || !r.data || (Array.isArray(r.data) && r.data.length === 0) || (r.data && Object.values(r.data).every((/** @type {any} */ v) => !v || (Array.isArray(v) && !v.length))), `${tool} for the owner's project room is refused or empty for a member: ` + JSON.stringify(r).slice(0, 200));
+  }
   assert.equal(await may(BEN, "ben-own"), true, "(no such project yet)");
 });

@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, projectMay, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, projectPerson, projectMay, revertSettled, runQueuedOver, servesChip, agentLaunchGuard } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1473,7 +1473,7 @@ export class Switchboard {
     // thread is the person's own (no agent, and a recorded chat, project or capsule purpose: a record with no purpose is not): both come from this record, never from the session.
     const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || ""));
     const memory = async ({ prompt, first }) => {
-      const r = await this.deps.call("memory.prompt", { prompt: withoutSeed(prompt), first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true, ...(libraryPerson(this, rec, o) != null ? { for_person: String(libraryPerson(this, rec, o)) } : {}) } : {}) }).catch(() => null);
+      const r = await this.deps.call("memory.prompt", { prompt: withoutSeed(prompt), first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true, ...(projectPerson(this, rec, o) != null ? { for_person: String(projectPerson(this, rec, o)) } : {}) } : {}) }).catch(() => null);
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};

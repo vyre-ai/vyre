@@ -11,7 +11,7 @@ import { tempHome, present } from "./helpers.js";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 
-const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 45_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`J6 ${what}: timed out`); await new Promise(r => setTimeout(r, 100)); } };
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 45_000, /** @type {(() => Promise<string>) | undefined} */ missing = undefined) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`J6 ${what}: timed out after ${Math.round((Date.now() - t0) / 1000)} s${missing ? `; ${await missing().catch((/** @type {any} */ e) => `(could not say what is missing: ${e && e.message})`)}` : ""}`); await new Promise(r => setTimeout(r, 100)); } };
 const DOSSIER = { name: "dossier", label: "Dossier", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement"] }], stages: [{ name: "Intake" }, { name: "Engagement" }] };
 const NOTE = { name: "filing-note", label: "Filing note", fields: [{ name: "body", kind: "text", label: "Body" }] };
 const ALL_DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
@@ -55,7 +55,9 @@ test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, s
   const before = Date.now() - 60_000;
   const rec = await d.kernel.gateway.records.create(admin, "dossier", { name: "Rivera Family Trust", stage: "Intake" });
   await d.kernel.gateway.records.update(admin, "dossier", rec.id, { stage: "Engagement" }, rec.version);
-  const rows = await until(async () => { const r = (await call("flows.runs", { id: outer.id })).data || []; return r.length === 3 && r.every((/** @type {any} */ x) => x.state === "done") ? r : null; }, "step 2, the run and its two branches to finish");
+  const rows = await until(async () => { const r = (await call("flows.runs", { id: outer.id })).data || []; return r.length === 3 && r.every((/** @type {any} */ x) => x.state === "done") ? r : null; }, "step 2, the run and its two branches to finish", 45_000,
+    // what a bare timeout cannot say: which of the runs is not done, its state, its last error and how long it has been going
+    async () => { const r = (await call("flows.runs", { id: outer.id })).data || []; const now = Date.now(); return `${r.length} of 3 runs exist: ` + (r.map((/** @type {any} */ x) => `${x.id} ${x.parent ? "branch" : "run"} is ${x.state}${x.error ? ` (${x.error.code || ""}: ${String(x.error.message || "").slice(0, 160)})` : ""}, started ${x.started_at ? Math.round((now - x.started_at) / 1000) + " s ago" : "never"}`).join("; ") || "none"); });
   const parent = rows.find((/** @type {any} */ x) => !x.parent);
   assert.equal(rows.filter((/** @type {any} */ x) => x.parent === parent.id).length, 2, "J6 step 2: two branches under one run");
   assert.ok((await notes()).includes("after: inner"), `J6 step 2: the step after the join used the sub-flow's answer (${await notes()})`);

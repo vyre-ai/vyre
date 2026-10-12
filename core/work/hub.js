@@ -179,9 +179,12 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
    */
   async function mayUseProject(person, ref) {
     if (!person || await isStaff(person)) return true;
-    const rec = await projectOf(ref).catch(() => null);
+    // "no such project" is open (nothing to protect); a read ERROR is not an answer, so it throws and the caller counts it as no
+    const r = String(ref || "");
+    const id = r.startsWith("vyre://") ? (r.split("/")[3] === PROJECT ? r.split("/")[4] : null) : projectRecordIdOf(r);
+    const rec = id ? await kernel.records.get(chain(), PROJECT, id).catch((/** @type {any} */ e) => { if (e && e.code === "not_found") return null; throw e; }) : await find(PROJECT, "slug", r);
     if (!rec) return true;
-    return mayFileUnder(person, rec, String(ref)).then(() => true, () => false);
+    return mayFileUnder(person, rec, r).then(() => true, () => false);
   }
 
   /**

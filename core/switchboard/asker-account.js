@@ -210,12 +210,21 @@ export async function agentLaunchGuard(sb, i, who, owner) {
 }
 
 /**
+ * The person whose rights decide what project a thread may use: the verified asker of the turn; when the launch has none (a plain resume, a hop back, a restart: libraryPerson answers NOBODY) the person the
+ * thread was STARTED for, which the thread keeps; undefined when there is no person at all (the owner's own terminal). @param {any} sb @param {any} rec @param {any} [o]
+ */
+export function projectPerson(sb, rec, o = {}) {
+  const who = libraryPerson(sb, rec, o);
+  return who === NOBODY && o && o.person ? String(o.person) : who;
+}
+
+/**
  * May the person this thread is for use its project's memory, brief and skills? True with no project, or with no person to judge (the owner's own terminal); otherwise the work module answers: the Space's owner or an
  * admin, or the project's owner or team. An answer that cannot be had counts as no, and a no costs her the project's room, never her turn. @param {any} sb @param {any} rec @param {any} [o]
  */
 export async function projectMay(sb, rec, o = {}) {
   if (!rec || !rec.project) return true;
-  const who = libraryPerson(sb, rec, o);
+  const who = projectPerson(sb, rec, o);
   if (who === undefined || who === null) return true;
   return sb.deps.call("work.project.may-read", { project: rec.project, person: String(who) }).then((/** @type {any} */ r) => Boolean(r && !r.error && r.data && r.data.ok === true), () => false);
 }
