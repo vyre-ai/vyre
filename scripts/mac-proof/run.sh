@@ -64,7 +64,8 @@ grep -qF "$VYRE_SERVER_DIR/bin" "$work/zprofile" || bad "the vyre command was no
 i=0; until "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || [ $i -ge 60 ]; do sleep 2; i=$((i+1)); done
 "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || bad "vyre status never reached running"
 ok "vyre status reaches running"
-"$vyre" space up >"$work/space.out" 2>&1 || { cat "$work/space.out"; bad "vyre space up failed"; }
+# the modules start one at a time after vyred answers: give the network module a minute, as the installer's own wait does
+i=0; until "$vyre" space up >"$work/space.out" 2>&1 && grep -q "Your space code:" "$work/space.out" || [ $i -ge 30 ]; do sleep 2; i=$((i+1)); done
 grep -q "Your space code:" "$work/space.out" || { cat "$work/space.out"; bad "vyre space up printed no space code"; }
 ok "vyre space up prints a space code"
 
