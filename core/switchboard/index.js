@@ -57,7 +57,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1064,7 +1064,7 @@ export class Switchboard {
       // A driver with no SessionStart hook (Codex, Grok over ACP) gets the project's own context as the third layer of its first prompt; Claude's hook adds it itself.
       let context = "";
       if (rec.provider && rec.provider !== "claude") {
-        const c = await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null);
+        const c = (await projectMay(this, rec, o)) ? await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null) : null;
         context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
       }
       const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone }).filter(([, v]) => v));
@@ -1388,7 +1388,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project && await projectMay(this, rec, o) ? { project: rec.project } : {}), ...(libraryPerson(this, rec, o) ? { person: libraryPerson(this, rec, o) } : {}) });   // the verified person of the turn: their personal skills, never the starter's or the owner's (core/switchboard/asker-account.js libraryPerson)
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
@@ -1473,7 +1473,7 @@ export class Switchboard {
     // thread is the person's own (no agent, and a recorded chat, project or capsule purpose: a record with no purpose is not): both come from this record, never from the session.
     const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || ""));
     const memory = async ({ prompt, first }) => {
-      const r = await this.deps.call("memory.prompt", { prompt: withoutSeed(prompt), first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true } : {}) }).catch(() => null);
+      const r = await this.deps.call("memory.prompt", { prompt: withoutSeed(prompt), first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true, ...(projectPerson(this, rec, o) != null ? { for_person: String(projectPerson(this, rec, o)) } : {}) } : {}) }).catch(() => null);
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
@@ -2007,7 +2007,7 @@ export class Switchboard {
   async seedFor({ chain, rec, thread = null, roll = 1, kind = "roll", since = 0 }) {
     const [ptr, dec] = await Promise.all([
       this.deps.call("recall.pointers", { sessions: chain, tail_chars: Math.floor((kind === "roll" ? ROLL : SWITCH).tailChars * 0.8), lines: ROLL.lines }).catch(() => null),
-      this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null),
+      (await projectMay(this, rec)) ? this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null) : null,
     ]);
     const held = ptr && !ptr.error && ptr.data && Array.isArray(ptr.data.tail) && ptr.data.tail.length ? ptr.data : null;
     const decisions = dec && !dec.error && dec.data && Array.isArray(dec.data.decisions)

@@ -1788,20 +1788,27 @@ export default {
     // It runs the two tools it is built from with the caller's own extra, so scope is the caller's.
     ctx.tool("memory.prompt", {
       description: "Text blocks for a provider's prompt: { blocks, text }. first: true adds the memory brief; prompt adds relevant lines, quoted as memory.",
-      input: { type: "object", properties: { prompt: { type: "string" }, first: { type: "boolean" }, person: { type: "boolean", description: "true for the person's own thread (first-party modules only); a module passing neither agent nor person gets nothing" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
+      input: { type: "object", properties: { for_person: { type: "string", description: "the person the thread is for (the switchboard, from its record): the project's memory is given only if they may use the project" }, prompt: { type: "string" }, first: { type: "boolean" }, person: { type: "boolean", description: "true for the person's own thread (first-party modules only); a module passing neither agent nor person gets nothing" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
       run: async (input, extra = {}) => {
         // Fail closed: a module that names no agent and does not say the thread is the person's own gets nothing.
         if (String(extra.caller || "").startsWith("module:") && !input.agent && !(input.person === true && extra.firstParty === true)) return { text: "", blocks: [] };
         const parts = [];
-        const slug = typeof input.project === "string" && input.project ? input.project : null;
-        const scoped = { ...(input.agent ? { agent: input.agent } : {}), ...(slug ? { project: slug } : {}), ...(input.project_cwds ? { project_cwds: input.project_cwds } : {}) };
+        let slug = typeof input.project === "string" && input.project ? input.project : null;
+        // A person's thread gets the project's memory only if THAT person may use the project (the Space's owner or an admin, or the project's owner or team): the thread's project is whatever filed it, and a
+        // memory room is not given to whoever names it. Otherwise the prompt is built as for a chat with no project: the brief only, never an error that stops her turn. An answer that cannot be had counts as no.
+        let projectCwds = input.project_cwds;
+        if (slug && input.person === true && typeof input.for_person === "string" && input.for_person && String(extra.caller || "").startsWith("module:")) {
+          const may = await ctx.call("work.project.may-read", { project: slug, person: input.for_person }).then(r => Boolean(r && !r.error && r.data && r.data.ok === true), () => false);
+          if (!may) { slug = null; projectCwds = undefined; }
+        }
+        const scoped = { ...(input.agent ? { agent: input.agent } : {}), ...(slug ? { project: slug } : {}), ...(projectCwds ? { project_cwds: projectCwds } : {}) };
         if (input.first) {
           try { const b = await briefDef.run({ for: "session", ...scoped, ...(input.thread ? { thread: input.thread } : {}) }, extra); if (b.text) parts.push(b.text); } catch { /* nothing the caller may read */ }
         }
         const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
         // A project's thread reads its room; the person's own assistant or chat (person: true) and a named agent read what memory lets that
         // caller see, even with no project (#46: memory gives the assistant relevant facts with sources as context, whichever folder it is in).
-        if (prompt && !prompt.startsWith("/") && (slug || (input.project_cwds && input.project_cwds.length) || input.person === true || input.agent)) {
+        if (prompt && !prompt.startsWith("/") && (slug || (projectCwds && projectCwds.length) || input.person === true || input.agent)) {
           try {
             const facts = await relevantDef.run({ text: prompt, ...scoped, limit: 5 }, extra);
             const lines = (Array.isArray(facts) ? facts : []).slice(0, 5).map(f => {

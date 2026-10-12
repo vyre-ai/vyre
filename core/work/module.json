@@ -105,6 +105,12 @@
         "effect": "read"
       },
       {
+        "name": "work.project.may-read",
+        "summary": "whether a person may use a project's memory and skills: the Space's owner or admin, or the project's owner or team",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.project.people",
         "summary": "who the project's people are, for previews shared with the project",
         "reach": "modules",

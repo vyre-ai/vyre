@@ -183,3 +183,16 @@ test("a project is owned by the person who makes it (so its files open for them)
   const noPerson = await hub.createProject({ who: "p" }, { name: "Plain" });
   assert.equal(noPerson.data.owner, undefined, "a chain with no person names no owner");
 });
+
+test("mayUseProject: a name that matches no project is open; an error reading the project is not an answer and throws; staff and the project's people may, others may not", async () => {
+  const { kernel } = fake();
+  const hub = createHub({ kernel, call: async () => ({ data: null }) });
+  assert.equal(await hub.mayUseProject("per_x", "no-such"), true, "no such project: nothing to protect");
+  const made = await hub.createProject(kernel.serviceChain(), { name: "Owners", slug: "owners-matter" });
+  assert.equal(await hub.mayUseProject("per_o", "owners-matter"), true, "the owner (staff)");
+  assert.equal(await hub.mayUseProject("per_x", "owners-matter"), false, "a member who is not on it");
+  const broken = { ...kernel, records: { ...kernel.records, query: async () => { throw Object.assign(new Error("store down"), { code: "unavailable" }); } } };
+  const hub2 = createHub({ kernel: broken, call: async () => ({ data: null }) });
+  await assert.rejects(() => hub2.mayUseProject("per_x", "owners-matter"), /store down/, "a read error throws, so the caller counts it as no");
+  void made;
+});

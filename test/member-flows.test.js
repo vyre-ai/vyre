@@ -148,6 +148,11 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   let waiting = 0;
   for (const r of await host().flows.store.list()) if (r.active === null) { const row = await host().flows.store.flowRow(r.id); if (row.versions[0].by.id === CAROL) waiting++; }
   for (let n = waiting; n < 50; n++) { const x = await svc.define(carolMember, { flow: find("cap_flow_" + n) }); assert.ok(x.ok, JSON.stringify(x)); }
+  // every row of the list carries the Flow's name and label, an unapproved new Flow included: a screen never has an id to show where a name belongs
+  const listedAll = await svc.list(carolMember, {});
+  const drafts = listedAll.filter((/** @type {any} */ r) => r.status === "draft");
+  assert.ok(drafts.length >= 50, "the unapproved new Flows are on the list");
+  for (const r of listedAll) assert.ok(r.name && r.label && r.label !== r.id && r.name !== r.id, `row ${r.id} carries its name and label: ${JSON.stringify(r).slice(0, 160)}`);
   assert.match(await words(svc.define(carolMember, { flow: find("one_new_flow_too_many") })), /50 new Flows waiting.*Approve or remove/s, "the 51st unapproved new Flow is refused, with a next step");
   // the Flow record types are protected: a member's records.* sees none of them and can write none (she could otherwise create an approval naming the owner, or set a version active by hand)
   const seen = await d.kernel.gateway.records.query(carolMember, "flow-state", { page: { limit: 5 } }).then((/** @type {any} */ r) => r.rows.length, () => 0);

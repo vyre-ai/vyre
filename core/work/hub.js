@@ -174,6 +174,20 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** The person on a chain, or null. @param {any} c */
   const personOnChain = c => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
   /**
+   * May this PERSON use the project's memory, brief and skills: the Space's owner or an admin, or the project's owner or team (the ownership rule's own projectTeamOf). A name that matches no project is open
+   * (nothing to protect). Asked by memory.prompt and the switchboard for a person's thread. @param {string} person @param {string} ref a short name, record id or address
+   */
+  async function mayUseProject(person, ref) {
+    if (!person || await isStaff(person)) return true;
+    // "no such project" is open (nothing to protect); a read ERROR is not an answer, so it throws and the caller counts it as no
+    const r = String(ref || "");
+    const id = r.startsWith("vyre://") ? (r.split("/")[3] === PROJECT ? r.split("/")[4] : null) : projectRecordIdOf(r);
+    const rec = id ? await kernel.records.get(chain(), PROJECT, id).catch((/** @type {any} */ e) => { if (e && e.code === "not_found") return null; throw e; }) : await find(PROJECT, "slug", r);
+    if (!rec) return true;
+    return mayFileUnder(person, rec, r).then(() => true, () => false);
+  }
+
+  /**
    * May this caller file a chat under the project named in the input (work.chat.create)? An owner or admin may (as today). A member only under a project she owns or is on the team of, and never one that does
    * not exist yet: a chat does not make a project for her, she starts the project first. Called before the chat is made. Moving a chat (moveChat) and a run's project hint (touch) ask the same question.
    * @param {any} callerChain @param {string} name the project's short name
@@ -462,5 +476,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ peopleOf, seatOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }
