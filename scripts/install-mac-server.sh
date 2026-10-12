@@ -788,7 +788,7 @@ add_command() {
   done
   if ! grep -q '# vyre: command' "$PROFILE_FILE" 2>/dev/null; then
     PATH_ADDED=1
-    printf '\n# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$PROFILE_FILE" || { PATH_ADDED=0; say "  note  could not write $PROFILE_FILE; the command is $BIN/vyre"; return 0; }
+    printf '# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$PROFILE_FILE" || { PATH_ADDED=0; say "  note  could not write $PROFILE_FILE; the command is $BIN/vyre"; return 0; }
   fi
   step "vyre is at $BIN/vyre (a new Terminal window finds it by name)"
 }

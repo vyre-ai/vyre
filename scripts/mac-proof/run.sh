@@ -46,9 +46,27 @@ export VYRE_BOX_URL="file://$work/site/"
 export VYRE_HOME="$HOME/.vyre-proof"
 export VYRE_SERVER_DIR="$HOME/.vyre-server"
 
+# The vyre command goes to a profile file in the work folder here (the runner's own home is left alone), and the shell the person types in is not a terminal.
+export VYRE_PROFILE="$work/zprofile" VYRE_LINK_DIRS=""
 echo "::group::install"
-env PATH="$PATH_MIN" VYRE_CODE="" sh "$script" --yes
+env PATH="$PATH_MIN" VYRE_CODE="" sh "$script" --yes >"$work/install.out" 2>&1 || { cat "$work/install.out"; bad "the install failed"; }
+cat "$work/install.out"
 echo "::endgroup::"
+# The one line's shape: the five steps, the signature line, and an honest ending that prints no code into a log.
+for h in "[1/5] Checking this Mac" "[2/5] Downloading Vyre" "[3/5] Laying out" "[4/5] Adding the vyre command" "[5/5] Starting Vyre" "The download matches Vyre's signature" "Vyre is running on this Mac."; do
+  grep -qF "$h" "$work/install.out" || bad "the install did not say: $h"
+done
+grep -q "Get your space code on this Mac: vyre space up" "$work/install.out" || bad "the install did not say where to get the space code"
+if grep -q "Your space code:" "$work/install.out"; then bad "a piped install must not print the code into a log"; fi
+ok "the install said its five steps, the signature check, and where to get the space code"
+vyre="$VYRE_SERVER_DIR/bin/vyre"
+grep -qF "$VYRE_SERVER_DIR/bin" "$work/zprofile" || bad "the vyre command was not added to the profile"
+i=0; until "$vyre" status 2>&1 | grep -q -E 'answering|modules running' || [ $i -ge 60 ]; do sleep 2; i=$((i+1)); done
+"$vyre" status 2>&1 | grep -q -E 'answering|modules running' || bad "vyre status never reached running"
+ok "vyre status reaches running"
+"$vyre" space up >"$work/space.out" 2>&1 || { cat "$work/space.out"; bad "vyre space up failed"; }
+grep -q "Your space code:" "$work/space.out" || { cat "$work/space.out"; bad "vyre space up printed no space code"; }
+ok "vyre space up prints a space code"
 
 # Account and tree.
 dscl . -read /Users/_vyre UniqueID >/dev/null || bad "no _vyre account"
@@ -163,5 +181,8 @@ if sudo launchctl print system/com.vyre.core >/dev/null 2>&1; then bad "core is 
 if dscl . -read /Users/_vyre >/dev/null 2>&1; then bad "_vyre is still there"; fi
 [ ! -e "/Library/LaunchDaemons/com.vyre.core.plist" ] || bad "core's plist is still there"
 [ ! -e "$VYRE_SERVER_DIR" ] || bad "the app folder is still there"
-ok "uninstall --purge removed the daemons, the account and the files"
+[ ! -e "$HOME/.vyre-server" ] || bad "the server folder is still there"
+! grep -q "vyre: command" "$work/zprofile" || bad "the vyre command's profile line is still there"
+[ ! -e "$VYRE_HOME" ] || bad "the data folder survived --purge"
+ok "uninstall --purge removed the daemons, the account, the files and the vyre command"
 echo "mac-proof: all checks passed"
