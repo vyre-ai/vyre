@@ -24,7 +24,7 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
   // memory.prompt and the switchboard ask the work module this: the real tool, as the memory module asks it (the registry's gate keeps a first-party module's label for those two callers alone)
   const may = async (/** @type {string} */ who, project = "owners-matter") => { const def = /** @type {any} */ (d.registry).tools.get("work.project.may-read"); assert.ok(def, "work.project.may-read is registered"); return (await def.run({ project, person: who }, { caller: "module:memory" })).ok; };
   const stranger = d.registry.tools.get("work.project.may-read");
-  await assert.rejects(() => stranger.run({ project: "owners-matter", person: ANA }, { caller: "cli" }), /only the memory module and the switchboard/, "nobody else may ask");
+  await assert.rejects(() => stranger.run({ project: "owners-matter", person: ANA }, { caller: "cli" }), /Vyre asks this itself when it prepares a chat/, "nobody else may ask");
   assert.equal(await may(OWNER), true, "the Space's owner");
   assert.equal(await may(ADM), true, "an admin");
   assert.equal(await may(ANA), false, "a member who is not on the project");

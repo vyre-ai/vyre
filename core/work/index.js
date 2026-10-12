@@ -467,7 +467,7 @@ export default {
       input: obj({ project: { type: "string", description: "The Project's short name, record id or address" }, person: { type: "string" } }, ["project", "person"]), callers: ["module"], internal: true,
       run: async (input, extra) => {
         kernelOf();
-        if (!["module:memory", "module:switchboard"].includes(String((extra && extra.caller) || ""))) throw Object.assign(new Error("only the memory module and the switchboard ask whether a person may use a project's memory"), { code: "denied" });
+        if (!["module:memory", "module:switchboard"].includes(String((extra && extra.caller) || ""))) throw Object.assign(new Error("Vyre asks this itself when it prepares a chat; there is nothing to do here. To see who is on a project, open the project's team."), { code: "denied" });
         return { ok: await hubOf().mayUseProject(String(input.person || ""), String(input.project || "")) };
       },
     });
