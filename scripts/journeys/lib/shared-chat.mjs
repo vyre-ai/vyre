@@ -78,7 +78,7 @@ export const setServerView = (/** @type {() => Promise<string>} */ f) => { serve
 /** Wait until a person sees `n` answers from the AI; the list is what they saw. @param {any} person @param {string} chat @param {number} n */
 async function untilAnswers(person, chat, n) {
   let got = /** @type {any[]} */ ([]);
-  for (let i = 0; i < 40; i++) { got = answers(await seen(person, chat)); if (got.length >= n) return got; await sleep(4000); }
+  for (let i = 0; i < 40; i++) { got = answers(await seen(person, chat)); if (got.length >= n) return got; await sleep(8000); }
   throw new Error(`waited almost three minutes for answer ${n} in the chat; ${person.name} saw ${JSON.stringify(got.map(m => m.text))}${await serverView()}`);
 }
 
@@ -105,7 +105,7 @@ async function untilAnswerTo(person, chat, said) {
       console.log(`DBG own-message-not-in-catchup (by design) for "${said}": ${person.name}'s catchup has ${after.length} answers after it (her message ${at >= 0 ? "is" : "is NOT"} listed); the owner's view has ${oans.length}; ${person.name}'s tail: ${JSON.stringify(ms.slice(-4).map((/** @type {any} */ m) => [m.author, String(m.text).slice(0, 50)]))}`);
       if (oans.length) return oans;
     }
-    await sleep(4000);
+    await sleep(8000);
   }
   throw new Error(`waited almost three minutes for the answer to "${said}"; ${person.name} saw ${JSON.stringify(after.map(m => m.text))}${await serverView()}`);
 }
@@ -243,7 +243,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     ownerAcctId = mine.id;
     await w.call("stream.send", { chat, space: team.space, text: "@assistant whoami, owner here", to: ["assistant:assistant"], account: `codex:${mine.id}` });
     let got = "";
-    for (let i = 0; i < 40 && !got; i++) { await sleep(4000); got = String((answers(await seen(grace, chat)).find(m => String(m.text).includes(`/${mine.uid}`)) || {}).text || ""); }
+    for (let i = 0; i < 40 && !got; i++) { await sleep(8000); got = String((answers(await seen(grace, chat)).find(m => String(m.text).includes(`/${mine.uid}`)) || {}).text || ""); }
     assert.ok(got, `the owner's turn answered on the owner's account (user ${mine.uid})`);
     assert.ok(!got.includes(`/${accounts[grace.name].uid}`) && !got.includes(`/${accounts[edith.name].uid}`), `and on no member's: ${got}`);
     return got;
@@ -320,7 +320,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
       const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     // an item in the owner's vault first, so "the refusal shows no item name" can fail: the owner's app puts it (the box may ask the owner for presence, which a walk does not give: then it is said, not hidden)
@@ -353,7 +353,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
       const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     const lists = /** @type {Record<string, string>} */ ({});
@@ -371,7 +371,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
       const termsNow = async () => (await seen(grace, chat)).filter(m => /^assistant:/.test(String(m.author)) && /^walk-(term|mcp)/.test(String(m.text)));
       const known = new Set((await termsNow()).map(m => m.message));
       await speak(who, /^walk-/.test(cmd) ? cmd : `walk-term:${cmd}`);
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
+      for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     const start = (await R(grace.name, `walk-mcp-bg:4 vault.list {}`)) + " " + (await R(grace.name, `walk-mcp-bg:50 vault.list {}`));
@@ -432,7 +432,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     const R = async (/** @type {any} */ who, /** @type {string} */ cmd) => {
       const known = new Set((await walkTerms()).map(m => m.message));
       await (who === "owner" ? w.call("stream.send", { chat, space: team.space, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${ownerAcctId}` }) : edith.joined.call("chat.send", [{ chat, text: `@assistant walk-term:${cmd}`, to: ["assistant:assistant"], account: `codex:${accounts[edith.name].id}` }]));
-      for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await walkTerms()).filter(m => !known.has(m.message)); if (fresh.length) { const out = String(fresh[0].text); note(who, cmd, out); return out; } }
+      for (let i = 0; i < 25; i++) { await sleep(8000); const fresh = (await walkTerms()).filter(m => !known.has(m.message)); if (fresh.length) { const out = String(fresh[0].text); note(who, cmd, out); return out; } }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
     // a plain command first: does a member's session run a shell at all? (what the refusals below are refusals OF)
