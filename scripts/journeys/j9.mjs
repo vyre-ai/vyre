@@ -163,6 +163,15 @@ export default {
       await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
       // a member's device may call the team's server 30 times a minute: the chat steps used it up, so wait before the project steps
       if (!process.env.J9_SHORT) { await new Promise(r => setTimeout(r, 65_000)); await memberProjectsSteps({ J, w, team, people, needs: [SIGN] }); }
+      if (!process.env.J9_SHORT) {
+        await J.step("the owner's paired app still receives a live event from the box: a project the owner makes shows on the event stream without a reload", async () => {
+          const name = `live-${Date.now()}`;
+          const got = await w.readEvents(25_000, (/** @type {string} */ t) => t.includes(name), async () => { await new Promise(r => setTimeout(r, 2000)); await w.call("projects.create", { name }); });
+          assert.equal(got.status, 200, `the event stream opens for the owner's app (status ${got.status}): ${String(got.text).slice(0, 200)}`);
+          assert.ok(got.text.includes(name), `an event naming the new project arrived on the stream (got ${got.text.length} characters: ${got.text.slice(0, 200)})`);
+          return `status 200, ${got.text.length} characters, the event for ${name} arrived`;
+        }, { needs: [SIGN], owner: "trust" });
+      }
       await heavy("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       // J9_KEEP=<minutes>: leave the box up that long after the steps, to look inside it (docker exec -u vyre vyre-vyre-1 ...)

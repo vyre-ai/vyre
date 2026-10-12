@@ -291,6 +291,10 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     await speak(edith.name, "whoami walkBq2");
     await sleep(500);
     await speak("owner", "whoami walkBq3");
+    // what the queued rows carry (rc2-own-compute's check: the stored kturn must carry the chat's space)
+    await sleep(2000);
+    const q = sh(["exec", "-u", "vyre", BOX, "node", "--experimental-sqlite", "-e", `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify(db.prepare("select id,substr(text,1,30) t,kturn from threads_inbox order by id").all()))`]);
+    console.log(`DBG queued rows (kturn should carry a space): ${String(q.stdout).trim().slice(0, 1500)} ${String(q.stderr).slice(0, 200)}`);
     const got = [];
     for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
       const a = await untilAnswerTo(grace, chat, tag);

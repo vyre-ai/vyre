@@ -196,6 +196,33 @@ export function createApp(o) {
     return { token: Boolean(s && s.token) };
   }
 
+  /**
+   * The app's live event stream (GET /v1/events/stream?type=*&since=latest, signed like any call): reads it for `ms` and returns the status and the text that arrived. What the app screens render live from.
+   * @param {number} [ms] @param {(text: string) => boolean} [stopWhen] @param {() => Promise<void>} [during] run once the stream is open
+   */
+  async function readEvents(ms = 20_000, stopWhen = () => false, during = async () => {}) {
+    if (!session) await openSession();
+    const url = "/v1/events/stream?type=*&since=latest";
+    const proof = await proofWith(async m => signPerson(new TextEncoder().encode(m)), { method: "GET", url, body: "" });
+    const ac = new AbortController();
+    const res = await session.conn.fetch(url, { method: "GET", headers: { authorization: `Vyre ${session.token}`, "x-vyre-proof": proof }, signal: ac.signal });
+    let text = "";
+    if (res.status !== 200 || !res.body) { return { status: res.status, text: await res.text().catch(() => "") }; }
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    const timer = setTimeout(() => ac.abort(), ms);
+    try {
+      const doing = during().catch(() => {});
+      for (;;) {
+        const r = await reader.read().catch(() => ({ done: true, value: undefined }));
+        if (r.done) break;
+        text += dec.decode(r.value, { stream: true });
+        if (stopWhen(text)) break;
+      }
+      await doing;
+    } finally { clearTimeout(timer); try { ac.abort(); } catch { /* closed */ } }
+    return { status: res.status, text };
+  }
+
   /** One tool call on the paired server, as this device's signed-in session. @param {string} tool @param {Record<string, unknown>} [input] */
   async function callTool(tool, input = {}) {
     if (!session) await openSession();
@@ -338,7 +365,7 @@ export function createApp(o) {
   return {
     nameOwnSpace, label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, createHostedTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get presenceSigner() { return presenceSigner; }, get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
-    setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
+    setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, readEvents, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
   };
 }
