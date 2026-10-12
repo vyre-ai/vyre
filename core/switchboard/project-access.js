@@ -96,7 +96,9 @@ export async function stopLostSeats(sb, o = { stop: async (id, why) => { const r
     if (!run || run.uid == null || !run.person || !Array.isArray(run.projects) || !run.projects.length) continue;
     const rec = sb.record(id);
     const now = await projectsFor(sb, run, { agent: l.agent || (rec && rec.agent) || null, scope: l.scope || null, cwd: rec && rec.cwd, all: true });
-    const lost = run.projects.filter((/** @type {string} */ p) => !now.includes(p));
+    // only a project that still exists on this box and that she has no seat on now: a project deleted or unmapped since the launch is not a lost seat (it must not stop the owner's session)
+    const there = new Set((await mappedProjects(sb)).map(p => p.slug));
+    const lost = run.projects.filter((/** @type {string} */ p) => there.has(p) && !now.includes(p));
     if (lost.length) { await o.stop(id, `${run.person} is no longer on ${lost.length === 1 ? "the project" : "the projects"} ${lost.join(", ")}`); stopped.push(id); }
   }
   return stopped;

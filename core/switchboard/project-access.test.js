@@ -113,6 +113,12 @@ test("a seat taken away stops the session that joined that project's group, what
   assert.deepEqual(stopped, ["t-ben-lost"]);
 });
 
+test("a project deleted or unmapped since the launch is not a lost seat: the owner's and a member's sessions that joined it are left alone", async () => {
+  const live = new Map([["t-owner", { launch: { accountRun: { person: "owen", uid: 2000, projects: ["alpha", "gone"] } } }], ["t-ben", { launch: { accountRun: { person: "ben", uid: 2001, projects: ["alpha", "gone"] } } }]]);
+  const recs = { "t-owner": { cwd: "/work/projects/alpha" }, "t-ben": { cwd: "/work/projects/alpha" } };
+  assert.deepEqual(await stopLostSeats(sb({ live, recs }), { stop: async () => {} }), [], "`gone` is not in the project list any more");
+});
+
 test("a session socket's group is its account's (gid equals uid), or the box agent's", () => {
   assert.equal(socketGid({ uid: 2007 }), 2007);
   const was = process.env.VYRE_AGENT_GID;

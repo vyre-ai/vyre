@@ -6,10 +6,14 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { boot, until } from "../team/team-fixture.js";
+import path from "node:path";
 import { stopLostSeats } from "../switchboard/project-access.js";
 
 test("removing a member's seat reaches the Switchboard's recheck, and her session that joined that project's group is stopped", { timeout: 150_000 }, async t => {
   const { d, tool, project } = await boot(t);
+  // the box keeps its projects under /work; here that is the temp home's projects folder, so the project counts as mapped (a project outside it is no project of the box's)
+  const was = process.env.VYRE_WORK; process.env.VYRE_WORK = path.dirname(String((await tool("projects.list", {})).projects.find((/** @type {any} */ p) => p.slug === project.slug).home));
+  t.after(() => { if (was === undefined) delete process.env.VYRE_WORK; else process.env.VYRE_WORK = was; });
   const OWNER = d.kernel.id.owner, SPACE = d.kernel.id.space, BEN = "per_" + "c".repeat(26);
   const oc = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await d.kernel.gateway.grants.setRole(oc, { person: BEN, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
