@@ -792,3 +792,19 @@ test("acp: one turn is one message: the streamed words and the turn's whole text
   assert.notEqual(new Set(s.got.map(m => translate(m).message).filter(Boolean)).size, 0);
   await s.proc.stop(1000);
 });
+
+
+test("acp: the history an agent replays while it loads a session is not the thread's output", async t => {
+  const w = world(t);
+  const id = crypto.randomUUID();
+  const first = open(w, { id });
+  assert.match(await first.say("hello"), /./);
+  first.proc.kill && first.proc.kill();
+  await new Promise(r => setTimeout(r, 300));
+  const again = open(w, { id, resume: true, env: { ...w.env, FAKE_ACP_REPLAY: "3" } });
+  await again.until(m => m.type === "system" && m.subtype === "init", "the resumed session's init");
+  const leaked = again.got.filter(m => m.type === "stream_event" || m.type === "assistant");
+  assert.deepEqual(leaked.map(m => JSON.stringify(m).slice(0, 80)), [], "nothing the agent replayed came out as the thread's words");
+  assert.equal(again.got.find(m => m.type === "system" && m.subtype === "init").resumed, true, "and it was a resume");
+  again.proc.kill && again.proc.kill();
+});

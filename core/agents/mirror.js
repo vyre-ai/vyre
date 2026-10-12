@@ -11,12 +11,12 @@ export const AGENT = Object.freeze({
   name: "agent", label: "Agent", icon: "IconRobot",
   fields: [
     { name: "name", kind: "text", label: "Name", required: true },
-    { name: "uid", kind: "text", label: "Id", unique: true },
+    { name: "uid", kind: "text", label: "Id", unique: true, hidden_from: ["member", "manager", "temp"] },
     { name: "kind", kind: "choice", label: "Kind", options: ["assistant", "agent"] },
     { name: "owner", kind: "text", label: "Owner" },
     { name: "builtin", kind: "boolean", label: "Built in" },
     { name: "model", kind: "text", label: "Model" },
-    TAGS,
+    { ...TAGS, hidden_from: ["member", "manager", "temp"] },
   ],
 });
 

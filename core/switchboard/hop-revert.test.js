@@ -140,7 +140,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
   /** @type {any[]} */ const events = []; /** @type {any[]} */ const sql = []; /** @type {string[]} */ const resumed = []; /** @type {boolean[]} */ const liveAtResume = []; let stops = 0, tries = 0;
   const hopProcess = { writes: [] };
   const sb = /** @type {any} */ ({
-    endHop: Switchboard.prototype.endHop, once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
+    endHop: Switchboard.prototype.endHop, resumeTried: new Set(), once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: "opus", person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: false,
     live: new Map([["t", { turn: null, stopping: false, hopProcess }]]), deps: { log() {} },
     record: () => ({ project: null, provider: "codex", account: "carols" }),
     db: { prepare: (/** @type {string} */ q) => ({ get: () => ({ opts: JSON.stringify({ account: "carols", person: "per_carol", origin: "x" }) }), run: (/** @type {any[]} */ ...a) => { sql.push([q.slice(0, 40), a]); return { changes: 1 }; } }) },
@@ -174,7 +174,7 @@ test("a switch back that fails twice leaves the record on the base with no live 
 test("a switch back that can never succeed (account removed) is not retried: straight to the dormant path", async () => {
   let tries = 0; /** @type {any[]} */ const events = [];
   const sb = /** @type {any} */ ({
-    endHop: Switchboard.prototype.endHop, once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: true,
+    endHop: Switchboard.prototype.endHop, resumeTried: new Set(), once: new Map([["t", { to: "codex", back: { provider: "claude", account: "bobs", model: null, person: "per_bob" }, sent: "x", reply: "" }]]), carry: new Map(), switches: new Set(), reverting: new Map(), closing: true,
     live: new Map(), deps: { log() {} }, record: () => ({ project: null }),
     db: { prepare: () => ({ get: () => ({ opts: "{}" }), run: () => ({ changes: 1 }) }) },
     emit: (/** @type {string} */ type) => events.push(type), stop: async () => {},
@@ -269,4 +269,23 @@ test("a queued hop past the revert wait is put back once and dropped in words th
   assert.ok(sql.some(q => /via = 'dropped'/.test(q)), "the second time the row is dropped");
   assert.equal(texts.length, 1, "and the room is told");
   assert.match(texts[0], /could not be started.*Send it again/);
+});
+
+test("a queued hop in a team Space chat carries the Space with it: the hop's kernel session opens in that Space's kernel, where the reply looks for it", async () => {
+  /** @type {any} */ let seen = null;
+  const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
+    db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, onceTarget: async () => ({}), emit() {}, endAnnouncedTurn() {}, drainQueued() {}, deliverRow: async () => {},
+    sendOnce: async (/** @type {any} */ _i, /** @type {any} */ _t, /** @type {any} */ _s, /** @type {any} */ _o, /** @type {any} */ o) => { seen = o.kernelTurn; return { sent: true }; } });
+  sb.drainDone = Switchboard.prototype.drainDone;
+  runQueuedOver(sb, "t", [{ id: 7, text: "A-ONE", surface: "s", uuid: "u", at: 1 }], { chat: "c", asker: "per_ada", space: "spc_aaaaaaaaaaaa", over: { provider: "claude", account: "x", person: "per_ada" } }, () => ({ changes: 1 }), 1, LOCK);
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(seen, { chat: "c", asker: "per_ada", space: "spc_aaaaaaaaaaaa" });
+});
+
+test("deliverRow opens the row's session in the Space of its chat (a team chat's row delivered without a hop was judged against the home's chats)", async () => {
+  /** @type {any[]} */ const turns = [];
+  const sb = /** @type {any} */ ({ record: () => ({ project: null }), renewCapped: async (/** @type {string} */ _id, /** @type {any} */ _rec, /** @type {any} */ turn) => { turns.push(turn); return true; }, write() {}, dropQueuedChatTurn() {} });
+  await Switchboard.prototype.deliverRow.call(sb, "t", { text: "B-ONE", uuid: "u" }, { chat: "c", asker: "per_ben", space: "spc_team" });
+  await Switchboard.prototype.deliverRow.call(sb, "t", { text: "H-ONE", uuid: "v" }, { chat: "c", asker: "per_ben" });
+  assert.deepEqual(turns, [{ chat: "c", asker: "per_ben", space: "spc_team" }, { chat: "c", asker: "per_ben" }], "the Space rides when the turn has one, and only then");
 });

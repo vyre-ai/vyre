@@ -21,7 +21,8 @@ export function findSource(call: Call, surface: string) {
       void call("files.search", { q, limit: 20 }).then(on.files);
       void call("memory.relevant", { text: q, limit: 5 }).then(on.memory);
       void call("mentions.search", { q, limit: 8 }).then(on.mentions);
-      void call("files.drive.space.search", { q, limit: 20 }).then(on.drive);
+      // the server has no files.drive.space.search (only .list and .read): until it does, the Space's Drive names are not searched and the panel shows no Drive hits instead of an error
+      on.drive({ data: { results: [] } });
     },
     preview: (path: string, source: string) => call("files.preview", { path, ...(source === "mac" || source === "box" ? { source } : {}) }),
     /** Ask an agent; the thread it landed in comes back so the screen can open it. */

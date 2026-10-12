@@ -260,7 +260,7 @@ test("a chat that moved to the server under a running turn starts again here wit
 test("the switchboard's onExit sends a chat whose process ended because it moved to the server through carryOn, and any other exit stays an exit", async () => {
   const calls = /** @type {any[]} */ ([]);
   const st = { turn: "t:2", lastPrompt: "again", launch: {}, switching: false, stopping: false };
-  const sb = /** @type {any} */ ({ once: new Map(), reverting: new Map(), live: new Map([["t", st]]), flush() {}, cancelTools() {}, releaseSlots() {}, record: () => ({ project: null }), libraryPlugin: async () => "p", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "t", turnAsker: new Map(),
+  const sb = /** @type {any} */ ({ once: new Map(), reverting: new Map(), resumeWaiting() {}, live: new Map([["t", st]]), flush() {}, cancelTools() {}, releaseSlots() {}, record: () => ({ project: null }), libraryPlugin: async () => "p", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "t", turnAsker: new Map(),
     spawn: (/** @type {string} */ id, /** @type {any} */ o) => calls.push(["spawn", id, o.resume]), write: (/** @type {string} */ id, /** @type {string} */ text) => calls.push(["write", id, text]), emit: () => {}, set: () => {}, closeSocket() {}, asks: { open: () => [] } });
   Switchboard.prototype.onExit.call(sb, "t", st, null, "SIGHUP", "", { to: "server", reason: "lid-closed", epoch: 2 });
   await new Promise(r => setTimeout(r, 20));

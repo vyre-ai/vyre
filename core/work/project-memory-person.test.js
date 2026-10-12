@@ -29,7 +29,7 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
   assert.equal(await may(ADM), true, "an admin");
   assert.equal(await may(ANA), false, "a member who is not on the project");
   assert.equal(await may("-"), false, "a thread with nobody to judge (the placeholder person)");
-  assert.equal(await may(ANA, "no-such-project"), true, "a name that matches no project has nothing to protect");
+  assert.equal(await may(ANA, "no-such-project"), false, "a name that matches no project is no, never yes");
   // seated on the team, she does; Ben, still off it, does not
   await R.create(ownerChain, "team-member", { name: "ana", actor: person(ANA, SPACE), kind: "person", project: { urn: `vyre://${SPACE}/project/${(await R.query(ownerChain, "project", { filter: { field: "slug", op: "eq", value: "owners-matter" }, page: { limit: 1 } })).rows[0].id}` } });
   assert.equal(await may(ANA), true, "on the team: she may");
@@ -51,5 +51,5 @@ test("work.project.may-read: owner, admin and the project's team may; a member w
     const r = await d.registry.call(tool, { text: "plan", room: "owners-matter", project: "owners-matter" }, "cli", { token: benToken });
     assert.ok(r.error || !r.data || (Array.isArray(r.data) && r.data.length === 0) || (r.data && Object.values(r.data).every((/** @type {any} */ v) => !v || (Array.isArray(v) && !v.length))), `${tool} for the owner's project room is refused or empty for a member: ` + JSON.stringify(r).slice(0, 200));
   }
-  assert.equal(await may(BEN, "ben-own"), true, "(no such project yet)");
+  assert.equal(await may(BEN, "ben-own"), false, "(no such project yet: no, never yes; the room opens once the Project record exists)");
 });

@@ -25,17 +25,27 @@ test("a member reads the Space's agents, templates and playbooks and changes non
   // write: no, on the gateway route
   for (const [type, id] of [["template", tpl.id], ["playbook", pb.id], ["agent", agentRow.id]]) {
     const v = (await R.get(oc, type, id)).version;
-    await assert.rejects(() => R.update(bc, type, id, { name: "TAKEN" }, v), { code: "not_allowed" }, `a member updates a ${type}`);
+    await assert.rejects(() => R.update(bc, type, id, { name: "TAKEN" }, v), { code: "not_allowed", message: new RegExp(`^Only an owner or an admin can change this ${type}\\. Ask one of them\\.$`) }, `a member updates a ${type}`);
     await assert.rejects(() => R.remove(bc, type, id, v), { code: "not_allowed" }, `a member removes a ${type}`);
   }
   await assert.rejects(() => R.create(bc, "template", { name: "X", kind: "email", body: "x" }), { code: "not_allowed" }, "a member creates a template");
   // the tools, under every label, with the member's token
+  // someone else's agent: no change under any label
   for (const caller of ["deck", "cli", "mcp", "harness"]) {
-    for (const [name, input] of [["agents.create", { name: "bens-" + caller, instructions: "x", projects: [] }], ["agents.update", { agent: "ownerbot", instructions: "TAKEN" }], ["agents.stop", { agent: "ownerbot" }], ["agents.resume", { agent: "ownerbot" }], ["agents.delete", { agent: "ownerbot" }]]) {
+    for (const [name, input] of [["agents.update", { agent: "ownerbot", instructions: "TAKEN" }], ["agents.stop", { agent: "ownerbot" }], ["agents.resume", { agent: "ownerbot" }], ["agents.delete", { agent: "ownerbot" }]]) {
       const r = await d.registry.call(name, input, caller, ben);
-      assert.ok(r.error, `${caller}: ${name} is refused to a member`);
+      assert.ok(r.error, `${caller}: ${name} of the owner's agent is refused to a member`);
     }
   }
+  // the kernel limits what an agent she makes can reach: every project, or the owner's project, is refused; no project is fine
+  for (const projects of ["*", ["harlow-legal"]]) assert.ok((await d.registry.call("agents.create", { name: "ben-wide", instructions: "x", projects }, "deck", ben)).error, `a member's agent with projects ${JSON.stringify(projects)} is refused by the kernel`);
+  // her own agent: she makes it, changes it and removes it (the decided rule: made, but not an actor of the Space)
+  const mine = await d.registry.call("agents.create", { name: "bens-bot", instructions: "BEN-BRIEF", projects: [] }, "deck", ben);
+  assert.ok(mine.data && mine.data.name === "bens-bot", "a member makes her own agent: " + JSON.stringify(mine.error));
+  const upd = await d.registry.call("agents.update", { agent: "bens-bot", instructions: "BEN-NEW" }, "deck", ben);
+  assert.ok(upd.data, "and changes it: " + JSON.stringify(upd.error));
+  const del = await d.registry.call("agents.delete", { agent: "bens-bot" }, "deck", ben);
+  assert.ok(del.data, "and removes it: " + JSON.stringify(del.error));
   const after = (await tool("agents.list", {})).find((/** @type {any} */ a) => a.name === "ownerbot");
   assert.ok(after && after.instructions === "OWNER-BRIEF", "the owner's agent is unchanged");
   assert.equal((await R.get(oc, "template", tpl.id)).data.name, "Welcome");

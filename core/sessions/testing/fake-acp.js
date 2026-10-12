@@ -15,6 +15,7 @@
 // FAKE_GOLDEN_FILE (and FAKE_GOLDEN_DIR): every prompt is answered from the recorded model instead (testing/golden.js).
 // A cancel during a permission question ends the turn with stopReason "cancelled".
 // FAKE_ACP_STORE: a folder where sessions live (so session/load works from a new process).
+// FAKE_ACP_REPLAY: on session/load, send this many agent_message_chunk updates before answering, as a real agent replays the conversation it loads.
 // FAKE_ACP_RPC_LOG: one line per request the client sent, by method name.
 // FAKE_ACP_LOG: one line per launch (argv, HOME, client capabilities) and per set_mode.
 import fs from "node:fs";
@@ -173,6 +174,8 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (m.method === "session/load") {
     if (!store || !fs.existsSync(path.join(store, m.params.sessionId))) return out({ id: m.id, error: { code: -32602, message: "no such session" } });
     session = m.params.sessionId;
+    // FAKE_ACP_REPLAY=N: a real agent replays the conversation as session/update notifications while it loads (the ACP spec); N chunks of history come before the answer.
+    for (let i = 1; i <= Number(process.env.FAKE_ACP_REPLAY || 0); i++) say(`earlier answer ${i}`);
     return out({ id: m.id, result: { modes: { ...MODES, currentModeId: mode } } });
   }
   if (m.method === "session/set_mode") { log({ set_mode: m.params.modeId }); if (process.env.FAKE_ACP_NO_SETMODE) return out({ id: m.id, error: { code: -32601, message: "no" } }); mode = m.params.modeId; return out({ id: m.id, result: {} }); }

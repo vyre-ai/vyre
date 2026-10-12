@@ -29,6 +29,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
   reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
+  goal: ["goals"],   // a goal is private to the people involved; the goals module serves it, under its own chain (class 3, lead ruling 12 Oct)
 }));
 
 /** The Space's set-up: a member reads these and never writes them. */
@@ -98,9 +99,21 @@ export function createRecords(cfg) {
   const kattrs = store.meta ? store.meta : new Map();
   /** Types known to hold no privileged record (a row's sensitivity is set once, when it is created, so a type found clean stays clean until a privileged record is created in it). */
   const noPrivileged = new Set();
+  /** Types whose create events have been read for a privileged record: the in-memory map holds only what THIS process wrote, so after a restart the log is the authority, read once per type (the type's own create events, not the whole log). */
+  const privilegedScanned = new Set();
   const hasPrivileged = (/** @type {string} */ type) => {
     if (noPrivileged.has(type)) return false;
-    const found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    let found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    if (!found && !kattrs.anyWith) {
+      // the map is only what THIS process wrote, so the log is asked (the type's own create events, once). Where the log cannot say (it is not durable under a store with its own map, or the read fails) the answer is "may have privileged rows": rows are gated one by one, nothing is pushed down, and "none" is never remembered.
+      if (store.meta && log.durable !== true) return true;
+      if (!privilegedScanned.has(type)) {
+        try {
+          for (const e of log.iterate({ type: `${type}.created` })) { const a = e.data && typeof e.data.attrs === "object" ? e.data.attrs : null; if (a && a.sensitivity === "privileged") { found = true; kattrs.set(String(e.subject), a); } }
+          privilegedScanned.add(type);
+        } catch { return true; }
+      }
+    }
     if (!found) noPrivileged.add(type);
     return found;
   };
@@ -187,12 +200,12 @@ export function createRecords(cfg) {
     if (adminish(chain)) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return false;
-    const a = kattrs.get(urn(r.type, r.id)) || {};
+    const a = attrsOf(urn(r.type, r.id)) || {};
     return String(a.created_for || a.created_by || "") === `person:${who.actor.id}`;
   };
   /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
   const madeByTrusted = (u) => {
-    const made = String((kattrs.get(u) || {}).created_by || "");
+    const made = String((attrsOf(u) || {}).created_by || "");
     const [kind, ...rest] = made.split(":");
     if (kind === "service") return true;
     if (kind !== "person" || !members || typeof members.membership !== "function") return false;
@@ -624,7 +637,7 @@ export function createRecords(cfg) {
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     // The Space's set-up (an agent, a template, a playbook): a member reads, only an owner or an admin writes, on every route. A service's own chain has no person and passes.
-    if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `only an owner or an admin changes a ${type}; ask one of them`); }
+    if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `Only an owner or an admin can change this ${type}. Ask one of them.`); }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
     if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
@@ -953,7 +966,8 @@ export function createRecords(cfg) {
         }
       }
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
-      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
+      // (a path into a field, `fee.amount` of a money field, needs the whole field `fee` in the cut row)
+      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)].flatMap((/** @type {string} */ k) => [k, String(k).split(".")[0]]));
       // Folded a row at a time: memory is the number of groups (capped), never the number of rows; the scan is capped at 40 pages (20,000 rows) and in time, and says so (`unsupported`) rather than totalling a part.
       // The store already applied the filter; rows are cut to the fields the total uses, so the filter must not be applied again to the cut row.
       const agg = createAggregator({ ...spec, filter: undefined }, { maxGroups: AGG_MAX_GROUPS });

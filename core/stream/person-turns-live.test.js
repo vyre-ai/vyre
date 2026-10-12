@@ -308,6 +308,74 @@ test("G04: a turn that arrives while another is running waits behind it, then ru
   await b.stop();
 });
 
+// 12 Oct 2026 (walk-9a, a real install): messages from three people queued behind a normal, slow turn on a Codex thread, each hopping onto its own Codex account, were each picked up and then each reply found
+// no kernel session ("no session came back; the reply was dropped"); none was answered. This is that shape on the real Switchboard and stream with the fake ACP agent. It PASSES here: the drop is not reproduced on this
+// rig (a real install under load drops them), so this is a guard, and lib/kernel-session.js now says in the log why a reply found no session.
+test("G05: three people queue behind the owner's slow Codex turn, each on their own Codex account: the members' turns each hop onto their own account and are answered, none dropped", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex"); await own("carol", "Carol's Codex"); await own("ada", "Ada's Codex");
+  // bob speaks first on his Codex: the thread starts on his account; then his slow turn runs while the others queue
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "whoami first", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work })).error);
+  await until(() => /home: /.test(textOf(watcher.frames)), "bob's first turn", 120_000);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "walk-term:sleep 6; echo slow-done", to: ["assistant:assistant"], cwd: w.work })).error);
+  await sleep(1500);
+  for (const [who, text] of [["carol", "whoami carolQ1"], ["ada", "whoami adaQ2"], ["bob", "whoami bobQ3"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const thread = kitThread(b, chat.id);
+  // (a queued turn's prompt carries the conversation, and the stand-in answers the "walk-term:" it finds in it: so each queued turn is answered by the sleeper's line again, and the notices say whose account ran it)
+  const answeredCount = () => (textOf(watcher.frames).match(/walk-term exit=0: slow-done/g) || []).length;
+  await until(() => watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed") || answeredCount() >= 3, "the queued turns to be answered", 200_000).catch(async e => {
+    const ev = (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+    throw new Error(`${e.message}; answers: ${answeredCount()}; thread events: ${ev.filter((/** @type {any} */ x) => /thread\\.(sent|queued|provider|started|stopped|finished)/.test(x.type)).map((/** @type {any} */ x) => x.type.replace("thread.", "") + ":" + String(x.payload && (x.payload.text || x.payload.reason || "")).slice(0, 22)).join(" | ")}`);
+  });
+  assert.ok(!watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "no reply was dropped (no 'couldn't resume')");
+  assert.ok(answeredCount() >= 3, "the sleeper and the two members' queued turns were each answered: " + answeredCount());
+  const ev = (await b.reg.call("threads.get", { thread, limit: 400 }, "cli")).data.events;
+  assert.equal(ev.filter((/** @type {any} */ x) => x.type === "thread.provider" && x.payload.reason === "once").length, 2, "carol's and ada's turns each hopped onto their own Codex account");
+  await b.stop();
+});
+
+// The same shape with the agent replaying the conversation while it loads a resumed session (a real Codex does, ACP session/load): the replayed words must not open a reply of their own (they belong to no turn),
+// and every queued turn is still answered, none dropped, the thread not left "working".
+test("G05r: the same, with the agent replaying earlier words on every session/load: no 'couldn't resume', every queued turn answered, the thread ends idle", { timeout: 300_000 }, async t => {
+  process.env.FAKE_ACP_REPLAY = "2"; t.after(() => { delete process.env.FAKE_ACP_REPLAY; });
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex"); await own("carol", "Carol's Codex"); await own("ada", "Ada's Codex");
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "whoami first", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work })).error);
+  await until(() => /home: /.test(textOf(watcher.frames)), "bob's first turn", 120_000);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "walk-term:sleep 6; echo slow-done", to: ["assistant:assistant"], cwd: w.work })).error);
+  await sleep(1500);
+  for (const [who, text] of [["carol", "whoami carolQ1"], ["ada", "whoami adaQ2"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  const thread = kitThread(b, chat.id);
+  const answeredCount = () => (textOf(watcher.frames).match(/walk-term exit=0: slow-done/g) || []).length;
+  await until(() => watcher.frames.some(f => f.type === "chat.status" && f.data.state === "failed") || answeredCount() >= 3, "the queued turns to be answered or dropped", 150_000).catch(() => {});
+  const failed = watcher.frames.filter(f => f.type === "chat.status" && f.data.state === "failed").length;
+  const st = (await b.reg.call("threads.get", { thread }, "cli")).data.thread.status;
+  assert.equal(failed, 0, `no reply was dropped ("couldn't resume"): ${failed} dropped; answers ${answeredCount()}; thread ${st}`);
+  assert.ok(answeredCount() >= 3, "the sleeper and both queued turns were answered: " + answeredCount());
+  await until(async () => (await b.reg.call("threads.get", { thread }, "cli")).data.thread.status !== "working", "the thread not to stay working", 30_000);
+  await b.stop();
+});
+
 // Review of 122f96c9c (rc1-d, 11 Oct): the same rule through every way a message reaches the Switchboard, on the real one.
 const PNG = { media_type: "image/png", data: "iVBORw0KGgo=" };
 const sentIn = (/** @type {any[]} */ ev, /** @type {RegExp} */ re) => ev.some(e => e.type === "thread.sent" && re.test(String(e.payload.text)));
