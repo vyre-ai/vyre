@@ -114,8 +114,8 @@ async function untilAnswerTo(person, chat, said) {
  * @param {{ J: any, w: any, team: any, people: any[], needs: string[] }} o  people: Grace and Edith, each { name, app, joined }
  */
 export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
-  // J9_SHORT=1: the chat up to the queue step only (people, sign-ins, group chat, five turns, three queued, one more message); the steps in between are not run
-  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => /tool call in a member|lists that person's skills|leftover|retired product|catchup is what|from a member's session/.test(name) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
+  // J9_SHORT=1: the chat steps only, without the scan and the catchup rule (J9 skips the project steps)
+  const J = process.env.J9_SHORT ? { ...J0, step: (/** @type {string} */ name, /** @type {any} */ fn, /** @type {any} */ opts) => /retired product|catchup is what/.test(name) ? Promise.resolve() : J0.step(name, fn, opts) } : J0;
   setOwnerView(async () => (await w.call("stream.catchup", { chat, space: team.space })).messages || []);
   const owner = { id: String(w.mac.identity.id) };
   const [grace, edith] = people;
@@ -281,6 +281,39 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     return out.join(" | ");
   }, { needs: [H], owner: "chat" });
 
+  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
+  await J.step(WB, async () => {
+    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
+    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
+    await sleep(3000);
+    await speak(grace.name, "whoami walkBq1");
+    await sleep(500);
+    await speak(edith.name, "whoami walkBq2");
+    await sleep(500);
+    await speak("owner", "whoami walkBq3");
+    const got = [];
+    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
+      const a = await untilAnswerTo(grace, chat, tag);
+      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
+      const uid = await uidOf(who);
+      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
+      got.push(tag);
+    }
+    const ms = await seen(grace, chat);
+    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
+    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
+    void sleeper;
+    return got.join(", ");
+  }, { needs: [H], owner: "chat" });
+
+  const WZ = "one more message after the queued ones is answered on its person's account (the thread is not wedged)";
+  await J.step(WZ, async () => {
+    await speak(grace.name, "whoami walkZ");
+    const a = await untilAnswerTo(grace, chat, "walkZ");
+    assert.ok(String(a[0].text).includes(`/${accounts[grace.name].uid}`), `walkZ ran as Grace's account: ${a[0].text}`);
+    return String(a[0].text).slice(0, 80);
+  }, { needs: [H], owner: "chat" });
+
   const WC = "a tool call in a member's turn is refused the owner's vault, with the gate's own words; the owner's own call is the control";
   await J.step(WC, async () => {
     const R = async (/** @type {string} */ who, /** @type {string} */ cmd) => {
@@ -290,16 +323,21 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
       for (let i = 0; i < 40; i++) { await sleep(4000); const fresh = (await termsNow()).filter(m => !known.has(m.message)); if (fresh.length) return String(fresh[0].text); }
       throw new Error(`no answer to ${cmd} from ${who}`);
     };
-    const out = /** @type {string[]} */ ([]);
+    // an item in the owner's vault first, so "the refusal shows no item name" can fail: the owner's app puts it (the box may ask the owner for presence, which a walk does not give: then it is said, not hidden)
+    let planted = "";
+    try { await w.call("vault.put", { name: "walk-owner-item", kind: "secret", value: "WALK-NOT-A-REAL-VALUE" }); planted = "an item named walk-owner-item is in the owner's vault"; }
+    catch (e) { planted = `NO ITEM COULD BE PLANTED (${String(e && /** @type {any} */ (e).message).slice(0, 120)}): the refusal below proves less`; }
+    const out = /** @type {string[]} */ ([planted]);
     for (const who of [grace.name, edith.name]) {
       const list = await R(who, `walk-mcp:vault.list {}`);
       const reveal = await R(who, `walk-mcp:vault.reveal {"item":"walk-owner-item"}`);
       said[`${who}-vault`] = `${list} || ${reveal}`;
-      assert.ok(!/walk-owner-item.*value|"items"\s*:\s*\[\s*\{/.test(list + reveal), `${who} sees no owner item through the tool: ${list} ${reveal}`);
+      assert.ok(!/walk-owner-item|WALK-NOT-A-REAL-VALUE|"items"\s*:\s*\[\s*\{/.test(list + reveal), `${who} sees no owner item through the tool: ${list} ${reveal}`);
       assert.ok(/vault|owner|private|not allowed|refus|stay out/i.test(list), `${who}'s vault.list is refused in words: ${list}`);
       out.push(`${who}: list -> ${list.slice(0, 160)} | reveal -> ${reveal.slice(0, 160)}`);
     }
     const control = await R("owner", `walk-mcp:vault.list {}`);
+    if (planted.startsWith("an item")) assert.ok(control.includes("walk-owner-item"), `the owner's control lists the planted item: ${control}`);
     said["owner-vault"] = control;
     out.push(`owner (control): ${control.slice(0, 200)}`);
     return out.join(" || ");
@@ -358,39 +396,6 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     const hit = all.match(/.{0,60}capsule.{0,60}/i);
     assert.ok(!hit, `the word "Capsule" appears: ${hit && hit[0]}`);
     return `scanned ${all.length} characters in ${seenText.length} views`;
-  }, { needs: [H], owner: "chat" });
-
-  const WB = "three messages sent while a turn runs are answered in the order they came, each under its own person's account, none lost";
-  await J.step(WB, async () => {
-    // a turn that stays busy: the owner's terminal command sleeps, so Grace, Edith and the owner speak into a running turn
-    const sleeper = await speak("owner", "walk-term:sleep 25; echo walkB-done");
-    await sleep(3000);
-    await speak(grace.name, "whoami walkBq1");
-    await sleep(500);
-    await speak(edith.name, "whoami walkBq2");
-    await sleep(500);
-    await speak("owner", "whoami walkBq3");
-    const got = [];
-    for (const [tag, who] of [["walkBq1", grace.name], ["walkBq2", edith.name], ["walkBq3", "owner"]]) {
-      const a = await untilAnswerTo(grace, chat, tag);
-      assert.equal(a.length, 1, `${tag} is answered once: ${JSON.stringify(a.map(m => m.text))}`);
-      const uid = await uidOf(who);
-      assert.ok(String(a[0].text).includes(`/${uid}`), `${tag} ran as ${who}'s account (user ${uid}): ${a[0].text}`);
-      got.push(tag);
-    }
-    const ms = await seen(grace, chat);
-    const at = (/** @type {string} */ t) => ms.findIndex(m => /^assistant:/.test(String(m.author)) && String(m.text).includes(t) && /^home: /.test(String(m.text)));
-    assert.ok(at("walkBq1") < at("walkBq2") && at("walkBq2") < at("walkBq3"), `the answers came in the order the messages were sent: ${[at("walkBq1"), at("walkBq2"), at("walkBq3")]}`);
-    void sleeper;
-    return got.join(", ");
-  }, { needs: [H], owner: "chat" });
-
-  const WZ = "one more message after the queued ones is answered on its person's account (the thread is not wedged)";
-  await J.step(WZ, async () => {
-    await speak(grace.name, "whoami walkZ");
-    const a = await untilAnswerTo(grace, chat, "walkZ");
-    assert.ok(String(a[0].text).includes(`/${accounts[grace.name].uid}`), `walkZ ran as Grace's account: ${a[0].text}`);
-    return String(a[0].text).slice(0, 80);
   }, { needs: [H], owner: "chat" });
 
   const WM = "catchup is what others said since you last read: a member's catchup does not repeat her own messages (it shows what others said since she last read), and on the stream every person's message is followed by its answer in order";
