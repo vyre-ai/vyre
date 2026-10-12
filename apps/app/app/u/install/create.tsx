@@ -1,2 +1,2 @@
-import { InstallScreen } from "../../../screens/install/InstallScreen";
-export default function InstallCreate() { return <InstallScreen start="create" />; }
+import { Redirect } from "expo-router";
+export default function InstallCreate() { return <Redirect href={"/onboard?path=create" as never} />; }

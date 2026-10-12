@@ -244,7 +244,7 @@ function InviteWhoMock({ ctx, set, go, back }: ScreenProps) {
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
       <Field label="Email (optional)" kind="email" value="" onChangeText={() => {}} placeholder="name@firm.com" />
       <Segmented label="Role" options={[["member", "Member"], ["admin", "Admin"]]} value={ctx.inviteRole} onChange={(r) => set({ inviteRole: r })} />
-      <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the matters they are seated on and what the space's rules allow."}</Text>
+      <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
 }
@@ -488,7 +488,7 @@ function InviteWhoLive({ ctx, set, go, back }: ScreenProps) {
       primary={{ label: "Make the invite", loading: busy, disabled: busy, onPress: () => { void next(); } }}>
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
       <Segmented label="Role" options={[["member", "Member"], ["admin", "Admin"]]} value={ctx.inviteRole} onChange={(r) => set({ inviteRole: r })} />
-      <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the matters they are seated on and what the space's rules allow."}</Text>
+      <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
 }

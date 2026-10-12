@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
-import { Banner, Card, Divider, EmptyState, FlowStep, Row, Segmented, Switch, ToastHost } from "@vyre/ui";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Banner, Card, Divider, FlowStep, Row, Segmented, Switch, ToastHost } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
+import { shellKind } from "../../src/shell/shell";
 import { SCREENS, stepLabels } from "./flow-model.js";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
@@ -38,15 +40,20 @@ const VIEWS: Record<string, (p: ScreenProps) => React.JSX.Element> = {
 
 /** The onboarding prototype: one state machine over the flow map (flow-model.js). A screen asks to go to another by id; Back pops. Mock mode only. */
 export function OnboardFlow() {
-  const [stack, setStack] = useState<string[]>(["start"]);
-  const [ctx, setCtx] = useState<Ctx>(FRESH);
+  const { path } = useLocalSearchParams<{ path?: string | string[] }>();
+  const router = useRouter();
+  const entry = Array.isArray(path) ? path[0] : path;
+  // The first-run flow. A join link or "Add a space" opens at the Space step; the mock build opens on its setup screen; a real first run opens on Identity.
+  // On a Mac or Windows shell this is a computer (it asks Compute); a phone or a browser is not.
+  const [stack, setStack] = useState<string[]>(entry === "join" ? ["space.choice", "join.code"] : entry === "create" ? ["space.choice", "create.name"] : MOCK ? ["start"] : ["id.choice"]);
+  const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
   const go = useCallback((id: string) => {
-    if (id === "start") { setStack(["start"]); setCtx(FRESH); return; }
+    // "start" is the mock's setup screen; in a real run it is the end of the flow, and the app opens.
+    if (id === "start") { if (MOCK) { setStack(["start"]); setCtx(FRESH); } else router.replace("/u/now" as never); return; }
     setStack((s) => (VIEWS[id] ? [...s, id] : s));
-  }, []);
+  }, [router]);
   const back = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
-  if (!MOCK) return <EmptyState title="This page is a prototype" body="It only opens in the mock build. Run npm run export:web:mock and open that build." />;
   const id = stack[stack.length - 1];
   const View = VIEWS[id];
   const labels = stepLabels(ctx);
