@@ -96,6 +96,8 @@ export function createRecords(cfg) {
   const hasPrivileged = (/** @type {string} */ type) => {
     if (noPrivileged.has(type)) return false;
     let found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    // a store with its own attribute map and a log that is not durable: the log may be younger than the store, so neither says "none" (rows are gated one by one, nothing is pushed down)
+    if (!found && !kattrs.anyWith && store.meta && log.durable !== true) return true;
     if (!found && !kattrs.anyWith && !privilegedScanned.has(type)) {
       // the map is not the whole truth: ask the log. If the log cannot say, answer "may have privileged rows" (rows are gated one by one) and remember nothing, never "none".
       try {

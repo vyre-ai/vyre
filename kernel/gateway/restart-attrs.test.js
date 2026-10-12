@@ -48,3 +48,27 @@ test("after a restart on a store that keeps kernel attributes in memory: the own
   assert.ok(seen.includes(open.id), "a member still lists the plain note");
   assert.ok(!seen.includes(secret.id), "and still not the privileged one, though the map is empty (the log says it is privileged)");
 });
+
+test("a store with its own attribute map and a log that is not durable never says 'no privileged record': the restricted member's count is not pushed down to the store", async () => {
+  const { createGateway } = await import("./index.js");
+  const { createEventLog } = await import("../core/events.js");
+  const { createChainBuilder } = await import("../core/chain.js");
+  let T = 1_800_000_000_000; const clock = () => ++T;
+  const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), clock });
+  const real = createSqliteStore({ db: new DatabaseSync(":memory:"), clock });
+  const store = Object.create(real, { meta: { value: new Map(), enumerable: true } });
+  const actor = (/** @type {string} */ id) => ({ kind: "person", id, space: SPACE });
+  const grants = [{ id: "gr_0001", space: SPACE, subject: { kind: "actor", actor: actor(OWNER) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active" },
+    { id: "gr_0002", space: SPACE, subject: { kind: "actor", actor: actor(BOB) }, actions: ["records.read"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/note/*`, where: [{ attr: "project", op: "eq", value: "p1" }] }, status: "active" }];
+  const gw = createGateway({ space: SPACE, store, log: createEventLog({ space: SPACE, clock }), chains, clock, attrs: () => ({}), attrPush: () => true,
+    grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: (/** @type {string} */ id) => grants.find(g => g.id === id) },
+    members: { has: (/** @type {any} */ a) => a.id === OWNER || a.id === BOB }, hasPresenceSession: () => false });
+  const owner = chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const bob = chains.fromFacts({ kind: "invitee", person: BOB, vouched: true });
+  await gw.records.define(owner, { add_types: [NOTE] });
+  await gw.records.create(owner, "note", { body: "p1 note" }, { attrs: { project: "p1" } });
+  const before = store.stats().aggregate_pushed;
+  const count = JSON.stringify(await gw.records.aggregate(bob, "note", { measures: [{ fn: "count" }] }));
+  assert.ok(count.includes("1"), `her count is one row: ${count}`);
+  assert.equal(store.stats().aggregate_pushed, before, "and it was not pushed down to the store");
+});
