@@ -325,7 +325,7 @@ export async function sharedChatSteps({ J: J0, w, team, people, needs }) {
     };
     // an item in the owner's vault first, so "the refusal shows no item name" can fail: the owner's app puts it (the box may ask the owner for presence, which a walk does not give: then it is said, not hidden)
     let planted = "";
-    try { await w.call("vault.put", { name: "walk-owner-item", kind: "secret", value: "WALK-NOT-A-REAL-VALUE" }); planted = "an item named walk-owner-item is in the owner's vault"; }
+    try { const put = await w.call("vault.put", { name: "walk-owner-item", kind: "secret", value: "WALK-NOT-A-REAL-VALUE" }); planted = JSON.stringify(put).includes("walk-owner-item") && !/held|pending|presence/i.test(JSON.stringify(put)) ? "an item named walk-owner-item is in the owner's vault" : `NO ITEM WAS STORED (vault.put answered ${JSON.stringify(put).slice(0, 160)}): the refusal below proves less`; }
     catch (e) { planted = `NO ITEM COULD BE PLANTED (${String(e && /** @type {any} */ (e).message).slice(0, 120)}): the refusal below proves less`; }
     const out = /** @type {string[]} */ ([planted]);
     for (const who of [grace.name, edith.name]) {
