@@ -49,8 +49,8 @@ export function createPeerDoor(o) {
       const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data;
       if (!(d && d.kind === "app" && d.removed === false)) return null;
       // the person the device's own record names (Wink: who confirmed it); callerFacts gives the device the owner's person only when this is the home's owner
-      let person = null; try { const w = await o.registry.call("wink.device.record", { id }, "module:vyred"); person = w && w.data && typeof w.data.owner === "string" ? w.data.owner : null; } catch { person = null; }
-      return { ...d, person };
+      let person = null, homeOwner = false; try { const w = await o.registry.call("wink.device.record", { id }, "module:vyred"); person = w && w.data && typeof w.data.owner === "string" ? w.data.owner : null; homeOwner = Boolean(w && w.data && w.data.homeOwner); } catch { person = null; }
+      return { ...d, person, homeOwner };
     } catch { return null; }
   };
   /** The person a device is: the facts the daemon proves for it (PH-1) name the home's owner, and only for a live app device. @param {string} id */
