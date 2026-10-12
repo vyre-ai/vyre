@@ -31,8 +31,9 @@ test("a module's view of a hosted Space carries no kernel; the registry still ro
   assert.equal(view.kernel, undefined, "no kernel on the view");
   assert.ok(!("kernel" in view) && !Object.keys(view).includes("kernel") && !Reflect.ownKeys(view).includes("kernel"), "not under any key listing");
   assert.equal(view.gateway.serviceChain("work"), "chain:skills", "and the gateway still gives only the module's own chain");
-  assert.equal(view.own.chats, "chats-of-skills", "the module's own handle there is on offer, and is its own");
-  assert.equal(reg.withCrossSpace({ name: "stream" }, home).for("spc_team").own.chats, "chats-of-stream");
+  assert.equal(view.chats, "chats-of-skills", "the module's own chat calls there are on offer, and are its own");
+  assert.equal(view.own, undefined, "and no whole handle: its for() would hand back the raw gateway and kernel");
+  assert.equal(reg.withCrossSpace({ name: "stream" }, home).for("spc_team").chats, "chats-of-stream");
   // the registry's own routing takes the raw kernel from its private side, so the module is still routed to its handle in the Space the call runs for
   reg.spaceOfCall = () => "spc_team";
   const routed = reg.routedKernel({ name: "skills" }, skills);

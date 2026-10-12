@@ -128,7 +128,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const chatsOf = grp => {
     const sp = spaceOfChat.get(grp);
     if (!sp) return ctx.kernel.chats;
-    try { return ctx.kernel.for(sp).own.chats; } catch { return null; }
+    try { return ctx.kernel.for(sp).chats; } catch { return null; }
   };
   /** @type {Map<string, Member>} */ const byThread = new Map();
   /** @type {Set<Member>} */ const dirty = new Set();
