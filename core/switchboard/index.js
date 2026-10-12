@@ -2664,6 +2664,7 @@ export class Switchboard {
       const kept = optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (once.back.account) kept.account = once.back.account; else delete kept.account;
       if (once.back.person) kept.person = once.back.person; else delete kept.person;
+      delete kept.switchPerson;   // the hop is over: its person must not pick the account of the resume that follows (the rows queued behind belong to the base's own people)
       this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(once.back.provider, once.back.account || null, once.back.model || null, JSON.stringify(kept), id);
       const left = this.live.get(id); if (left) left.haltReason = "switching back failed";
       await this.stop(id).catch(() => {});
