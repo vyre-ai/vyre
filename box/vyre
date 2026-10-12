@@ -1617,6 +1617,9 @@ sp_image_current() {
   cur=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
   printf '%s\n' "$cur" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 0
   [ "$cur" != "$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)" ] || return 0
+  # Pulling the images the generator names can take minutes: say so, in the status vyred logs while it waits and in root's own log, so nobody is told the helper is broken.
+  sp_status "$id" running "recording the image Vyre runs now"
+  sp_log "the recorded image is not the one the vyre container runs; recording it again"
   ( space_helper_record ) >/dev/null 2>&1 || { MSG="the image the helper recorded is not the one Vyre runs, and recording it again failed; run: sudo vyre space-helper install"; return 1; }
 }
 # space_helper_record: the image the helper regenerates from is the one the vyre container runs now (an update has verified it), recorded by id, and the

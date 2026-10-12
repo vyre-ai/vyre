@@ -75,6 +75,7 @@ test("space helper: a recorded image that is gone (a reinstalled server) is reco
   const st = r.status(id);
   assert.equal(st.state, "ok", JSON.stringify(st));
   assert.equal(fs.readFileSync(path.join(r.SP, "private", "image"), "utf8").trim(), running, "the record is the container's image again");
+  assert.match(fs.readFileSync(path.join(r.SP, "private", "log"), "utf8"), /recording it again/, "root's log says it recorded the image again, so a long pull is not read as a broken helper");
   // When the record is already current nothing is recorded again.
   const before = r.calls().split("\n").filter(l => /^pull /.test(l)).length;
   const id2 = r.ask("up harlow\n");
