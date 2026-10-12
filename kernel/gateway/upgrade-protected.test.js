@@ -29,3 +29,18 @@ test("upgrade: a Space that already holds an unprotected reminder type; the plan
   const ev = await k.gateway.events.read(bob, {});
   assert.ok(!ev.some(e => String(e.subject).includes("/reminder/")), "and the event log shows her none of its events");
 });
+
+test("fresh order: a Records call warms the protected set, THEN the module's type arrives protected through the kernel handle; a member reads none of its rows", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const r = { person: BOB, role: "member" }; await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${BOB}`) });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [{ name: "memo", label: "Memo", fields: [{ name: "title", kind: "text", label: "T" }] }] });
+  await R.query(bob, "memo", { page: { limit: 1 } });   // the first read of the definitions: the set is built from what exists now
+  const h = k.kernelFor({ name: "planner", needs: { kernel: { actions: ["records.read", "records.create", "records.update"], types: [NEW] } } });
+  const row = await h.records.create(k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" }), "reminder", { title: "OWNER-REMINDER" });
+  assert.ok(row && row.id, "the module's type exists and holds a row");
+  assert.equal((await R.query(bob, "reminder", { page: { limit: 5 } })).rows.length, 0, "a member reads none");
+  assert.equal(await R.get(bob, "reminder", row.id), null);
+});
