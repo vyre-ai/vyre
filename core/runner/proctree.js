@@ -61,6 +61,7 @@ export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs)
 export function killTree(root, o = {}) {
   const procs = o.procs || (() => allProcs());
   const kill = o.kill || ((/** @type {number} */ pid, /** @type {NodeJS.Signals} */ s) => process.kill(pid, s));
+  // The wait blocks the calling thread (Atomics.wait): at most 2 ms a pass and 208 passes, about 0.4 s in the worst case, on a stop path only.
   const sleep = o.sleep || ((/** @type {number} */ ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait available: the next read is the wait */ } });
   // never signal this process or pid 1, whatever the walk reaches: a wrong root or a re-parented walk must not stop vyred itself
   if (!(root > 1) || root === process.pid) return 0;
