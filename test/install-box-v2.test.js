@@ -532,11 +532,11 @@ test("install-box.sh v2: IR-2 with a setup code the terminal shows the check wor
   assert.ok(!b.calls().includes("wink.server.code"), "the pairing was not even asked for");
 });
 
-test("install-box.sh v2: without a setup code the terminal asks nothing and pairs nothing: it says to use the app's line, and the start is quiet", t => {
+test("install-box.sh v2: without a setup code the terminal asks nothing and pairs nothing: it names `vyre space up` for the code, and the start is quiet", t => {
   const b = box(t, { docker: PAIRING_BOX });
   const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Open the Vyre app, choose "Add a server", and run the line it shows on this server\./);
+  assert.match(r.stdout, /Get your space code on the server: vyre space up/, "piped output names the command and does not print a code");
   for (const gone of [/Long code/, /WINKLONGCODE/, /type this code/i, /Pair this server from your Vyre app/, /wink\.server\.code/]) assert.doesNotMatch(r.stdout, gone);
   assert.ok(!b.calls().includes("wink.server.code") && !b.calls().includes("wink.server.pairing"), "the pairing was not asked for");
   assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
