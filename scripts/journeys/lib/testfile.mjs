@@ -36,9 +36,20 @@ export function whyOf(lines, from) {
   return (text + (code && !text.includes(code.trim()) ? ` (${code.trim()})` : "")).slice(0, 700);
 }
 
+/**
+ * The environment a test file is spawned with: this process's, WITHOUT what a journeys world sets on it (scripts/lib/proof/server-daemon.mjs puts VYRE_HOME, VYRE_STORE and the setup code on the runner's own
+ * process and takes them off only when that world stops). A test file builds its own daemon in its own home; with the world's VYRE_STORE=auto it would run on a real Twenty that is still defining its types
+ * (3 s a call), and with the world's VYRE_HOME next to the world's. A file that wants a store asks for it in `o.env`.
+ */
+export function journeyEnv() {
+  const env = { ...process.env };
+  for (const k of ["VYRE_HOME", "VYRE_STORE", "VYRE_SETUP_CODE", "VYRE_SETUP_CODE_AT"]) delete env[k];
+  return env;
+}
+
 export function walkTestFile(J, file, owner, o = {}) {
   const r = spawnSync(process.execPath, ["--test", "--test-reporter=tap", path.join(REPO, file)], {
-    cwd: REPO, encoding: "utf8", timeout: o.timeoutMs ?? 10 * 60_000, maxBuffer: 64 << 20, env: { ...process.env, VYRE_NO_DIALOGS: "1", ...(o.env || {}) },
+    cwd: REPO, encoding: "utf8", timeout: o.timeoutMs ?? 10 * 60_000, maxBuffer: 64 << 20, env: { ...journeyEnv(), VYRE_NO_DIALOGS: "1", ...(o.env || {}) },
   });
   const out = `${r.stdout}\n${r.stderr}`;
   /** @type {{ ok: boolean, name: string, why: string }[]} */ const cases = [];
