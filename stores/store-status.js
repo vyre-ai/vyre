@@ -45,3 +45,21 @@ export async function storeStatus(o) {
   }
   return { store: inUse, from, mode, records, reachable, ...(unavailable ? { unavailable } : {}), ...(notes.length ? { note: notes.join("; ") } : {}) };
 }
+
+/**
+ * storeStatus, but never for longer than `ms`. /v1/health carries this answer, and it asks the record store: while Records sets up its types, every call to the store queues behind the slow
+ * ones (4 to 6 s each, minutes in all on a first start), so the health answer itself took longer than the 10 s the CLI waits, and `vyre status`, the installer and the updater read a working
+ * vyred as one that was not answering. vyred is alive and serving other things in that time; the health answer says so and says the store is busy, instead of waiting for it.
+ * @param {number} ms @param {Parameters<typeof storeStatus>[0]} o
+ * @returns {Promise<Awaited<ReturnType<typeof storeStatus>> | { store: string, from: string, mode: string, records: null, reachable: false, busy: true, note: string }>}
+ */
+export async function storeStatusWithin(ms, o) {
+  /** @type {any} */ let timer;
+  const late = new Promise(r => { timer = setTimeout(() => r(null), ms); });
+  try {
+    const got = await Promise.race([storeStatus(o), late]);
+    if (got) return got;
+  } finally { clearTimeout(timer); }
+  const store = o.store;
+  return { store: store && store.kind === "twenty" ? "twenty" : "builtin", from: o.env?.VYRE_STORE ? "VYRE_STORE" : "default", mode: "busy", records: null, reachable: false, busy: true, note: "the record store is busy setting up; Vyre is running and this answers when it is done" };
+}
