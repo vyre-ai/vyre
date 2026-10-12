@@ -521,7 +521,10 @@ export class Switchboard {
     try {
       for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%hopBack%'").all())) {
         const back = optsOf(r).hopBack;
-        if (back && typeof back === "object" && back.provider) this.endHop(String(r.id), back);
+        if (back && typeof back === "object" && back.provider) {
+          this.endHop(String(r.id), back);
+          try { this.emit("thread.text", { message: "vyre", text: "The server restarted while a turn was running on another account. That turn did not finish; the chat is back on its own account. Send the message again if it is still needed.", done: true, notice: true }, String(r.id), null); } catch { /* a notice */ }
+        }
       }
     } catch { /* no hop record */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
@@ -2191,7 +2194,11 @@ export class Switchboard {
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
-    if (this.once.has(id) && !this.reverting.has(id)) this.endHop(id, this.once.get(id).back);   // the hop's process ended on its own (stopped, crashed): the thread goes back to its base record, nobody reverts it later
+    if (this.once.has(id) && !this.reverting.has(id)) {
+      this.endHop(id, this.once.get(id).back);
+      // said once, in words: that person's turn did not finish, and the chat is back on its usual account
+      try { const r0 = this.record(id); this.emit("thread.text", { message: "vyre", text: "A turn on another account stopped before it finished. The chat is back on its own account; send that message again if it is still needed.", done: true, notice: true }, id, r0 ? r0.project : null); } catch { /* a notice */ }
+    }   // the hop's process ended on its own (stopped, crashed): the thread goes back to its base record, nobody reverts it later
     this.closeSocket(id);
     if (st.startWatch) { clearTimeout(st.startWatch); st.startWatch = null; }
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);

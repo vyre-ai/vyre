@@ -583,6 +583,57 @@ test("HOP: a thread bob started takes carol's one turn on her own account (her t
   assert.equal(JSON.parse(run().opts).person, BOB, "bob is still the thread's person");
 });
 
+/** bob starts the chat's thread; carol's long turn runs on her own account (a hop); returns what the stop and restart tests need. */
+async function carolMidHop(/** @type {any} */ w, /** @type {any} */ b, /** @type {any} */ t, /** @type {string} */ long) {
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  const db = /** @type {any} */ (b.reg.deps.db || /** @type {any} */ (b.reg).db);
+  const acct = (/** @type {string} */ who) => db.prepare("SELECT id FROM sessions_accounts WHERE label = ?").get(`${who}'s Claude`).id;
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, watcher, "B-FIRST", 60_000)).who, BOB);
+  const thread = kitThread(b, chat.id);
+  const run = () => db.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(thread);
+  const bobsAccount = run().account;
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: long, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => run().account === acct("carol"), "the thread to be on carol's account (her hop)", 30_000);
+  return { chat, watcher, db, acct, thread, run, bobsAccount };
+}
+
+test("STOP: a hop's process stopped mid-turn puts the chat back on bob's account, says so once, and bob's next turn is answered on his own account", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const h = await carolMidHop(w, b, t, LONGER);
+  assert.ok(JSON.parse(h.run().opts).switchPerson, "during the hop the record names carol");
+  const stopped = await b.reg.call("threads.stop", { thread: h.thread }, "deck", { token: w.tokens.bob });
+  assert.ok(!stopped.error, stopped.error && stopped.error.message);
+  await until(() => h.run().account === h.bobsAccount, "the thread to be back on bob's account", 30_000);
+  const o = JSON.parse(h.run().opts);
+  assert.ok(o.switchPerson === undefined && o.hopBack === undefined && o.person === BOB, "the hop's person and record are gone: " + h.run().opts);
+  await until(() => textOf(h.watcher.frames).includes("stopped before it finished"), "the room to be told", 20_000);
+  assert.ok(!(await b.as("bob")("stream.send", { chat: h.chat.id, text: "B-AFTER-STOP", to: ["assistant:assistant"], cwd: w.work })).error);
+  const next = await answered(w, h.watcher, "B-AFTER-STOP", 60_000);
+  assert.equal(next.who, BOB);
+  assert.equal(h.run().account, h.bobsAccount, "and it ran on bob's own account");
+});
+
+test("RESTART: the daemon dies with carol's hop pending: after the restart the chat is on bob's account, the room is told, and bob's next turn is answered on it", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const b1 = await w.boot();
+  const h = await carolMidHop(w, b1, t, LONGER);
+  await w.crash(b1);
+  const b2 = await w.boot();
+  t.after(() => b2.stop().catch(() => {}));
+  const db2 = /** @type {any} */ (b2.reg.deps.db || /** @type {any} */ (b2.reg).db);
+  const row = () => db2.prepare("SELECT account, opts FROM threads_runs WHERE id = ?").get(h.thread);
+  assert.equal(row().account, h.bobsAccount, "after the restart the record is on bob's account");
+  const o = JSON.parse(row().opts);
+  assert.ok(o.switchPerson === undefined && o.hopBack === undefined, "no hop record is left: " + row().opts);
+  const bob = await b2.watch("bob", h.chat.id);
+  assert.ok(!(await b2.as("bob")("stream.send", { chat: h.chat.id, text: "B-AFTER-RESTART", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.equal((await answered(w, bob, "B-AFTER-RESTART", 60_000)).who, BOB);
+  assert.equal(row().account, h.bobsAccount);
+});
+
 test("SEQ: bob, carol, bob, carol, ada take turns in one chat, each on their own account; no turn is refused, and each is answered", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);
