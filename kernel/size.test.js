@@ -21,7 +21,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // [kernel +12: hasPrivileged answers from the log after a restart instead of trusting an empty in-memory map, and answers "may have" where the log cannot say] (rc1-a)
 // [kernel +4: the planner keeps its reminder and note types where they are defined protected, so a member reads another person's through no Records route] (rc1-b)
 const CAP = 9529;
-// (planner-rows, not yet counted in the cap above: 9517 (kernel +4 on 9513: the planner's reminder and note types are kept by the planner where they are defined protected, so a member reads another person's through no Records route).)
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
