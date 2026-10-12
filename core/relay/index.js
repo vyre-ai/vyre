@@ -71,9 +71,11 @@ export const MIGRATIONS = [
   `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
   // Where the app SAYS it made its device key (hardware | software | unknown), from the pairing hello: self-reported, display only (the Devices line shows only "software").
   `ALTER TABLE relay_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown';`,
-  // The owner's own PRESENT act paired this device (the first device, the classic QR he made with presence, a window he confirmed on a screen, the three words): who and how, as a fact of its own beside the Wink record.
+  // The owner's own PRESENT act paired this device (the first device, a window he confirmed on a screen, the three words; the classic QR is a bearer code and is not one): who and how, as a fact of its own beside the Wink record.
   // It is never written for a ticket nobody was present for. It opens no person session and grants no pairing; the bus rule and the caller's facts read it (see `deviceIsOwner` in core/daemon/index.js).
   `ALTER TABLE relay_devices ADD COLUMN owner_paired TEXT;`,
+  // a presence key a device offered when it redeemed a bearer (classic QR) code: not enrolled until the owner marks the device as his (relay.devices.mark)
+  `ALTER TABLE relay_devices ADD COLUMN offered_key TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -365,7 +367,13 @@ export default {
       const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
       let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
       const pk = hello.presenceKey;
-      if (pk && typeof pk.public_key === "string") {
+      // The classic QR is a bearer code: whoever holds the string redeems it, so the key it brings is not enrolled as a presence key until the owner marks the device as his. It is kept (offered_key) for that moment.
+      const bearer = Boolean(match && match.via === "start" && match.first !== true && !match.window && !match.gate);
+      let offeredJson = null;
+      if (bearer && pk && typeof pk.public_key === "string") {
+        offeredJson = JSON.stringify({ public_key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", name });
+        presence = { enrolled: false, reason: "this device is not yet marked as yours: mark it on the box (vyre relay mark) to let it approve" };
+      } else if (pk && typeof pk.public_key === "string") {
         // A Mac server's core takes the app's Secure Enclave key as its Capsule key (`kind: "capsule"`), handed over by a proof the app's setup key signed over the exact name (`core_name`); both are core's to check, here they are only carried.
         const withProof = typeof pk.core_proof === "string" && pk.core_proof && typeof pk.core_name === "string" && pk.core_name;
         const r = await ctx.call("presence.enroll", { kind: withProof && pk.kind === "capsule" ? "capsule" : "device", name: withProof ? pk.core_name : name, public_key: pk.public_key, alg: pk.alg ?? -7, ...(withProof ? { core_proof: pk.core_proof } : {}) });
@@ -386,6 +394,7 @@ export default {
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
           node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired`)
         .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage, ownerPaired);
+      db.prepare("UPDATE relay_devices SET offered_key = ? WHERE id = ?").run(offeredJson, id);
       // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
       // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
       const pkey = hello.passkey;
@@ -722,7 +731,7 @@ export default {
       const row = /** @type {any} */ (db.prepare("SELECT presence_key, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) return false;
       // Only what the 4401 answer needs stays (the key and the time): the name the person deleted, the presence key id, the build and the path are blanked.
-      db.prepare("UPDATE relay_devices SET removed_at = ?, owner_paired = NULL, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0 WHERE id = ?").run(now(), id);
+      db.prepare("UPDATE relay_devices SET removed_at = ?, owner_paired = NULL, offered_key = NULL, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0 WHERE id = ?").run(now(), id);
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
       live.delete(id);
       if (row.presence_key) ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
@@ -1177,6 +1186,16 @@ export default {
         if (!row) throw fail("not_found", `no paired device ${id}; list your devices and pick one of them`);
         if (row.kind !== "app") throw fail("bad_input", "only a phone or computer app can be marked as yours; a browser is trusted instead");
         db.prepare("UPDATE relay_devices SET owner_paired = ? WHERE id = ? AND owner_paired IS NULL").run(JSON.stringify({ by: "owner", at: now(), path: "marked" }), id);
+        // the key a bearer redeemer offered is enrolled now, by the owner's act, and not before
+        const held = /** @type {any} */ (db.prepare("SELECT offered_key, presence_key FROM relay_devices WHERE id = ?").get(id));
+        if (held && held.offered_key && !held.presence_key) {
+          try {
+            const o = JSON.parse(held.offered_key);
+            const r = /** @type {any} */ (await ctx.call("presence.enroll", { kind: "device", name: o.name, public_key: o.public_key, alg: o.alg ?? -7 }));
+            if (r && r.data && (r.data.keyId || r.data.id)) db.prepare("UPDATE relay_devices SET presence_key = ?, offered_key = NULL WHERE id = ?").run(String(r.data.keyId || r.data.id), id);
+            else ctx.log(`relay: the marked device's presence key was not enrolled: ${(r && r.error && r.error.message) || "presence would not enroll it"}`);
+          } catch (e) { ctx.log(`relay: the marked device's presence key was not enrolled: ${/** @type {Error} */ (e).message}`); }
+        }
         return { id, ownerPaired: true };
       },
     });

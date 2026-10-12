@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import nodeC from "node:crypto";
 import http from "node:http";
 import { start, callerFacts } from "../core/daemon/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
@@ -125,4 +126,21 @@ test("a home with a member: the owner's own device reaches the owner's vault, a 
   });
   assert.equal(await vaultList(first.device), 200, "the owner's first device");
   assert.equal(await vaultList(bearer.device), 403, "a device that redeemed the classic code is not the owner's");
+});
+
+test("a presence key offered at a bearer (classic QR) redeem is not enrolled; the owner's mark enrols it", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const pk = (/** @type {number} */ _n) => ({ public_key: nodeC.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" });
+  const redeem = async (/** @type {string} */ tool, /** @type {any} */ caller, /** @type {number} */ n) => pairOffer(/** @type {any} */ (parsePairUrl((await w.d.registry.call(tool, {}, caller, PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: w.keys(), presenceKey: pk(n) });
+  const hasKey = async (/** @type {string} */ id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find((/** @type {any} */ d) => d.id === id).presence;
+  const first = await redeem("relay.pair.first", "onboard", 1);
+  assert.equal(await hasKey(first.device), true, "the owner's first device has its presence key enrolled at once");
+  const bearer = await redeem("relay.pair.start", "cli", 2);
+  assert.equal(await hasKey(bearer.device), false, "a bearer redeemer's key is not enrolled");
+  // the owner marks it: now the key is enrolled
+  const K = w.d.kernel;
+  const token = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: K.id.owner, path: "direct", session: "s" }), {})).token;
+  const ok = await w.d.registry.call("relay.devices.mark", { id: bearer.device }, "cli", { ...PROOF, token });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  assert.equal(await hasKey(bearer.device), true, "marked: the key is enrolled by the owner's act");
 });
