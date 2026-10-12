@@ -1401,3 +1401,17 @@ test("box update (rc.3): the floor verb reads the version from the copy it hashe
   assert.notEqual(linked.code, 0);
   assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
 });
+
+test("box update (rc.3): a FIFO put at the stack folder's VERSION is refused at once, not waited on", { timeout: 20_000 }, async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  assert.equal((/** @type {any} */ (await b.run(["update"], asPerson(b, true)))).code, 0);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.rmSync(path.join(b.DIR, "VERSION"));
+  assert.equal(spawnSync("mkfifo", [path.join(b.DIR, "VERSION")]).status, 0);
+  const r = /** @type {any} */ (await b.run(["raise-floor"], asRoot()));
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /not the one the signed release lists/);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
+});

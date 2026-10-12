@@ -6,6 +6,9 @@ import { storeMode } from "./twenty/space-store.js";
 import fs from "node:fs";
 import path from "node:path";
 
+/** What a store says while it is setting itself up (stores/twenty/deferred-store.js, startingWords): progress, not a failure. */
+const STARTING = /^(starting Records|the record store is still starting)/;
+
 /**
  * @param {{ root: string, store?: any, server?: boolean, env?: Record<string, string | undefined> }} o `root` is the vyred home; `store` is the kernel's record store (kernel.store)
  * @returns {Promise<{ store: "builtin" | "twenty", from: "VYRE_STORE" | "default", mode: string, records: number | null, reachable: boolean, unavailable?: { reason: string, since: string, attempts: number, next_try_at?: string }, note?: string }>}
@@ -19,8 +22,17 @@ export async function storeStatus(o) {
   const inUse = store && (store.kind === "twenty" || (typeof store.constructor === "function" && store.constructor.name === "TwentyStore")) ? "twenty" : "builtin";
   /** @type {string[]} */ const notes = [];
   let reachable = true;
+  /** @type {string} */ let setting = "";
   if (inUse === "twenty" && typeof store.health === "function") {
-    try { const h = await store.health(); if (!h.ok) { reachable = false; notes.push(`Twenty is not answering: ${h.detail || "no reply"}`); } } catch (e) { reachable = false; notes.push(`Twenty is not answering: ${/** @type {Error} */ (e).message}`); }
+    try {
+      const h = await store.health();
+      if (!h.ok) {
+        reachable = false;
+        // A store that is setting itself up is not one that is not answering: say what it is doing, and do not repeat the reason an earlier attempt failed (the retry is under way).
+        if (STARTING.test(String(h.detail || ""))) { setting = String(h.detail); notes.push(`the record store is busy setting up: ${setting.replace(/^the record store is still starting: ?/, "")}`); }
+        else notes.push(`Twenty is not answering: ${h.detail || "no reply"}`);
+      }
+    } catch (e) { reachable = false; notes.push(`Twenty is not answering: ${/** @type {Error} */ (e).message}`); }
   }
   if (mode === "twenty" && inUse !== "twenty") { reachable = false; notes.push("VYRE_STORE asks for Twenty and this server is not using it"); }
   // a home that was put on Twenty earlier and is now running on the built-in store (the setting is gone): the records shown are the built-in store's
@@ -34,7 +46,7 @@ export async function storeStatus(o) {
     const st = JSON.parse(fs.readFileSync(path.join(o.root, "kernel", "store-state.json"), "utf8"));
     // The file is a record of an attempt that failed, kept so `vyre status` can say why. A store that is attached and answering is the newer fact: a file left by an earlier process (a restart that opened the store at once never cleared it) must not say "not available yet" about a store that is up.
     const live = Boolean(store) && reachable && (typeof store.attached !== "function" || store.attached());
-    if (st && st.state === "unavailable" && !live) { unavailable = { reason: st.reason, since: st.since, attempts: st.attempts, ...(st.next_try_at ? { next_try_at: st.next_try_at } : {}) }; reachable = false; notes.push(`the record store is not available yet: ${st.reason}`); }
+    if (st && st.state === "unavailable" && !live && !setting) { unavailable = { reason: st.reason, since: st.since, attempts: st.attempts, ...(st.next_try_at ? { next_try_at: st.next_try_at } : {}) }; reachable = false; notes.push(`the record store is not available yet: ${st.reason}`); }
   } catch { /* none */ }
   let records = null;
   if (store && reachable) {

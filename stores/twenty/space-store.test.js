@@ -266,11 +266,28 @@ test("rc.3: a store-state.json left by an earlier process is cleared when the st
   const alone = await storeStatus({ root: home, store: up, env: {} });
   assert.equal(alone.reachable, true); assert.equal(alone.unavailable, undefined); assert.doesNotMatch(alone.note || "", /not available yet/);
   // A store that is still away keeps saying why.
-  const away = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "starting Records" }), types: async () => [], aggregate: async () => [] };
+  const away = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store for this space is not available yet: the compose file could not be regenerated" }), types: async () => [], aggregate: async () => [] };
   const still = await storeStatus({ root: home, store: away, env: { VYRE_STORE: "twenty" } });
   assert.equal(still.reachable, false); assert.match(still.unavailable.reason, /compose file/);
   // And the opener clears the file when its store opens on the first try.
   const f = createStoreFor({ home, mode: "sqlite", degrade: true, helper: false });
   await f(SP, { personal: true });   // sqlite: the kernel's own store, opened at once
   assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false, "the earlier process's record is gone");
+});
+
+test("rc.3: while the record store is setting itself up the status says it is busy setting up, and does not repeat the reason an earlier attempt failed", async () => {
+  const home = tmp(); const dir = path.join(home, "kernel");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "store-state.json"), JSON.stringify({ state: "unavailable", reason: "the server could not up this space's store: the compose file could not be regenerated", since: "2026-10-12T14:13:42Z", attempts: 2 }));
+  const { storeStatus } = await import("../store-status.js");
+  const starting = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store is still starting: preparing its record types (about a minute the first time) (12 minutes so far)" }), types: async () => [], aggregate: async () => [] };
+  const s = /** @type {any} */ (await storeStatus({ root: home, store: starting, env: { VYRE_STORE: "twenty" } }));
+  assert.equal(s.reachable, false);
+  assert.match(s.note, /the record store is busy setting up: preparing its record types/);
+  assert.doesNotMatch(s.note, /Twenty is not answering|not available yet|compose file/);
+  assert.equal(s.unavailable, undefined);
+  // A store that failed and is waiting to try again (not starting) still says why.
+  const failed = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "the record store for this space is not available yet: the compose file could not be regenerated" }), types: async () => [], aggregate: async () => [] };
+  const f = /** @type {any} */ (await storeStatus({ root: home, store: failed, env: { VYRE_STORE: "twenty" } }));
+  assert.match(f.unavailable.reason, /compose file/);
 });

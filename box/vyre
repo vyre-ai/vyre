@@ -587,7 +587,8 @@ raise_floor_root() {
   # refused) into its own private folder, hashes that copy, and reads the version from the same copy.
   vt=$(mktemp "$UPD_PRIV/floor-version.XXXXXX") || die "could not make a private copy in $UPD_PRIV; the floor was not changed"
   rm -f "$vt"
-  if [ -z "$want" ] || ! cp -P "$DIR/VERSION" "$vt" 2>/dev/null || [ -L "$vt" ] || [ ! -f "$vt" ] || [ "$want" != "$(sha256 "$vt")" ]; then
+  # (a FIFO or a device the person put at that name would make cp wait for a writer: only a plain file or a link is copied, and the copy is checked again below)
+  if [ -z "$want" ] || { [ ! -f "$DIR/VERSION" ] && [ ! -L "$DIR/VERSION" ]; } || ! cp -P "$DIR/VERSION" "$vt" 2>/dev/null || [ -L "$vt" ] || [ ! -f "$vt" ] || [ "$want" != "$(sha256 "$vt")" ]; then
     rm -f "$vt"
     die "the version on record in $DIR is not the one the signed release lists, so the floor was not changed; run: sudo vyre update"
   fi
