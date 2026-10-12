@@ -39,7 +39,8 @@ test("a run is about the record that started it: the record's links find it, and
   await settle(w);
   const [run] = await w.runner.listRuns({ flow: id });
   assert.equal(run.record, m.urn, "the run names the record the stage move was about");
-  const { rows } = await w.kernel.gw.records.linked(chain, m.urn);
+  // a run is a row of a type the Flows keep: a link read returns it to the Space's owner (class 3), as a query would, not to a chain that is only an automation with an approver behind it
+  const { rows } = await w.kernel.gw.records.linked(w.kernel.as(ALEX), m.urn);
   const hit = rows.filter(r => r.type === "flow-run");
   assert.equal(hit.length, 1, "the matter's links find its run");
   assert.deepEqual([hit[0].record.data.title, hit[0].record.data.state], ["Welcome the client", "done"]);

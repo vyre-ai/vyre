@@ -87,7 +87,7 @@ export function createGateway(cfg) {
     { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(e.subject)); if (m && !(await records.mayKeep(chain, m[1]))) return false; if (m && !(await records.mayViewRow(chain, m[1], m[2]))) return false; }
     // an event about a file (written, read, moved, deleted) is judged like the file: whoever may open it may know of it, nobody else (its path, size and who touched it are the file's)
     if (/^vyre:\/\/[^/]+\/file\//.test(String(e.subject))) {
-      const memb = wiring.members || cfg.members, staff = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && ["owner", "admin"].includes(String((memb && memb.membership && memb.membership(h.actor) || {}).role)));
+      const staff = records.staffOfChain(chain);
       if (!staff && !(await allowed(chain, "drive.read", e.subject))) return false;
     }
     const vis = e.vis;

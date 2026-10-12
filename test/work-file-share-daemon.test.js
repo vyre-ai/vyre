@@ -29,7 +29,7 @@ test("work.file.share opens one chat file to a project member and work.file.unsh
   const call = async (/** @type {any} */ c, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await as(c));
   const chat = await grants.chats.create(bob, {});
   // the work module files every chat in its creator's Personal project: the chat's folders are under that record's drive root
-  const rec = await until(async () => ((await d.kernel.gateway.records.query(bob, "chat-record", { filter: { field: "chat", op: "eq", value: chat.id }, page: { limit: 1 } })).rows || [])[0], "the chat record");
+  const rec = await until(async () => ((await d.kernel.gateway.records.query(d.kernel.gateway.serviceChain("work"), "chat-record", { filter: { field: "chat", op: "eq", value: chat.id }, page: { limit: 1 } })).rows || [])[0], "the chat record");
   const dir = `${rec.data.drive}/chat/${chat.id}`, drive = d.kernel.gateway.drive;
   await drive.put(bob, `${dir}/shared.txt`, new TextEncoder().encode("for the project"));
   await drive.put(bob, `${dir}/private.txt`, new TextEncoder().encode("not shared"));
