@@ -75,7 +75,7 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     const { routeCall, listAllSpaces, listAllChats, noteChat } = await import("./space-servers");
     // The list of Spaces is every server's, so the switcher shows them all (each row says which server it is on).
     if (name === "spaces.list" && !opts.server) { const all = await listAllSpaces(); if (all) return all as T; }
-    const route = await routeCall({ input, showing: useSpaces.getState().space, server: opts.server });
+    const route = await routeCall({ tool: name, input, showing: useSpaces.getState().space, server: opts.server });
     if (route.error) throw new BoxError(route.error.code, route.error.message);
     const to = route.box;
     // The chats list is every server's under All spaces. A new chat belongs to a Space on one server, so with several servers it is made only when a Space is showing (never guessed onto the active one).

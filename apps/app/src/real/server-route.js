@@ -27,6 +27,12 @@ export function serverFor(o) {
   const named = urn ? urn[1] : o.input && typeof o.input.space === "string" ? o.input.space : "";
   const space = SPACE.test(named) ? named : SPACE.test(o.showing ?? "") ? /** @type {string} */ (o.showing) : "";
   const box = space ? o.spaceServers[space] : undefined;
+  if (!box && o.paired.length > 1 && needsSpace(o.tool)) {
+    // An action on a record, file, task, rule, flow or project goes to the server that holds its Space and nowhere else: with no Space, or one whose server is unknown, it is refused, never sent to the active server.
+    return space
+      ? { error: { code: "space_unknown_server", message: "Vyre does not know which server holds that Space yet. Open Settings, Servers, wait a moment and try again. Nothing was changed." } }
+      : { error: { code: "pick_a_space", message: "Pick the Space this is for first. Each Space lives on one server, and this goes only there. Nothing was changed." } };
+  }
   if (!box) return { box: undefined };
   return o.paired.includes(box) ? { box } : refuse();
 }

@@ -76,14 +76,16 @@ export async function listAllChats(input: Record<string, unknown>): Promise<{ ch
 export function noteChat(chat: string, box: string | undefined): void { if (chat && box) chatMap[chat] = box; }
 
 /** Which server a call goes to. `server` is a box id when the call names one. Throws nothing: an error comes back to the caller to refuse in words. */
-export async function routeCall(o: { input: Record<string, unknown>; showing: string; server?: string }) {
+export async function routeCall(o: { tool?: string; input: Record<string, unknown>; showing: string; server?: string }) {
   const paired = await pairedBoxes();
   if (paired.length < 2 && !o.server) return { box: undefined };
   if (paired.length >= 2 && !Object.keys(map).length) await refreshSpaceServers().catch(() => {});
-  const ask = () => serverFor({ explicit: o.server, input: o.input, showing: o.showing, spaceServers: map, paired, chatServers: chatMap });
+  const ask = () => serverFor({ tool: o.tool, explicit: o.server, input: o.input, showing: o.showing, spaceServers: map, paired, chatServers: chatMap });
   const r = ask();
   // a chat not known yet: ask every server which chats it holds, once, then decide; still unknown stays refused
   if (r.error?.code === "chat_unknown_server") { await learnChats().catch(() => {}); return ask(); }
+  // a Space not in the map yet (a server that was offline when it was last asked, or a Space just made): ask every server once, then decide
+  if (r.error?.code === "space_unknown_server") { await refreshSpaceServers().catch(() => {}); return ask(); }
   return r;
 }
 
