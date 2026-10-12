@@ -104,3 +104,22 @@ test("a member's tool list leaves off the owner's tools; the owner's list is who
   for (const n of ["mail.accounts", "computers.pause", "settings.set", "mcp.servers"]) { assert.ok(own.has(n) || !d.registry.tools.has(n), `${n} on the owner's list`); assert.ok(!mem.has(n), `${n} must not be on a member's list`); }
   assert.ok(mem.has("threads.list") && mem.has("stream.send"), "a member keeps her own tools on the list");
 });
+
+test("a device or node with no proof on a team server is a member's; the moment a second person joins the gate is on, with no restart; a web page keeps its own short list", { timeout: 200_000 }, async t => {
+  const { d, tokens } = await rig(t, false);
+  const OWNER = d.kernel.id.owner;
+  const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
+  const alone = await d.registry.call("mail.accounts", {}, "device:abc", { person: { id: "x", kind: "person" } });
+  assert.ok(!(alone.error && alone.error.message === refusal("mail.accounts")), "one person on the server: nothing is gated");
+  const before = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
+  assert.ok(!(before.error && before.error.message === refusal("mail.accounts")));
+  await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: proof() });
+  const dev = await d.registry.call("mail.accounts", {}, "device:abc", { person: { id: "x", kind: "person" } });
+  assert.equal(dev.error && dev.error.message, refusal("mail.accounts"), "a device with no proof is a member's once there is someone to keep out");
+  const tail = await d.registry.call("mail.accounts", {}, "tailnet-guest:n1", {});
+  assert.equal(tail.error && tail.error.message, refusal("mail.accounts"));
+  const web = await d.registry.call("mail.accounts", {}, "web:b1", {});
+  assert.ok(!(web.error && web.error.message === refusal("mail.accounts")), "a web page keeps its own list, which is not this gate's");
+  const after = await d.registry.call("mail.accounts", {}, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens.owner });
+  assert.ok(!(after.error && after.error.message === refusal("mail.accounts")), "the owner is served after the second person joins");
+});

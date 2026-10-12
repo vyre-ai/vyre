@@ -793,7 +793,8 @@ async function startLocked(opts, root, p, release) {
       const doorKernel = kernel.kernelFor({ name: "door-gate" });
       registry.deps.doorGate = createDoorGate({
         chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
-        roleOf: (/** @type {any} */ a) => kernel.grants.roleOf(a),
+        // the role from the person's membership: the same source the gateway's staff statement reads, so the swap to it is a rename
+        roleOf: (/** @type {any} */ a) => { const m = kernel.grants.members.membership(a); return m ? m.role : null; },
         othersExist: async () => kernel.grants.hasOtherMembers(kernel.id.owner),
       });
     }
