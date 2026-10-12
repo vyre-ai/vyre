@@ -42,13 +42,15 @@ test("defineWithRetry: a define that meets a store not answering yet is tried ag
   assert.match(log.at(-1), /are defined now/);
 });
 
-test("defineWithRetry: past the bound it stops, and says what to do", async () => {
+test("defineWithRetry: past the quick tries it says what to do and keeps trying slowly, so a store that comes back much later heals", async () => {
   const { defineWithRetry } = await import("./flows-host.js");
-  /** @type {string[]} */ const log = []; /** @type {boolean[]} */ const done = [];
-  await defineWithRetry({ log: m => log.push(m), label: "flows: the types", baseMs: 2, maxMs: 2, tries: 3, onDone: ok => done.push(ok), run: async () => { throw new Error("fetch failed"); } });
-  for (let i = 0; i < 100 && !done.length; i++) await new Promise(r => setTimeout(r, 10));
-  assert.deepEqual(done, [false]);
-  assert.match(log.at(-1), /could not be defined after 3 tries.*restart Vyre once Records are up/);
+  /** @type {string[]} */ const log = []; /** @type {boolean[]} */ const done = []; let calls = 0, exhausted = 0;
+  await defineWithRetry({ log: m => log.push(m), label: "flows: the types", baseMs: 2, maxMs: 2, slowMs: 20, tries: 3, onExhausted: () => exhausted++, onDone: ok => done.push(ok), run: async () => { calls++; if (calls < 6) throw new Error("fetch failed"); } });
+  for (let i = 0; i < 200 && done.length < 2; i++) await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(done, [false, true], "told once when the quick tries ran out, then when a slow one worked");
+  assert.equal(exhausted, 1);
+  assert.ok(log.some(l => /could not be defined after 3 tries.*still trying every .* min, or restart Vyre once Records are up/.test(l)), log.join(" | "));
+  assert.match(log.at(-1), /are defined now/);
 });
 
 test("guardUntilReady: a Flow call before the Flow types exist answers in words, and works after", async () => {
@@ -60,6 +62,12 @@ test("guardUntilReady: a Flow call before the Flow types exist answers in words,
   ready = true;
   assert.deepEqual(await tools["flows.list"](), ["a"]);
   assert.equal(tools["flows.x"], 5, "a non-function is left alone");
+  const { FLOWS_STUCK } = await import("./flows-host.js");
+  let stuck = true; const t2 = { "flows.list": async () => ["a"] };
+  guardUntilReady(t2, () => false, () => stuck);
+  await assert.rejects(() => t2["flows.list"](), { message: FLOWS_STUCK }, "once the quick tries are spent the words say so and what to do");
+  assert.match(FLOWS_STUCK, /ask the owner to restart Vyre/);
+  assert.doesNotMatch(FLOWS_STUCK, /Try again in a minute/);
 });
 
 test("the Flows host defines its record types again when the store first refused: the types exist afterwards with no restart, and a Flow call before that answers in words", async t => {
