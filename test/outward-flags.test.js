@@ -44,6 +44,7 @@ const NOT_OUTWARD = {
   "publish.job.run": "runs a job the owner already approved, as an act the person starts themselves; it is not on the assistant's list",
   "publish.job.runs": "a read",
   "publish.list": "a read",
+  "publish.serve": "a read: the member door's list of the sites of her projects; module-only, nothing leaves the Space",
   "publish.plan": "a read",
   "publish.status": "a read",
   "push.devices": "lists your own devices for notifications",

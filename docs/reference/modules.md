@@ -73,7 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 25 | 8 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
@@ -92,14 +92,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 118 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
+| [`stream`](#stream) | `core/stream` | `box`, `local` | 17 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 5 | 2 | cli |
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
-| [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 33 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 75 | 42 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 77 | 42 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
@@ -111,7 +111,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 76 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 77 | 0 | cli |
 
 ## about
 
@@ -762,7 +762,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [24](tools.md#publish)
+- Tools: [25](tools.md#publish), 1 of them only for other modules
 - Emits: [8 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
@@ -986,7 +986,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [15](tools.md#stream), 3 of them only for other modules
+- Tools: [17](tools.md#stream), 3 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
@@ -1044,7 +1044,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/team`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`, `projects`, `sessions`
-- Tools: [32](tools.md#team), 2 of them only for other modules
+- Tools: [33](tools.md#team), 3 of them only for other modules
 - Emits: [11 events](events.md#team)
 - Shows on: cli
 - Needs kernel: `{"membership":true,"actions":["records.read"]}`
@@ -1066,7 +1066,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [75](tools.md#threads), 29 of them only for other modules
+- Tools: [77](tools.md#threads), 29 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`
@@ -1213,7 +1213,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [76](tools.md#work), 20 of them only for other modules
+- Tools: [77](tools.md#work), 21 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`, `agentActor`

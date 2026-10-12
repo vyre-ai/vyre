@@ -94,6 +94,7 @@ export const TOOLS_WITH_SPACE = [
  "publish.rollback",
  "publish.secret.grant",
  "publish.secret.revoke",
+ "publish.serve",
  "publish.status",
  "records.actors",
  "records.create",

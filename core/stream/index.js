@@ -341,18 +341,14 @@ export default {
       try { const d = await door.open({}, meta); const role = d.gateway.members.roleOf(d.chain.hops[0].actor); staff = role === "owner" || role === "admin"; } catch { staff = false; }
       return { chat, person: who.id, staff };
     };
-    const through = async (/** @type {string} */ tool, /** @type {any} */ input) => {
-      const r = /** @type {any} */ (await ctx.call(tool, input));
-      if (r && r.error) throw Object.assign(new Error(String(r.error.message || "that did not work")), { code: r.error.code || "failed" });
-      return r ? r.data : null;
-    };
+    const unwrap = (/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(String(r.error.message || "that did not work")), { code: r.error.code || "failed" }); return r ? r.data : null; };
     memberRuns.set("answer", async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const m = await memberOf(i, meta);
-      return through("threads.serve-answer", { chat: m.chat, ask: String(i.ask || ""), person: m.person, decision: i.decision, ...(i.answers && typeof i.answers === "object" ? { answers: i.answers } : {}) });
+      return unwrap(await ctx.call("threads.serve-answer", { chat: m.chat, ask: String(i.ask || ""), person: m.person, decision: i.decision, ...(i.answers && typeof i.answers === "object" ? { answers: i.answers } : {}) }));
     });
     memberRuns.set("stop", async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const m = await memberOf(i, meta);
-      return through("threads.serve-stop", { chat: m.chat, person: m.person, staff: m.staff, ...(typeof i.slot === "string" ? { slot: i.slot } : {}) });
+      return unwrap(await ctx.call("threads.serve-stop", { chat: m.chat, person: m.person, staff: m.staff, ...(typeof i.slot === "string" ? { slot: i.slot } : {}) }));
     });
     ctx.tool("stream.read", {
       description: "A chat's frames after cursor from (0 for everything the log holds), drawn for the person asking: their join floor, the kernel's say on each frame, their own authority on cited fields. At most 200 a call; next is the cursor to ask from; reset says the log no longer holds that cursor.",

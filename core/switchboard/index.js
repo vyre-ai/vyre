@@ -4819,7 +4819,7 @@ export default {
       });
     // A team member answers a question, or stops a turn, in a chat she is in (the stream module's member door, core/stream/index.js): the stream module has checked the person is in the chat and passes her verified id.
     // A question belongs to the person whose turn raised it (the verified asker of the thread's current turn, never a caller's word); a turn is stopped by the person who asked it, or by staff.
-    const streamOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:stream" || m.firstParty !== true) throw Object.assign(new Error(`${what} is the stream module's alone`), { code: "denied" }); };
+    const streamOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:stream" || m.firstParty !== true) throw Object.assign(new Error(`${what} is the stream module's alone. Ask the owner if a question or a turn is stuck`), { code: "denied" }); };
     const bare = (/** @type {any} */ p) => String(p || "").replace(/^person:/, "");
     const askerOfRun = (/** @type {string} */ thread) => { const ks = /** @type {any} */ (sb.ksCur.get(thread)); const rec = /** @type {any} */ (sb.record(thread)); return bare((ks && ks.asker) || (rec && rec.person) || ""); };
     tool("threads.serve-answer", "A team member answers a question raised by a turn she asked, in a chat she is in: allow or deny (a question with its answers). Only the stream module's member door runs it.",
@@ -4828,7 +4828,7 @@ export default {
         streamOnly(meta, "answering for a member");
         const a = /** @type {any} */ (sb.asks.get(String(i.ask)));
         const rec = a ? /** @type {any} */ (sb.record(a.thread)) : null;
-        if (!a || !rec || String(rec.chat || "") !== String(i.chat)) throw Object.assign(new Error("no such question in this chat: the chat shows the ones that are open"), { code: "not_found" });
+        if (!a || !rec || String(rec.chat || "") !== String(i.chat)) throw Object.assign(new Error("no such question in this chat. Open the chat to see its open questions, or ask the owner"), { code: "not_found" });
         const asker = bare(sb.askAsker.get(a.id)) || askerOfRun(a.thread), person = bare(i.person);
         if (!asker || asker !== person) throw Object.assign(new Error("that question is for the person whose turn raised it. Ask them, or the owner, to answer it"), { code: "denied" });
         if (i.decision !== "allow" && i.decision !== "deny") throw Object.assign(new Error("answer allow or deny (always allow is not on offer for members yet)"), { code: "bad_input" });
