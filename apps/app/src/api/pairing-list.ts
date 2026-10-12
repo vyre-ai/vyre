@@ -34,7 +34,8 @@ export const pairingFor = (l: Pairings, box: string): Pairing | null => l.items[
 
 /** Add a server, or replace the record of one already there. The first server added is active; a later one never takes it. */
 export function addPairing(l: Pairings, p: Pairing): Pairings {
-  const items = { ...l.items, [p.box]: p };
+  // only the pairing's own fields are kept (a token or anything else that rode in on the record is not)
+  const items = { ...l.items, [p.box]: readPairing(JSON.stringify(p)) ?? p };
   return { v: 2, items, active: l.active && l.items[l.active] ? l.active : p.box };
 }
 
