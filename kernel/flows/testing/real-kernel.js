@@ -150,7 +150,8 @@ export class RealKernel {
       list: async () => this.grantRows,
     };
     this.model = { call: async input => { this.calls.push(["model", input.purpose]); return { id: mintUuid(), provider: "fake", model: "fake", content: this.modelLabel }; } };
-    const sysChain = () => this.chainFor({ flow: "events", approver: this.ownerActor(), tainted: false, space: this.space });
+    // the daemon's own chain for the Flows host: the owner person, then the flows service (core/daemon/flows-host.js flowsChain). The protected Flow types and the project, team and task rules treat it as the Space's own.
+    const sysChain = () => this.moduleChain({ module: "flows", approver: this.ownerActor(), tainted: false });
     this.events = {
       read: (c, f) => this.gw.events.read(c, f),
       subscribe: (c, name, f, cb) => this.gw.events.subscribe(c, name, f, cb),

@@ -123,7 +123,10 @@ test("PH-3: a rename moves nothing, whoever makes it, and is only a title that r
   await d.registry.call("projects.create", { name: "Rivera", home }, "cli");
   await d.kernel.gateway.drive.put(admin, `${root}/retainer.txt`, new TextEncoder().encode("signed"));
   await d.kernel.gateway.drive.put(admin, "Legal/Contracts/secret.txt", new TextEncoder().encode("do not move"));
-  const member = await memberChain("per_" + "m".repeat(26));
+  const memberId = "per_" + "m".repeat(26);
+  const member = await memberChain(memberId);
+  // she renames it as a member of the project's team (a member who is not on the team no longer rewrites another's project: kernel/gateway/ownership.js)
+  await d.kernel.gateway.records.create(admin, "team-member", { name: "m", actor: { actor: { kind: "person", id: memberId, space: d.kernel.id.space } }, kind: "person", project: { urn } });
   const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
   let cur = await d.kernel.gateway.records.get(member, "project", id);
   await d.kernel.gateway.records.update(member, "project", id, { name: "Rivera Renamed" }, cur.version);

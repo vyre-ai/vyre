@@ -1,4 +1,5 @@
 // @ts-check
+import { carriesPickedCredential } from "../sessions/providers.js";
 // A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
 // accounts that serve that person), so a turn is never run on another member's sign-in:
 //   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
@@ -195,13 +196,55 @@ export function hopRefusal(code) {
 }
 
 /**
- * An agent's thread started on behalf of a person who is not the Space owner never runs on the owner's login (the sign-in an agent without a picked credential falls back to): it is refused, with the
+ * An agent's thread started on behalf of a person who is not the Space owner never runs on the owner's login (the sign-in an agent with NO picked credential falls back to); an agent that has one runs on it: it is refused, with the
  * next step, before anything is made. `who` is the one person on the call's kernel chain (null for the planner, a Flow, an automation: nobody to compare, today's behaviour), `owner` the kernel's owner
  * (undefined: no kernel; "": a kernel whose owner cannot be read, so nobody can be told to be the owner and every person counts as a member). A launch that names an account is judged by memberAccount.
- * @param {any} sb @param {{ agent?: string, account?: string }} i @param {string | null} who @param {string | undefined} owner
+ * @param {any} sb @param {{ agent?: string, account?: string, env?: any, fallback?: any, for_person?: string }} i @param {string | null} who @param {string | undefined} owner
  */
 export async function agentLaunchGuard(sb, i, who, owner) {
-  if (!i.agent || i.account || !who || owner === undefined) return;
-  if (owner && sb.canon(who) === sb.canon(owner)) return;
+  const launch = /** @type {any} */ (i);
+  const forPerson = typeof launch.for_person === "string" && launch.for_person ? launch.for_person : null;   // honored only from an internal module (the tool drops it from anyone else's input)
+  const hasTools = !(launch.lean || launch.tools === "none");
+  if (!i.agent && !hasTools) return;                       // a tool-less job reads and writes text only
+  if (i.account || owner === undefined) return;
+  const person = forPerson || who;
+  if (forPerson === "automation") return;                  // an owner's or a Flow's own setting, named by the module that makes it (the duty wake, the integrator)
+  if (!person) {
+    // nobody is on the call and no module named who the work is for: a teammate launch is refused whatever credential it would run on (the pump launches from events, so it must carry the person)
+    if (launch.agent_kind === "teammate") throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used here: nobody is recorded as having asked. Ask the owner to send the request again. Nothing was started.`), { code: "no_account" });
+    return;
+  }
+  if (owner && sb.canon(person) === sb.canon(owner)) return;
+  // an admin's turn is the owner's kind of turn
+  const role = typeof sb.deps.membershipOf === "function" ? await Promise.resolve(sb.deps.membershipOf(person)).catch(() => null) : null;
+  if (role && (role.role === "owner" || role.role === "admin")) return;
+  if (!i.agent) throw Object.assign(new Error("An agentless job with tools runs on the machine's own sign-in, which is the owner's. Ask the owner to run it. Nothing was started."), { code: "no_account" });
+  // A credential PICKED for the agent (its vault token or key in the launch's env, or a fallback key) is the owner's: a turn that somebody else drives runs on it ONLY when the launch delivers it where the turn's tools cannot read it
+  // (the sandboxed launch hands it over by a file descriptor: delivered "fd"). An environment variable or a file the turn can print is refused, whatever the delivery is not known to be.
+  if (carriesPickedCredential(launch)) {
+    const how = typeof sb.deps.credentialDelivery === "function" ? sb.deps.credentialDelivery(i) : undefined;
+    if (how === "fd") return;
+    if (how === undefined) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. The owner can run it for you. Nothing was started.`), { code: "no_account" });
+    throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. Ask the owner to give it an API key or a setup token. Nothing was started.`), { code: "no_account" });
+  }
   throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
+}
+
+/** The launch input with `for_person` kept only when a first-party module made the call (anyone else's is dropped: a person's own words never say who the work is for). @param {any} i @param {any} meta */
+export const trustedLaunch = (i, meta) => { if (!i || i.for_person === undefined || (meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"))) return i; const { for_person: _drop, ...rest } = i; return rest; };
+
+/** The first person on a kernel chain (a member's session chain carries her and the assistant: she is who asks). @param {any} chain @returns {string | null} */
+const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
+
+/**
+ * The whole check of an agent or teammate launch, for the tool that launches (threads.launch) and for the check a module asks for BEFORE it queues work (threads.launch-check, team.ask): who asks is the
+ * first person on the call's chain, else the person the module says the work is for (for_person; "automation" is an owner's or a Flow's own setting, named by the module); then agentLaunchGuard judges. Answers who was found.
+ * @param {any} sb @param {any} i @param {any} chain @param {string | undefined} owner @param {string} [origin] the caller class the running call came from ("cli" and "local": the box's own terminal, the owner's) @returns {Promise<string | null>}
+ */
+export async function checkLaunch(sb, i, chain, owner, origin) {
+  // a terminal (the command line on the box itself) carries no chain of its own through a module's hop: the daemon's listener made it the home's owner, and the work it asks for is the owner's
+  const terminal = !firstPerson(chain) && (origin === "cli" || origin === "local") && owner ? owner : null;
+  const who = firstPerson(chain) || terminal;
+  await agentLaunchGuard(sb, i, who, owner);
+  return who || (typeof i.for_person === "string" && i.for_person && i.for_person !== "automation" ? i.for_person : null);
 }

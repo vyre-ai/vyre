@@ -156,7 +156,7 @@ function Secrets({ dep, st, run, reload, setHeld }: { dep: Dep; st: Status | nul
   const [field, setField] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [use, setUse] = useState<"build" | "runtime">("runtime");
-  useEffect(() => { vaultItems().then(setItems).catch(() => setItems([])); }, []);
+  useEffect(() => { vaultItems().then(setItems).catch((e) => { setItems([]); showToast(say(e)); }); }, []);
   const chosen = items?.find((i) => i.name === item);
   const grant = () => {
     if (!chosen || !field || !/^[A-Z][A-Z0-9_]{0,63}$/.test(name)) { showToast("Pick an item and a field, and name the setting in capitals, like STRIPE_KEY."); return; }

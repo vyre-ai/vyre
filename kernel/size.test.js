@@ -16,7 +16,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9440 (lead ruling, 9 Oct 2026, once): one grant model C plus module release; replaces five grant models. The grants evaluator's pure core (matchGrant) is shared with vyre-core's own store.
 // 9461 (lead ruling, 11 Oct 2026, hasOtherMembers +2: the vault must keep other members out and has nobody to keep out when there are none); before that 9459 (lead ruling, 11 Oct 2026, G22 +26 of the +30 allowed with the coalesced reach log, and the members list +2): an agent reaches a project and its records only while it is the project's teammate on a task there (kernel/core/folders.js).
 // 9465 (stall fix, kernel +4 on 9461: batched event cursors for the consumers that ask, the record types shared until a type changes, a stop on the kernel that stores the cursors).
-const CAP = 9465;
+// 9513 (kernel +48 on 9465: the gateway enforces which module keeps a record type and who may write a project, a seat or a task: kernel/gateway/ownership.js is the one rule, each route calls it in one line).
+const CAP = 9513;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

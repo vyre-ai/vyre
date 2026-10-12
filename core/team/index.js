@@ -100,6 +100,8 @@ export const MIGRATIONS = [
   `CREATE TABLE team_charter_drafts (teammate TEXT PRIMARY KEY, text TEXT NOT NULL, by TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)`,
   // team.ask's optional model: a request may ask for a provider (and model) of its own, run in a session made for that request alone; `thread` is that session, so a person can stop it.
   `ALTER TABLE team_requests ADD COLUMN model TEXT; ALTER TABLE team_requests ADD COLUMN thread TEXT`,
+  // who asked: the person on team.ask's chain (or "automation" for the duty wake and the integrator, the owner's own settings): the pump launches later from events with no person on the call, and judges the launch for THIS person
+  `ALTER TABLE team_requests ADD COLUMN asker TEXT`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
@@ -262,7 +264,7 @@ export default {
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
       via: JSON.parse(String(r.via)), text: String(r.text), refs: JSON.parse(String(r.refs)), priority: String(r.priority),
       state: String(r.state), result: r.result == null ? null : String(r.result), result_refs: JSON.parse(String(r.result_refs)),
-      attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
+      attempt: Number(r.attempt), model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread), asker: r.asker == null ? null : String(r.asker), created: Number(r.created_at), started: r.started_at == null ? null : Number(r.started_at),
       finished: r.finished_at == null ? null : Number(r.finished_at) });
 
     const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
@@ -641,11 +643,11 @@ export default {
      * teammate's) and vyred's own (queueing a merge to the integrator). Never checks who may ask
      * this teammate for what; callers that need that (team.ask) check it themselves first.
      */
-    const queueRequest = ({ teammate, project, from_kind, from, reply_to = null, via = [], text, refs = [], priority = "normal", key = null, model = null }) => {
+    const queueRequest = ({ teammate, project, from_kind, from, reply_to = null, via = [], text, refs = [], priority = "normal", key = null, model = null, asker = null }) => {
       const id = `r_${crypto.randomBytes(4).toString("hex")}`;
-      db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, reply_to, via, text, refs, priority, state, attempt, key, created_at, model)
-        VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 1, ?, ?, ?)`).run(id, teammate, project, from_kind, from, reply_to,
-        JSON.stringify(via), text, JSON.stringify(refs), priority, key, Date.now(), model);
+      db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, reply_to, via, text, refs, priority, state, attempt, key, created_at, model, asker)
+        VALUES (?,?,?,?,?,?,?,?,?,?, 'queued', 1, ?, ?, ?, ?)`).run(id, teammate, project, from_kind, from, reply_to,
+        JSON.stringify(via), text, JSON.stringify(refs), priority, key, Date.now(), model, asker);
       const cut = (/** @type {unknown} */ v, /** @type {number} */ n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
       const tmRow = byAgent(teammate);
       ctx.events.emit("summon.queued", { request: id, teammate, project, priority, reply_to: reply_to || null, role: tmRow ? tmRow.role : null, from_kind, text: cut(text, 300) });
@@ -704,7 +706,7 @@ export default {
       if (pending) return;
       const range = await shaRange(info.repo, info.branch, info.base);
       const text = `merge ${info.branch} ${range ? `${range.from}..${range.to}` : "(range unknown)"}, from request ${fromRequest}`;
-      queueRequest({ teammate: integrator.agent, project: tm.project, from_kind: "assistant", from: "vyre", text, priority: "normal" });
+      queueRequest({ teammate: integrator.agent, project: tm.project, from_kind: "assistant", from: "vyre", text, priority: "normal", asker: "automation" });   // Vyre's own integrator: the owner's setting
     };
 
     /**
@@ -839,7 +841,10 @@ export default {
             const filler = first ? await fillerOf(tm) : null;
             const projectSlug = await slugOf(req.project);
             try {
-              t = await use("threads.launch", { agent, agent_kind: "teammate", project: projectSlug, purpose: "teammate",
+              // The agent filling the teammate's role runs on the sign-in picked for it (as that agent's own launch does), so a member's request never falls back to the owner's login.
+              const creds = filler ? await use("agents.credentials", { agent: filler.name }).catch(() => null) : null;
+              t = await use("threads.launch", { agent, agent_kind: "teammate", project: projectSlug, purpose: "teammate", ...(req.asker ? { for_person: req.asker } : {}),
+                ...(creds ? { auth: creds.auth, ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}), ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}) } : {}),
                 prompt: wrapped, name: agent, ...(worktreeDir ? { cwd: worktreeDir } : {}),
                 ...(first ? { append: preamble({ ...tm, project_name: projectSlug, charter: charterCurrent(agent)?.text || null, filler_character: filler?.instructions || null }) } : { resume: tm.thread }),
                 ...(over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) }) });
@@ -1369,7 +1374,28 @@ export default {
         if (!PRIORITIES.includes(priority)) throw Object.assign(new Error(`priority must be one of ${PRIORITIES.join(", ")}`), { code: "bad_input" });
         const from_kind = callerTm ? "teammate" : meta.thread ? "session" : isPerson(meta.caller) ? "person" : "session";
         const from = callerTm ? callerTm.agent : meta.thread || String(meta.caller || "vyre");
-        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null });
+        // WHO asked is judged HERE, where the person is on the call: from this call's own chain (the module's hop to the Switchboard does not carry a session's person). A non-owner, non-admin asker may send work
+        // only to a project she owns or is on the team of, and gets a refusal in words (nothing queued) when the teammate's credential would not reach the turn unreadable (the Switchboard's launch check). A teammate
+        // asking inherits the open request's person; a first-party module asking is the owner's own setting ("automation"); the box's own terminal is the owner. Anyone else with no person on the call is nobody.
+        const K = ctx.kernel;
+        const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
+        const owner0 = K && typeof K.owner === "string" ? K.owner : "";
+        const viaChain = await chainPerson();
+        const asker0 = viaChain || (K && owner0 && (meta.caller === "cli" || meta.caller === "local") ? owner0 : null);
+        if (asker0 && K) {
+          const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
+          const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));
+          if (!trusted) {
+            const seat = await use("work.project.seat", { project, person: asker0 });
+            if (!seat || !(seat.owner || seat.team)) throw Object.assign(new Error(`You are not on this project's team. Ask the project's owner to add you, then ask again. Nothing was queued.`), { code: "denied" });
+          }
+        }
+        const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
+        const forPerson = asker0 || inherited || (String(meta.caller || "").startsWith("module:") && meta.firstParty === true ? "automation" : null);
+        const filler0 = await fillerOf(tm).catch(() => null);
+        const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
+        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || forPerson || null });
         if (i.wait) {
           const done = await new Promise(resolve => {
             const timer = setTimeout(() => { off(); resolve(null); }, ASK_WAIT_MS);
@@ -1526,7 +1552,7 @@ export default {
     // The duty wake (0.2.2): a firing duty that acts queues one request to its teammate; the filed items arrive as quoted data (dutyNewsBlock).
     const wake = makeWake({ dutyApi, live: agent => Boolean(byAgent(agent) && !byAgent(agent).retired_at),
       waiting: (agent, from) => Boolean(db.prepare("SELECT 1 FROM team_requests WHERE teammate = ? AND from_label = ? AND state = 'queued' LIMIT 1").get(agent, from)),
-      queue: r => queueRequest(r) });
+      queue: r => queueRequest({ ...r, asker: "automation" }) });   // a duty the owner set, firing
     const offFired = ctx.events.on("watcher.fired", e => { if (!stopped) { try { wake(e); } catch (err) { ctx.log?.(`team: duty wake failed: ${/** @type {Error} */ (err).message}`); } } });
     const offCompact = ctx.events.on("thread.started", async e => {
       const source = e.payload && e.payload.source, session = e.payload && e.payload.session;

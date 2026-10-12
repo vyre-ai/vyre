@@ -11,7 +11,7 @@ import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig, checkEntri
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
-import { programDirs } from "../../lib/agent-sandbox.js";
+import { programDirs, PARTIAL_NOTICE } from "../../lib/agent-sandbox.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hs-"));
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
@@ -218,7 +218,140 @@ test("a provider entry without a relocatable config folder does not start sandbo
   const r = await rig(t);
   const noPrivate = { command: process.execPath, versionArgs: ["-v"], hosts: [] };
   assert.throws(() => planHome({ ...base(r, { agent: noPrivate }), command: process.execPath }), /this assistant can't run sandboxed yet/);
+  assert.throws(() => planHome({ ...base(r, { agent: noPrivate }), command: process.execPath }), /Add a private config or a settings folder to the provider entry, then start the session again/);
   await assert.rejects(() => selfTest(base(r, { agent: noPrivate })), /can't run sandboxed yet/);
+});
+
+// A provider that cannot move its settings folder. The paths below are refused before a profile exists.
+const ownAgent = (paths, foreign = []) => ({ command: process.execPath, versionArgs: ["-v"], hosts: [], settingsPaths: paths, foreignSettings: foreign });
+
+test("settings path: the home itself is refused", async t => {
+  const r = await rig(t);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([r.home]) }), command: process.execPath }), /whole home/);
+});
+
+test("settings path: a symlink that resolves into .ssh is refused", async t => {
+  const r = await rig(t);
+  const ssh = path.join(r.home, ".ssh");
+  fs.mkdirSync(ssh);
+  fs.symlinkSync(ssh, path.join(r.home, ".grok"));
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([path.join(r.home, ".grok")]) }), command: process.execPath }), /secret folder \(\.ssh\)/);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([path.join(r.home, ".grok")]) }), command: process.execPath }), /Point the provider entry at the assistant's own settings folder/);
+});
+
+test("settings path: a folder inside Vyre's home is refused", async t => {
+  const r = await rig(t);
+  const inside = path.join(r.home, ".vyre", "cfg");
+  fs.mkdirSync(inside);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([inside]) }), command: process.execPath }), /inside Vyre's home/);
+});
+
+test("settings path: a folder outside the account's home is refused", async t => {
+  const r = await rig(t);
+  const outside = fs.mkdtempSync(path.join(SCRATCH, "hs-out-"));
+  t.after(() => rm(outside));
+  const dir = path.join(outside, "cfg");
+  fs.mkdirSync(dir);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([dir]) }), command: process.execPath }), /outside the account's home/);
+});
+
+test("settings path: another provider's folder is refused, including through a symlink", async t => {
+  const r = await rig(t);
+  const claude = path.join(r.home, ".claude");
+  fs.mkdirSync(claude);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([claude], [claude]) }), command: process.execPath }), /another provider's/);
+  fs.symlinkSync(claude, path.join(r.home, ".grok"));
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([path.join(r.home, ".grok")], [claude]) }), command: process.execPath }), /another provider's/);
+});
+
+test("settings path: a folder that is not there yet is refused", async t => {
+  const r = await rig(t);
+  assert.throws(() => planHome({ ...base(r, { agent: ownAgent([path.join(r.home, ".grok")]) }), command: process.execPath }), /Sign the account in, then start the session again/);
+});
+
+test("settings path: a valid folder is in the profile, the secret folders stay denied after the allow, and two sessions bind that same real folder", async t => {
+  const r = await rig(t);
+  const grok = path.join(r.home, ".grok");
+  fs.mkdirSync(grok);
+  fs.writeFileSync(path.join(grok, "config.toml"), "own\n");
+  const homeReal = fs.realpathSync(r.home);
+  const grokReal = fs.realpathSync(grok);
+  const agent = ownAgent([grok], [path.join(r.home, ".claude"), path.join(r.home, ".codex")]);
+  const dar = planHome({ ...base(r, { agent }), platform: "darwin", command: process.execPath });
+  const allow = `(allow file-write-create file-write-data file-write-unlink file-write-mode file-write-flags file-write-times file-write-xattr (subpath "${grokReal}"))`;
+  const allowAt = dar.profile.indexOf(allow);
+  assert.ok(allowAt > 0, "the settings folder is writable and the write operations are spelled out");
+  assert.ok(dar.profile.includes(`(allow file* (subpath "${grokReal}"))`));
+  assert.ok(dar.profile.includes(`(allow file-read* (subpath "${grokReal}"))`));
+  for (const d of [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".git-credentials", "Library/Keychains"]) {
+    assert.ok(dar.profile.lastIndexOf(`(deny file* (subpath "${path.join(homeReal, d)}"))`) > allowAt, d);
+  }
+  assert.ok(dar.profile.lastIndexOf(`(deny file* (subpath "${fs.realpathSync(path.join(r.home, ".vyre"))}"))`) > allowAt, "Vyre's home stays denied after the allow");
+  assert.ok(!dar.profile.includes(`(allow file* (subpath "${homeReal}"))`), "the whole home is not allowed back");
+  assert.equal(dar.env.HOME, r.home, "HOME stays the account's home");
+  assert.equal(dar.env.AGENT_CONFIG_DIR, undefined);
+  assert.equal(dar.env.CODEX_HOME, undefined);
+  const again = planHome({ ...base(r, { agent }), platform: "darwin", command: process.execPath });
+  assert.equal(again.profile, dar.profile, "two sessions bind the same real settings folder. Vyre does not lock it, so the provider's own files can interleave");
+  let lin = null;
+  try { lin = planHome({ ...base(r, { agent }), platform: "linux", command: process.execPath }); }
+  catch (e) { if (!/seccomp/.test(String(e && e.message))) throw e; }
+  if (lin) {
+    const args = lin.argv;
+    let tmpAt = -1;
+    for (let i = 0; i < args.length - 1; i++) if (args[i] === "--tmpfs" && args[i + 1] === homeReal) tmpAt = i;
+    const dest = path.join(homeReal, ".grok");
+    let dirAt = -1, bindAt = -1;
+    for (let i = 0; i < args.length - 1; i++) if (args[i] === "--dir" && args[i + 1] === dest) dirAt = i;
+    for (let i = 0; i < args.length - 2; i++) if (args[i] === "--bind" && args[i + 1] === grokReal && args[i + 2] === dest) bindAt = i;
+    assert.ok(tmpAt >= 0 && dirAt > tmpAt && bindAt > dirAt, "the real folder is bound onto $HOME/.grok after the home tmpfs");
+    let homeEnv = null;
+    for (let i = 0; i < args.length - 2; i++) if (args[i] === "--setenv" && args[i + 1] === "HOME") homeEnv = args[i + 2];
+    assert.equal(homeEnv, homeReal);
+    assert.ok(!args.includes("CLAUDE_CONFIG_DIR") && !args.includes("CODEX_HOME"));
+    const lin2 = planHome({ ...base(r, { agent }), platform: "linux", command: process.execPath });
+    assert.deepEqual(lin2.argv, lin.argv, "a second session binds the same real folder. Vyre does not lock it, so the provider's own files can interleave");
+  }
+});
+
+test("the partly sandboxed notice names the real writable settings folder", () => {
+  assert.match(PARTIAL_NOTICE, /Partly sandboxed: this assistant keeps its own settings folder/);
+  assert.match(PARTIAL_NOTICE, /That folder is the real one and this session can write it/);
+  assert.match(PARTIAL_NOTICE, /hooks or tool servers/);
+  assert.match(PARTIAL_NOTICE, /your own Grok later runs outside Vyre/);
+  assert.match(PARTIAL_NOTICE, /Look through that folder before you start Grok outside Vyre/);
+});
+
+test("settings path: the self-test can use the settings folder and cannot read another provider's folder, a personal file or Vyre's key", { skip: SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const grok = path.join(r.home, ".grok");
+  fs.mkdirSync(grok);
+  fs.writeFileSync(path.join(grok, "config.toml"), "own\n");
+  fs.mkdirSync(path.join(r.home, ".claude"));
+  fs.writeFileSync(path.join(r.home, ".claude", ".credentials.json"), "SIGN-IN");
+  const agent = ownAgent([grok], [path.join(r.home, ".claude")]);
+  const res = await selfTest(base(r, { agent }));
+  assert.equal(res.ok, true, JSON.stringify(res.failures));
+  assert.ok((res.results.writes || []).includes("ok"));
+  assert.ok(!(res.results.foreign || []).includes("LISTED"), "another provider's folder is not readable");
+  assert.notEqual(res.results.homeFile, "READ");
+  assert.notEqual(res.results.keyFile, "READ");
+  assert.notEqual(res.results.personal, "READ");
+  assert.notEqual(res.results.personal, "LISTED");
+});
+
+test("settings path: the personal-file probe writes its own file when the home has no Documents, Desktop or Downloads", { skip: SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  for (const name of ["Documents", "Desktop", "Downloads"]) fs.rmSync(path.join(r.home, name), { recursive: true, force: true });
+  const grok = path.join(r.home, ".grok");
+  fs.mkdirSync(grok);
+  fs.writeFileSync(path.join(grok, "config.toml"), "own\n");
+  const probes = { ...r.probes };
+  delete probes.homeFile;
+  const res = await selfTest(base(r, { agent: ownAgent([grok], []), probes }));
+  assert.equal(res.ok, true, JSON.stringify(res.failures));
+  assert.ok(res.results.personal && res.results.personal !== "READ" && res.results.personal !== "LISTED", String(res.results.personal));
+  assert.equal(fs.readdirSync(r.home).some(n => n.startsWith(".vyre-probe-")), false, "the probe file is removed");
 });
 
 test("env allow-list: planted credentials never reach the plan, and only a name the caller lists is passed", async t => {

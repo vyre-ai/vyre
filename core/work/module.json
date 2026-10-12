@@ -25,6 +25,20 @@
         "effect": "write"
       },
       {
+        "name": "work.serve",
+        "summary": "a team member's project reads (the installed templates) on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "read",
+        "crossSpace": "records.read"
+      },
+      {
+        "name": "work.serve-write",
+        "summary": "a team member starts her own project on the team's server, as that member in that Space (the daemon's member door only)",
+        "reach": "modules",
+        "effect": "write",
+        "crossSpace": "records.create"
+      },
+      {
         "name": "work.project.create",
         "summary": "make a Project: one record with its Drive folder, repository and memory scope",
         "reach": "person",
@@ -109,6 +123,11 @@
         "effect": "write",
         "projectArg": "project",
         "projectIsRecord": true
+      },
+      {
+        "name": "work.project.seat",
+        "summary": "where a person stands on a project: its owner, on its team, or neither (for the teammates module)",
+        "reach": "modules"
       },
       {
         "name": "work.chat.serve",

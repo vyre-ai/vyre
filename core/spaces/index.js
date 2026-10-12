@@ -1252,9 +1252,9 @@ export default {
         let checked = 0;
         for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'person-name/%' ORDER BY key").all())) {
           const id = String(r.key).slice("person-name/".length);
-          // only people who are members of a Space this home hosts are looked at: names of others cannot crowd a member out, and the directory is asked about members only (at most 200)
+          // only people who are members of a Space this home hosts are looked at: names of others cannot crowd a member out, and the directory is asked about members only (at most 1000, and a line says so if the scan stops)
           if (K && typeof K.membership === "function") { let isMember = false; for (const sp of (typeof K.spaces?.list === "function" ? K.spaces.list() : [K.space])) { const m = await K.membership(id, String(sp)).catch(() => null); if (m && m.member === true) { isMember = true; break; } } if (!isMember) continue; }
-          if (++checked > 200) break;
+          if (++checked > 1000) { ctx.log.warn("spaces: the member scan stopped at 1000 members; a device of a later member is not recognised here"); break; }
           let label = null; try { label = JSON.parse(r.value); } catch { continue; }
           if (typeof label !== "string" || !label) continue;
           try {
@@ -2343,7 +2343,8 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.agree ? { agree: e.agree } : {}) })) };
+      // the same fields spaces.identity.lookup returns: the door that admits a device reads this list (identityEntry), and a passkey's alg and rp and a held key's `held` decide whether its hello is taken at all
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {

@@ -12,7 +12,10 @@
       { "name": "tasks.request", "reach": "person", "effect": "write" },
       { "name": "tasks.decide", "reach": "person", "effect": "write" },
       { "name": "tasks.move", "reach": "person", "effect": "write" },
-      { "name": "tasks.submit", "reach": "person", "effect": "write" }
+      { "name": "tasks.submit", "reach": "person", "effect": "write" },
+      { "name": "tasks.serve", "reach": "modules", "effect": "read", "crossSpace": "tasks.read", "summary": "a team member's task reads on the team's server, as that member in that Space (the daemon's member door only)" },
+      { "name": "tasks.serve-work", "reach": "modules", "effect": "write", "crossSpace": "tasks.work", "summary": "a team member works a task on the team's server, as that member in that Space (the daemon's member door only)" },
+      { "name": "tasks.serve-request", "reach": "modules", "effect": "write", "crossSpace": "tasks.request", "summary": "a team member asks for a task on the team's server, as that member in that Space (the daemon's member door only)" }
     ]
   },
   "watches": { "emits": [] },

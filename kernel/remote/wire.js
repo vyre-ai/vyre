@@ -16,9 +16,10 @@ export const CALLS = Object.freeze({
   grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "invites.list", "invites.revoke", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
   // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
   moves: ["out", "outMany"],
-  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"],
+  // the Store calls of a team member's app (list, me, actors, types, events) are the member door's rows (core/work/member-tools.js); get, create and update answer in the gateway's shape and, with the Store's keys, in the Store's
+  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events"],
   memory: ["file", "recall", "retire"],
-  tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
+  tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou", "list", "move", "submit"],
   events: ["read"],
   // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal carries the person's proof for the home's own challenge: the home checks it at its sealing process)
   seal: ["put", "reveal", "wrapKey", "import"],
@@ -33,6 +34,13 @@ export const CALLS = Object.freeze({
   // assistant, the chats they are in, starting one. A member never reaches a registry tool; the list of calls is fixed here.
   // A member's own AI sign-in on the team's server (0.3.3 G03; core/sessions/accounts-service.js): a login of theirs, run as its own user, serving only their turns. A key needs a Vault of their own (0.3.4).
   accounts: ["list", "signin", "remove", "default"],
+  // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
+  skills: ["list", "get", "draft", "approve", "versions"],
+  flows: ["cheatsheet", "compile-text", "list", "health", "get", "card", "code", "graph", "diff", "describe", "define", "patch", "from-chat", "test-save", "test-remove", "test-list", "test-run", "simulate", "start", "runs", "run", "timeline", "attention", "cancel", "retry", "approve", "propose"],
+  // A member starts her own projects on the team's server (0.3.3; core/work/member-projects.js): the installed templates, a blank project, a project from a template.
+  work: ["templates", "project-create", "start-project"],
+  // A member's project files (0.3.3; core/work/member-files.js): list, read and upload in one project's files area.
+  files: ["list", "read", "upload"],
   chat: ["persistent", "pin", "list", "get", "create", "send", "catchup", "typing", "react", "pin-message", "reply-mode", "mark-read"],
 });
 

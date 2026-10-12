@@ -1464,14 +1464,14 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   // casey joins alex's space: now they share one
   const added = await d.call("spaces.members.add", { space, person: casey.id, role: "member" });
   assert.ok(!added.error, JSON.stringify(added.error));
-  await d.reg.call("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
+  await d.ok("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
   const shared = (await d.ok("spaces.identity.devices", { person: casey.id }));
   assert.equal(shared.devices.length, 1, JSON.stringify(shared));
   assert.deepEqual(Object.keys(shared.devices[0]).sort(), ["agree", "device"], "the device id and the point, no label and no other field");
   assert.equal(shared.devices[0].device, casey.eid);
   assert.match(shared.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
   // dana is known to this device but shares no space with alex: a stranger gets nothing
-  await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  await d.ok("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: dana.id })), { devices: [] }, "a stranger");
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: "per_nobodyatall000000000000000" })), { devices: [] });
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: "not a person" })), { devices: [] });
@@ -1500,7 +1500,7 @@ test("spaces.identity.devices.read on a one-Space server: members of the server'
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
   const claim = async (/** @type {string} */ name) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree: pt() });
   const [casey, dana, erin, gil, hank, tess] = [await claim("casey"), await claim("dana"), await claim("erin"), await claim("gil"), await claim("hank"), await claim("tess")];
-  for (const [p, n] of [[casey, "casey"], [dana, "dana"], [erin, "erin"], [gil, "gil"], [hank, "hank"], [tess, "tess"]]) await d.reg.call("spaces.person.learn", { id: p.id, name: n }, "module:vyred");
+  for (const [p, n] of [[casey, "casey"], [dana, "dana"], [erin, "erin"], [gil, "gil"], [hank, "hank"], [tess, "tess"]]) await d.ok("spaces.person.learn", { id: p.id, name: n }, "module:vyred");
   const tokenOf = async (/** @type {string} */ person) => (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "dev-" + person.slice(4, 10), person, path: "direct", session: "s" }))).token;
   // who asks about whom: the number of the target's device points the caller is shown
   const sees = async (/** @type {{ id: string }} */ asker, /** @type {{ id: string }} */ about) => (await d.ok("spaces.identity.devices.read", { person: about.id }, "module:work", { token: await tokenOf(asker.id) })).devices.length;

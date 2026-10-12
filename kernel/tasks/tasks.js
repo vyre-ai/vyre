@@ -280,6 +280,8 @@ export function createTasks(cfg) {
     return list.filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
   };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
+  /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
+  const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
   const promote = (/** @type {any} */ chain) => {
     for (const t of [...tasks.values()]) {
       if (t.state !== "waiting") continue;
@@ -294,6 +296,8 @@ export function createTasks(cfg) {
   const decideOnce = (/** @type {any} */ c, /** @type {string} */ i, /** @type {any} */ a) => api._decideOnce(c, i, a);
   const requestOnce = (/** @type {any} */ c, /** @type {any} */ s) => api._requestOnce(c, s);
   api = {
+    /** A task's doer, giver and project for the ownership rule: no gate, for the gateway's own use. @param {string} id */
+    facts(id) { const t = tasks.get(id); return t ? { doer: t.doer ?? null, assigned_by: t.assigned_by ?? null, project: t.project ? String(t.project) : null } : null; },
     async request(/** @type {any} */ chain, /** @type {any} */ spec, /** @type {{ idem?: string }} */ opts = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       return idem.once(chain, "request", opts.idem, spec, () => requestOnce(chain, spec));
@@ -321,6 +325,7 @@ export function createTasks(cfg) {
         if (!spec.fields || typeof spec.fields !== "object" || Array.isArray(spec.fields) || Object.keys(spec.fields).some(k => RESERVED.has(k))) throw new KernelError("bad_input", "fields are the type's own custom fields, not title, note, due, status, parent or project");
       }
       if (spec.project !== undefined) await checkProject(chain, spec.project);
+      if (spec.project) await ownsWrite(chain, null, { project: { urn: spec.project } }, "create", spec.doer);
       if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
@@ -553,6 +558,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (same(person, t.doer)) throw new KernelError("not_allowed", "a doer cannot unblock its own task");
       rule(t, "ready", "responsible_person_or_person_with_presence");
+      await ownsWrite(chain, t, o.reassign_to ? { reassign_to: o.reassign_to } : {});
       const responsible = cfg.responsible ? cfg.responsible(person, t.doer) : false;
       if (!responsible) {
         const why = o.proof ? await cfg.presence.check({ chain, op: "task.unblock", fields: { task: id, reassign_to: o.reassign_to || null }, proof: o.proof }) : "no_proof";
@@ -582,6 +588,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not edited");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task edits it");
+      await ownsWrite(chain, t, { ...(patch && patch.project !== undefined ? { project: patch.project === null ? null : { urn: patch.project } } : {}) });
       if (t.state === "needs_check") throw new KernelError("bad_state", "a task waiting for its check is not edited");
       for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent", "project"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
       const next = { ...t };
@@ -625,6 +632,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not reopened");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task reopens it");
+      await ownsWrite(chain, t, {});
       if (needsCheck(t)) throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
       if (!TASK_REOPENS.some(x => x.from === t.state && x.to === "ready")) throw new KernelError("bad_state", `a task that is ${t.state} is not reopened`);
       const { answer: _a, ...rest } = t;
@@ -638,6 +646,7 @@ export function createTasks(cfg) {
       const t = get_(id);
       if (!guarded(t)) {
         if (!isDoer(chain, t) && !personOf(chain)) throw new KernelError("not_allowed", "only the doer or a person skips a task");
+        await ownsWrite(chain, t, {});
         rule(t, "skipped", "doer_or_person");
         const n = put(t, { state: "skipped" });
         note(chain, "task.skipped", n, { reason: String(reason || "").slice(0, 200) });

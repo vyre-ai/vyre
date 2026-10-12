@@ -96,6 +96,9 @@ if (role === "server") {
 
   const CAROL = "per_" + "c".repeat(26);
   await d.kernel.gateway.grants.setRole(ownerChain, { person: CAROL, role: "member" }, { presence: { method: "test" } });
+  // the teammate has a sign-in of her own (nobody else's is used for her messages): an account row of hers that names the same vault item the proof's owner put there (the same subscription stands in for hers)
+  { const db = /** @type {any} */ (d.registry.deps).db;
+    db.prepare("INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, added, updated, person) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run("cccccccc0002", "claude", "the teammate's sign-in", "setup-token", "claude-setup-token", JSON.stringify("*"), JSON.stringify("*"), 1, Date.now(), Date.now(), CAROL); }
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [CAROL] });
   const as = (who, tool, input) => d.registry.call(tool, { ...input, surface: "deck", chat: chat.id, asker: who }, "module:stream").then((x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
   const work = fs.realpathSync(fs.mkdtempSync(path.join(BASE, "work-")));

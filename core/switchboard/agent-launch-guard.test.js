@@ -36,7 +36,7 @@ async function world(t) {
   const db = d.registry.deps.db;
   const runs = () => db.prepare("SELECT COUNT(*) n FROM threads_runs WHERE agent = 'kit'").get().n;
   const launch = (meta, caller = "module:agents") => d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", auth: "ambient", cwd: work, prompt: "hello" }, caller, meta);
-  return { d, ownerChain, bobChain, tokenOf, runs, launch };
+  return { d, ownerChain, bobChain, tokenOf, runs, launch, work };
 }
 
 test("a member's request for an agent's thread with no sign-in picked is refused with the next step, and nothing is made", { timeout: 90_000 }, async t => {
@@ -59,4 +59,38 @@ test("a call with no person on it (the planner, a Flow, an automation) starts th
   const r = await w.launch({}, "module:planner");
   assert.ok(r.data && !r.error, JSON.stringify(r.error));
   await until(() => w.runs() === 1, "the agent thread");
+});
+
+test("a member's request for an agent that HAS a credential picked for it is refused until the credential is delivered unreadable; the owner's request for it starts it", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const picked = (/** @type {any} */ meta) => w.d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", auth: "subscription", env: { CLAUDE_CODE_OAUTH_TOKEN: "picked-for-kit" }, cwd: w.work, prompt: "hello" }, "module:agents", meta);
+  const refused = await picked(await w.tokenOf(w.bobChain));
+  assert.equal(refused.error && refused.error.code, "no_account", JSON.stringify(refused));
+  assert.match(refused.error.message, /cannot be used for a teammate's request yet/);
+  assert.equal(w.runs(), 0, "and nothing was made");
+  const own = await picked(await w.tokenOf(w.ownerChain));
+  assert.ok(own.data && !own.error, JSON.stringify(own.error));
+  await until(() => w.runs() === 1, "the owner's agent thread on its picked credential");
+});
+
+test("the team pump launches with no person on the call: the person the request recorded (for_person) is judged; automation passes; a teammate launch with a picked credential and nobody recorded is refused", { timeout: 90_000 }, async t => {
+  const w = await world(t);
+  const BEN = "per_" + "b".repeat(26);
+  const picked = { CLAUDE_CODE_OAUTH_TOKEN: "picked-for-the-teammate" };
+  const launch = (/** @type {any} */ extra) => w.d.registry.call("threads.launch", { agent: "kit", agent_kind: "teammate", auth: "subscription", env: picked, cwd: w.work, prompt: "hello", ...extra }, "module:team", { firstParty: true });
+  const memberAsked = await launch({ for_person: BEN });
+  assert.equal(memberAsked.error && memberAsked.error.code, "no_account", JSON.stringify(memberAsked));
+  assert.match(memberAsked.error.message, /cannot be used for a teammate's request yet/);
+  const nobody = await launch({});
+  assert.equal(nobody.error && nobody.error.code, "no_account", "nobody recorded: " + JSON.stringify(nobody));
+  assert.match(nobody.error.message, /nobody is recorded as having asked/);
+  assert.equal(w.runs(), 0, "neither made a thread");
+  const owner = await launch({ for_person: w.d.kernel.id.owner });
+  assert.ok(owner.data && !owner.error, "the owner's request: " + JSON.stringify(owner.error));
+  await until(() => w.runs() === 1, "the owner's teammate thread");
+  // the check a module asks for before it queues work answers the same, and names who asked
+  const check = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked }, "module:team", await w.tokenOf(w.bobChain));
+  assert.equal(check.error && check.error.code, "no_account", JSON.stringify(check));
+  const auto = await w.d.registry.call("threads.launch-check", { agent: "kit", agent_kind: "teammate", env: picked, for_person: "automation" }, "module:team", { firstParty: true });
+  assert.ok(auto.data && auto.data.asker === null, JSON.stringify(auto));
 });

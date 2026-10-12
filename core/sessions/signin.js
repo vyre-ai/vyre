@@ -68,7 +68,8 @@ export class Signins {
         const pick = ok.find(u => /device|login|auth/i.test(new URL(u).pathname)) || ok[ok.length - 1];
         if (pick) f.url = pick;   // re-picked as more is printed, until the code shows and settles it
       }
-      if (!f.code) { const c = CODE_RE.exec(clean); if (c) f.code = c[1]; }
+      // A login that takes a pasted code prints no device code: a pair like AB12-CD34 inside its address (random text) is not one.
+      if (!f.code && !f.wantsPaste) { const c = CODE_RE.exec(clean); if (c) f.code = c[1]; }
       if (f.url && (f.code || f.wantsPaste)) this.ping(f);
     };
     proc.stdout.setEncoding("utf8"); proc.stderr.setEncoding("utf8");
@@ -95,7 +96,11 @@ export class Signins {
   }
 
   /** What the command last said, for a failure: its own words, trimmed, no ANSI. @param {any} f */
-  said(f) { return f.text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trim().split("\n").slice(-4).join(" ").slice(0, 300) || "the sign-in command ended without finishing"; }
+  said(f) {
+    // The end of what it said, without its own address (a long one pushed the reason out of the first 300 characters: measured on the real claude).
+    const lines = f.text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/https:\/\/\S+/g, "(the sign-in link)").split("\n").map(l => l.trim()).filter(Boolean);
+    return lines.slice(-4).join(" ").slice(-300) || "the sign-in command ended without finishing";
+  }
 
   /** A code the person pasted back, for a login that asks for one. @param {string} flow @param {string} code */
   submit(flow, code) {

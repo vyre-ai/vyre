@@ -2,6 +2,7 @@
 // kernel-built chain, asks `authorize` first, writes an intent before the store call and one event after, and treats
 // the store as untrusted: it never lets the store decide who may see a row, it checks each returned row itself,
 // it keeps the id it minted, and it verifies a record's version hash against the event that wrote it.
+import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -17,6 +18,15 @@ import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/e
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
+/** The record types a module KEEPS: its own bookkeeping (the Flow types are `protected: true` in kernel/flows/store.js and reached through the Flows host's owner-and-service chain), readable and writable only by that module's service chain and by an owner or admin, on every path (records.*, events.read, the registry tools, a session's token). type -> module names. */
+export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]>} */ ({
+  skill: ["skills"],
+  "project-template": ["work"],
+  "def-watcher": ["watchers"],
+  planner_state: ["planner"], planner_firing: ["planner"],
+  preview_doc: ["previews"],
+}));
+
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
   { action: "records.create", resource_type: "record", risk: "write", label: "add records", gloss: "Create new records." },
@@ -182,7 +192,11 @@ export function createRecords(cfg) {
     const role = (members.membership({ kind: "person", id: rest.join(":"), space }) || {}).role;
     return role === "owner" || role === "admin";
   };
-  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install"]);
+  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install", ...Object.keys(KEEPERS)]);
+  /** The chain of the service that KEEPS this type (a pure service chain of that module, by name): it passes where no person hop is there to be owner or admin. @param {any} chain @param {string} type */
+  const keeperOk = (chain, type) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && (KEEPERS[type] || []).includes(String(chain.hops[0].actor.id));
+  /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */
+  const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   /** @type {Set<string> | null} */ let protectedTypes = null;
   const isProtectedType = async (/** @type {string} */ type) => {
     if (PROTECTED_BUILTIN.has(type)) return true;
@@ -583,6 +597,9 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
+  const roleFor = (/** @type {any} */ a) => (members && typeof members.membership === "function" ? (members.membership(a) || {}).role : undefined);
+  /** The kernel attributes a create carries (owner, project, sensitivity), judged for every type and by every route that creates (kernel/gateway/ownership.js). A gateway with no membership at all, as a store test rig is, cannot tell who is a member; the Space's own kernel always has it. @param {any} chain @param {any} attrs */
+  const attrsGate = async (chain, attrs) => { if (members && typeof members.membership === "function") await mayAttrs(chain, attrs, { trusted: isTrustedChain(chain, roleFor), project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)) }); };
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
     // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
@@ -591,13 +608,9 @@ export function createRecords(cfg) {
     const d = await gate(chain, `records.${op}`, u);
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
-    if (op === "create" && await isProtectedType(type) && !adminish(chain)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
-    if (op !== "create" && await isProtectedType(type)) {
-      const last = chain.hops[chain.hops.length - 1].actor, made = (kattrs.get(u) || {}).created_by;
-      const person = chain.hops.length === 1 && last.kind === "person" ? last : null;
-      const role = person && members && typeof members.membership === "function" ? (members.membership(person) || {}).role : undefined;
-      if (made !== `${last.kind}:${last.id}` && role !== "owner" && role !== "admin") throw new KernelError("not_allowed", `only whoever made this ${type} or an admin changes it`);
-    }
+    if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
+    // a type a module KEEPS is changed or removed only by its keeper (the module's own one-hop service chain) or an owner or admin: a chain that merely ends in the keeper's service hop (a person's chain with the service appended) does not pass
+    if (op !== "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or the service that keeps it, changes a ${type}`);
     const lim = await limitsOf(chain, type, d);
     /** @type {any[]} */ let linkFields = [];
     if (op === "create" || op === "update") {
@@ -621,6 +634,17 @@ export function createRecords(cfg) {
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
     // a list link may be changed by adding and removing entries (`{ contacts: { add: [{ urn }], remove: [{ urn }] } }`): worked out against the stored list, so the check and the store see the whole list
     if (op === "update" && hooks.expand) input = await hooks.expand(before);
+    // who may write a project, its team and a task (kernel/gateway/ownership.js): reads stay as they are, a member writes them only where she owns or belongs and never gives a seat
+    if (op === "create" && attrs) await attrsGate(chain, attrs);
+    if ((op === "create" || op === "update" || op === "remove") && OWNED_TYPES.includes(type)) {
+      // a service that is not trusted (the planner) writes a person's task for that person: she is judged as the writer
+      const doer = type === "task" && before && cfg.tasks && typeof cfg.tasks.facts === "function" ? (cfg.tasks.facts(before.id) || {}).doer : null;
+      const { trusted, actingFor } = judgeWriter(chain, doer, roleFor, space);
+      if (OWNED_TYPES.includes(type)) await mayWrite(chain, type, before, op === "remove" ? {} : input, {
+        op, trusted, actingFor, project: projectTeamOf(store, urn, (/** @type {string} */ u) => attrsOf(u)),
+        task: async (/** @type {string} */ tid) => { if (cfg.tasks && typeof cfg.tasks.facts === "function") return cfg.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; },
+      });
+    }
     // a link names live records of its type: the gateway checks, so every store holds only links that stand
     if (op === "create" || op === "update") await checkLinkTargets(linkFields, input);
     let stage = {};
@@ -698,6 +722,8 @@ export function createRecords(cfg) {
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
+    // a project a member makes is hers (kernel/gateway/ownership.js): with no owner named, she is it, so the ownership rule finds her on her own project
+    if (type === "project" && data && typeof data === "object" && data.owner === undefined && !isTrustedChain(chain, roleFor)) { const me = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (me) data = { ...data, owner: { actor: { kind: "person", id: me.actor.id, space } } }; }
     // `{ import: true, id }`: a record moved here from another space of the person's keeps its id (links, chats and memory point at ids). An admin act of its own (`records.import`), and the id is a time-prefixed uuid.
     let id = mintUuid(clock());
     if (opts.import === true) {
@@ -1333,28 +1359,36 @@ export function createRecords(cfg) {
   }
   return Object.freeze({
     ...api,
-    async create(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts = {}) { return type === "task" && cfg.tasks ? taskCreate(chain, data) : api.create(chain, type, data, opts); },
+    async create(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts = {}) {
+      if (type !== "task" || !cfg.tasks) return api.create(chain, type, data, opts);
+      // a task made through the tasks service skips write(): the same two checks on what the call carries (kernel attributes, and who it writes on behalf of)
+      if (opts.on_behalf !== undefined && chain.hops[chain.hops.length - 1].actor.kind !== "service") throw new KernelError("denied", "only a module's own chain writes on a person's behalf");
+      if (opts.attrs) await attrsGate(chain, opts.attrs);
+      return taskCreate(chain, data);
+    },
     async update(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ patch, /** @type {any} */ base, /** @type {any} */ opts = {}) { return type === "task" && cfg.tasks ? taskUpdate(chain, id, patch, base) : api.update(chain, type, id, patch, base, opts); },
     async remove(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ base, /** @type {any} */ opts = {}) {
       if (type === "task" && cfg.tasks) throw new KernelError("not_allowed", "a task is skipped, not removed: use tasks.move");
       return api.remove(chain, type, id, base, opts);
     },
+    mayKeep: async (/** @type {any} */ chain, /** @type {string} */ type) => !(await isProtectedType(type)) || mayKeep(chain, type),
+    async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
       return api.get(chain, type, id);
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!adminish(chain)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
       return api.query(chain, type, spec);
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type) && !adminish(chain)) return [];
+      if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
       return api.aggregate(chain, type, spec);
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
       const r = await api.search(chain, spec);
       const keep = [];
-      for (const h of r.rows) keep.push(!(await isProtectedType(h.type)) || (adminish(chain) && madeByTrusted(urn(h.type, h.id))));
+      for (const h of r.rows) keep.push(!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id))));
       return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };
     },
   });
