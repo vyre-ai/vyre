@@ -1384,7 +1384,9 @@ export default {
         const chainPerson = async () => { if (!K || typeof K.chain !== "function") return null; try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; } };
         const owner0 = K && typeof K.owner === "string" ? K.owner : "";
         const viaChain = await chainPerson();
-        const asker0 = viaChain || (K && owner0 && bareTerminal(meta) ? owner0 : null);
+        // A session's call carries only the module's hop: the person is the one the session was started for (the thread id is stamped by the daemon's session socket, never sent by the session).
+        const viaThread = !viaChain && meta.thread ? (await use("threads.person-of", { thread: String(meta.thread) }).catch(() => null) || {}).person || null : null;
+        const asker0 = viaChain || viaThread || (K && owner0 && bareTerminal(meta) ? owner0 : null);
         if (asker0 && K) {
           const m0 = typeof K.membership === "function" ? await Promise.resolve(K.membership(asker0)).catch(() => null) : null;
           const trusted = asker0 === owner0 || (m0 && (m0.role === "owner" || m0.role === "admin"));
