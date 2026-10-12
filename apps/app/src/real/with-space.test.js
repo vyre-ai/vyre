@@ -42,7 +42,7 @@ test("a member's chat tools go through the team door: only the five, and only fo
 
 test("the team's own work never goes to a member's own home: it has a door call or it is refused in words", async () => {
   const { isTeamWork, memberWire, NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
-  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add"]) {
+  for (const t of ["work.project.members", "work.template.golive", "work.template.install", "work.template.define", "flows.pause", "flows.resume", "flows.kit.list", "flows.budget", "team.add", "work.timeline", "previews.log", "previews.stop"]) {
     assert.ok(isTeamWork(t), `${t} is the team's work`);
     assert.equal(memberWire(t), null, `${t} has no door row yet, so a member is told, not sent home`);
   }
@@ -76,4 +76,14 @@ test("a member's project files go through the door: list, read and upload, and n
   const { memberWire } = await import("./with-space.js");
   for (const t of ["files.list", "files.read", "files.upload"]) assert.equal(memberWire(t), t, t);
   for (const t of ["files.drive.list", "files.drive.read", "files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
+});
+
+test("the screens that need the team's timeline say so for a member: a tag and one plain sentence, from the refusal's own mark", async () => {
+  const fs = await import("node:fs");
+  const read = (f) => fs.readFileSync(new URL(f, import.meta.url), "utf8");
+  const { NOT_FOR_MEMBERS_YET } = await import("./with-space.js");
+  assert.match(NOT_FOR_MEMBERS_YET, /owner's for now/, "isNotHere keys on these words");
+  assert.match(read("./NotHereYet.tsx"), /<PlaceTag \/>.*is not in your app yet\. The owner sees it\./s);
+  assert.match(read("../../screens/projects/ProjectPanes.tsx"), /if \(notHere\) return <NotHereYet what="The team's timeline" \/>;/);
+  assert.match(read("../../screens/records/RecordTimeline.tsx"), /<NotHereYet what="The team's timeline" \/>/);
 });

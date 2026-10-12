@@ -7,6 +7,7 @@ import { callT } from "../../src/real/call-tool";
 import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
 import { showingJoined } from "../../src/real/team-join";
+import { NotHereYet, isNotHere } from "../../src/real/NotHereYet";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { pickFiles } from "../../src/chat/attach-pick";
 import { ADD_WORDS, OPEN_WORDS, checkUpload, openedView } from "./files-model.js";
@@ -132,8 +133,10 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
 /** The project's story, newest first and grouped by day (work.timeline): stages it moved through, tasks done, messages sent, files shared, chats and Flow runs, each a type mark and one plain line. */
 export function TimelinePane({ slug }: { slug: string }) {
   const [rows, setRows] = useState<Entry[] | null>(null);
-  useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 200 }).then((r) => setRows(r.error ? [] : r.data?.entries ?? [])); }, [slug]);
+  const [notHere, setNotHere] = useState(false);
+  useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 200 }).then((r) => { setNotHere(isNotHere(r.error)); setRows(r.error ? [] : r.data?.entries ?? []); }); }, [slug]);
   if (rows === null) return <LoadingState rows={3} />;
+  if (notHere) return <NotHereYet what="The team's timeline" />;
   if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Stages, tasks, messages, files and shared chats linked to this project show here, newest first." />;
   return <TimelineEntries rows={rows} />;
 }
