@@ -4,6 +4,9 @@ import { allowMock, setStore } from "../store-core/store.js";
 import { createGatewayStore, storeError } from "../store-core/gateway-adapter.js";
 import { call, listen, send } from "./box";
 import { tool as heldTool } from "../real/box";
+import { NOT_FOR_MEMBERS_YET, chatSpace, memberChatWire } from "../real/with-space.js";
+import { createStoreRoute } from "../real/store-route.js";
+import { joinedHere } from "../real/team-join";
 import { withSpace } from "../real/with-space.js";
 import { useSpaces } from "../../screens/shell/state";
 
@@ -16,7 +19,7 @@ const named = (tool: string, input: Record<string, unknown>) => withSpace(tool, 
 const HELD = new Set(["records.seal-put", "records.reveal"]);
 
 /** The box connection as the adapter's rpc: reads now, writes through the outbox, a human-only call's proof as the call's presence. */
-export const boxRpc = {
+const plainRpc = {
   async read(tool: string, input: Record<string, unknown> = {}) {
     const r = await call(tool, named(tool, input));
     if (r.error) throw storeError(r.error);
@@ -34,6 +37,16 @@ export const boxRpc = {
   },
   events: (on: (e: unknown) => void) => listen(on as never),
 };
+
+/** The Store's rpc: a call naming a team Space this device joined goes through the team's door; every other call is plainRpc, unchanged (src/real/store-route.js). */
+const routed = createStoreRoute({
+  joinedSpace: async (input) => { const sp = chatSpace(named("records.list", input), useSpaces.getState().space); return sp && (await joinedHere(sp)) ? sp : null; },
+  door: async (name, input) => { try { return await heldTool(name, named(name, input)); } catch (e) { const x = e as { code?: string; message?: string }; throw storeError({ code: x.code, message: x.message }); } },
+  wired: (name) => memberChatWire(name) !== null,
+  notYet: NOT_FOR_MEMBERS_YET,
+  plain: { read: plainRpc.read, write: plainRpc.write },
+});
+export const boxRpc = { read: routed.read, write: routed.write, events: plainRpc.events } as typeof plainRpc;
 
 if (process.env.EXPO_PUBLIC_VYRE_MOCK === "1") allowMock();
 else setStore(createGatewayStore({ rpc: boxRpc as never }));

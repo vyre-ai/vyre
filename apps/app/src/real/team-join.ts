@@ -2,7 +2,8 @@
 // the hardware key that gives the yes, and a small store for where the joined teams' homes are. A device with no server of its own has nothing else to join with; a name kept in this app has no box to ask.
 
 import { loadIdentity } from "../identity/store";
-import { openInvite, callTeam, type JoinDeps } from "./join-team.js";
+import { openInvite, homeSession, type JoinDeps } from "./join-team.js";
+import { createSharedSessions } from "./team-session.js";
 import { WORDS } from "@vyre/relay-client/words.js";
 
 const KEY = "vyre.team.";
@@ -101,12 +102,24 @@ export async function showingJoined(): Promise<boolean> {
   return joinedHere(useSpaces.getState().space ?? "");
 }
 
-/** A call to a team space this device joined, as a member. */
-export async function teamCall(space: string, call: string, args: unknown[] = []) {
-  const d = await joinDeps();
-  if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
-  return callTeam(d, space, call, args);
+/** ONE door session per joined team Space, shared by every call (src/real/team-session.js): a screen load is 8 to 15 calls and the peer door counts a stream open per session. */
+const shared = createSharedSessions({
+  open: async (space: string) => {
+    const d = await joinDeps();
+    if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+    const row = d.store ? await d.store.get(`member-of/${space}`) : null;
+    if (!row || !row.channel) throw Object.assign(new Error("This device has not joined that space."), { code: "not_a_member" });
+    return homeSession(d, row.channel, space, "member");
+  },
+});
+
+/** A call to a team space this device joined, as a member, on that Space's shared session. */
+export async function teamCall(space: string, call: string, args: unknown[] = [], opt?: { timeoutMs?: number }) {
+  return shared.call(space, call, args as any[], opt);
 }
+
+/** Let go of every team session now (the person signed out or left the team). */
+export const closeTeamSessions = () => shared.closeAll();
 
 // ---- the owner's side: invites made, listed, confirmed and cancelled from this app over its paired session to the server (team-invite.js) ----
 
