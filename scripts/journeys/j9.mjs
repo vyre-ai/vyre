@@ -161,7 +161,8 @@ export default {
       }, { needs: [SIGN], owner: "chat" });
       await heavy("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await sharedChatSteps({ J, w, team, people, needs: [SIGN] });
-      await memberProjectsSteps({ J, w, team, people, needs: [SIGN] });
+      // a member's device may call the team's server 30 times a minute: the chat steps used it up, so wait before the project steps
+      if (!process.env.J9_SHORT) { await new Promise(r => setTimeout(r, 65_000)); await memberProjectsSteps({ J, w, team, people, needs: [SIGN] }); }
       await heavy("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       // J9_KEEP=<minutes>: leave the box up that long after the steps, to look inside it (docker exec -u vyre vyre-vyre-1 ...)
