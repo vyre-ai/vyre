@@ -54,8 +54,7 @@ test("a member's to-do is filed FOR HER, never as the owner's; another member ca
   const other = (tool, input) => w.callAs(memberFacts(OTHER), tool, input);
   for (const [tool, input] of [["planner.update", { item: made.id, title: "mine now" }], ["planner.delete", { item: made.id }]]) {
     const r = await other(tool, input);
-    assert.equal(r.error?.code, "denied", `${tool} by another member: ${JSON.stringify(r).slice(0, 160)}`);
-    assert.match(String(r.error?.message), /someone else's/);
+    assert.equal(r.error?.code, "not_found", `${tool} by another member: ${JSON.stringify(r).slice(0, 160)}`);
   }
   assert.ok((await w.call("planner.update", { item: made.id, title: "owner edits" })).data, "the owner changes any to-do");
   assert.ok((await asMember(w, "planner.update", { item: made.id, title: "she edits" })).data, "and she still changes her own");
@@ -92,4 +91,27 @@ test("a member's reminder goes only on a chat she is in", async t => {
   assert.ok(r.error, "refused: " + JSON.stringify(r).slice(0, 200));
   assert.match(String(r.error.message), /chat you are in/);
   assert.ok((await w.call("planner.add", { kind: "reminder", title: "owner may", at: "2027-01-01T10:00:00Z", thread: "thr_any" })).data, "the owner is not held to it");
+});
+
+test("a member acting BY ID on the owner's to-do or on another member's reminder gets not_found and nothing changes; her own works, and so does the owner", async t => {
+  const { w } = await rig(t);
+  const OTHER = MEMBERS[1];
+  const at = "2027-01-01T10:00:00Z";
+  const ownerTodo = (await w.call("planner.add", { kind: "todo", title: "Vault: renew the key", list: "Vault" })).data;
+  const theirs = (await w.callAs(memberFacts(OTHER), "planner.add", { kind: "reminder", title: "THIRD's reminder", at })).data;
+  const mineRem = (await asMember(w, "planner.add", { kind: "reminder", title: "hers", at })).data;
+  for (const id of [ownerTodo.id, theirs.id]) {
+    for (const [tool, input] of [["planner.update", { item: id, title: "taken" }], ["planner.done", { item: id }], ["planner.snooze", { item: id, minutes: 10 }], ["planner.dismiss", { item: id }], ["planner.delete", { item: id }]]) {
+      const r = await asMember(w, tool, input);
+      assert.equal(r.error?.code, "not_found", `${tool} on ${id}: ${JSON.stringify(r).slice(0, 160)}`);
+    }
+  }
+  const after = (await w.call("planner.list", { state: "all" })).data;
+  for (const [id, title] of [[ownerTodo.id, "Vault: renew the key"], [theirs.id, "THIRD's reminder"]]) {
+    const it = after.find((/** @type {any} */ x) => x.id === id);
+    assert.ok(it && it.title === title && it.state === "open" && !it.deleted_at, `unchanged: ${id}`);
+  }
+  assert.ok((await asMember(w, "planner.update", { item: mineRem.id, title: "hers edited" })).data, "her own reminder");
+  assert.ok((await w.call("planner.update", { item: theirs.id, title: "owner edits" })).data, "the owner changes any");
+  assert.ok((await w.call("planner.done", { item: ownerTodo.id })).data !== undefined, "and finishes his own");
 });

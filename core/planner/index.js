@@ -329,22 +329,17 @@ export default {
       return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
     };
     /**
-     * A member changes or removes only the to-dos filed for her: the owner and an admin, and a call with no person on it, any. (A reminder or a note keeps no owner of its own; a to-do's doer is the person it is for.)
+     * An item hidden from the caller (see hiddenFrom: not hers) answers as an item that is not there, the same words as a wrong id, so an id is no way in. The owner, an admin and the
+     * planner's own calls pass; an item with no doer or no maker counts as the owner's.
      * @param {any} item @param {{ chain?: any }} w
      */
-    const mayChangeTodo = async (item, w) => {
-      if (!item || !item._task || !item._doer) return;
-      const me = callerPerson(w && w.chain);
-      if (!me || me === item._doer) return;
-      if (await mayScheduleJobs(w)) return;
-      throw fail("That to-do is someone else's. Ask them, or the owner, to change it.", "denied");
-    };
+    const mayChangeTodo = async (item, w) => { if (hiddenFrom(item, await viewerOf(w))) throw fail("no such item", "not_found"); };
     /**
      * Whose items a call may see: null for the owner, an admin and a call with no person on it (they see all), else the calling member's id. A member sees the to-dos filed for her and the
      * reminders and notes she made; an item made before the planner kept its person (or by the owner) is the owner's.
      * @param {{ chain?: any }} w @returns {Promise<string|null>}
      */
-    const viewerOf = async w => { const me = callerPerson(w && w.chain); return !me || (await mayScheduleJobs(w)) ? null : me; };
+    const viewerOf = async w => { const me = callerPerson(w && w.chain); if (!me) return null; return (await mayScheduleJobs(w)) ? null : me; };
     /** @param {any} r @param {string|null} me */
     const hiddenFrom = (r, me) => Boolean(me) && !!r && r.kind !== "event" && (r._task ? r._doer !== me : r.by !== me);
     /**
