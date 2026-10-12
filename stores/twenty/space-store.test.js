@@ -253,3 +253,24 @@ test("degrade: while a retry runs the store says it is starting, not the first a
   release(); await retrying;
   assert.throws(() => st.get("t", "i"), (e) => /still no room/.test(e.message), "and when that attempt fails it says its own reason");
 });
+
+test("rc.3: a store-state.json left by an earlier process is cleared when the store opens at once, and `vyre status` does not report an attached store as not available", async () => {
+  const { createMemoryStore } = await import("../../kernel/store/memory.js");
+  const home = tmp(); const dir = path.join(home, "kernel");
+  fs.mkdirSync(dir, { recursive: true });
+  const stale = { state: "unavailable", reason: "the compose file could not be regenerated", since: "2026-10-12T10:00:00Z", attempts: 3, next_try_at: "2026-10-12T10:01:00Z" };
+  fs.writeFileSync(path.join(dir, "store-state.json"), JSON.stringify(stale));
+  const { storeStatus } = await import("../store-status.js");
+  // The status alone: an attached, answering store outranks the old file.
+  const up = createMemoryStore({});
+  const alone = await storeStatus({ root: home, store: up, env: {} });
+  assert.equal(alone.reachable, true); assert.equal(alone.unavailable, undefined); assert.doesNotMatch(alone.note || "", /not available yet/);
+  // A store that is still away keeps saying why.
+  const away = { kind: "twenty", attached: () => false, health: async () => ({ ok: false, detail: "starting Records" }), types: async () => [], aggregate: async () => [] };
+  const still = await storeStatus({ root: home, store: away, env: { VYRE_STORE: "twenty" } });
+  assert.equal(still.reachable, false); assert.match(still.unavailable.reason, /compose file/);
+  // And the opener clears the file when its store opens on the first try.
+  const f = createStoreFor({ home, mode: "sqlite", degrade: true, helper: false });
+  await f(SP, { personal: true });   // sqlite: the kernel's own store, opened at once
+  assert.equal(fs.existsSync(path.join(dir, "store-state.json")), false, "the earlier process's record is gone");
+});

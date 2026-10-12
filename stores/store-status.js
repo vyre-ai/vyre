@@ -32,7 +32,9 @@ export async function storeStatus(o) {
   /** @type {any} */ let unavailable = null;
   try {
     const st = JSON.parse(fs.readFileSync(path.join(o.root, "kernel", "store-state.json"), "utf8"));
-    if (st && st.state === "unavailable") { unavailable = { reason: st.reason, since: st.since, attempts: st.attempts, ...(st.next_try_at ? { next_try_at: st.next_try_at } : {}) }; reachable = false; notes.push(`the record store is not available yet: ${st.reason}`); }
+    // The file is a record of an attempt that failed, kept so `vyre status` can say why. A store that is attached and answering is the newer fact: a file left by an earlier process (a restart that opened the store at once never cleared it) must not say "not available yet" about a store that is up.
+    const live = Boolean(store) && reachable && (typeof store.attached !== "function" || store.attached());
+    if (st && st.state === "unavailable" && !live) { unavailable = { reason: st.reason, since: st.since, attempts: st.attempts, ...(st.next_try_at ? { next_try_at: st.next_try_at } : {}) }; reachable = false; notes.push(`the record store is not available yet: ${st.reason}`); }
   } catch { /* none */ }
   let records = null;
   if (store && reachable) {
