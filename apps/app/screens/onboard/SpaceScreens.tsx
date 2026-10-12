@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Banner, Button, Card, ChoiceList, Chip, CodeBlock, CodeDisplay, CodeField, Divider, Field, FlowStep, Icon, MatchWords, Meter, Row, Segmented, Stack, Text, showToast } from "@vyre/ui";
 import { DEMO, WORDS, addressOf, afterSpace, inviteStatus, spaceCodeStatus, wordsMatch } from "./flow-model.js";
 import { usePair } from "./VaultInferenceScreens";
+import { takeJoin } from "../../src/shell/join-hold.js";
 import { LIVE, beginServerRun, confirmServerWords, denyServerWords, holdMaster, joinCard, joinSpace, keepMadeInvite, lendThisComputer, linkFromInput, makeInvite, confirmInviteWords, pairByCode, readInvite, setUpSpace, stopServerRun, peekMaster, forgetMaster, useActiveSpace, useJoinCard, useMadeInvite, useServerRun, whyNot } from "./real-space";
 import type { ScreenProps } from "./types";
 
@@ -162,6 +163,13 @@ function JoinCodeMock({ set, go, back, steps }: ScreenProps) {
   const [tried, setTried] = useState(false);
   const st = inviteStatus(text);
   const failure = tried && st === "short" ? "That does not look like an invite. Paste the whole link, or type the code your inviter read to you." : tried && st === "expired" ? "That invite has expired or was already used. Ask the person who invited you for a new one." : undefined;
+  // A link the person opened from outside the app is read once here, and skips the typing.
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    const held = takeJoin();
+    if (held) { setText(held); void next(held); }
+  }, []);
   return (
     <FlowStep steps={steps} onBack={back} title="Join a space" lead="Paste the invite link, or type the invite code someone read to you."
       failure={failure}
@@ -222,7 +230,7 @@ export function Ready({ ctx, go, back, steps }: ScreenProps) {
   const space = ctx.spaceName || SPACE;
   return (
     <FlowStep hero mark="done" steps={steps} onBack={back} title={`You are in ${space}`} lead="A few things are worth doing next."
-      primary={{ label: `Open ${space}`, onPress: () => showToast("The app opens on the space here. The prototype ends.") }} secondary={{ label: "Start the prototype again", onPress: () => go("start") }}>
+      primary={{ label: `Open ${space}`, onPress: () => (LIVE ? go("start") : showToast("The app opens on the space here. The prototype ends.")) }} secondary={LIVE ? undefined : { label: "Start the prototype again", onPress: () => go("start") }}>
       <Card flush>
         <Row dense lead={<Icon name="spark" tone="text-2" />} title="AI accounts" end={<Chip tone={connected ? "ok" : "warn"}>{connected ? `${connected} connected` : "Not connected"}</Chip>} sub={connected ? undefined : "Connect one in Settings to start a session."} />
         <Divider inset={60} />
@@ -389,10 +397,11 @@ function JoinCodeLive({ set, go, back, steps }: ScreenProps) {
   const [ack, setAck] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
-  const next = async () => {
+  const opened = useRef(false);
+  const next = async (held?: string) => {
     setBusy(true); setFailure("");
     try {
-      const link = await linkFromInput(text, (a) => setAck(a));
+      const link = held ?? await linkFromInput(text, (a) => setAck(a));
       const c = await readInvite(link);
       set({ spaceName: c.label, role: c.role });
       go("join.review");
