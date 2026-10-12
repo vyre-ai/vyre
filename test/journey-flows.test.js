@@ -57,8 +57,15 @@ test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, s
   await d.kernel.gateway.records.update(admin, "dossier", rec.id, { stage: "Engagement" }, rec.version);
   const rows = await until(async () => { const r = (await call("flows.runs", { id: outer.id })).data || []; return r.length === 3 && r.every((/** @type {any} */ x) => x.state === "done") ? r : null; }, "step 2, the run and its two branches to finish", 45_000,
     // what a bare timeout cannot say: which of the runs is not done, its state, its last error and how long it has been going
-    async () => { const r = (await call("flows.runs", { id: outer.id })).data || []; const now = Date.now(); return `${r.length} of 3 runs exist: ` + (r.map((/** @type {any} */ x) => `${x.id} ${x.parent ? "branch" : "run"} is ${x.state}${x.error ? ` (${x.error.code || ""}: ${String(x.error.message || "").slice(0, 160)})` : ""}, started ${x.started_at ? Math.round((now - x.started_at) / 1000) + " s ago" : "never"}`).join("; ") || "none"); });
-  const parent = rows.find((/** @type {any} */ x) => !x.parent);
+    async () => {
+      const now = Date.now(), one = (/** @type {any} */ x) => `${x.id} ${x.parent ? "branch" : "run"} is ${x.state}${x.error ? ` (${x.error.code || ""}: ${String(x.error.message || "").slice(0, 160)})` : ""}${x.queued ? ` (queued: ${x.queued.reason || ""})` : ""}, started ${x.started_at ? Math.round((now - x.started_at) / 1000) + " s ago" : "never"}`;
+      const r = (await call("flows.runs", { id: outer.id })).data || [];
+      // the sub-flow's own run and any other Flow's run are runs of other Flows: say them too, and what the runner says needs a look
+      const others = [];
+      for (const f of ((await call("flows.list")).data || [])) { if (f.id === outer.id) continue; for (const x of ((await call("flows.runs", { id: f.id })).data || [])) others.push(`[${f.name || f.id}] ${one(x)}`); }
+      const att = ((await call("flows.attention")).data || {}).runs || [];
+      return `${r.length} of 3 runs exist: ` + (r.map(one).join("; ") || "none") + `. Other Flows' runs: ${others.join("; ") || "none"}. Needs a look: ${att.map((/** @type {any} */ a) => `${a.run} ${a.kind} ${String(a.message || "").slice(0, 120)}`).join("; ") || "nothing"}`;
+    });  const parent = rows.find((/** @type {any} */ x) => !x.parent);
   assert.equal(rows.filter((/** @type {any} */ x) => x.parent === parent.id).length, 2, "J6 step 2: two branches under one run");
   assert.ok((await notes()).includes("after: inner"), `J6 step 2: the step after the join used the sub-flow's answer (${await notes()})`);
   assert.deepEqual((await notes()).filter(n => n !== "tick"), ["after: inner", "inner", "left lane"], "J6 step 2: each piece ran once");
