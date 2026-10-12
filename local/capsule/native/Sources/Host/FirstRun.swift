@@ -66,6 +66,11 @@ public enum FirstRun {
         remembered == .here && !vyredUp && !windowOpen
     }
 
+    /// Which app window "Open Vyre" opens: a server Mac's (no local vyred) when the kept choice says server, or when no local vyred answers and this Mac was not set to run Vyre itself.
+    public static func opensBoxless(vyredUp: Bool, remembered: FirstRunChoice?) -> Bool {
+        remembered == .server || (!vyredUp && remembered != .here)
+    }
+
     /// The last lines a setup said, for the failure window: the newest `count` lines that are not empty, oldest first.
     public static func lastLines(_ lines: [String], count: Int = 6) -> [String] {
         Array(lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.suffix(count))

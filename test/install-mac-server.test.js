@@ -327,6 +327,31 @@ test("install-mac-server.sh: --login-only with the app's bundled Node (VYRE_NODE
   assert.match(bad.stderr, /pinned checksum/);
 });
 
+test("install-mac-server.sh: a disk with too little room stops before anything is installed, in plain words", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_FREE_KB: "300000" }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /only 292 MB free and Vyre needs about 4096 MB/);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was written");
+  assert.ok(!/did not finish/.test(r.stderr) || /Nothing was left/.test(r.stderr), "no leftovers claimed");
+});
+
+test("install-mac-server.sh: an install that stops half way says what it left and the one line that removes it, and leaves the person's own folders out of it", t => {
+  const m = noBrew(t);
+  // the release cannot be read, after Vyre's own folder exists
+  const env = { ...m.env, VYRE_BOX_URL: `file://${m.base}/nowhere/`, VYRE_NODE_URL: "", VYRE_FREE_KB: "99999999" };
+  const r = run(env, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /the install did not finish/);
+  assert.ok(r.stderr.includes(`rm -rf '${m.env.VYRE_SERVER_DIR}'`), r.stderr);
+  assert.match(r.stderr, /run this one line/);
+  // a folder that was already there is not claimed
+  fs.mkdirSync(m.env.VYRE_HOME, { recursive: true });
+  fs.rmSync(m.env.VYRE_SERVER_DIR, { recursive: true, force: true });
+  const r2 = run(env, ["--yes"]);
+  assert.ok(!r2.stderr.includes(`rm -rf '${m.env.VYRE_HOME}'`), "the person's own data folder is never in the removal line");
+});
+
 // ---------------------------------------------------------------------------------------------
 // The default mode: the system service (ADR 0040 phase 4). The root installer is a fake that acts
 // like the real one where the script can see it: it prints the enrolment line last, writes core.json

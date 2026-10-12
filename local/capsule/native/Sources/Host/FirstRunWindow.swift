@@ -60,6 +60,9 @@ final class FirstRunController: ObservableObject {
         return true
     }
 
+    /// The kind of app window to open now, by the kept choice and whether a local vyred answers.
+    func opensBoxless() -> Bool { FirstRun.opensBoxless(vyredUp: vyredUp, remembered: store.load()) }
+
     func show() {
         phase = .choose
         if window == nil { build() }

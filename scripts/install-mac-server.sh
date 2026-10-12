@@ -40,6 +40,7 @@ UNINSTALL=0
 PURGE=0
 SYSTEM=1
 TMP=""
+STARTED=0
 CODE=${VYRE_CODE:-}
 # The release files come from VYRE_BOX_URL, else from `box-url` beside this script (a prerelease app names its own tag's release assets there, the
 # rc channel; the files are verified against the pinned release key either way, so the URL chooses a source and never a trust), else vyre.run/box.
@@ -118,7 +119,72 @@ TGZ_SHA=""
 say() { printf '%s\n' "$*"; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
 step() { say "  ok  $*"; }
-cleanup() { [ -z "$TMP" ] || rm -rf "$TMP"; }
+# cleanup: the temp folder always goes. A run that stopped half way says exactly what it left (only what was not there when it began) and one command that removes it.
+cleanup() {
+  rc=$?
+  [ -z "$TMP" ] || rm -rf "$TMP"
+  if [ "$rc" != 0 ] && [ "$STARTED" = 1 ] && [ "$UNINSTALL" = 0 ] && [ "$DRY" = 0 ]; then report_left; fi
+  return 0
+}
+
+# snapshot_before: what already exists, so a failed install never claims or removes the person's own folders.
+snapshot_before() {
+  PRE_SERVER=0; [ ! -e "$SERVER_DIR" ] || PRE_SERVER=1
+  PRE_VHOME=0; [ ! -e "$VHOME" ] || PRE_VHOME=1
+  PRE_COLIMA=0; [ ! -e "$HOME/.colima" ] || PRE_COLIMA=1
+  PRE_LIMA=0; [ ! -e "$HOME/.lima" ] || PRE_LIMA=1
+  PRE_PLIST=0; [ ! -e "$AGENTS_DIR/$LABEL.plist" ] && [ ! -e "$AGENTS_DIR/$COLIMA_LABEL.plist" ] || PRE_PLIST=1
+  STARTED=1
+}
+
+report_left() {
+  left=""; cmd=""
+  if [ "$PRE_PLIST" = 0 ]; then
+    for l in "$LABEL" "$COLIMA_LABEL"; do
+      [ -e "$AGENTS_DIR/$l.plist" ] || continue
+      left="$left $AGENTS_DIR/$l.plist"; cmd="$cmd$LAUNCHCTL bootout gui/$(id -u)/$l >/dev/null 2>&1; rm -f '$AGENTS_DIR/$l.plist'; "
+    done
+  fi
+  if [ "$PRE_COLIMA" = 0 ] && [ -e "$HOME/.colima" ]; then
+    [ ! -x "$BIN/colima" ] || cmd="$cmd'$BIN/colima' delete --force >/dev/null 2>&1; "
+    left="$left $HOME/.colima"; cmd="$cmd""rm -rf '$HOME/.colima'; "
+  fi
+  if [ "$PRE_LIMA" = 0 ] && [ -e "$HOME/.lima" ]; then left="$left $HOME/.lima"; cmd="$cmd""rm -rf '$HOME/.lima'; "; fi
+  if [ "$PRE_SERVER" = 0 ] && [ -e "$SERVER_DIR" ]; then left="$left $SERVER_DIR"; cmd="$cmd""rm -rf '$SERVER_DIR'; "; fi
+  if [ "$PRE_VHOME" = 0 ] && [ -e "$VHOME" ]; then left="$left $VHOME"; cmd="$cmd""rm -rf '$VHOME'; "; fi
+  printf '\nvyre: the install did not finish.\n' >&2
+  if [ -z "$left" ]; then printf '  Nothing was left on this Mac.\n' >&2; return 0; fi
+  printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
+}
+
+# free_kb DIR: kilobytes free on the disk DIR is on (VYRE_FREE_KB is for tests).
+free_kb() {
+  [ -z "${VYRE_FREE_KB:-}" ] || { printf '%s' "$VYRE_FREE_KB"; return 0; }
+  df -k "$1" 2>/dev/null | awk 'NR==2 { print $4 }'
+}
+
+# disk_gate: Vyre, its Linux image and its downloads need room. A full disk shows up as a curl write failure half way through, so it is checked first.
+disk_gate() {
+  need=${VYRE_MIN_FREE_KB:-4194304}
+  for d in "$TMP" "$HOME"; do
+    f=$(free_kb "$d"); case "$f" in ''|*[!0-9]*) continue ;; esac
+    [ "$f" -ge "$need" ] || die "this Mac has only $((f / 1024)) MB free and Vyre needs about $((need / 1024)) MB (its downloads and its Linux image). Free some space, then run this line again."
+  done
+}
+
+# dl URL DEST: a download that says why when it fails (a folder that is missing or not writable, or a full disk), not only curl's code.
+dl() {
+  curl -fsSL --retry 2 -o "$2" "$1" && return 0
+  dd=$(dirname "$2")
+  if [ ! -d "$dd" ]; then say "  note  the folder $dd does not exist, so the download of $1 could not be saved"
+  elif [ ! -w "$dd" ]; then say "  note  the folder $dd is not writable, so the download of $1 could not be saved"
+  else
+    f=$(free_kb "$dd"); case "$f" in ''|*[!0-9]*) f="" ;; esac
+    if [ -n "$f" ] && [ "$f" -lt 524288 ]; then say "  note  this Mac is nearly out of disk space ($((f / 1024)) MB free in $dd), so the download of $1 could not be saved"
+    else say "  note  the download of $1 failed"; fi
+  fi
+  return 1
+}
 
 sha256() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
@@ -129,7 +195,7 @@ sha256() {
 fetch() {
   case "$BASE" in
     file://*) cp "${BASE#file://}$1" "$2" 2>/dev/null || die "could not read $BASE$1" ;;
-    *) curl -fsSL --retry 2 -o "$2" "$BASE$1" || die "could not download $BASE$1" ;;
+    *) dl "$BASE$1" "$2" || die "could not download $BASE$1" ;;
   esac
 }
 
@@ -161,7 +227,7 @@ fetch_node() {
   [ -n "$ns" ] || die "no pinned Node checksum for this release; nothing was installed"
   if [ "$DRY" = 1 ]; then say "would download Node $NODE_VERSION from $nu into $NODE_DIST"; return 0; fi
   say "Downloading Node $NODE_VERSION (checked against its pinned checksum)..."
-  curl -fsSL --retry 2 -o "$TMP/node.tgz" "$nu" || die "could not download $nu"
+  dl "$nu" "$TMP/node.tgz" || die "could not download $nu"
   [ "$(sha256 "$TMP/node.tgz")" = "$ns" ] || die "the Node download does not match its pinned checksum; nothing was installed"
   NODE_TGZ_SHA=$ns
   rm -rf "$TMP/node-x"; mkdir -p "$TMP/node-x"
@@ -323,9 +389,9 @@ colima_fallback() {
   fi
   say "Downloading Colima and Lima (checked against pinned checksums)..."
   mkdir -p "$TMP/cl"
-  curl -fsSL --retry 2 -o "$TMP/cl/colima" "$cu" || { say "  note  could not download Colima"; return 1; }
-  curl -fsSL --retry 2 -o "$TMP/cl/lima.tgz" "$lu" || { say "  note  could not download Lima"; return 1; }
-  [ "$need_docker" = 0 ] || curl -fsSL --retry 2 -o "$TMP/cl/docker.tgz" "$du" || { say "  note  could not download the docker client"; return 1; }
+  dl "$cu" "$TMP/cl/colima" || { say "  note  could not download Colima"; return 1; }
+  dl "$lu" "$TMP/cl/lima.tgz" || { say "  note  could not download Lima"; return 1; }
+  [ "$need_docker" = 0 ] || dl "$du" "$TMP/cl/docker.tgz" || { say "  note  could not download the docker client"; return 1; }
   [ "$(sha256 "$TMP/cl/colima")" = "$cs" ] || { say "  note  the Colima download does not match its pinned checksum; nothing was installed"; return 1; }
   [ "$(sha256 "$TMP/cl/lima.tgz")" = "$ls" ] || { say "  note  the Lima download does not match its pinned checksum; nothing was installed"; return 1; }
   if [ "$need_docker" = 1 ]; then
@@ -511,7 +577,7 @@ setup_gh() {
     gu=${VYRE_GH_URL:-https://github.com/cli/cli/releases/download/v$GH_VERSION/gh_${GH_VERSION}_macOS_$ga.zip}
     [ -n "$gs" ] || { say "  note  no pinned gh for this release; GitHub sign-in needs gh"; return 0; }
     say "Downloading gh (checked against its pinned checksum)..."
-    curl -fsSL --retry 2 -o "$TMP/gh.zip" "$gu" || { say "  note  could not download gh; GitHub sign-in needs gh"; return 0; }
+    dl "$gu" "$TMP/gh.zip" || { say "  note  could not download gh; GitHub sign-in needs gh"; return 0; }
     [ "$(sha256 "$TMP/gh.zip")" = "$gs" ] || { say "  note  the gh download does not match its pinned checksum; nothing was installed"; return 0; }
     mkdir -p "$TMP/gh-x"
     unzip -q -o "$TMP/gh.zip" -d "$TMP/gh-x" || { say "  note  the gh download did not unpack; nothing was installed"; return 0; }
@@ -536,7 +602,7 @@ setup_wink_net() {
   hs=${VYRE_HEADSCALE_SHA256-$hs}
   hu=${VYRE_HEADSCALE_URL:-https://github.com/juanfont/headscale/releases/download/v$HEADSCALE_VERSION/headscale_${HEADSCALE_VERSION}_darwin_$ha}
   if [ -z "$hs" ]; then say "  note  no pinned Headscale for this release; the relay carries everything"
-  elif ! curl -fsSL --retry 2 -o "$TMP/headscale" "$hu"; then say "  note  could not download Headscale; the relay carries everything"
+  elif ! dl "$hu" "$TMP/headscale"; then say "  note  could not download Headscale; the relay carries everything"
   elif [ "$(sha256 "$TMP/headscale")" != "$hs" ]; then say "  note  the Headscale download does not match its pinned checksum; nothing was installed"
   else
     mkdir -p "$BIN"; cp "$TMP/headscale" "$BIN/headscale"; chmod 755 "$BIN/headscale"; HEADSCALE_BIN=$BIN/headscale
@@ -828,6 +894,8 @@ main() {
   say "It asks for your Mac password once, so Vyre can start when the Mac starts."
   say "When it finishes, go back to the Vyre app."
   filevault_gate
+  disk_gate
+  snapshot_before
   preflight
   install_app
   setup_colima

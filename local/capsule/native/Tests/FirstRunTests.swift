@@ -20,6 +20,12 @@ let firstRunSuite = Suite("first run") { t in
         t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: .here, windowOpen: true), "the window is already open")
         t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: .server, windowOpen: false), "a server Mac has no local setup")
         t.ok(!FirstRun.showsSetupOnReopen(vyredUp: false, remembered: nil, windowOpen: false), "a client Mac has no local setup")
+        t.ok(FirstRun.opensBoxless(vyredUp: false, remembered: .server), "a server Mac opens the window with no local vyred")
+        t.ok(FirstRun.opensBoxless(vyredUp: true, remembered: .server), "a server Mac stays boxless even if a local vyred answers")
+        t.ok(!FirstRun.opensBoxless(vyredUp: true, remembered: .here), "a Mac that runs Vyre itself opens the local window")
+        t.ok(!FirstRun.opensBoxless(vyredUp: false, remembered: .here), "same while it is starting")
+        t.ok(FirstRun.opensBoxless(vyredUp: false, remembered: nil), "no local vyred and no setup: boxless")
+        t.ok(!FirstRun.opensBoxless(vyredUp: true, remembered: nil), "a local vyred answers: local")
         t.eq(FirstRun.lastLines(["a", "", "b", "  ", "c"], count: 2), ["b", "c"])
     }
 
