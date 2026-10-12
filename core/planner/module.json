@@ -52,6 +52,7 @@
           "name": "reminder",
           "label": "Reminder",
           "icon": "IconBell",
+          "protected": true,
           "views": [
             {
               "name": "reminders_calendar",
@@ -338,6 +339,7 @@
           "name": "note",
           "label": "Note",
           "icon": "IconNote",
+          "protected": true,
           "fields": [
             {
               "name": "title",

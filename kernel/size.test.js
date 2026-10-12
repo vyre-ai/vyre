@@ -19,6 +19,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9513 (kernel +48 on 9465: the gateway enforces which module keeps a record type and who may write a project, a seat or a task: kernel/gateway/ownership.js is the one rule, each route calls it in one line).
 // 9525 (kernel +12 on 9513: hasPrivileged asks the log after a restart instead of trusting an empty in-memory map, and answers "may have" where the log cannot say).
 const CAP = 9525;
+// (planner-rows, not yet counted in the cap above: 9517 (kernel +4 on 9513: the planner's reminder and note types are kept by the planner where they are defined protected, so a member reads another person's through no Records route).)
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

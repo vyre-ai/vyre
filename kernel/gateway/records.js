@@ -24,6 +24,9 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
   "project-template": ["work"],
   "def-watcher": ["watchers"],
   planner_state: ["planner"], planner_firing: ["planner"],
+  // A reminder or a note is read by the person it is for, through the planner (which shows each person her own): where the type is defined `protected` (the planner's own definition) the raw Records route is the owner's
+  // and an admin's, as for its other types. Judged by the definition, not the name: another module's own `note` type is not caught.
+  reminder: ["planner"], note: ["planner"],
   preview_doc: ["previews"],
 }));
 
@@ -204,7 +207,8 @@ export function createRecords(cfg) {
     const role = (members.membership({ kind: "person", id: rest.join(":"), space }) || {}).role;
     return role === "owner" || role === "admin";
   };
-  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install", ...Object.keys(KEEPERS)]);
+  const BY_DEFINITION = new Set(["reminder", "note"]);   // kept only where the type is defined `protected`
+  const PROTECTED_BUILTIN = new Set(["kit-proposal", "kit-install", ...Object.keys(KEEPERS).filter(k => !BY_DEFINITION.has(k))]);
   /** The chain of the service that KEEPS this type (a pure service chain of that module, by name): it passes where no person hop is there to be owner or admin. @param {any} chain @param {string} type */
   const keeperOk = (chain, type) => isChain(chain) && chain.hops.length === 1 && chain.hops[0].actor.kind === "service" && (KEEPERS[type] || []).includes(String(chain.hops[0].actor.id));
   /** May this chain create, read or change a protected type: an owner or admin (as themselves or through a service), or the service that keeps the type. @param {any} chain @param {string} type */

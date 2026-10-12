@@ -115,3 +115,31 @@ test("a member acting BY ID on the owner's to-do or on another member's reminder
   assert.ok((await w.call("planner.update", { item: theirs.id, title: "owner edits" })).data, "the owner changes any");
   assert.ok((await w.call("planner.done", { item: ownerTodo.id })).data !== undefined, "and finishes his own");
 });
+
+test("planner rows are read by the person they are for: a member reads no reminder or note through any Records route; the owner reads all; the planner's own tools are unchanged", async t => {
+  const { w } = await rig(t);
+  const R = w.k.gateway.records;
+  const member = w.k.chains.fromFacts(memberFacts(MEMBER));
+  const at = "2027-01-01T10:00:00Z";
+  const ownerNote = (await w.call("planner.add", { kind: "note", title: "OWNER-NOTE", body: "OWNER-BODY" })).data;
+  const ownerRem = (await w.call("planner.add", { kind: "reminder", title: "OWNER-REMINDER", at })).data;
+  const hers = (await asMember(w, "planner.add", { kind: "note", title: "HER-NOTE" })).data;
+  const herRem = (await asMember(w, "planner.add", { kind: "reminder", title: "HER-REMINDER", at })).data;
+  const seen = async (/** @type {any} */ chain) => {
+    const out = /** @type {string[]} */ ([]);
+    for (const type of ["note", "reminder"]) {
+      const q = await R.query(chain, type, { page: { limit: 50 } }).catch(() => ({ rows: [] }));
+      for (const r of q.rows || []) out.push(String(r.data && r.data.title));
+      for (const id of [ownerNote.id, ownerRem.id, hers.id, herRem.id]) { const g = await R.get(chain, type, id).catch(() => null); if (g && g.data) out.push("get:" + g.data.title); }
+      const s = await R.search(chain, { text: "OWNER", types: [type] }).catch(() => ({ rows: [] }));
+      for (const r of s.rows || []) out.push("search:" + type);
+      const a = await R.aggregate(chain, type, { measures: [{ fn: "count" }] }).catch(() => []);
+      if (JSON.stringify(a).match(/[1-9]/)) out.push("aggregate:" + type);
+    }
+    return out;
+  };
+  assert.deepEqual(await seen(member), [], "a member reads none of them through Records");
+  assert.ok((await seen(w.owner)).includes("OWNER-NOTE") && (await seen(w.owner)).includes("HER-REMINDER"), "the owner reads all");
+  const list = (await asMember(w, "planner.list", { state: "all" })).data.map((/** @type {any} */ x) => x.title).sort();
+  assert.deepEqual(list, ["HER-NOTE", "HER-REMINDER"], "the planner's own tools still show her items");
+});

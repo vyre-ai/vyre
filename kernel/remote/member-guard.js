@@ -7,7 +7,7 @@
 import { KernelError } from "../core/errors.js";
 
 /** @type {ReadonlySet<string>} */
-export const MEMBER_BLOCKED_TYPES = Object.freeze(new Set(["skill", "def-flow", "def_flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install", "planner_state", "planner_firing", "preview_doc"]));
+export const MEMBER_BLOCKED_TYPES = Object.freeze(new Set(["skill", "def-flow", "def_flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install", "planner_state", "planner_firing", "reminder", "note", "preview_doc"]));
 
 /** Types a member may READ (the app shows a project's team and the roster) but never write through the door: the project team decides who may open what a project shares, and the agent records are a view the module puts back. @type {ReadonlySet<string>} */
 export const MEMBER_READ_ONLY_TYPES = Object.freeze(new Set(["team-member", "agent"]));
