@@ -41,6 +41,9 @@ PURGE=0
 SYSTEM=1
 TMP=""
 STARTED=0
+SYS_RAN=0
+PATH_ADDED=0
+BUSY=0
 CODE=${VYRE_CODE:-}
 # The release files come from VYRE_BOX_URL, else from `box-url` beside this script (a prerelease app names its own tag's release assets there, the
 # rc channel; the files are verified against the pinned release key either way, so the URL chooses a source and never a trust), else vyre.run/box.
@@ -58,6 +61,9 @@ CORE_BASE=${VYRE_CORE_BASE:-/Library/Application Support/Vyre}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
 SERVER_DIR=${VYRE_SERVER_DIR:-$HOME/.vyre-server}
 AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
+PROFILE_FILE=${VYRE_PROFILE:-$HOME/.zprofile}
+# folders already on a Mac's PATH where the vyre command is linked when the person can write there (Homebrew's); VYRE_LINK_DIRS overrides, for tests
+LINK_DIRS=${VYRE_LINK_DIRS-/opt/homebrew/bin /usr/local/bin}
 LABEL=run.vyre.server
 COLIMA_LABEL=run.vyre.colima
 CAFF=${VYRE_CAFFEINATE:-/usr/bin/caffeinate}
@@ -119,6 +125,9 @@ TGZ_SHA=""
 say() { printf '%s\n' "$*"; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
 step() { say "  ok  $*"; }
+# phase TITLE: the next numbered step, the same five as install-box.sh: "[1/5] Checking this Mac".
+PHASE=0
+phase() { PHASE=$((PHASE + 1)); [ "$PHASE" = 1 ] || say ""; say "[$PHASE/5] $1"; }
 # cleanup: the temp folder always goes. A run that stopped half way says exactly what it left (only what was not there when it began) and one command that removes it.
 cleanup() {
   rc=$?
@@ -134,6 +143,7 @@ snapshot_before() {
   PRE_COLIMA=0; [ ! -e "$HOME/.colima" ] || PRE_COLIMA=1
   PRE_LIMA=0; [ ! -e "$HOME/.lima" ] || PRE_LIMA=1
   PRE_PLIST=0; [ ! -e "$AGENTS_DIR/$LABEL.plist" ] && [ ! -e "$AGENTS_DIR/$COLIMA_LABEL.plist" ] || PRE_PLIST=1
+  PRE_SYSTEM=0; [ ! -f "$CORE_BASE/core.json" ] || PRE_SYSTEM=1
   STARTED=1
 }
 
@@ -152,6 +162,11 @@ report_left() {
   if [ "$PRE_LIMA" = 0 ] && [ -e "$HOME/.lima" ]; then left="$left $HOME/.lima"; cmd="$cmd""rm -rf '$HOME/.lima'; "; fi
   if [ "$PRE_SERVER" = 0 ] && [ -e "$SERVER_DIR" ]; then left="$left $SERVER_DIR"; cmd="$cmd""rm -rf '$SERVER_DIR'; "; fi
   if [ "$PRE_VHOME" = 0 ] && [ -e "$VHOME" ]; then left="$left $VHOME"; cmd="$cmd""rm -rf '$VHOME'; "; fi
+  if [ "$SYS_RAN" = 1 ] && [ "$PRE_SYSTEM" = 0 ]; then
+    left="$left the system service (its LaunchDaemons and the _vyre account)"
+    if [ -f "$0" ]; then cmd="$cmd""sh '$0' --uninstall --yes; "; else cmd="$cmd""curl -fsSL ${BASE}install-mac-server.sh | sh -s -- --uninstall --yes; "; fi
+  fi
+  if [ "$PATH_ADDED" = 1 ]; then left="$left the vyre command (a line in $PROFILE_FILE)"; fi
   printf '\nvyre: the install did not finish.\n' >&2
   if [ -z "$left" ]; then printf '  Nothing was left on this Mac.\n' >&2; return 0; fi
   printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
@@ -366,6 +381,7 @@ verify_release() {
   RELEASE_VERSION=${out%% *}
   TGZ_SHA=${out##* }
   step "release $RELEASE_VERSION is signed by the Vyre release key"
+  step "The download matches Vyre's signature"
 }
 
 # colima_fallback: no Homebrew. Downloads pinned Colima, Lima and (if there is no docker yet) the
@@ -541,6 +557,8 @@ run"
 setup_colima() {
   if [ "$DRY" = 1 ]; then say "would install Colima (agents' computers) and $([ "$SYSTEM" = 1 ] && echo 'hand its start command to the root installer' || echo start it)"; return 0; fi
   write_runtime_helper
+  # A VM Vyre will make is Vyre's to remove: noted now, while ~/.colima is known not to be the person's own. A reinstall keeps the note.
+  if [ "$PRE_COLIMA" = 0 ] && [ "$PRE_LIMA" = 0 ]; then mkdir -p "$SERVER_DIR"; : >"$SERVER_DIR/colima-made"; fi
   if ! command -v colima >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
       say "Installing Colima with Homebrew..."
@@ -744,17 +762,89 @@ show_words() {
   say "  The four words did not show yet. To see them, run: $BIN/vyre words"
 }
 
-# finish: what the person does next. With the app's install line (a setup code) the app is where it finishes; without one the long pairing code is the way.
+# finish: what the person does next, the way install-box.sh ends. With the app's install line (a setup code) the app is where it finishes; without one, the space code (to a terminal only) is the way.
 finish() {
   if [ "$DRY" = 1 ]; then return 0; fi
+  say ""
+  say "Vyre is running on this Mac."
   if [ -n "$CODE" ]; then
     show_words
-    say "  Vyre is running on this Mac."
     say "  Go back to the Vyre app to finish."
-  else
-    say "Vyre is running on this Mac."
-    say "Open the Vyre app, choose \"Add a server\", and run the line it shows on this Mac."
+  elif [ "$BUSY" = 1 ]; then
+    say "  Get your space code on this Mac once it is ready: vyre space up"
+  elif ! show_space_code; then
+    say "  Get your space code on this Mac: vyre space up"
   fi
+}
+
+# add_command: `vyre` typed in a Terminal. A link in a folder that is already on PATH and that this account can write (Homebrew's), else one marked line in the shell profile; both are removed by --uninstall.
+add_command() {
+  if [ "$DRY" = 1 ]; then say "would add the vyre command: a link in $LINK_DIRS if you can write there, else a line in $PROFILE_FILE"; return 0; fi
+  for d in $LINK_DIRS; do
+    [ -d "$d" ] && [ -w "$d" ] || continue
+    if [ -e "$d/vyre" ] && [ "$(readlink "$d/vyre" 2>/dev/null)" != "$BIN/vyre" ]; then continue; fi
+    ln -sf "$BIN/vyre" "$d/vyre" || continue
+    step "vyre is at $d/vyre"; return 0
+  done
+  if ! grep -q '# vyre: command' "$PROFILE_FILE" 2>/dev/null; then
+    PATH_ADDED=1
+    printf '\n# vyre: command (added by the Vyre installer; --uninstall removes it)\nexport PATH="%s:$PATH"  # vyre: command\n' "$BIN" >>"$PROFILE_FILE" || { PATH_ADDED=0; say "  note  could not write $PROFILE_FILE; the command is $BIN/vyre"; return 0; }
+  fi
+  step "vyre is at $BIN/vyre (a new Terminal window finds it by name)"
+}
+
+# remove_command: what add_command added, and nothing the person wrote.
+remove_command() {
+  for d in $LINK_DIRS; do
+    [ "$(readlink "$d/vyre" 2>/dev/null)" = "$BIN/vyre" ] && rm -f "$d/vyre"
+  done
+  if [ -f "$PROFILE_FILE" ] && grep -q '# vyre: command' "$PROFILE_FILE"; then
+    grep -v '# vyre: command' "$PROFILE_FILE" >"$PROFILE_FILE.vyre-new" || true
+    cat "$PROFILE_FILE.vyre-new" >"$PROFILE_FILE"; rm -f "$PROFILE_FILE.vyre-new"
+  fi
+  return 0
+}
+
+# remove_colima_vm: Colima's VM goes only when Vyre made it (the note setup_colima left), never one that was there before.
+remove_colima_vm() {
+  [ -f "$SERVER_DIR/colima-made" ] || return 0
+  c=$BIN/colima; [ -x "$c" ] || c=$(command -v colima 2>/dev/null || true)
+  if [ -n "$c" ]; then PATH="$BIN:$SERVER_DIR/lima/bin:$PATH" "$c" delete --force >/dev/null 2>&1 || true; fi
+  rm -rf "$HOME/.colima" "$HOME/.lima"
+  say "  ok  Colima's Linux image is removed"
+}
+
+# show_space_code: the code that sets this Mac's space up from the app, from the same command a person runs later (`vyre space up`). Only to a terminal: an install run by a log collector
+# or CI would leave a live code in a file others may read. VYRE_SPACE_CODE_PIPED=1 and VYRE_SPACE_TRIES are for the tests. Returns 1 when no code could be made yet.
+show_space_code() {
+  [ "$DRY" = 0 ] || return 1
+  if ! [ -t 1 ] && [ "${VYRE_SPACE_CODE_PIPED:-0}" != 1 ]; then say "  Get your space code on this Mac: vyre space up"; return 0; fi
+  n=0
+  while [ "$n" -lt "${VYRE_SPACE_TRIES:-15}" ]; do
+    sc=$("$BIN/vyre" space up 2>/dev/null || true)
+    case "$sc" in
+      *"Your space code:"*) printf '%s\n' "$sc"; say "  Get it again any time: vyre space up"; return 0 ;;
+      *"already set up"*) return 1 ;;
+    esac
+    n=$((n + 1)); sleep 1
+  done
+  return 1
+}
+
+# verify_running: vyred answers `vyre status`. A first start sets itself up module by module and can take minutes, so a slow start is said to be setting up, never "not running"; the wait ends
+# with the honest state and the one command that checks again. VYRE_STATUS_TRIES is for the tests (0 skips the wait).
+verify_running() {
+  [ "$DRY" = 0 ] || return 0
+  [ "${VYRE_STATUS_TRIES:-120}" != 0 ] || return 0
+  n=0
+  while [ "$n" -lt "${VYRE_STATUS_TRIES:-120}" ]; do
+    st=$("$BIN/vyre" status 2>/dev/null | tr -d '\033' || true)
+    case "$st" in *answering*|*"modules running"*) return 0 ;; esac
+    n=$((n + 1)); [ $((n % 15)) != 0 ] || say "  Vyre is busy setting up; this can take a few minutes..."
+    sleep 2
+  done
+  BUSY=1
+  say "  Vyre is installed and still setting up. It starts by itself; check again in a few minutes with: vyre status"
 }
 
 # system_install: the one sudo (ROOT_SH above). The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
@@ -804,6 +894,7 @@ system_install() {
     IFS=$oldifs
   fi
   say "Vyre now asks for your Mac password once, to install its system service."
+  SYS_RAN=1
   # && / || rather than `;`: `set -e` reaches into the substitution in some shells and would end it before the status is read.
   out=$("$SUDO" /bin/sh -c "$ROOT_SH" vyre-root "$NODE_TGZ_SHA" "$TMP/release" "$TMP/node.tgz" "$RELEASE_KEY" "$VERIFY_JS" "$@" && printf 'rc:0' || printf 'rc:%s' "$?")
   rc=${out##*rc:}
@@ -861,6 +952,8 @@ uninstall() {
   "$LAUNCHCTL" bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   "$LAUNCHCTL" bootout "gui/$(id -u)/$COLIMA_LABEL" >/dev/null 2>&1 || true
   rm -f "$AGENTS_DIR/$LABEL.plist" "$AGENTS_DIR/$COLIMA_LABEL.plist"
+  remove_colima_vm
+  remove_command
   rm -rf "$SERVER_DIR"
   if [ "$PURGE" = 1 ]; then
     if [ "$ok" = 1 ]; then rm -rf "$VHOME"; say "your data is deleted"; else say "your data is kept in $VHOME"; fi
@@ -893,28 +986,36 @@ main() {
   say "Installing Vyre on this Mac as your server. This takes a few minutes."
   say "It asks for your Mac password once, so Vyre can start when the Mac starts."
   say "When it finishes, go back to the Vyre app."
+  phase "Checking this Mac"
   filevault_gate
   disk_gate
   snapshot_before
   preflight
+  phase "Downloading Vyre"
   install_app
+  phase "Laying out"
   setup_colima
   setup_gh
   setup_wink_net
   write_env
   # only the full install is a server; the light --login-only install is My Home and stays local
   [ "$SYSTEM" = 0 ] || write_machine
+  phase "Adding the vyre command"
   write_wrapper
+  add_command
+  phase "Starting Vyre"
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
+    verify_running
+    [ "$DRY" = 1 ] || say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. It also comes back by itself after a power cut (the Mac is set to start when power returns)."
     finish
-    say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. It also comes back by itself after a power cut (the Mac is set to start when power returns). Its command is $BIN/vyre"
   else
     write_plist
     start_service
+    verify_running
+    [ "$DRY" = 1 ] || say "It starts when you sign in to this Mac and stays awake while it runs."
     finish
-    say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
   fi
 }
 
