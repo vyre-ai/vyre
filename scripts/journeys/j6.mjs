@@ -4,5 +4,5 @@ import { walkTestFile } from "./lib/testfile.mjs";
 export default {
   id: "J6", title: "Flows that run themselves", owner: "projects-flows", world: "own", store: "plain",
   /** @param {any} _w @param {ReturnType<typeof import("./lib/journey.mjs").stepper>} J */
-  async steps(_w, J) { await walkTestFile(J, "test/journey-flows.test.js", "projects-flows").report(); },
+  async steps(_w, J) { await walkTestFile(J, "test/journey-flows.test.js", "projects-flows", { env: { J6_LOG: `${_w.out}/j6-daemon.log` } }).report(); },
 };
