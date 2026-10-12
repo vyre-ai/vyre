@@ -732,6 +732,31 @@ export default {
       const m = await member(spaceId, person);
       return Boolean(m) && (m.role === "owner" || m.role === "admin") && !(pj.personal_of && pj.personal_of !== person);
     }
+    // A team member's list of the sites of projects she is on (the member door "publish.list", core/work/member-tools.js): name, stage, url, project. A site with no project is the Space's own and is nobody's here;
+    // a draft or preview has no address in the answer (it can carry a token); no id, domain, version or digest. The project test is mayReadJob's, minus its "no project is open" line.
+    ctx.tool("publish.serve", {
+      description: "A team member's list of the sites of the projects she is on, as that member, in that Space. Only the daemon's member door runs it.",
+      internal: true, callers: ["module"],
+      input: obj({ call: { type: "string", enum: ["list"] }, input: { type: "object" } }, ["call"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const fail = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+        if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("only the team server's member door runs this", "denied");
+        if (!ctx.kernel || String(extra.in_space) !== String(ctx.kernel.space || "")) throw fail("sites for members are kept in this server's own Space", "not_allowed");
+        if (!i || i.call !== "list") throw fail("call is list", "bad_input");
+        const chain = extra.in_space_chain, h = chain.hops && chain.hops.length === 1 ? chain.hops[0] : null;
+        if (!h || h.actor.kind !== "person") throw fail("not found", "not_found");
+        const person = String(h.actor.id), spaceId = String(extra.in_space);
+        const rows = await storeFor(spaceId).list("deployments");
+        const memo = new Map();
+        /** @type {any[]} */ const sites = [];
+        for (const d of rows.sort((x, y) => y.created_at - x.created_at)) {
+          if (!d.project || d.job) continue;
+          if (!(await mayReadJob(spaceId, person, d, memo))) continue;
+          sites.push({ name: d.name, stage: d.stage, url: d.stage === "Production" ? d.url ?? null : null, project: String(d.project) });
+        }
+        return { sites };
+      },
+    });
     ctx.tool("publish.job.runs", {
       callers: WITH_MODELS,
       description: "Last runs of a job, newest first: { deployment, limit? } -> { runs: [{ at, ok, code, seconds, message, output }] }.",

@@ -33,7 +33,7 @@ export function memberChatWire(tool) { return Object.hasOwn(MEMBER_DOOR, tool) ?
 export const memberWire = memberChatWire;
 
 /** The tools that do a Space's own work. While a team the person JOINED is showing, none of them may go to her own home as if it were the team: the ones with a member door call go through it (memberWire), the rest are refused in words. Her own things (planner, settings, accounts, her sidebar, her devices) are not in this list. Records, tasks, assistants and lessons are NOT here yet either: screens such as the chat composer read them today and only a door row for them (rc2-people) can replace those reads, so they wait for their rows instead of being refused. */
-const TEAM_WORK = Object.freeze(["work.project.", "work.start-project", "work.template.", "flows.", "team.", "previews."]);
+const TEAM_WORK = Object.freeze(["work.project.", "work.start-project", "work.template.", "flows.", "team.", "previews.", "publish."]);
 
 /** Does this tool do a team's own work (so it never goes to her own home while the team shows)? @param {string} tool */
 export const isTeamWork = (tool) => TEAM_WORK.some((p) => tool.startsWith(p));

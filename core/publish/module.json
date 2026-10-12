@@ -37,6 +37,13 @@
         "effect": "read"
       },
       {
+        "name": "publish.serve",
+        "reach": "modules",
+        "effect": "read",
+        "crossSpace": "records.read",
+        "summary": "a team member's list of the sites of the projects she is on, as that member in that Space (the daemon's member door only)"
+      },
+      {
         "name": "publish.list",
         "reach": "anyone",
         "effect": "read"

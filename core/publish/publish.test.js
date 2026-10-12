@@ -5,6 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Registry, discover } from "../modules/index.js";
@@ -99,7 +100,7 @@ async function boxRegistry(t, o = {}) {
   const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && (f.manifest.name === "publish" || (o.realBuilder && f.manifest.name === "builder"))), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: (/** @type {any} */ spec) => { const k = /** @type {any} */ (fakeKernelFor)(spec); return { ...k, chain: async (/** @type {any} */ meta) => { const c = await k.chain(meta); return c.hops[0] && c.hops[0].actor.kind === "person" ? { ...c, hops: [{ actor: { kind: "person", id: pf.actAs["*"] } }, ...c.hops.slice(1)] } : c; } }; } });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: (/** @type {any} */ spec) => { const k = /** @type {any} */ (fakeKernelFor)(spec); return { ...k, ...(o.kernelSpace ? { space: o.kernelSpace } : {}), chain: async (/** @type {any} */ meta) => { const c = await k.chain(meta); return c.hops[0] && c.hops[0].actor.kind === "person" ? { ...c, hops: [{ actor: { kind: "person", id: pf.actAs["*"] } }, ...c.hops.slice(1)] } : c; } }; } });
   await reg.start(found, { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
   for (const name of ["publish", ...(o.realBuilder ? ["builder"] : []), ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
@@ -765,4 +766,23 @@ test("publish: a job's runs and its failure card are the project's people's, not
   b.pf.projectPeople = {};
   assert.equal((await as("per_sam", "publish.job.runs", { deployment: acme })).error?.code, "not_found", "no answer about the project: closed");
   assert.deepEqual((await as("per_sam", "publish.job.attention")).data.jobs, [], "and no failure card either");
+});
+
+test("publish.serve (the member door's publish.list): a member sees the sites of the projects she is on, as name, stage, url, project; another project's sites, the Space's own and every id and domain stay out; the door alone runs it", { timeout: 60_000 }, async t => {
+  const b = await boxRegistry(t, { kernelSpace: SPACE.id, fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "work"] });
+  b.pf.projectPeople = { bakery: { people: ["per_sam"], personal_of: null }, orchard: { people: ["per_kit"], personal_of: null } };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-serve-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>x</h1>");
+  const make = (/** @type {string} */ name, /** @type {string | undefined} */ project) => b.ok("publish.create", { name, source: { kind: "folder", ref: dir }, build: { image: "static" }, ...(project ? { project } : {}) });
+  await make("bakery-site", "bakery"); await make("orchard-site", "orchard"); await make("firm-site", undefined);
+  const as = (/** @type {string} */ person, /** @type {any} */ call = "list") => b.reg.callInSpace({ name: "vyred" }, SPACE.id, { gateway: { authorize: async () => ({ effect: "allow" }) } }, "publish.serve", { call }, { space: SPACE.id, hops: [{ actor: { kind: "person", id: person, space: SPACE.id } }] });
+  const sam = await as("per_sam");
+  assert.ok(!sam.error, JSON.stringify(sam.error));
+  assert.deepEqual(sam.data.sites.map((/** @type {any} */ s) => s.name), ["bakery-site"], "only the project she is on");
+  assert.deepEqual(Object.keys(sam.data.sites[0]).sort(), ["name", "project", "stage", "url"], "no id, domains or version");
+  assert.equal(sam.data.sites[0].url, null, "a draft has no address in the answer");
+  assert.deepEqual((await as("per_kit")).data.sites.map((/** @type {any} */ s) => s.name).sort(), ["bakery-site", "orchard-site"], "an admin (staff) reads every project's, as mayReadJob says; never the Space's own project-less site");
+  assert.deepEqual((await as("per_nobody")).data.sites, [], "a person on no project sees none, not the Space's own");
+  assert.equal((await as("per_sam", "other")).error?.code, "bad_input");
+  assert.ok(["denied", "no_such_tool"].includes((await b.call("publish.serve", { call: "list" }, "cli")).error?.code), "a surface cannot run the door's tool");
 });

@@ -11,7 +11,7 @@ export function sitesSource(call: Call) {
     return r.data as T;
   }
   return {
-    list: async (): Promise<Dep[]> => (await ask<{ deployments?: Dep[] }>("publish.list")).deployments ?? [],
+    list: async (): Promise<Dep[]> => { const r = await ask<{ deployments?: Dep[]; sites?: { name: string; stage: string; url: string | null }[] }>("publish.list"); return r.deployments ?? (r.sites ?? []).map((s) => ({ id: s.name, name: s.name, version: 0, stage: s.stage, url: s.url, domains: [] })); },
     status: (deployment: string) => ask<Status>("publish.status", { deployment }),
     create: (input: Record<string, unknown>) => ask<{ deployment: Dep }>("publish.create", input),
     preview: (deployment: string) => ask<{ deployment: Dep; logs: string }>("publish.preview", { deployment }),

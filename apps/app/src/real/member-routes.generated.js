@@ -30,6 +30,7 @@ export const MEMBER_ROWS = [
  "flows.test-run",
  "flows.test-save",
  "flows.timeline",
+ "publish.list",
  "records.actors",
  "records.create",
  "records.events",
