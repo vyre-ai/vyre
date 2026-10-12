@@ -1655,6 +1655,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     try {
       const ok = row && row.removed === false && row.person && (row.kind === "app" || (row.kind === "web" && row.trusted === true)) && label.startsWith(row.kind === "app" ? "device:" : "web:");
       role = ok ? (row.person === k.id.owner ? "owner" : k.gateway.members.roleOf({ kind: "person", id: row.person, space: k.id.space })) : null;
+      // A browser from the older one-step pairing is trusted only when the OWNER approved that browser with his presence (relay.devices.trust, never callable from the browser itself), and that pairing writes no Wink
+      // record: a trusted browser that names nobody is the owner's own. One that names someone is judged by that person.
+      if (!ok && row && row.removed === false && row.kind === "web" && row.trusted === true && !row.person && label.startsWith("web:")) role = "owner";
     } catch { role = null; }
     if (role === "member") busCut = cutEvent;
     else if (role !== "owner" && role !== "admin") return send(res, 404, { error: { code: "not_found", message: "this device does not read the event bus; sign in on a device paired to this team, or ask the owner" } });
