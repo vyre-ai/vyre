@@ -35,6 +35,8 @@ const unavailable = () => Object.assign(new Error("the kernel is not wired on th
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 /** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
 const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
+/** Followers (log subscriptions) one caller keeps for work.team.doing; the oldest is dropped past this. */
+const MAX_FOLLOWERS = 20;
 const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(s);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -886,6 +888,11 @@ export default {
         const chain = await chainOf(extra), who = String((chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id) || ""), key = `${input.project}|${who}`;
         let d = doing.get(key);
         if (!d) {
+          // a follower is a log subscription: only for a record the caller can read (not a made-up address), and at most MAX_FOLLOWERS per caller (the oldest is dropped)
+          const [, , , rtype, rid] = String(input.project).split("/");
+          if (!(await k.records.get(chain, rtype, rid).catch(() => null))) throw fail("not_found", "no such project (projects.list shows them)");
+          const mine = [...doing.entries()].filter(([, v]) => v.who === who);
+          while (mine.length >= MAX_FOLLOWERS) { const [oldKey, old] = /** @type {[string, any]} */ (mine.shift()); try { old.off && old.off(); } catch { /* gone */ } doing.delete(oldKey); }
           const lines = new Map();
           const line = createDoingLine(k, { project: input.project, onLine: (t, l) => { if (l) lines.set(t, l); else lines.delete(t); } });
           d = { line, lines, project: input.project, who, off: line.attach(chain) };
