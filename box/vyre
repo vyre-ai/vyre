@@ -559,6 +559,21 @@ put_wrapper() {
 # android: bring the release's phone app into the container's releases folder, APK first and
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
+# raise_floor VERSION: the floor is the newest version this server has had, kept in root's private folder; the automatic updater refuses anything older (a signed old release shown again,
+# or a vyred that lies about the version it runs). Only root writes it. A hand-run update by a person is not root: it asks root through sudo, as publish_release does, and when that cannot
+# be done it SAYS the floor was not moved, since the guard is then still at the older version. It never goes down.
+raise_floor() {
+  v=$1
+  fl=$(readf "$UPD_PRIV/floor")
+  if [ -n "$fl" ] && ! older "$fl" "$v"; then return 0; fi
+  if [ "$(id -u)" = "$ROOT_UID" ]; then
+    if [ -d "$UPD_PRIV" ]; then put_text "$v" "$UPD_PRIV/floor" 0600 || true; fi
+    return 0
+  fi
+  sudo -n "$WRAPPER" raise-floor "$v" >/dev/null 2>&1 && return 0
+  echo "vyre: updated, but the update floor (the oldest release the automatic updater will accept) was not raised to $v, because only root can raise it. Until it is, the automatic updater would still accept a release as old as ${fl:-the first one this server had}. Run: sudo vyre raise-floor $v" >&2
+}
+
 # publish_release SRC: the release's SHA256SUMS, its signature, shell.json and modules.json (the signed list of first-party modules,
 # kernel/modules/release-list.js) go into root's status/release folder, which the vyre container mounts read-only at /opt/vyre/web/release.
 # The folder is replaced as a whole by rename, never file by file, so a running vyred keeps the one consistent release it was started with and the
@@ -900,8 +915,7 @@ update() {
   put_text "$VERSION" "$DIR/VERSION"
   UPD_DONE=1
   # Raise the floor (never lower it): the host's own record of the newest version this server has had.
-  fl=$(readf "$UPD_PRIV/floor")
-  if [ -d "$UPD_PRIV" ] && { [ -z "$fl" ] || older "$fl" "$VERSION"; }; then put_text "$VERSION" "$UPD_PRIV/floor" 0600 || true; fi
+  raise_floor "$VERSION"
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
@@ -3065,6 +3079,14 @@ case "${1:-}" in
   publish-release)
     [ -d "${2:-}" ] || die "vyre publish-release DIR"
     publish_release "$2" || exit 1
+    ;;
+  raise-floor)
+    # Root's: the update floor only ever goes up. A person's hand-run update asks for it through sudo (raise_floor); the version is checked for shape, and a floor already higher is left alone.
+    [ "$(id -u)" = "$ROOT_UID" ] || die "vyre raise-floor is root's: run sudo vyre raise-floor VERSION"
+    case "${2:-}" in ""|*[!0-9A-Za-z.-]*|[!0-9]*) die "vyre raise-floor needs a release version such as 0.3.3" ;; esac
+    unit_dirs_ok || die "$UPD_ROOT (or a folder above it) is not root's alone; the floor was not changed"
+    rf=$(readf "$UPD_PRIV/floor")
+    if [ -z "$rf" ] || older "$rf" "$2"; then put_text "$2" "$UPD_PRIV/floor" 0600 || die "could not write the floor in $UPD_PRIV"; fi
     ;;
   logs)
     shift

@@ -1295,3 +1295,45 @@ test("box update (rc.3): a server that is slow to answer but still working is wa
   assert.match(quiet.out, /anything written since then \(chats, notes, settings\) is lost/, "a person is told what the rollback costs");
   assert.doesNotMatch(quiet.out, /still working/);
 });
+
+// The update floor (the oldest release the automatic updater accepts) is root's. A hand-run update by a person asks root through sudo, and says so when it cannot.
+const asPerson = (/** @type {any} */ b, /** @type {boolean} */ sudoWorks) => {
+  const uid = process.getuid();
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sudo"), `#!/bin/sh\nif [ "$1" = -n ]; then shift; fi\necho "sudo $*" >>"${b.FAKE}/sudo-calls"\n${sudoWorks ? `exec env VYRE_ROOT_UID=${uid} "$@"` : "exit 1"}\n`, { mode: 0o755 });
+  return { VYRE_ROOT_UID: String(uid + 1), ...KEY };
+};
+
+test("box update (rc.3): a hand-run update by a person raises the floor through sudo, and the floor only goes up", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  const r = /** @type {any} */ (await b.run(["update"], asPerson(b, true)));
+  assert.equal(r.code, 0, r.out);
+  assert.match(b.read(path.join(b.FAKE, "sudo-calls")), /raise-floor 0\.2\.0/);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
+  // Never down: the verb leaves a higher floor alone, refuses a bad version, and refuses a caller who is not root.
+  const run = (/** @type {string[]} */ a, /** @type {Record<string,string>} */ e) => b.run(a, e);
+  const low = /** @type {any} */ (await run(["raise-floor", "0.1.5"], { VYRE_ROOT_UID: String(process.getuid()), ...KEY }));
+  assert.equal(low.code, 0, low.out);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0", "a lower version does not lower it");
+  const bad = /** @type {any} */ (await run(["raise-floor", "../x"], { VYRE_ROOT_UID: String(process.getuid()), ...KEY }));
+  assert.notEqual(bad.code, 0);
+  const person = /** @type {any} */ (await run(["raise-floor", "9.9.9"], { VYRE_ROOT_UID: String(process.getuid() + 1), ...KEY }));
+  assert.notEqual(person.code, 0);
+  assert.match(person.out, /root's/);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
+});
+
+test("box update (rc.3): when sudo cannot raise the floor the update says so in words and prints no mktemp error", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
+  fs.chmodSync(path.join(b.U, "private"), 0o500);
+  t.after(() => { try { fs.chmodSync(path.join(b.U, "private"), 0o700); } catch { /* already removed */ } });
+  const r = /** @type {any} */ (await b.run(["update"], asPerson(b, false)));
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /mktemp|Permission denied/);
+  assert.match(r.out, /update floor .* was not raised to 0\.2\.0, because only root can raise it/);
+  assert.match(r.out, /sudo vyre raise-floor 0\.2\.0/);
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.1.0");
+});
