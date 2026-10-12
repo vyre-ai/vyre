@@ -1155,9 +1155,13 @@ export default {
       description: "Mark a paired app of yours as yours. A phone or computer that came in by a code anyone could hold, or one the box has no record of you pairing, is treated as a team member's until you mark it. Needs your presence.",
       input: obj({ id: str }, ["id"]),
       presence: { summary: async input => {
-        // The owner approves a card: name the device and when it paired, so an id alone does not stand for a stranger's.
-        const r = /** @type {any} */ (db.prepare("SELECT name, paired_at FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input && input.id)));
-        return r ? `Mark "${r.name || "an unnamed device"}" (paired ${new Date(r.paired_at).toISOString().slice(0, 10)}) as yours` : `Mark device ${String(input && input.id)} as yours`;
+        // The owner approves this card and nothing else: name the device, what kind it is, the day it paired and how the box came to hold it, so a stranger's device cannot pass for his phone.
+        const id = String(input && input.id);
+        const r = /** @type {any} */ (db.prepare("SELECT name, paired_at, kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+        if (!r) return `Mark device ${id} as yours`;
+        let w = null; try { w = /** @type {any} */ (db.prepare("SELECT kind FROM wink_devices WHERE id = ?").get(id)); } catch { w = null; }
+        const what = w && w.kind === "computer" ? "computer" : w && w.kind === "phone" ? "phone" : "phone or computer";
+        return `Mark "${r.name || "an unnamed device"}", a ${what} paired on ${new Date(r.paired_at).toISOString().slice(0, 10)}, as yours. The box cannot tell whose it is from how it was paired. Only mark a device you recognise.`;
       } },
       run: async (input, meta = {}) => {
         owner(meta.caller, meta, "marking a device as yours");

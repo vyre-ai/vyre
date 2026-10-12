@@ -89,6 +89,10 @@ test("marking: a device that came in by a bearer code is the owner's only after 
   await check(w, bearer.device, false, "bearer");
   const tokenFor = async (/** @type {string} */ person) => (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person, path: "direct", session: "s" }), {})).token;
   const mark = (/** @type {any} */ meta, /** @type {string} */ id = bearer.device) => w.d.registry.call("relay.devices.mark", { id }, "cli", meta);
+  // the card the owner approves names the device, its kind, the day it paired and how the box holds it
+  const card = await w.d.registry.tools.get("relay.devices.mark").presence.summary({ id: bearer.device });
+  assert.match(card, /paired on \d{4}-\d{2}-\d{2}/); assert.match(card, /a (phone|computer|phone or computer) paired/); assert.match(card, /cannot tell whose it is/); assert.match(card, /Only mark a device you recognise/);
+  assert.match(await w.d.registry.tools.get("relay.devices.mark").presence.summary({ id: "zzzzzzzzzzzzzzzz" }), /Mark device zzzzzzzzzzzzzzzz/);
   // no person chain at all, and no presence: refused, nothing marked
   assert.ok((await mark({})).error, "no presence, no mark");
   const noChain = await mark(PROOF);

@@ -86,6 +86,18 @@ function kernelProof(req) {
 export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
 
 /**
+ * Does a `tailnet:<login>` label hold? The label is the tailnet listener's claim, so it is the owner's own only when the peer that listener verified (whois) is that very login and, where the home records
+ * its owner's login (`network.owner`, a string), that login is the owner's. A home that records none falls back to the verified peer alone (the same rule link.health and the switchboard apply). A label that
+ * fails is treated as a guest's for the whole request, so callerFacts, the module reach lists and the event bus all see the same caller. Nothing the caller sends reaches it.
+ * @param {string} label @param {any} peer the verified peer the listener handed over @param {any} network the home's `network` config
+ */
+export function tailnetLabelHolds(label, peer, network) {
+  const login = String(label).slice("tailnet:".length).trim().toLowerCase();
+  if (!login || !peer || typeof peer.login !== "string" || peer.login.trim().toLowerCase() !== login) return false;
+  const owner = network && typeof network.owner === "string" ? network.owner.trim().toLowerCase() : "";
+  return !owner || owner === login;
+}
+/**
  * What the kernel may build a person's own chain from, for a call that arrived on a connection the daemon itself proved: a person's surface on the 0600 socket (only the owner can
  * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
  * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
@@ -1283,6 +1295,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
+  // A `tailnet:<login>` label is held only for the verified owner's login (tailnetLabelHolds); any other is a guest's, before anything reads the caller.
+  if (policy.caller && ownerOverTailnet(policy.caller) && !tailnetLabelHolds(policy.caller, policy.peer, cfg.network)) policy = { ...policy, caller: `tailnet-guest:${String(policy.caller).slice("tailnet:".length)}` };
   let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });

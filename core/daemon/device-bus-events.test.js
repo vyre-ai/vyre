@@ -4,6 +4,8 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import http from "node:http";
 import { start } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
@@ -19,7 +21,9 @@ const get = (/** @type {http.Server} */ srv, /** @type {string} */ p, /** @type 
 });
 
 test("the module bus for a paired device: owner and admin whole, a member cut to ids, a device naming nobody cut; the main socket unchanged", { timeout: 120_000 }, async t => {
-  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex", owner: "Owner@Example.com" } }));
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner, ADMIN = "per_" + "bcdefghijklmnopqrstuvwxyza", BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
@@ -72,8 +76,14 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
   for (const [label, id] of [["web:wuuuuuuuuuuuuuuu", "wuuuuuuuuuuuuuuu"], ["setup:ssssssssssssssss", "ssssssssssssssss"], ["tailnet-guest:someone", "x"], ["web:" + ids.member, ids.member], ["device:" + wids.owner, wids.owner]]) {
     for (const p of ["/v1/events?since=0", "/v1/events/stream?since=0"]) { const r = await get(await asWeb(label, id), p); assert.equal(r.status, 404, `${label} ${p}: ${r.status} ${r.body.slice(0, 120)}`); }
   }
-  // the tailnet names only the box's verified owner: that is the owner's own computer (a linked Mac), the whole bus
-  for (const p of ["/v1/events?since=0&limit=500", "/v1/events/stream?since=0"]) { const r = await get(await asWeb("tailnet:owner@example.com", "x"), p); assert.ok(r.status === 200 && r.body.includes("OWNER-DEVICE-BUS-SECRET"), `tailnet owner ${p}: ${r.status}`); }
+  // the tailnet's label is the listener's claim: it is the owner's computer (a linked Mac) only for the verified peer who is the owner's login; another login, or a label the peer is not, is a guest's
+  const asTailnet = async (/** @type {string} */ label, /** @type {any} */ peer) => { const s = /** @type {http.Server} */ (await new Promise(r => { const x = http.createServer((req, res) => d.registry.deps.handler({})(req, res, label, peer)); x.listen(0, "127.0.0.1", () => r(x)); })); t.after(() => s.close()); return s; };
+  for (const p of ["/v1/events?since=0&limit=500", "/v1/events/stream?since=0"]) {
+    const r = await get(await asTailnet("tailnet:owner@example.com", { kind: "device", login: "owner@example.com", stableId: "n_owner" }), p); assert.ok(r.status === 200 && r.body.includes("OWNER-DEVICE-BUS-SECRET"), `tailnet owner ${p}: ${r.status}`);
+    for (const [label, peer] of [["tailnet:someone-else@example.com", { login: "someone-else@example.com", stableId: "n_x" }], ["tailnet:owner@example.com", { login: "someone-else@example.com", stableId: "n_x" }], ["tailnet:owner@example.com", undefined]]) {
+      const o = await get(await asTailnet(label, peer), p); assert.equal(o.status, 404, `${label} as ${peer && peer.login}: ${o.status}`); assert.ok(!o.body.includes("OWNER-DEVICE-BUS-SECRET"));
+    }
+  }
   // the onboarding page's listener (no owner device yet on a fresh box): it carries its own event-type limit, so the rule leaves it alone and its stream is served
   { const s = /** @type {http.Server} */ (await new Promise(r => { const x = http.createServer((req, res) => d.registry.deps.handler({ eventType: "onboard.*" })(req, res, "onboard", undefined)); x.listen(0, "127.0.0.1", () => r(x)); })); t.after(() => s.close());
     const r = await get(s, "/v1/events/stream?since=0"); assert.equal(r.status, 200, "the onboarding stream is served"); assert.ok(!r.body.includes("OWNER-DEVICE-BUS-SECRET"), "and carries only onboard.* events"); }
