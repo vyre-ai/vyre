@@ -1426,14 +1426,33 @@ export class Switchboard {
   }
 
   /**
-   * A sandboxed session cannot see Vyre's home, which is where the skills module writes the library, so the session is given a copy in its own temp folder (the one the sandbox already allows it), named
-   * by the library's content id. A session with no sandbox reads the original. The copy is the session's alone and is removed with its folder.
+   * A confined session cannot see Vyre's home, where the skills module writes the library, and the project's other accounts must not read one person's set, so the session is given a private copy: in its own
+   * temp folder (the one the sandbox allows it), or, for a session under its own account's uid, seeded into that account's HOME by the spawner (`.vyre-skills/<content id>/`, 0600, her uid only; the seed
+   * rides on `libSeed`). A session with no sandbox reads the original, except Grok's, whose file tools refuse Vyre's home. The folder is named by the library's content id.
    * @param {string} id @param {string} dir @param {any} o
    */
   libraryForSandbox(id, dir, o) {
     const cfg = this.deps.sandbox;
-    if (!cfg || cfg.off) return dir;
-    if (o && o.accountRun && o.accountRun.uid != null) return dir;   // a session under its own account's uid is handled where the account's files are written
+    if (!this.libSeed) this.libSeed = new Map();
+    this.libSeed.delete(id);
+    const acct = Boolean(o && o.accountRun && o.accountRun.uid != null);
+    if (acct && cfg && cfg.uid && o.accountRun.home) {
+      try {
+        const seed = /** @type {Record<string, string>} */ ({}); let total = 0;
+        const sid = path.basename(dir);
+        for (const rel of fs.readdirSync(dir, { recursive: true, withFileTypes: false }).map(String).sort()) {
+          const full = path.join(dir, rel);
+          if (!fs.lstatSync(full).isFile()) continue;
+          const text = fs.readFileSync(full, "utf8"); total += Buffer.byteLength(text);
+          seed[`.vyre-skills/${sid}/${rel.split(path.sep).join("/")}`] = text;
+        }
+        if (!Object.keys(seed).length || Object.keys(seed).length > 128 || total > 524288) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} is empty or over the limits (128 files, 512 KiB): the session starts without it`); return dir; }
+        this.libSeed.set(id, seed);
+        return path.join(String(o.accountRun.home), ".vyre-skills", sid);
+      } catch (e) { this.deps.log(`threads: the skills set for ${String(id).slice(0, 8)} could not be read for the account: ${/** @type {Error} */ (e).message}`); return dir; }
+    }
+    if (acct) return dir;
+    if ((!cfg || cfg.off) && (o && o.provider || "claude") !== "grok") return dir;
     try {
       const to = path.join(this.sessionTemp(id), "library", path.basename(dir));
       fs.rmSync(to, { recursive: true, force: true });
@@ -1526,7 +1545,7 @@ export class Switchboard {
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
-    const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
+    const how = { ...foreignOpts, ...(this.libSeed && this.libSeed.get(id) ? { librarySeed: this.libSeed.get(id) } : {}), ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the

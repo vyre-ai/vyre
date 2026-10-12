@@ -34,7 +34,7 @@ test("libraryPlugin hands a sandboxed session a copy in its own temp folder, the
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const saved = process.env.VYRE_SESSIONS_DIR; process.env.VYRE_SESSIONS_DIR = path.join(base, "sessions");
   t.after(() => { if (saved === undefined) delete process.env.VYRE_SESSIONS_DIR; else process.env.VYRE_SESSIONS_DIR = saved; });
-  const src = path.join(base, "home", "materialised", "claude", "abc123");
+  const src = path.join(base, "home", "materialised", "claude", "0123456789abcdef");
   fs.mkdirSync(path.join(src, ".claude-plugin"), { recursive: true }); fs.mkdirSync(path.join(src, "skills", "okafor"), { recursive: true });
   fs.writeFileSync(path.join(src, ".claude-plugin", "plugin.json"), "{}"); fs.writeFileSync(path.join(src, "skills", "okafor", "SKILL.md"), "BLUEBIRD-77");
   const make = (/** @type {any} */ sandbox) => /** @type {any} */ ({ turnAsker: new Map(), sessionTemp: Switchboard.prototype.sessionTemp, libraryForSandbox: Switchboard.prototype.libraryForSandbox, deps: { root: path.join(base, "home"), sandbox, call: async () => ({ data: { dir: src } }) } });
@@ -46,5 +46,18 @@ test("libraryPlugin hands a sandboxed session a copy in its own temp folder, the
   assert.ok(fs.existsSync(path.join(copy, ".claude-plugin", "plugin.json")), "and the plugin file");
   assert.equal(await ask(make({ off: true })), src, "a session with no sandbox reads the original");
   assert.equal(await ask(make(undefined)), src, "and so does one on a computer with none");
-  assert.equal(await ask(make({}), { accountRun: { uid: 2002 } }), src, "an account-uid session is not handled by this copy");
+  assert.equal(await ask(make({}), { accountRun: { uid: 2002 } }), src, "an account-uid session with no uid confinement is left as it was");
+  // Grok's file tools refuse Vyre's home, so even with no sandbox it is given the private copy
+  const grokDir = fs.mkdtempSync(path.join(base, "g-")); fs.mkdirSync(path.join(grokDir, ".claude-plugin"), { recursive: true }); fs.writeFileSync(path.join(grokDir, ".claude-plugin", "plugin.json"), "{}");
+  const grokBoard = make({ off: true }); grokBoard.deps.call = async () => ({ data: { dir: grokDir } });
+  const grok = await Switchboard.prototype.libraryPlugin.call(grokBoard, { id: "t", provider: "grok" }, { provider: "grok" }, "t2");
+  assert.ok(grok.startsWith(path.join(base, "sessions")), `Grok is given a private copy even with no sandbox: ${grok}`);
+  // a session under its own account's uid (the packaged box): the set is seeded into her HOME by the spawner, nothing is copied here, and the folder it is pointed at is hers
+  const boxBoard = make({ uid: {} });
+  const at = await ask(boxBoard, { accountRun: { uid: 2002, home: "/acct/2002" } });
+  assert.equal(at, "/acct/2002/.vyre-skills/0123456789abcdef", "the session is pointed at its own account's HOME");
+  const seed = boxBoard.libSeed.get("t1");
+  assert.equal(seed[".vyre-skills/0123456789abcdef/skills/okafor/SKILL.md"], "BLUEBIRD-77", "and the spawner is handed the set to write there");
+  assert.ok(".vyre-skills/0123456789abcdef/.claude-plugin/plugin.json" in seed);
+  assert.ok(Object.keys(seed).every(k => k.startsWith(".vyre-skills/0123456789abcdef/")), "only under the one prefix");
 });
