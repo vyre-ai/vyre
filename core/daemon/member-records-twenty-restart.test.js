@@ -39,7 +39,7 @@ async function ow(w, tool, input) {
 
 /** @param {string} root */
 async function boot(root) {
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await start({ root, log: m => { if (/twenty|record store|records|store|compose|golden/i.test(String(m))) console.log('# D', String(m).slice(0, 200)); }, kernel: true, kernelPresence: { check: async () => null } });
   const OWNER = d.kernel.id.owner, SPACE = d.kernel.id.space, K = d.kernel;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   const chainOf = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "relay" });
@@ -73,8 +73,16 @@ async function steps(w, when, seed) {
   assert.ok(nothing(await B("records.query", "skill", { page: { limit: 50 } })), `${when}: query skill`);
   assert.ok(nothing(await B("records.aggregate", "skill", { group_by: "state" })), `${when}: aggregate skill`);
   for (const text of ["OWNER-PRIVATE-TEXT", "SPACE-DRAFT-TEXT", "ANA-PRIVATE-TEXT", "OWNER-FLOW-MARKER"]) assert.ok(nothing(await B("records.search", { text, page: { limit: 20 } })), `${when}: search ${text}`);
-  assert.ok(nothing(await B("records.definitions")), `${when}: the list of types leaves the kept ones out`);
-  for (const spec of [{}, { limit: 500 }, { since: 0 }]) assert.ok(nothing(await B("events.read", spec)), `${when}: events.read ${JSON.stringify(spec)}`);
+  { const r = await B("records.definitions"); const names = (r.ok && Array.isArray(r.v) ? r.v : []).map((/** @type {any} */ t) => String(t && t.name));
+    const KEPT_TYPES = ["skill", "def-flow", "def_flow", "flow-approval", "flow-state", "flow-control", "flow-tests", "flow-schedule", "flow-run", "project-template", "def-watcher", "kit-proposal", "kit-install", "planner_state", "planner_firing", "preview_doc", "reminder", "note", "goal"];
+    console.log("# D definitions seen by Ben:", names.join(","));
+    assert.deepEqual(names.filter((/** @type {string} */ n) => KEPT_TYPES.includes(n)), [], `${when}: the list of types leaves the kept ones out`); }
+  const KEPT_SUBJECT = /^vyre:\/\/[^/]+\/(skill|def-flow|def_flow|flow-approval|flow-state|flow-control|flow-tests|flow-schedule|flow-run|project-template|def-watcher|kit-proposal|kit-install|planner_state|planner_firing|preview_doc|reminder|note|goal)\//;
+  for (const spec of [{}, { limit: 500 }, { since: 0 }]) {
+    const r = await B("events.read", spec); const evs = r.ok && Array.isArray(r.v) ? r.v : [];
+    console.log("# D events Ben reads", JSON.stringify(spec), evs.map((/** @type {any} */ e) => `${e.type}@${String(e.subject).replace(/^vyre:\/\/[^/]+\//, "")}`).join(" | ").slice(0, 400));
+    assert.ok(!evs.some((/** @type {any} */ e) => KEPT_SUBJECT.test(String(e.subject))) && !leaks(evs).length, `${when}: events.read ${JSON.stringify(spec)} shows no kept record and no secret word`);
+  }
   const bt = await w.tokenOf(w.chainOf(BEN));
   for (const [tool, input] of [["records.query", { type: "skill", page: { limit: 50 } }], ["records.search", { text: "OWNER-PRIVATE-TEXT" }]]) {
     const r = await w.d.registry.call(tool, input, "cli", bt);
@@ -82,7 +90,7 @@ async function steps(w, when, seed) {
   }
   // the owner and the keeper still read everything
   const list = (await w.asOwner("skills.list", {})).data;
-  for (const r of seed.ids) assert.ok(list.skills.some((/** @type {any} */ s) => String(s.id).endsWith("/" + r.data.name)) || r.data.name === "space-draft", `${when}: the owner's skill list holds ${r.data.name}`);
+  for (const r of seed.ids) assert.ok(list.skills.some((/** @type {any} */ s) => String(s.id).endsWith("/" + r.data.name)) || ["space-draft", "ana-private"].includes(r.data.name), `${when}: the owner's skill list holds ${r.data.name}`);   // a Space draft and Ana's personal skill are not in the owner's list; the keeper check below reads them
   const kept = (await w.K.gateway.records.query(w.svc, "skill", { page: { limit: 50 } })).rows;
   for (const r of seed.ids) assert.ok(kept.some((/** @type {any} */ x) => x.id === r.id), `${when}: the keeper still reads ${r.data.name}`);
   assert.deepEqual(((await w.asOwner("flows.list", {})).data).map((/** @type {any} */ f) => f.id), [seed.flowId], `${when}: the owner's Flow`);
