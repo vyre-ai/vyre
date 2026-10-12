@@ -56,8 +56,12 @@ test("the module bus for a paired device: owner and admin whole, a member cut to
     assert.ok(!r.body.includes("OWNER-DEVICE-BUS-SECRET") && !r.body.includes("LEAK-IN-SIDEBAR") && !r.body.includes("planner.added"), `member ${name}: no title or planner event: ${r.body.slice(0, 300)}`);
     assert.ok(r.body.includes("sidebar.changed"), `member ${name}: the allow-listed type arrives`);
   }
-  const none = await get(await as("nobody"), "/v1/events?since=0");
-  assert.equal(none.status, 404, none.body);
+  // an app row the owner's pairing made, with no Wink record naming anyone (the relay's own pairings and older phones): the owner's own device, as before
+  const none = await get(await as("nobody"), "/v1/events?since=0&limit=500");
+  assert.ok(none.status === 200 && none.body.includes("OWNER-DEVICE-BUS-SECRET"), `an approved app row naming nobody is the owner's own (${none.status})`);
+  // a removed device and a row the home never made get nothing
+  db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('rrrrrrrrrrrrrrrr', 'gone', 'p', 1, 'app', 0, 5)").run();
+  for (const id of ["rrrrrrrrrrrrrrrr", "zzzzzzzzzzzzzzzz"]) { const r = await get(/** @type {http.Server} */ (await serve("device:" + id, id)), "/v1/events?since=0"); assert.equal(r.status, 404, `${id}: ${r.status}`); }
   // a trusted browser is judged the same way, by the person the home's record names
   const asWeb = async (/** @type {string} */ label, /** @type {string} */ id) => { const s = /** @type {http.Server} */ (await serve(label, id)); t.after(() => s.close()); return s; };
   for (const who of ["owner", "admin"]) { const r = await get(await asWeb("web:" + wids[who], wids[who]), "/v1/events?since=0&limit=500"); assert.ok(r.status === 200 && r.body.includes("OWNER-DEVICE-BUS-SECRET"), `web ${who}: the whole bus (${r.status})`); }
