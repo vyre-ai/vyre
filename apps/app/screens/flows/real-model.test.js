@@ -8,7 +8,7 @@ import { explainText, APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWa
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
   assert.equal(titleOf({ name: "welcome" }, "fl_01a123ae-79f0"), "welcome");
-  assert.equal(titleOf(undefined, "fl_01a123ae-79f0"), "fl_01a123ae-79f0", "only when it has no words at all");
+  assert.equal(titleOf(undefined, "fl_01a123ae-79f0"), "Untitled Flow", "with no words at all it says so; an id is not for a person");
 });
 
 test("a Flow waits for the person only while no version of it is approved", () => {
@@ -68,4 +68,18 @@ test("a member approves her own Flow and sends someone else's version for approv
   assert.equal(approvalPath({ role: "admin", by: "per_bob", me: "per_ann" }), "approve");
   assert.equal(approvalPath({ role: "member", by: undefined, me: "per_ann" }), "approve", "an unknown author keeps Approve; the door still decides");
   assert.equal(approvalPath({ role: undefined, by: "per_bob", me: "per_ann" }), "approve", "no role known: the door decides");
+});
+
+test("a Flow is never shown by its id: no name means words, in the list rows, the attention strip and a Flow's own page", async () => {
+  const { titleOf, rowName, UNTITLED } = await import("./real-model.js");
+  const { proposals } = await import("./assistant-model.ts");
+  const ID = "fl_01a12d63-0000-4000-8000-000000000000";
+  assert.equal(titleOf(null, ID), UNTITLED);
+  assert.equal(titleOf({}, ID), UNTITLED);
+  assert.equal(rowName({ label: "", name: "" }), UNTITLED);
+  assert.equal(rowName({ name: "Intake" }), "Intake");
+  const cards = proposals([/** @type {any} */ ({ id: ID, active: null })], []);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].title, UNTITLED, "the attention card says words");
+  for (const text of [cards[0].title, cards[0].sub, titleOf(null, ID), rowName(null)]) assert.doesNotMatch(text, /fl_[0-9a-f-]{8,}/);
 });

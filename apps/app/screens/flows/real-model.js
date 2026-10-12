@@ -10,7 +10,10 @@
 export const shownWarnings = (ws) => (ws || []).filter((w) => typeof w === "string" || w.path !== "caps").map((w) => (typeof w === "string" ? w : w.message));
 
 /** A Flow's name for a person: its label, else its code name, never its id. @param {{ label?: string, name?: string } | null | undefined} f @param {string} id */
-export const titleOf = (f, id) => (f && (f.label || f.name)) || id;
+export const UNTITLED = "Untitled Flow";
+export const titleOf = (f, _id) => (f && (f.label || f.name)) || UNTITLED;
+/** The name a Flows list row shows: its label, else its name, else words. Never its id (a Flow id is not for a person: "fl_01a1..."). @param {{ label?: string, name?: string } | null | undefined} r */
+export const rowName = (r) => (r && (r.label || r.name)) || UNTITLED;
 
 /** A row of flows.list waits for the person when none of its versions is approved yet (an approved Flow has its switch; a paused one is the switch off). @param {{ active?: unknown }} row */
 export const listWaits = (row) => !row.active;
