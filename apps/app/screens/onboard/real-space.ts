@@ -77,7 +77,8 @@ export async function setUpSpace(o: { spaceName: string; membersOwnComputers: bo
 
 // ---- joining ----
 
-export type JoinCard = { link: string; space: string; label: string; role: "member" | "admin"; words: string[] };
+/** `role` is what the screens branch on (admin or member); `roleWord` is the invite's own role, shown as it is. */
+export type JoinCard = { link: string; space: string; label: string; role: "member" | "admin"; roleWord: string; words: string[] };
 const card = store<JoinCard | null>(null);
 export const useJoinCard = () => card.use();
 export const joinCard = () => card.get();
@@ -85,7 +86,11 @@ export const joinCard = () => card.get();
 /** A pasted link is used as it is; a typed invite code (INV-XXXX-XXXX or the short code) is redeemed over the relay for the link. */
 export async function linkFromInput(text: string, onAck: (ack: string, expires?: number) => void): Promise<string> {
   const t = text.trim();
-  if (/^https?:\/\//i.test(t) || /\/join\//.test(t)) return t;
+  if (/^https?:\/\//i.test(t) || /\/join\//.test(t)) {
+    const { parseInviteLink } = await import("../../src/real/join-team.js");
+    try { parseInviteLink(t); } catch { throw Object.assign(new Error("This is not a Vyre invite. Paste the whole link your inviter sent, or ask them for a new one."), { code: "bad_input" }); }
+    return t;
+  }
   const { redeemInvite } = await import("../devices/TypeCode");
   return (await redeemInvite(t, onAck)).invite!.link;
 }
@@ -95,7 +100,7 @@ export async function readInvite(link: string): Promise<JoinCard> {
   const { previewInvite } = await import("../../src/real/install");
   const c = await previewInvite(link);
   const role = c.role === "admin" || c.role === "owner" ? "admin" : "member";
-  const made: JoinCard = { link, space: String(c.label || c.space), label: String(c.label || c.space), role, words: String(c.fingerprint_words || "").split(/\s+/).filter(Boolean) };
+  const made: JoinCard = { link, space: String(c.label || c.space), label: String(c.label || c.space), role, roleWord: String(c.role || "member"), words: String(c.fingerprint_words || "").split(/\s+/).filter(Boolean) };
   card.set(made);
   return made;
 }

@@ -416,7 +416,7 @@ function JoinReviewLive({ go, back, steps }: ScreenProps) {
       <Card flush>
         <Row dense lead={<Icon name="space" tone="text-2" />} title="Space" end={<Text>{c.label}</Text>} />
         <Divider inset={60} />
-        <Row dense lead={<Icon name="key" tone="text-2" />} title="Your role" end={<Chip tone="accent">{admin ? "Admin" : "Member"}</Chip>} />
+        <Row dense lead={<Icon name="key" tone="text-2" />} title="Your role" end={<Chip tone="accent">{c.roleWord.charAt(0).toUpperCase() + c.roleWord.slice(1)}</Chip>} />
       </Card>
       <MatchWords label="The space's four words" words={c.words} note={admin ? "Your inviter types these on their side to confirm it is you." : "These match the words your inviter sees."} />
     </FlowStep>
