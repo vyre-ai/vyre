@@ -690,6 +690,7 @@ export function createTasks(cfg) {
     async card(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.read", urnOf(cfg.space, id));
       const t = await overlay(get_(id));
+      if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(get_(id))))) throw new KernelError("not_found", "no such task");
       const b = bodies.get(id);
       return buildCard(t, b, { action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },
