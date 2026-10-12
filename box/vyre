@@ -397,6 +397,13 @@ image() {
   echo "${v:-${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}}"
 }
 
+# retag_to FROM TO: put the image FROM under the name TO. A digest reference (name@sha256:...) is not a name an image can be tagged as: docker refuses ("refusing to create a tag with a digest
+# reference"). A box pinned by digest needs no retag, since the box files that go back name the old digest and that image is still in the local store, so nothing is done for it.
+retag_to() {
+  case "$2" in *@sha256:*) return 0 ;; esac
+  docker image tag "$1" "$2"
+}
+
 # backup_db VERSION: the CLI's own backup, in the container, into CHOME/backups/pre-VERSION.tar.gz
 # on the vyre-home volume, and a copy in $DIR/backups for the host. $DIR/backups/last names it,
 # for a failed update and for --rollback --restore-data.
@@ -683,7 +690,7 @@ roll_back() {
   UPD_END=rolled_back
   state running rolling-back
   if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi
-  if [ "$TAGGED" = 1 ]; then docker image tag vyre:prev "$IMG"; fi
+  if [ "$TAGGED" = 1 ]; then retag_to vyre:prev "$IMG"; fi
   put_box "$BOXPREV" exact
   restore_release
   compose up -d || true
@@ -737,8 +744,14 @@ update() {
   CHANNEL=${VYRE_CHANNEL:-stable}
   TO=""
   ALLOW_UNSIGNED=0
+  CHECK=0
+  JSON=0
+  REINSTALL=0
   while [ $# -gt 0 ]; do
     case "$1" in
+      --check) CHECK=1 ;;
+      --json) JSON=1 ;;
+      --reinstall) REINSTALL=1 ;;
       --channel) [ $# -ge 2 ] || die "--channel needs stable or beta"; CHANNEL=$2; shift ;;
       --channel=*) CHANNEL=${1#--channel=} ;;
       --to) [ $# -ge 2 ] || die "--to needs a version"; TO=$2; shift ;;
@@ -749,14 +762,18 @@ update() {
     shift
   done
   case "$CHANNEL" in stable|beta) ;; *) die "the channel is stable or beta, not $CHANNEL" ;; esac
+  [ "$JSON" = 0 ] || [ "$CHECK" = 1 ] || die "vyre update: --json goes with --check"
   UPD_FROM=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
-  stage checking
+  # A server that is busy (or down) cannot say what it runs: the version the last update or install wrote on the host answers instead, so a busy server is never mistaken for an unknown one.
+  if [ -z "$UPD_FROM" ]; then UPD_FROM=$(tr -d ' \r\n' <"$DIR/VERSION" 2>/dev/null || true); fi
+  if [ "$CHECK" = 0 ]; then stage checking; fi
 
   # A box built from a checkout the person keeps themselves (VYRE_SOURCE is not $DIR/src) is
   # updated with git, not from a release: nothing is downloaded, and the source is left alone.
   if [ "$BUILD" = 1 ] && [ "$ROOT_RUN" = 0 ]; then
     src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
     if [ "${src%/}" != "${DIR%/}/src" ]; then
+      if [ "$CHECK" = 1 ]; then say "this box builds from $src, not from a release; there is nothing to check (update it with git)"; exit 0; fi
       say "this box builds from $src: update it with git; rebuilding from it now"
       compose build --pull
       compose up -d
@@ -775,6 +792,24 @@ update() {
     else say "no $CHANNEL release on GitHub yet; using $SITE"; BASE=$SITE
     fi
   fi
+
+  # --check: read-only. What would be installed and from which channel, and whether this server already runs it. Nothing is downloaded but the release list
+  # (or, with no release on GitHub yet, the site's VERSION file), nothing is written, and the signature is checked by the update itself, not here.
+  if [ "$CHECK" = 1 ]; then
+    newest=${TAG#v}
+    if [ -z "$newest" ]; then fetch VERSION "$tmp/VERSION" 2>/dev/null || die "could not read the newest version from $BASE"; newest=$(tr -d ' \r\n' <"$tmp/VERSION"); fi
+    [ -n "$newest" ] || die "could not read the newest version from $BASE"
+    upd=1
+    if [ -n "$UPD_FROM" ] && ! older "$UPD_FROM" "$newest"; then upd=0; fi
+    if [ "$JSON" = 1 ]; then
+      printf '{"current":"%s","channel":"%s","latest":"%s","update":%s,"source":"%s"}\n' "$UPD_FROM" "$CHANNEL" "$newest" "$([ "$upd" = 1 ] && echo true || echo false)" "$([ -n "$TAG" ] && echo github || echo site)"
+    elif [ "$upd" = 1 ]; then say "$newest is available on the $CHANNEL channel (this server runs ${UPD_FROM:-an unknown version}); run: vyre update${TO:+ --to $TO}$([ "$CHANNEL" = stable ] || echo " --channel $CHANNEL")"
+    else say "up to date: this server runs $UPD_FROM, the newest on the $CHANNEL channel is $newest"
+    fi
+    exit "$upd"
+  fi
+  # The same version again does nothing: it would restart a working server (and, on a busy one, roll it back) to install what it already runs. --reinstall asks for it anyway.
+  if [ "$REINSTALL" = 0 ] && [ -n "$TAG" ] && [ -n "$UPD_FROM" ] && [ "${TAG#v}" = "$UPD_FROM" ]; then UPD_DONE=1; state ok none "already on $UPD_FROM"; say "already on $UPD_FROM; nothing to update (vyre update --reinstall puts it on again)"; exit 0; fi
 
   # Everything is downloaded and checked before anything on the box changes.
   stage downloading
@@ -799,7 +834,7 @@ update() {
     if [ -n "$floor" ] && older "$VERSION" "$floor"; then die "the newest release is $VERSION and the newest this server has had is $floor; an automatic update never goes back"; fi
     if [ -n "$UPD_FROM" ] && older "$VERSION" "$UPD_FROM"; then die "the newest release is $VERSION and this box runs $UPD_FROM; an automatic update never goes back"; fi
   fi
-  if [ "${UPD_SIGNED:-0}" = 1 ] && [ -n "$UPD_FROM" ] && [ "$VERSION" = "$UPD_FROM" ]; then UPD_DONE=1; state ok none "already on $VERSION"; say "already on $VERSION"; exit 0; fi
+  if [ "$REINSTALL" = 0 ] && [ -n "$UPD_FROM" ] && [ "$VERSION" = "$UPD_FROM" ]; then UPD_DONE=1; state ok none "already on $VERSION"; say "already on $VERSION; nothing to update (vyre update --reinstall puts it on again)"; exit 0; fi
   if [ -f "$tmp/release.json" ]; then
     min=$(tr -d '\n' <"$tmp/release.json" | sed -n 's/.*"min_from": *"\([^"]*\)".*/\1/p')
     cur=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
@@ -1086,7 +1121,7 @@ rollback() {
   if [ -d "$UPD_PRIV/release.prev" ]; then compose stop vyre >/dev/null 2>&1 || true; swap_dirs "$UPD_STATE/release" "$UPD_PRIV/release.prev"; fi
   if [ "$have_img" = 1 ]; then
     if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:next; fi
-    docker image tag vyre:prev "$IMG"
+    retag_to vyre:prev "$IMG"
     if docker image inspect vyre:next >/dev/null 2>&1; then docker image tag vyre:next vyre:prev; docker image rm vyre:next >/dev/null; fi
   fi
   if [ -d "$DIR/box.prev" ]; then

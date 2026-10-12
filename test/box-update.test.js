@@ -82,7 +82,11 @@ if (args[0] === "run") {
 if (args[0] === "image") {
   const [, op, a, b] = args;
   if (op === "inspect") process.exit(has(a) ? 0 : 1);
-  if (op === "tag") { if (!has(a)) process.exit(1); fs.copyFileSync(img(a), img(b)); process.exit(0); }
+  if (op === "tag") {
+    // Real docker will not tag an image AS a digest reference.
+    if (/@sha256:/.test(b)) { console.error("Error response from daemon: refusing to create a tag with a digest reference"); process.exit(1); }
+    if (!has(a)) process.exit(1); fs.copyFileSync(img(a), img(b)); process.exit(0);
+  }
   if (op === "rm") { fs.rmSync(img(a), { force: true }); process.exit(0); }
 }
 if (args[0] === "compose") {
@@ -1182,4 +1186,84 @@ test("IR-8 two root runs preparing at once never fail on a shared temp name (no 
   assert.match(fs.readFileSync(path.join(RUNF, "compose.env"), "utf8"), /^DOCKER_GID=998$/m);
   assert.deepEqual(fs.readdirSync(RUNF).filter(n => /\.new$|\.[A-Za-z0-9]{6}$/.test(n)), [], "no temp file is left behind");
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+// rc.3 install-update: a same-version update does nothing, a digest-pinned box rolls back, and --check reads without writing.
+const writeCur = (/** @type {any} */ b, /** @type {string} */ v) => fs.writeFileSync(path.join(b.FAKE, "cur"), v + "\n");
+const NO_CHANGE = /^compose (stop|up|pull|build)\b|vyre backup|image tag/;
+
+test("box update (rc.3): the same version again does nothing, says so, and exits 0, on either channel and by hand", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  writeCur(b, "0.2.0");
+  for (const args of [["update"], ["update", "--channel", "beta"], ["update", "--to", "0.2.0"]]) {
+    const r = /** @type {any} */ (await b.run(args));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /already on 0\.2\.0/);
+  }
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c)), [], "no stop, start, pull, build, backup or retag");
+  assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
+  assert.equal(b.read(b.WRAPPER), WRAPPER_SRC);
+});
+
+test("box update (rc.3): a server too busy to say what it runs is still known by the version the host wrote, so it is not restarted", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  fs.writeFileSync(path.join(b.DIR, "VERSION"), "0.2.0\n");
+  fs.rmSync(path.join(b.FAKE, "running"));
+  const r = /** @type {any} */ (await b.run(["update", "--channel", "beta"]));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /already on 0\.2\.0/);
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c)), []);
+});
+
+test("box update (rc.3): --reinstall puts the same version on again", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  writeCur(b, "0.2.0");
+  const r = /** @type {any} */ (await b.run(["update", "--reinstall"]));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(b.calls().includes("compose build --pull"));
+});
+
+test("box update (rc.3): a box pinned by digest rolls back without ever tagging an image as a digest, and --rollback does too", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  const pinned = "ghcr.io/vyre-ai/vyre@sha256:" + "b".repeat(64);
+  const name = (/** @type {string} */ ref) => path.join(b.FAKE, "images", ref.replace(/[/:]/g, "_"));
+  fs.writeFileSync(path.join(b.DIR, "compose.yml"), COMPOSE.replace(/^( *image: *).*$/gm, `$1${pinned}`));
+  fs.writeFileSync(name(pinned), "orig");
+  // The new container never answers: the update rolls back.
+  fs.writeFileSync(path.join(b.FAKE, "bad"), "pulled-1\n");
+  const r = /** @type {any} */ (await b.run(["update"]));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /rolled back to the release before/);
+  assert.doesNotMatch(r.out, /refusing to create a tag/);
+  assert.deepEqual(b.calls().filter(c => /^image tag \S+ \S+@sha256:/.test(c)), [], "nothing is tagged AS a digest");
+  assert.equal(b.read(path.join(b.DIR, "compose.yml")).includes(pinned), true, "the box files that go back name the old digest");
+  // And by hand, after a healthy update.
+  fs.rmSync(path.join(b.FAKE, "bad"));
+  assert.equal((/** @type {any} */ (await b.run(["update"]))).code, 0);
+  const back = /** @type {any} */ (await b.run(["update", "--rollback"]));
+  assert.equal(back.code, 0, back.out);
+  assert.doesNotMatch(back.out, /refusing to create a tag/);
+  assert.deepEqual(b.calls().filter(c => /^image tag \S+ \S+@sha256:/.test(c)), []);
+});
+
+test("box update --check (rc.3): reads and writes nothing, says what would be installed from which channel, exit 1 when newer, 0 when current", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.3.0-beta.1", pre: true }, { tag: "v0.2.0" }] });
+  const before = fs.readdirSync(b.DIR).sort().join(",");
+  const stable = /** @type {any} */ (await b.run(["update", "--check"]));
+  assert.equal(stable.code, 1, stable.out);
+  assert.match(stable.out, /0\.2\.0 is available on the stable channel \(this server runs 0\.1\.0\)/);
+  const beta = /** @type {any} */ (await b.run(["update", "--check", "--channel", "beta"]));
+  assert.equal(beta.code, 1, beta.out);
+  assert.match(beta.out, /0\.3\.0-beta\.1 is available on the beta channel/);
+  const json = /** @type {any} */ (await b.run(["update", "--check", "--json"]));
+  assert.equal(json.code, 1);
+  assert.deepEqual(JSON.parse(json.out.trim().split("\n").pop()), { current: "0.1.0", channel: "stable", latest: "0.2.0", update: true, source: "github" });
+  writeCur(b, "0.2.0");
+  const cur = /** @type {any} */ (await b.run(["update", "--check"]));
+  assert.equal(cur.code, 0, cur.out);
+  assert.match(cur.out, /up to date: this server runs 0\.2\.0/);
+  assert.equal(fs.readdirSync(b.DIR).sort().join(","), before, "no file written");
+  assert.deepEqual(b.calls().filter(c => NO_CHANGE.test(c) || /^compose (exec .*(backup|up))/.test(c)), []);
+  assert.ok(!b.hits.some(h => /vyre\.tgz|\/release\.json|\/vyre$/.test(h)), "no release file was downloaded");
+  assert.equal((/** @type {any} */ (await b.run(["update", "--json"]))).code, 1, "--json alone is refused");
 });
