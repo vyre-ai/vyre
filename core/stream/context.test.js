@@ -28,7 +28,7 @@ function fakeKernel() {
     },
   };
 }
-const call = async () => ({ error: { code: "not_found" } }); // settings.get answers nothing: cards stay on
+const call = async (/** @type {string} */ tool) => (tool === "work.chat.folder" ? { data: { root: "Projects/p" } } : { error: { code: "not_found" } }); // the work module names the chat's folder; settings.get answers nothing: cards stay on
 
 test("a message with a named record and attached files: the card for everyone, an image inline for an assistant with a session, the rest as paths", async t => {
   const k = fakeKernel();
