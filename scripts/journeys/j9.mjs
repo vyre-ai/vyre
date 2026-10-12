@@ -172,6 +172,33 @@ export default {
           return `status 200, ${got.text.length} characters, the event for ${name} arrived`;
         }, { needs: [SIGN], owner: "trust" });
       }
+      if (process.env.J9_PHONE) {
+        // a throwaway: one device added through the "add a device" window (wink.phone.open, the new device joins the name, the owner's app says yes to its words), then its rows are dumped for the pairing question
+        let phone = null;
+        await J.step("a device is added through the add-a-device window: the computer shows a code, the new device joins the name, the computer says yes to its three words", async () => {
+          phone = createApp({ label: "Proof phone", dir: path.join(ctx.out, "j9", "phone"), directory: ins.names, relay: ins.relay, about: { kind: "app" } });
+          const code = await mac.showDeviceCode();
+          const shown = /** @type {string[]} */ ([]);
+          const joining = phone.addThisDeviceToName({ payload: code.qr, onWords: (/** @type {string} */ x) => shown.push(x) });
+          const failed = new Promise((_, rej) => joining.catch(rej)); failed.catch(() => {});
+          const ask = /** @type {any} */ (await Promise.race([mac.answerDevice(), failed]));
+          await phone.until(() => shown.length, 15_000, "the new device to show its words");
+          await mac.sayYes(shown[0].split(" "), ask.raw);
+          await mac.serveEnrol();
+          const r = await joining;
+          assert.equal(r.id, mac.identity.id, "the new device joined this person's identity");
+          return `joined with words ${shown[0]}`;
+        }, { needs: [SIGN], owner: "trust" });
+        await J.step("the window-added device's rows: relay_devices and wink_devices (ids and flags only)", async () => {
+          const { spawnSync } = await import("node:child_process");
+          const script = `const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync(process.env.HOME+"/.vyre/vyre.db",{readOnly:true});console.log(JSON.stringify({relay:db.prepare("select id,name,kind,trusted,removed_at,paired_at,key_storage,(join_grant is not null) join_grant from relay_devices").all(),wink:db.prepare("select id,identity,kind,name,owner_kind,owner_id,(confirmed_by is not null) confirmed,confirmed_by,key_storage from wink_devices").all()}))`;
+          const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "node", "--experimental-sqlite", "-e", script], { encoding: "utf8" });
+          assert.equal(r.status, 0, String(r.stderr));
+          console.log(`DBG PAIRING-ROWS ${String(r.stdout).trim()}`);
+          return String(r.stdout).trim().slice(0, 1500);
+        }, { needs: [SIGN], owner: "trust" });
+        try { /** @type {any} */ (phone)?.close(); } catch { /* closed */ }
+      }
       await heavy("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });
     } finally {
       // J9_KEEP=<minutes>: leave the box up that long after the steps, to look inside it (docker exec -u vyre vyre-vyre-1 ...)
