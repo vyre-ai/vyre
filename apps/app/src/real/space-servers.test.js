@@ -89,6 +89,43 @@ test("a task listed from B, decided while A is showing and active, reaches B onl
   m.setPorts(null);
 });
 
+test("the approvals inbox lists the held acts of every server, and an act held on B is approved on B while A is active", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  m.setPorts(/** @type {any} */ ({ ...w.ports, peerCall: async (/** @type {string} */ t, /** @type {any} */ i, /** @type {string | undefined} */ b) => {
+    if (t === "approvals.pending") { w.sent.push([b, t, i]); return b === "boxa" ? [{ id: "appr_a1", title: "A" }] : [{ id: "appr_b1", title: "B" }]; }
+    return w.ports.peerCall(t, i, b);
+  } }));
+  const all = await m.listAllApprovals("approvals.pending", {});
+  assert.deepEqual(all?.map((r) => [r.id, r.server]), [["appr_a1", "boxa"], ["appr_b1", "boxb"]], "both servers' held acts, each tagged with its server");
+  const route = await m.routeCall({ tool: "approvals.answer", input: { id: "appr_b1", approve: true }, showing: "all" });
+  assert.deepEqual(route, { box: "boxb" });
+  await w.ports.peerCall("approvals.answer", { id: "appr_b1", approve: true }, route.box);
+  assert.deepEqual(w.sent.filter((x) => x[1] === "approvals.answer").map((x) => x[0]), ["boxb"], "B only");
+  assert.equal((await m.routeCall({ tool: "approvals.answer", input: { id: "appr_nobody" }, showing: "all" })).error?.code, "approval_unknown_server");
+  m.setPorts(null);
+});
+
+test("registering the phone's push token goes to every paired server; reading one server's own list does not fan out", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({});
+  m.setPorts(/** @type {any} */ (w.ports));
+  const out = await m.callEvery("push.subscribe", { subscription: { endpoint: "https://push.example/x" }, label: "phone" });
+  assert.deepEqual(w.sent.filter((x) => x[1] === "push.subscribe").map((x) => x[0]).sort(), ["boxa", "boxb"], "both servers got the token");
+  assert.ok(out, "answered");
+  m.setPorts(null);
+});
+
+test("with a server offline the push token still reaches the other and the call says so", { skip: !strip }, async () => {
+  const m = await load();
+  const w = wire({}, ["boxb"]);
+  m.setPorts(/** @type {any} */ (w.ports));
+  const out = await m.callEvery("push.subscribe", { subscription: {}, label: "phone" });
+  assert.ok(out);
+  assert.deepEqual(m.pushMissed(), ["boxb"], "the server that did not get it is named for the screen");
+  m.setPorts(null);
+});
+
 test("a chat nobody holds is refused in words and nothing is sent to any server", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({ boxa: ["chat_a"], boxb: ["chat_b"] });

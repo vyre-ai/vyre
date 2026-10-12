@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
+import { approvalServersFrom, chatServersFrom, itemSpacesFrom, mergeSpaceLists, needsSpace, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -176,7 +176,7 @@ test("route: the families that hold a Space's private data are refused under All
 });
 
 test("route: server settings follow the Space showing but are not refused under All spaces; the device's own tools are never routed", () => {
-  for (const tool of ["settings.get", "appearance.presets", "spend.summary", "update.status"]) {
+  for (const tool of ["settings.get", "appearance.presets", "sidebar.get"]) {
     assert.equal(needsSpace(tool), false, tool);
     assert.deepEqual(go({ tool, input: {}, showing: "all" }), { box: undefined }, tool);
   }
@@ -192,7 +192,7 @@ test("route: a family nobody classified (and any future one) is routed and refus
 });
 
 test("route: only the explicit allow-list (the device's own and the server's own settings) is never refused", () => {
-  for (const tool of ["relay.devices.revoke", "wink.pair.server", "presence.person.start-paired", "identity.status", "spaces.create", "spaces.members.add", "approvals.answer", "push.subscribe", "names.check", "onboard.finish", "settings.get", "appearance.resolve", "sidebar.edit", "update.apply", "system.info", "spend.raise", "about.text", "tips.dismiss"]) {
+  for (const tool of ["relay.devices.revoke", "wink.pair.server", "presence.person.start-paired", "identity.status", "spaces.create", "spaces.members.add", "push.subscribe", "push.devices", "names.check", "settings.get", "appearance.resolve", "sidebar.edit", "about.text", "tips.dismiss", "presence.person.start-paired", "presence.person.status"]) {
     assert.equal(needsSpace(tool), false, tool);
     assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, tool);
   }
@@ -226,4 +226,42 @@ test("itemSpacesFrom: the ids a list shows are remembered with the Space they we
   assert.deepEqual(itemSpacesFrom({ id: "new1" }, A), { new1: A }, "a thing just made");
   assert.deepEqual(itemSpacesFrom([{ id: "x" }], undefined), {}, "no Space known, nothing remembered");
   assert.deepEqual(itemSpacesFrom("junk", A), {});
+});
+
+// What a server owns by itself (its updates, restarts, setup, sign-ins, spending, providers) is never done to the active server by default: it follows the Space showing, and under All spaces with several servers it is refused.
+test("route: update, system, onboard, person sign-ins, spend and providers follow the Space showing and are refused under All spaces", () => {
+  for (const tool of ["update.apply", "update.check", "system.rename", "system.info", "system.modules", "onboard.finish", "onboard.you", "onboard.claude", "presence.person.start", "presence.person.sessions", "presence.person.revoke", "spend.summary", "spend.raise", "spend.check", "providers.refresh"]) {
+    assert.equal(needsSpace(tool), true, tool);
+    assert.deepEqual(go({ tool, input: {}, showing: B }), { box: "boxb" }, `${tool} goes to the server of the Space showing`);
+    assert.equal(go({ tool, input: {}, showing: "all" }).error?.code, "pick_a_space", `${tool} is never the active server by default`);
+  }
+  for (const tool of ["events.catalog", "providers.list", "update.status"]) assert.equal(go({ tool, input: {}, showing: "all" }).error, undefined, `${tool} is a plain read`);
+});
+
+// An approval is judged on the server that holds the held act, whichever server is active.
+const approvalServers = { appr_b1: "boxb", appr_a1: "boxa" };
+
+test("route: an approval answered, edited or opened goes to the server that holds the act", () => {
+  for (const tool of ["approvals.answer", "approvals.edit-item", "approvals.item-view", "approvals.status", "approvals.local-yes"]) {
+    assert.deepEqual(go({ tool, input: { id: "appr_b1" }, approvalServers, showing: A }), { box: "boxb" }, tool);
+  }
+  assert.deepEqual(go({ tool: "approvals.answer-group", input: { group: "g", decisions: [{ id: "appr_b1", approve: true }, { id: "appr_b1", approve: false }] }, approvalServers, showing: A }), { box: "boxb" });
+});
+
+test("route: an approval whose server is unknown, or a group that spans two servers, is refused and nothing is sent", () => {
+  const unknown = go({ tool: "approvals.answer", input: { id: "appr_zzz" }, approvalServers, showing: A });
+  assert.equal(unknown.error?.code, "approval_unknown_server");
+  assert.match(unknown.error?.message ?? "", /Approvals/);
+  const mixed = go({ tool: "approvals.answer-group", input: { decisions: [{ id: "appr_b1" }, { id: "appr_a1" }] }, approvalServers, showing: A });
+  assert.equal(mixed.error?.code, "approval_mixed_servers");
+  assert.equal(mixed.box, undefined);
+});
+
+test("route: one server paired never refuses an approval", () => {
+  assert.deepEqual(go({ tool: "approvals.answer", input: { id: "appr_zzz" }, approvalServers: {}, paired: ["boxa"], spaceServers: {} }), { box: undefined });
+});
+
+test("approvalServersFrom: the held acts each server lists, by id, the first server keeping an id listed twice", () => {
+  assert.deepEqual(approvalServersFrom({ boxa: [{ id: "x1" }, { id: "x2" }], boxb: [{ id: "y1" }, { id: "x1" }, null, { id: 3 }] }), { x1: "boxa", x2: "boxa", y1: "boxb" });
+  assert.deepEqual(approvalServersFrom({ boxa: undefined, boxb: "junk" }), {});
 });
