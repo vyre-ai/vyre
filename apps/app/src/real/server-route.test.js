@@ -6,7 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serverFor, spaceServersFrom } from "./server-route.js";
+import { mergeSpaceLists, serverFor, spaceServersFrom } from "./server-route.js";
 
 const A = "spc_aaaaaaaaaaaa", B = "spc_bbbbbbbbbbbb", C = "spc_cccccccccccc";
 const spaceServers = { [A]: "boxa", [B]: "boxb" };
@@ -62,4 +62,17 @@ test("spaceServersFrom: each server's own list names the Spaces it hosts; a join
 
 test("spaceServersFrom: a server that answered nothing is simply absent", () => {
   assert.deepEqual(spaceServersFrom({ boxa: [], boxb: /** @type {any} */ (undefined) }), {});
+});
+
+test("mergeSpaceLists: every server's Spaces in one list, each row says which server it is on, and a Space listed twice appears once", () => {
+  const rows = mergeSpaceLists({
+    boxa: [{ id: A, label: "personal" }, { id: C, member: true }],
+    boxb: [{ id: B, label: "northwind" }, { id: A }, null],
+  });
+  assert.deepEqual(rows.map((r) => [r.id, r.server]), [[A, "boxa"], [C, "boxa"], [B, "boxb"]]);
+  assert.equal(rows[0].label, "personal", "the row keeps what the server said");
+});
+
+test("mergeSpaceLists: a server that answered nothing adds nothing and never throws", () => {
+  assert.deepEqual(mergeSpaceLists({ boxa: undefined, boxb: [] }), []);
 });
