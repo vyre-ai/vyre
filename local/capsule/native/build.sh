@@ -63,10 +63,10 @@ case "$mode" in
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>sh.vyre.capsule</string>
-  <key>CFBundleName</key><string>Lumen</string>
-  <key>CFBundleDisplayName</key><string>Vyre Lumen</string>
+  <key>CFBundleName</key><string>Vyre</string>
+  <key>CFBundleDisplayName</key><string>Vyre</string>
   <key>CFBundleExecutable</key><string>Vyre</string>
-  <key>CFBundleIconFile</key><string>Lumen</string>
+  <key>CFBundleIconFile</key><string>Vyre</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version:-0.0.0}</string>
   <key>CFBundleVersion</key><string>${version:-0.0.0}</string>
@@ -82,10 +82,21 @@ PLIST
       find "$here/Sources/Extensions" -name Info.plist.part -exec cat {} \; 2>/dev/null
       printf '</dict>\n</plist>\n'
     } > "$app/Contents/Info.plist"
-    # The app icon (app-design's Lumen lens), from the brand export. Missing is not an error: the app
-    # then has the generic icon and everything else works.
-    icon="$here/../../../docs/design/brand/export/lumen/macos/Lumen.icns"
-    if [ -f "$icon" ]; then cp "$icon" "$app/Contents/Resources/Lumen.icns"; else echo "note: no Lumen.icns at $icon; the app gets the generic icon" >&2; fi
+    # The app icon and the Dock icon: the approved master mark (docs/design/brand/export/vyre), as an icns made here with sips and iconutil.
+    # Missing is not an error: the app then has the generic icon and everything else works.
+    master="$here/../../../docs/design/brand/export/vyre/vyre-master-1024.png"
+    if [ -f "$master" ] && command -v iconutil >/dev/null 2>&1; then
+      iset="$out/gen/Vyre.iconset"; rm -rf "$iset"; mkdir -p "$iset"
+      for sz in 16 32 128 256 512; do
+        sips -z $sz $sz "$master" --out "$iset/icon_${sz}x${sz}.png" >/dev/null
+        sips -z $((sz * 2)) $((sz * 2)) "$master" --out "$iset/icon_${sz}x${sz}@2x.png" >/dev/null
+      done
+      iconutil -c icns "$iset" -o "$app/Contents/Resources/Vyre.icns"
+    else echo "note: no icon made from $master; the app gets the generic icon" >&2; fi
+    # The shared splash piece, when the repo has it (Shell.swift shows the brand mark on the brand background without it).
+    for sp in "$here/Resources/splash.html" "$here/../../../apps/app/splash/mac-splash.html"; do
+      if [ -f "$sp" ]; then cp "$sp" "$app/Contents/Resources/splash.html"; break; fi
+    done
     # One stable identity keeps Accessibility and Input Monitoring grants across updates. The
     # identifier pins the designated requirement; VYRE_SIGN_IDENTITY names a local certificate
     # when there is one, otherwise the signature is ad hoc.
