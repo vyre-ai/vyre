@@ -202,3 +202,7 @@ test("Send with picks the sending service, and the Web step names a vault connec
   assert.equal(back.steps[0].sendStep, "comms.email");
   assert.deepEqual(toDefinition(back), def);
 });
+
+test("a step checked by an agent says so in words, not a person", () => {
+  assert.match(stepSummary({ id: "a", kind: "assign", to: "role:attorney", title: "Draft", checker: "agent:research" }, O), /checked by the Research agent, not a person/);
+});

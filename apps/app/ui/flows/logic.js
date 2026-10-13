@@ -140,7 +140,7 @@ export function stepSummary(s, o, d) {
 }
 
 /** ", checked by X, followed by N" for a step that has them. @param {DraftStep} s @param {Options} o */
-const crew = (s, o) => `${s.checker ? `, checked by ${whoWords(s.checker, o)}` : ""}${Array.isArray(s.followers) && s.followers.length ? `, followed by ${s.followers.length === 1 ? whoWords(s.followers[0], o) : `${s.followers.length} others`}` : ""}`;
+const crew = (s, o) => `${s.checker ? `, checked by ${whoWords(s.checker, o)}${String(s.checker).startsWith("agent:") ? ", not a person" : ""}` : ""}${Array.isArray(s.followers) && s.followers.length ? `, followed by ${s.followers.length === 1 ? whoWords(s.followers[0], o) : `${s.followers.length} others`}` : ""}`;
 
 /** @param {string | undefined} ref "trigger" or a step id @param {Draft} [d] @param {Options} [o] */
 export function linkWords(ref, d, o) {
