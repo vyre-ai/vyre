@@ -56,7 +56,7 @@ function download(name: string, bytes: ArrayLike<number>, mime: string) {
 }
 
 export function FileViewer(p: FileViewerProps) {
-  const { color, resolved } = useUiTheme();
+  const { color } = useUiTheme();
   const kind: ViewKind = p.kind ?? viewerKind(p.name);
   const [version, setVersion] = useState<number | undefined>();
   const [versions, setVersions] = useState<FileVersion[]>([]);
@@ -155,6 +155,7 @@ export function FileViewer(p: FileViewerProps) {
   const content = (() => {
     if (state === "loading") return <View style={{ padding: 24 }}><Text tone="muted">Opening</Text></View>;
     if (state === "failed") return <OtherCard name={p.name} size={body?.bytes?.length} note={why} onDownload={doDownload} />;
+    if (isTextKind(kind) && !editing && text === "") return <OtherCard name={p.name} note="This file is empty." onDownload={doDownload} />;
     if (changes && isTextKind(kind)) return before === null ? <View style={{ padding: 24 }}><Text tone="muted">Looking at the version before</Text></View> : <DiffView ops={ops} />;
     switch (kind) {
       case "markdown": return editing ? <MarkdownEditor value={draft} onChange={setDraft} onSave={save} /> : <MarkdownView text={text} />;
@@ -164,18 +165,18 @@ export function FileViewer(p: FileViewerProps) {
           : <CodeLines text={text} lang={kind === "text" ? "" : languageOf(p.name)} />;
       case "json": return <JsonTree text={text} />;
       case "image": return uri ? <ImageZoom uri={uri} /> : <OtherCard name={p.name} note="The picture did not load." onDownload={doDownload} />;
-      case "pdf": return body?.base64 || body?.bytes ? <PdfDom base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+      case "pdf": return body?.base64 || body?.bytes ? <PdfDom ink={color.text} base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
       case "html":
         return Platform.OS === "web"
           ? <View style={{ flex: 1 }}><Banner icon="shield">Shown without scripts, the way the file is written.</Banner>{createFrame(text)}</View>
           : <OtherCard name={p.name} note="Open this page in Vyre on a computer to see it." onDownload={doDownload} />;
       case "audio": case "video":
         return Platform.OS === "web" && uri ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>{createMedia(kind, uri)}</View> : <OtherCard name={p.name} note="Play this on a computer, or download it." onDownload={doDownload} />;
-      case "docx": return body?.base64 || body?.bytes ? <DocxDom base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+      case "docx": return body?.base64 || body?.bytes ? <DocxDom ink={color.text} base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
       case "sheet": {
         const ext = extOf(p.name);
         if (ext === "xls") return <OtherCard name={p.name} size={body?.bytes?.length} note="Older .xls spreadsheets cannot be shown here. Download it, or save it as .xlsx." onDownload={doDownload} />;
-        return body?.base64 || body?.bytes ? <SheetDom base64={body.base64 ?? base64Of(body.bytes!)} kind={ext === "xlsx" ? "xlsx" : ext === "tsv" ? "tsv" : "csv"} dark={resolved.scheme === "dark"} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+        return body?.base64 || body?.bytes ? <SheetDom ink={color.text} base64={body.base64 ?? base64Of(body.bytes!)} kind={ext === "xlsx" ? "xlsx" : ext === "tsv" ? "tsv" : "csv"} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
       }
       default: return <OtherCard name={p.name} size={body?.bytes?.length} onDownload={doDownload} />;
     }
@@ -227,7 +228,7 @@ export function FileViewer(p: FileViewerProps) {
 /** A sandboxed page: no scripts, no forms, no same-origin, so the file cannot reach the app. */
 function createFrame(html: string) {
   if (typeof document === "undefined") return null;
-  return createElement("iframe", { sandbox: "", srcDoc: html, title: "Page", style: { flex: 1, border: 0, width: "100%", height: "100%", background: "#fff" } });
+  return createElement("iframe", { sandbox: "", srcDoc: html, title: "Page", style: { flex: 1, border: 0, width: "100%", height: "100%", background: "white" } });
 }
 function createMedia(kind: "audio" | "video", src: string) {
   return createElement(kind, { src, controls: true, style: { maxWidth: "100%", maxHeight: "100%" } });
