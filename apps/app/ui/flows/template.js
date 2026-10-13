@@ -58,7 +58,7 @@ export function insertList(d, stepId, o, opt = {}) {
   const labelOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.label || type;
   const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}) });
   if (isRecordTrigger(t) && t.type) out.push({ title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
-  else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, null)) });
+  else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, { name: f })) });
   /** @type {Item[]} */ const steps = [];
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
