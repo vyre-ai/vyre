@@ -145,3 +145,15 @@ test("needs: a publish an agent asked for is a row beside the Gate's and the ask
   assert.equal(hydrate(JSON.parse(JSON.stringify(list)))?.length, 3, "the cache keeps it");
   assert.equal(merge([], [], ctx, [hold({ plan: null })]).length, 0, "a hold with no plan is not shown: there would be nothing to read before the yes");
 });
+
+test("a question with answers carries them as choices; one with several questions or none is answered in the chat", { skip: !strip }, async () => {
+  const { fromAsk, chooseCall } = await load();
+  const ask = (/** @type {any} */ a) => /** @type {any} */ (fromAsk(a));
+  const one = ask({ id: "a1", kind: "question", thread: "t1", questions: [{ question: "Which year?", options: [{ label: "2025" }, { label: "2026" }] }] });
+  assert.equal(one.question, "Which year?");
+  assert.deepEqual(one.options, ["2025", "2026"]);
+  assert.deepEqual(chooseCall(one, "2026"), { tool: "threads.answer", input: { ask: "a1", decision: "allow", answers: { "Which year?": "2026" } } });
+  assert.deepEqual(ask({ id: "a2", kind: "question", questions: [{ question: "A?", options: ["x"] }, { question: "B?", options: ["y"] }] }).options, []);
+  assert.deepEqual(ask({ id: "a3", kind: "question", questions: [{ question: "Many?", options: ["x", "y"], multiSelect: true }] }).options, []);
+  assert.equal(ask({ id: "a4", kind: "permission", tool: "Bash" }).options, undefined);
+});

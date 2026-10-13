@@ -38,6 +38,8 @@ export type ChatPanelProps = {
   queued?: { queued: number; text: string }[]; away?: { machine?: string; name?: string } | null; otherPlace?: "mac" | "server" | null;
   /** The file open on the "file" page (a Drive path), and how to open it in Files. */
   file?: string | null; onOpenInFiles?: (path: string) => void;
+  /** A pinned assistant or Engineer chat is one chat: no fork. */
+  noFork?: boolean;
   onForked?: (thread: string) => void; replyMode?: string | null; shared?: boolean; onOpenFiles?: () => void;
 };
 
@@ -151,8 +153,8 @@ export function ChatPanel(p: ChatPanelProps) {
       <Row dense lead={<Icon name="bolt" size={20} />} title="Running here" state={running == null ? undefined : running ? `${running} running` : "Nothing"} chevron onPress={() => p.onPage("tasks")} />
       <Row dense lead={<Icon name="info" size={20} />} title="Context used" sub="What Vyre can see from this chat" chevron onPress={() => p.onPage("context")} />
       <Row dense lead={<Icon name="history" size={20} />} title="Transcript and recall" chevron onPress={() => p.onPage("transcript")} />
-      <ForkRows otherPlace={p.otherPlace} onFork={() => void run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
-        onForkTo={(to) => void run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />
+      {p.noFork ? null : <ForkRows otherPlace={p.otherPlace} onFork={() => void run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
+        onForkTo={(to) => void run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />}
       {p.projectSlug && p.session ? <Row dense lead={<Icon name="undo" size={20} />} title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => p.onPage("back")} /> : null}
     </View>
   );

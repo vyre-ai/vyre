@@ -53,6 +53,12 @@
         "reach": "modules"
       },
       {
+        "name": "agents.wake",
+        "summary": "wake an agent for a task it was given (the Flows host only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "agents.threads",
         "reach": "anyone",
         "effect": "read"

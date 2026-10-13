@@ -30,6 +30,9 @@ export type Need = {
   presence: Presence;
   /** An approved send that failed and came back to held. */
   error?: string | null;
+  /** A question only: what it asks and the answers it offers (a person can still type their own in the chat). */
+  question?: string | null;
+  options?: string[];
   /** Gate only: where it goes. */
   to?: string[];
   via?: string | null;
@@ -133,6 +136,12 @@ export function fromAsk(a: Record<string, unknown>, ctx: NeedsContext = {}, at?:
   const project = str(a.project) ?? str(t?.project);
   const questions = Array.isArray(a.questions) ? a.questions : null;
   const q = questions && questions[0] && typeof questions[0] === "object" ? str((questions[0] as Record<string, unknown>).question) : null;
+  const q0 = questions && questions[0] && typeof questions[0] === "object" ? (questions[0] as Record<string, unknown>) : null;
+  const options = q0 && Array.isArray(q0.options) && q0.options.length <= 6
+    ? q0.options.map((o) => (typeof o === "string" ? o : o && typeof o === "object" ? str((o as Record<string, unknown>).label) : null)).filter((o): o is string => !!o)
+    : [];
+  // A question that allows several answers, or offers none, is answered in the chat.
+  const choices = q0 && q0.multiSelect !== true && q0.multi !== true && questions && questions.length === 1 ? options : [];
   const detail = q ?? str(a.summary) ?? str(a.reason) ?? "";
   return {
     id: "ask:" + id,
@@ -149,6 +158,7 @@ export function fromAsk(a: Record<string, unknown>, ctx: NeedsContext = {}, at?:
     // Answering an ask is the person's own action: no proof (switchboard, the no-nag rule).
     presence: presenceOf(a.presence, false),
     tool,
+    ...(kind === "question" && q ? { question: q, options: choices } : {}),
   };
 }
 
@@ -310,4 +320,9 @@ export function age(at: number, now: number): string {
   const h = Math.round(m / 60);
   if (h < 48) return `${h}h`;
   return `${Math.round(h / 24)}d`;
+}
+
+/** The tool call a chosen answer to a question is. */
+export function chooseCall(n: Need, choice: string): { tool: string; input: Record<string, unknown> } {
+  return { tool: "threads.answer", input: { ask: n.ref, decision: "allow", answers: { [n.question ?? ""]: choice } } };
 }
