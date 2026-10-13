@@ -86,3 +86,23 @@ test("agents.wake: the thread says where it came from, and the wake message open
   assert.deepEqual(l.flow_origin, { flow: "fl_1", flow_name: "Refund request", flow_version: 3, run: "run_9", step: "go", step_name: "Handle refund", record: "vyre://s/refund/9", task: "t9", approver: "ana" });
   assert.match(l.prompt, /^From Flow Refund request, step Handle refund\./);
 });
+
+test("agents.wake: a failed launch keeps the claim as failed and allows one retry, then no more; agents.woken names the task of a thread", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "juno", kind: "agent", projects: ["harlow-legal"] });
+  const w = { task: "t5", agent: "juno", title: "x" };
+  const ok = await call("agents.wake", w, "module:vyred");
+  assert.equal(ok.data.thread, "job1");
+  assert.deepEqual((await call("agents.woken", { thread: "job1" }, "module:vyred")).data, { task: "t5", agent: "juno", failed: false, tries: 0 });
+  assert.equal((await call("agents.woken", { thread: "job1" }, "local")).error?.code, "denied");
+  assert.equal((await call("agents.woken", { thread: "nope" }, "module:vyred")).data, null);
+  assert.deepEqual((await call("agents.wake-failed", { task: "t5", agent: "juno" }, "module:vyred")).data, { retry: true });
+  assert.equal((await call("agents.wake-failed", { task: "t5", agent: "juno" }, "module:vyred")).data.retry, true, "a second report of the same failure is not a second failure");
+  const again = await call("agents.wake", w, "module:vyred");
+  assert.deepEqual([again.data.already, globalThis.__launched.length], [false, 2], "the retry starts the job once more");
+  await call("agents.wake-failed", { task: "t5", agent: "juno" }, "module:vyred");
+  assert.deepEqual((await call("agents.wake-failed", { task: "t5", agent: "juno" }, "module:vyred")).data, { retry: false });
+  const third = await call("agents.wake", w, "module:vyred");
+  assert.equal(third.data.already, true);
+  assert.equal(globalThis.__launched.length, 2, "after the retry there is no third start");
+});

@@ -83,3 +83,35 @@ test("a wake that fails is logged and stops nothing", async () => {
   await onEvent(created("t1"));
   assert.match(logs[0], /did not wake its agent \(no such agent\)/);
 });
+
+test("a wake that fails marks the task stuck as the agent, with the error in plain words and a next step, and no secret", async () => {
+  const stuck = /** @type {any[]} */ ([]), marked = /** @type {any[]} */ ([]);
+  const gw = { ask: { get: async () => task(), edit: async () => {}, stuck: async (c, id, info) => { stuck.push({ c, id, info }); } } };
+  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: t => ({ for: t.doer.id }), clock: () => NOW, log: () => {},
+    callModule: async (tool, input) => { if (tool === "agents.wake-failed") { marked.push(input); return {}; } throw new Error("OAuth session expired sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"); } });
+  await onEvent(created("t1"));
+  assert.equal(stuck.length, 1);
+  assert.deepEqual(stuck[0].c, { for: "juno" });
+  assert.match(stuck[0].info.reason, /juno could not run: its AI account is not signed in or has expired/);
+  assert.doesNotMatch(stuck[0].info.reason, /ABCDEFGHIJ/);
+  assert.equal(stuck[0].info.suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
+  assert.deepEqual(marked, [{ task: "t1", agent: "juno" }]);
+});
+
+test("a job thread that ends with its task still open marks it stuck; one that handed it in, or a thread of no task, does nothing", async () => {
+  const states = { open: "working", done: "needs_check" };
+  let state = states.open, woken = { task: "t1", agent: "juno" };
+  const stuck = /** @type {any[]} */ ([]);
+  const gw = { ask: { get: async () => task({ state }), edit: async () => {}, stuck: async (_c, id, info) => { stuck.push({ id, info }); } } };
+  const mk = () => createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {}, callModule: async tool => (tool === "agents.woken" ? woken : {}) });
+  const w = mk();
+  await w.threadEnded("th1", "exited without starting: no credentials");
+  assert.equal(stuck.length, 1);
+  assert.match(stuck[0].info.reason, /juno stopped before it finished this task/);
+  state = states.done;
+  await w.threadEnded("th1");
+  woken = /** @type {any} */ (null);
+  state = states.open;
+  await w.threadEnded("th2");
+  assert.equal(stuck.length, 1);
+});
