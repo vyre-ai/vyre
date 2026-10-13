@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner, Button, Card, ChoiceList, Chip, CodeBlock, CodeDisplay, CodeField, Divider, Field, FlowStep, Icon, MatchWords, Meter, Row, Segmented, Stack, Text, showToast } from "@vyre/ui";
 import { DEMO, WORDS, addressOf, afterSpace, inviteStatus, spaceCodeStatus, wordsMatch } from "./flow-model.js";
-import { usePair } from "./VaultInferenceScreens";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { Linking } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -101,25 +100,14 @@ function CreateCodeMock({ go, back, steps }: ScreenProps) {
   );
 }
 
-function CreateConfirmMock({ go, back, steps }: ScreenProps) {
+function CreateConfirmMock({ set, go, back, steps }: ScreenProps) {
   const [bad, setBad] = useState(false);
   return (
     <FlowStep steps={steps} onBack={back} title="Do the four words match?" lead="Your server shows four words too. They must be the same, in the same order."
       failure={bad ? "The words do not match, so this is not your server. Do not go on. Run vyre space up on your server for a fresh code, then enter it again." : undefined}
-      primary={bad ? { label: "Enter a new code", onPress: () => go("create.code") } : { label: "They match", onPress: () => go("create.vault") }}
+      primary={bad ? { label: "Enter a new code", onPress: () => go("create.code") } : { label: "They match", onPress: () => { set({ created: true }); go("create.setup"); } }}
       secondary={bad ? undefined : { label: "They do not match", onPress: () => setBad(true) }}>
       <MatchWords label="Words on this screen" words={WORDS} note="Check them against the words on your server." />
-    </FlowStep>
-  );
-}
-
-function CreateVaultMock({ ctx, set, go, back, steps }: ScreenProps) {
-  const pair = usePair();
-  return (
-    <FlowStep steps={steps} onBack={back} title="Set the space's master password" lead="This locks the space's shared passwords and accounts. You are the owner, and you can hand ownership to another member later."
-      failure={pair.failure}
-      primary={{ label: "Create the space", disabled: !pair.ready, onPress: () => { if (pair.check()) { set({ created: true }); go("create.setup"); } } }}>
-      {pair.fields}
     </FlowStep>
   );
 }
@@ -530,7 +518,6 @@ function InviteWordsLive({ go, back }: ScreenProps) {
 export const CreateRun = LIVE ? CreateRunLive : CreateRunMock;
 export const CreateCode = LIVE ? CreateCodeLive : CreateCodeMock;
 export const CreateConfirm = LIVE ? CreateConfirmLive : CreateConfirmMock;
-export const CreateVault = CreateVaultMock;
 export const CreateSetup = LIVE ? CreateSetupLive : CreateSetupMock;
 export const JoinCode = LIVE ? JoinCodeLive : JoinCodeMock;
 export const JoinReview = LIVE ? JoinReviewLive : JoinReviewMock;

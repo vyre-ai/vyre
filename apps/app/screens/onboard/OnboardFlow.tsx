@@ -6,7 +6,7 @@ import { shellKind } from "../../src/shell/shell";
 import { SCREENS, stepLabels } from "./flow-model.js";
 import { IdApprove, IdChoice, IdKit, IdNew, IdRecover, IdSignin } from "./IdentityScreens";
 import { InfKey, InfPick, MasterConfirm, MasterEnter, MasterSet, VaultIntro } from "./VaultInferenceScreens";
-import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, CreateVault, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
+import { Compute, CreateCode, CreateConfirm, CreateMembers, CreateName, CreateRun, CreateServer, CreateSetup, InviteDone, InviteLink, InviteWho, InviteWords, JoinCode, JoinReview, JoinSealing, Ready, SpaceChoice } from "./SpaceScreens";
 import type { Ctx, ScreenProps } from "./types";
 
 const FRESH: Ctx = { device: "computer", allowed: true, later: false, name: "", master: "", reset: false, ai: {}, aiSkipped: false, spaceName: "", server: "cloud", created: false, runHere: false, role: "member", inviteName: "", inviteRole: "member" };
@@ -32,7 +32,7 @@ const VIEWS: Record<string, (p: ScreenProps) => React.JSX.Element> = {
   "id.choice": IdChoice, "id.signin": IdSignin, "id.approve": IdApprove, "id.recover": IdRecover, "id.new": IdNew, "id.kit": IdKit,
   "vault.intro": VaultIntro, "master.set": MasterSet, "master.confirm": MasterConfirm, "master.enter": MasterEnter,
   "inf.pick": InfPick, "inf.key": InfKey,
-  "space.choice": SpaceChoice, "create.name": CreateName, "create.members": CreateMembers, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.vault": CreateVault, "create.setup": CreateSetup,
+  "space.choice": SpaceChoice, "create.name": CreateName, "create.members": CreateMembers, "create.server": CreateServer, "create.run": CreateRun, "create.code": CreateCode, "create.confirm": CreateConfirm, "create.setup": CreateSetup,
   "join.code": JoinCode, "join.review": JoinReview, "join.sealing": JoinSealing,
   compute: Compute, ready: Ready,
   "invite.who": InviteWho, "invite.link": InviteLink, "invite.words": InviteWords, "invite.done": InviteDone,
