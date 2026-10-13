@@ -172,6 +172,8 @@ test("History rows: who approved, when it went live, and where it answers", asyn
     [1, "Not approved", "Never live", "https://dep_1.preview.example"],
     [3, "", "", "https://dep_3.preview.example"],
   ]);
+  assert.equal(rows[0].approverId, "per_abc");
+  assert.equal(rows[1].approverId, null);
   assert.equal(m.whenText(null), "");
 });
 
@@ -200,4 +202,14 @@ test("the env picker: one row per name the site waits on, and the grant check", 
   assert.equal(m.grantProblem("Stripe", "key", "STRIPE_KEY"), null);
   assert.match(m.grantProblem(null, "key", "STRIPE_KEY") ?? "", /Pick an item/);
   assert.match(m.grantProblem("Stripe", "key", "stripe key") ?? "", /capitals/);
+});
+
+test("an approver is named from records.actors, You for the viewer, Someone when unnamed", async () => {
+  const m = await import("./real-model.ts");
+  const actors = { actors: [{ id: "per_a", name: "Dana Wine" }, { id: "per_b", name: "per_b" }] };
+  assert.equal(m.approverName(actors, "per_a", "per_z"), "Dana Wine");
+  assert.equal(m.approverName(actors, "per_a", "per_a"), "You");
+  assert.equal(m.approverName(actors, "per_b", null), "Someone");
+  assert.equal(m.approverName(null, "per_q", null), "Someone");
+  assert.equal(m.approverName([{ id: "per_a", name: "Dana Wine" }], "per_a", null), "Dana Wine");
 });
