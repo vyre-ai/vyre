@@ -55,6 +55,9 @@ export const GRANT_ACTIONS = Object.freeze([
   // projects module's own access table: one permission system, the kernel's.
   { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
+  // Sharing one agent (Can use, Can edit): a person's own grant on that agent, made by the agents module through its mint handle (core/agents/config.js). Authorize is the one place access is decided.
+  { action: "agents.use", resource_type: "agent", risk: "write", label: "use an agent", gloss: "Chat with an agent someone shared, pick it in a flow, see where it is used (Can use)." },
+  { action: "agents.edit", resource_type: "agent", risk: "write", label: "change an agent", gloss: "Change an agent someone shared: its instructions, context, models and links (Can edit). The person who made it always may." },
   { action: "flows.act-standing", resource_type: "flow-act", risk: "write", label: "send as a turned-on Flow", gloss: "What a Flow the person turned on may send by itself, within the limits they approved. Only a Flow run asks for it." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
