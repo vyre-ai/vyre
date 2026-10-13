@@ -84,12 +84,14 @@ export function hashTree({ world, titleOf, templates, files, names }) {
   for (const list of Object.values(world?.byType ?? {})) for (const r of list) for (const t of new Set(tagsOf(r?.data?.tags))) tally.set(t, (tally.get(t) ?? 0) + 1);
   const tags = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t, n]) => ({ key: t, label: t, sub: `${n} record${n === 1 ? "" : "s"}`, pick: { pick: t, urn: `tag/${t}`, kind: "tag" } }));
 
-  return [
-    { key: "projects", label: "Projects", kids: byTemplate },
-    { key: "records", label: "Records", kids: objects },
+  // Nothing is offered that opens onto nothing: a template with no projects, an object with no records, a category with neither.
+  const filled = (/** @type {NestNode[]} */ list) => list.filter((n) => n.kids?.length);
+  return filled([
+    { key: "projects", label: "Projects", kids: filled(byTemplate) },
+    { key: "records", label: "Records", kids: filled(objects) },
     { key: "files", label: "Files", kids: fileTree(files, names) },
     { key: "tags", label: "Tags", kids: tags },
-  ];
+  ]);
 }
 
 /**

@@ -85,10 +85,18 @@ test("tagsOf reads a comma string or a list, lower-cased, no empties", () => {
   assert.deepEqual(tagsOf(undefined), []);
 });
 
-test("an empty world still has the four categories, each empty", () => {
-  const t = hashTree({ world: null, titleOf, templates: null, files: [], names: {} });
-  assert.deepEqual(t.map((n) => n.label), ["Projects", "Records", "Files", "Tags"]);
-  assert.ok(t.every((n) => Array.isArray(n.kids) && n.kids.length === 0));
+test("an empty world offers nothing to open: no category, template, object or folder without something inside", () => {
+  assert.deepEqual(hashTree({ world: null, titleOf, templates: null, files: [], names: {} }), []);
+});
+
+test("a template with no projects, an object with no records and a category with nothing are not offered", () => {
+  const t = hashTree({
+    world: { types: [{ name: "client", label: "Clients", fields: [] }, { name: "lead", label: "Leads", fields: [] }, { name: "project", label: "Project", fields: [] }], byType: { client: [{ urn: "u/c1", data: { name: "Dana" } }], lead: [], project: [{ urn: "u/p1", data: { name: "Okafor admin", template: "tpl_estate-plan" } }] } },
+    titleOf, templates, files: [], names: {},
+  });
+  assert.deepEqual(t.map((n) => n.label), ["Projects", "Records"], "no Files, no Tags");
+  assert.deepEqual(t[0].kids.map((k) => k.label), ["Estate plan"], "Ad campaign has no project");
+  assert.deepEqual(t[1].kids.map((k) => k.label), ["Clients"], "Leads has no records");
 });
 
 test("searching # finds a record, a project and a file across categories", () => {
@@ -125,9 +133,10 @@ import { filesOf, worldOfPicks } from "./mention-tree.js";
 test("worldOfPicks makes one object per type, sealed counts kept", () => {
   const w = worldOfPicks([{ name: "Okafor estate", type: "Matter", sealed: 2 }, { name: "Lee trust", type: "Matter", sealed: 0 }]);
   const t = hashTree({ world: w, titleOf, templates: null, files: [], names: {} });
-  assert.deepEqual(t[1].kids.map((k) => k.label), ["Matter"]);
-  assert.deepEqual(t[1].kids[0].kids.map((k) => k.label), ["Okafor estate", "Lee trust"]);
-  assert.equal(t[1].kids[0].kids[0].sealed, 1);
+  const recs = t.find((n) => n.key === "records");
+  assert.deepEqual(recs.kids.map((k) => k.label), ["Matter"]);
+  assert.deepEqual(recs.kids[0].kids.map((k) => k.label), ["Okafor estate", "Lee trust"]);
+  assert.equal(recs.kids[0].kids[0].sealed, 1);
 });
 
 test("filesOf recovers folder names from the words the Drive gave each file", () => {
