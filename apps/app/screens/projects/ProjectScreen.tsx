@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, EmptyState, Icon, allowsMock, ErrorState, Field, IconButton, Menu, PageHeader, Sheet, ProjectView, Segmented, SkeletonRows, Text, projectHeader, projectStrip, showToast, useProject, useTaskActions } from "@vyre/ui";
 import { templates } from "../templates/templates";
 import { useMayMakeTemplates } from "../templates/role";
+import { playbookPath } from "../templates/board";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
 import { PAGE_LABEL, RAIL_LABEL, WIDE, chatLabel, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
@@ -41,7 +42,7 @@ export default function ProjectScreen() {
   // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
   const makeTemplate = async (slug: string) => {
     setMaking(true);
-    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft template. Edit it, try it, then put it live.`); router.push(`/u/templates/${v.template}` as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
+    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Edit it, try it, then publish it.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
   };
   const { width } = useWindowDimensions();
   const go = (p: string) => router.push(p as never);
@@ -85,7 +86,7 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a template"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <><Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} />{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${wide && (at === "overview") ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />

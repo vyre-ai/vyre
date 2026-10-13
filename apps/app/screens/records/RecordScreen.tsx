@@ -5,6 +5,8 @@ import { useRouter } from "expo-router";
 import { Appear, Button, Chip, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
 import { RecordTimeline } from "./RecordTimeline";
+import { DocumentsBar } from "./DocumentsBar";
+import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
 import { emailOf } from "../shell/module-view.js";
 
@@ -46,9 +48,9 @@ export function RecordScreen({ id }: { id: string }) {
         {email ? <Button kind="secondary" size="sm" icon="mail" label="Email" onPress={() => void Linking.openURL(`mailto:${email}`)} /> : null}
         {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
       </View>
-      {canSend && email ? <View className="flex-row px-s4 pt-s2"><Button kind="ghost" size="sm" label="Send for signature" onPress={() => router.push(`/u/module/appmods/documents-send?q=${encodeURIComponent(email)}` as never)} /></View> : null}
+      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
-        <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} /></Appear>
+        <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
     </View>
   );

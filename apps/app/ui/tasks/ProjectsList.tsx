@@ -60,10 +60,10 @@ const firstName = (n: string) => String(n || "").trim().split(/\s+/)[0] || "";
  * "Matter · Juniper Studio" under it, a neutral stage pill ("Stage 2 of 5", violet only when something needs you), tasks "2/4" on one line, the owner's face and first name, and a "..." menu (Open,
  * Rename, Archive). The whole row opens; Up and Down move through the rows and Enter opens one. On a phone each project is a card.
  */
-export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose, playbook, onClearPlaybook, onRename, onArchive }: {
+export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose, playbook, playbookName: playbookLabel, onClearPlaybook, onRename, onArchive }: {
   world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void; /** The small tag that says where a project lives, from its source space (placeTag). */ tagOf?: (spaceId?: string) => string | null;
   choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void;
-  /** Narrow the list to one playbook (a template id), as "Playbook: <name>" with a way off. */ playbook?: string | null; onClearPlaybook?: () => void;
+  /** Narrow the list to one playbook (a template id), as "Playbook: <name>" with a way off. */ playbook?: string | null; /** Its name, from the playbook list; the rows are narrowed by the screen (ofPlaybook) before they get here. */ playbookName?: string; onClearPlaybook?: () => void;
   /** Row menu actions on a project's record. */ onRename?: (row: any) => void; onArchive?: (row: any) => void;
 }) {
   const { phone, color } = useUiTheme();
@@ -74,7 +74,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const search = useRef<TextInput>(null);
   const work = workTypes(items);
   const word = q.trim().toLowerCase();
-  const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!playbook || i.row.data?.template === playbook) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
+  const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
   const ownerOf = (i: Item) => { const f = i.def.fields.find((x: any) => x.kind === "actor"); return f ? aid(i.row.data?.[f.name]?.actor) : ""; };
   const stageOf = (i: Item) => { const pinned = templateStage(i.row.data); if (pinned) return pinned; const sf = stageFieldOf(i.def); const stages: string[] = sf ? stageNames(i.def, sf) : []; return { stages, at: sf ? stages.indexOf(String(i.row.data?.[sf.name] ?? "")) : -1 }; };
   const tasksOf = (i: Item) => taskFraction(world.tasks.filter((t) => t.record === i.row.urn));
@@ -82,7 +82,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const manySpaces = new Set(shown.map(spaceId).filter(Boolean)).size > 1;
   const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) : null) || i.def.label;
   const snapshotIcon = (i: Item): string | undefined => { try { return JSON.parse(String(i.row.data?.template_snapshot ?? "{}")).icon; } catch { return undefined; } };
-  const playbookName = playbook ? templateNoun(items.find((i) => i.row.data?.template === playbook)?.row.data) || playbook : "";
+  const playbookName = playbook ? playbookLabel || templateNoun(items.find((i) => i.row.data?.template === playbook)?.row.data) || playbook : "";
   const sub = (i: Item) => [typeLabel(i), manySpaces || !tagOf ? spaceName(world, spaceId(i)) : ""].filter(Boolean).join(" · ");
   // "/" focuses the search; Up, Down and Enter walk the rows (the search box and the page both listen).
   useEffect(() => {

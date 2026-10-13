@@ -108,3 +108,9 @@ export function factsOf(def, rec) {
   }
   return out;
 }
+
+/** The link field of `type` that points at `target`: how a record of that type is tied to this one. @param {{ name: string, fields: any[] }[]} types @param {string} type @param {string} target */
+export const viaOf = (types, type, target) => types.find((t) => t.name === type)?.fields.find((/** @type {any} */ f) => f.kind === "link" && f.to === target)?.name;
+
+/** The values a new record starts with when it is made from another record's page. @param {{ fields: any[] }} def @param {string} via @param {string} urn */
+export const prefillFromLink = (def, via, urn) => (via && urn && def.fields.some((/** @type {any} */ f) => f.name === via && f.kind === "link") ? { [via]: { urn } } : {});

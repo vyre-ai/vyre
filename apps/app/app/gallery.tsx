@@ -32,6 +32,7 @@ import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../screens/records-setup/SetupDemos";
 import { DRAFTS } from "../screens/records-setup/data";
+import { DocumentsBar } from "../screens/records/DocumentsBar";
 import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
 import { ChatComposer } from "../src/chat/ChatComposer";
 import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
@@ -82,6 +83,16 @@ function Sample({ name }: { name: string }) {
     (window as unknown as { __vyreShell?: unknown }).__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} };
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
     return <RealVault />;
+  }
+  if (name === "documents-bar") {
+    // The Documents tools answered from recorded shapes, so the bar is drawn with no box behind it.
+    setBoxOverride(async (tool) => {
+      if (tool === "documents.template.list") return { templates: [{ name: "Engagement letter" }, { name: "Trust summary" }] };
+      if (tool === "documents.template.get") return { name: "Engagement letter", version: 1, placeholders: ["contact.name", "contact.email", "firm.address", "date"], loops: [] };
+      if (tool === "documents.signing.waiting") return { requests: [{ submission: 41, signer: "Jane Doe", email: "jane.doe@example.com", template: "Engagement letter", at: Date.now() - 5 * 3600_000 }] };
+      return {};
+    });
+    return <DocumentsBar def={{ name: "contact", label: "Contact" }} rec={{ id: "1", urn: "vyre://s/contact/1" }} related={[{ urn: "vyre://s/project/9", type: "project" }]} email="jane.doe@example.com" canSend />;
   }
   if (name === "grouped-list") return <GroupedTasksDemo />;
   if (name === "record-form") return <RecordFormDemo />;

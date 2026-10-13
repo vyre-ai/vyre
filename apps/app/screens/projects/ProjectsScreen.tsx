@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 import { callT } from "../../src/real/call-tool";
-import { MOCK } from "../../src/real/box";
 import { projectIdOf } from "../templates/model";
 import { newThingCall } from "./new.js";
 import { templates } from "../templates/templates";
 import { newChoices } from "../templates/use";
+import { ofPlaybook, playbookPath } from "../templates/board";
 import { startWords } from "../templates/model";
 import type { Row as TemplateRow } from "../templates/model";
-import { StartSheet } from "./StartSheet";
+import { StartSheet, type StartExtras } from "./StartSheet";
 import { Button, ErrorState, Field, LargeTitleScreen, Sheet, Text, LoadingState, NewMenu, ProjectsList, showToast, useStore, useUiTheme, useWork } from "@vyre/ui";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor } from "../../src/real/place-tag.js";
@@ -19,8 +19,8 @@ import { useSpaces } from "../shell/state";
 /** /u/projects: every record of a type that holds work, in one list. */
 export default function ProjectsScreen() {
   const router = useRouter();
-  const { playbook: playbookParam } = useLocalSearchParams<{ playbook?: string }>();
-  const [playbook, setPlaybook] = useState<string | null>(typeof playbookParam === "string" && playbookParam ? playbookParam : null);
+  const { playbook: playbookParam = "" } = useLocalSearchParams<{ playbook?: string }>();
+  const [playbook, setPlaybook] = useState<string>(playbookParam);
   const [renaming, setRenaming] = useState<{ slug: string; name: string } | null>(null);
   const [archiving, setArchiving] = useState<{ slug: string; name: string } | null>(null);
   const store = useStore();
@@ -37,16 +37,12 @@ export default function ProjectsScreen() {
   const [starting, setStarting] = useState(false);
   const picked = rows.find((r) => r.template === from);
   const choose = (key: string | null) => { if (key) setFrom(key); else void create("project"); };
-  const start = async (name: string) => {
+  const start = async (name: string, extras: StartExtras) => {
     setStarting(true);
     try {
-      const r = await templates.start(from!, name);
+      const r = await templates.start(from!, name, extras);
       setFrom(null); showToast(startWords(name, r));
-      if (MOCK) { // the sample build has no box to keep the project: make one in the sample store, pinned to the template as the box does
-        const b = (await templates.get(from!)).body!;
-        const made = await store.create("project", { title: name, template: from, template_stage: b.stages[0].name, template_snapshot: JSON.stringify({ name: b.name, ...(b.noun ? { noun: b.noun } : {}), stages: b.stages }) });
-        open(made.id);
-      } else open(projectIdOf(r.project));
+      open(projectIdOf(r.project));
     } catch (e) { showToast(String((e as Error)?.message || e)); } finally { setStarting(false); }
   };
   const open = (id: string) => router.push(`/u/project/${id}` as never);
@@ -69,7 +65,7 @@ export default function ProjectsScreen() {
         <PlaceTag of="showing" />
         {q.error && !q.data ? <ErrorState title="Projects did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <LoadingState rows={5} />
-          : <><View className="flex-row"><Button kind="ghost" size="sm" icon="box" label="Templates" onPress={() => router.push("/u/templates" as never)} /></View><ProjectsList playbook={playbook} onClearPlaybook={() => setPlaybook(null)} onRename={(r: any) => r?.data?.slug ? setRenaming({ slug: String(r.data.slug), name: String(r.data.title ?? r.data.name ?? "") }) : showToast("This project has no short name to rename it by.")} onArchive={(r: any) => r?.data?.slug ? setArchiving({ slug: String(r.data.slug), name: String(r.data.title ?? r.data.name ?? "") }) : showToast("This project has no short name to archive it by.")} tagOf={(sid) => tagFor(cards, sid || showing, showing)} world={q.data.world} items={q.data.items} onOpen={open} onNew={create} choices={choices} onChoose={choose} />{phone ? <View style={{ height: 40 }} /> : null}</>}
+          : <><View className="flex-row"><Button kind="ghost" size="sm" icon="box" label="Playbooks" onPress={() => router.push(playbookPath() as never)} /></View><ProjectsList playbook={playbook || null} playbookName={rows.find((r) => r.template === playbook)?.name} onClearPlaybook={() => setPlaybook("")} onRename={(r: any) => r?.data?.slug ? setRenaming({ slug: String(r.data.slug), name: String(r.data.title ?? r.data.name ?? "") }) : showToast("This project has no short name to rename it by.")} onArchive={(r: any) => r?.data?.slug ? setArchiving({ slug: String(r.data.slug), name: String(r.data.title ?? r.data.name ?? "") }) : showToast("This project has no short name to archive it by.")} tagOf={(sid) => tagFor(cards, sid || showing, showing)} world={q.data.world} items={ofPlaybook(q.data.items, playbook)} onOpen={open} onNew={create} choices={choices} onChoose={choose} />{phone ? <View style={{ height: 40 }} /> : null}</>}
       </LargeTitleScreen>
       {phone && q.data ? <View style={{ position: "absolute", right: 16, bottom: 16 }}><NewMenu floating items={q.data.items} onNew={create} choices={choices} onChoose={choose} /></View> : null}
       <Sheet open={!!renaming} onClose={() => setRenaming(null)} title="Rename project">
@@ -88,7 +84,7 @@ export default function ProjectsScreen() {
           </View>
         ) : null}
       </Sheet>
-      <StartSheet noun={picked?.noun?.one || picked?.name || "project"} open={from !== null} busy={starting} onClose={() => setFrom(null)} onStart={(n) => void start(n)} />
+      <StartSheet noun={picked?.noun?.one || picked?.name || "project"} playbook={picked?.name} open={from !== null} busy={starting} onClose={() => setFrom(null)} onStart={(n, x) => void start(n, x)} />
     </View>
   );
 }
