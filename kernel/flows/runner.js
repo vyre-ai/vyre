@@ -56,6 +56,8 @@ export const POLICY = Object.freeze({
 const INLINE_KINDS = new Set(["decide", "repeat"]);
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
+/** Actions only a Flow run holds (a person is never asked for them, so an adder is not judged by them): a code step, a model call, and a send that is held for a yes each time. */
+const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 
 class Suspend extends Error { constructor() { super("suspended"); this.name = "Suspend"; } }
@@ -185,7 +187,7 @@ export class FlowRunner {
         if (!mine.has(n.step)) continue;
         // A module's own tool and an outward act are held for a person's yes whenever they run, so reaching them is judged then; the check here is for what a step reads and writes.
         const info = cat.actions[n.action] || {};
-        if (info.tool || OUTWARD.has(info.risk) || n.action === "service.call") continue;
+        if (info.tool || OUTWARD.has(info.risk) || RUN_ONLY.has(n.action)) continue;
         const d = await this.k.authorize({ chain, action: n.action, resource: n.resource, purpose: "define" }).catch(() => ({ effect: "deny", reason: "could not be checked" }));
         if (!d || d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
       }
@@ -1386,7 +1388,7 @@ export class FlowRunner {
     const isTool = Boolean((ctx.cat.actions[need.action] || {}).tool);
     const d = isTool ? { effect: risk === "read" ? "allow" : approvedTask ? "allow" : "ask", obligations: [], decision: null, reason: "ok" } : await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
     // The person who added the step must still reach what it touches, as well as the approver: a Flow never gives anyone more than their own access.
-    if (!isTool && s.added_by && run.approver && s.added_by !== run.approver.id && d.effect !== "deny") {
+    if (!isTool && !RUN_ONLY.has(need.action) && s.added_by && run.approver && s.added_by !== run.approver.id && d.effect !== "deny") {
       const adder = this.chains.forFlow({ flow: run.flow, space: run.space, approver: { kind: "person", id: s.added_by, space: run.space }, tainted: run.tainted, run: run.id, source_spaces: run.source_spaces });
       const da = await this.k.authorize({ chain: adder, action: need.action, resource: need.resource }).catch(() => ({ effect: "deny", reason: "could not be checked" }));
       if (!da || da.effect === "deny") { this.#note(ctx, s, `denied: the person who added it cannot reach this (${da.reason})`); throw new StepFail("adder_denied", `step ${s.id}: the person who added it can no longer reach what it touches (${da.reason}), so it does not run`); }
