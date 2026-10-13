@@ -18,7 +18,7 @@ async function daemon(/** @type {any} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  return { root, reg: (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { ...meta, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" } } : meta) };
+  return { root, reg: (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { ...meta, person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" } } : meta) };
 }
 const PW = "a long sample password for the kit test";
 const NEW = "another long sample password after the kit";
