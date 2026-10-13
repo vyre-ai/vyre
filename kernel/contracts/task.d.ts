@@ -80,6 +80,7 @@ export interface Task {
 export type TransitionBy =
   | 'kernel_after_output_check'
   | 'checker_approval'
+  | 'agent_checker_approval'
   | 'checker'
   | 'doer'
   | 'doer_or_person'
