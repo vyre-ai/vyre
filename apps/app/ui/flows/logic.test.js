@@ -2,6 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
+import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
@@ -112,4 +113,35 @@ test("an agent as the approver is stored as a teammate checker and comes back", 
   assert.equal(def.steps[0].checker, "teammate:research");
   assert.deepEqual(checkFlow(def), []);
   assert.deepEqual(toDefinition(fromDefinition(def)), def);
+});
+
+test("If / else, For each and Side by side are real branches that store as the engine's own steps", () => {
+  const d = { name: "Branches", trigger: { kind: "form", path: "refund" }, steps: [
+    { id: "find1", kind: "find", type: "client" },
+    { id: "decide2", kind: "decide", cond: { mode: "build", source: "trigger", field: "amount", op: ">", value: "500" },
+      then: [{ id: "ask3", kind: "ask", to: "role:attorney", title: "Approve this refund" }],
+      else: [{ id: "assign4", kind: "assign", to: "role:attorney", title: "Pay it" }] },
+    { id: "repeat5", kind: "repeat", over: "steps.find1.rows", as: "row", steps: [{ id: "email6", kind: "email", to: "a@b.co", subject: "Hi", body: "Hello" }] },
+    { id: "parallel7", kind: "parallel", lanes: [{ steps: [{ id: "assign8", kind: "assign", to: "role:attorney", title: "One" }] }, { steps: [{ id: "assign9", kind: "assign", to: "role:attorney", title: "Two" }] }] },
+  ] };
+  const def = toDefinition(d);
+  assert.equal(def.steps[1].if, "trigger.amount > 500");
+  assert.equal(def.steps[3].steps[0].kind, "branch");
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+  assert.match(stepSummary(d.steps[1], O, d), /^If amount is more than 500: 1 step, otherwise 1$/);
+});
+
+test("steps are found, changed, moved and removed at any depth", () => {
+  const steps = [{ id: "a", kind: "create" }, { id: "d", kind: "decide", then: [{ id: "t1", kind: "ask", record: "a" }, { id: "t2", kind: "ask" }], else: [] }];
+  assert.equal(findStep(steps, "t2").id, "t2");
+  assert.deepEqual(flat(steps).map((s) => s.id), ["a", "d", "t1", "t2"]);
+  const edited = mapStep(steps, "t1", (s) => ({ ...s, title: "x" }));
+  assert.equal(edited[1].then[0].title, "x");
+  assert.deepEqual(moveDeep(steps, "t2", -1)[1].then.map((s) => s.id), ["t2", "t1"]);
+  assert.deepEqual(canMove(steps, "t1"), { up: false, down: true });
+  assert.deepEqual(addTo(steps, { parent: "d", key: "else" }, { id: "e1", kind: "ask" })[1].else.map((s) => s.id), ["e1"]);
+  const gone = removeDeep(steps, "a");
+  assert.equal(gone[0].id, "d");
+  assert.equal(gone[0].then[0].record, "trigger", "what pointed at the removed step points at what started the Flow");
 });

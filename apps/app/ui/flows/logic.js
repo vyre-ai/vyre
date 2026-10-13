@@ -32,6 +32,8 @@ export const STEP_CHOICES = /** @type {const} */ ([
   { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record" },
 ]);
 
+import { findStep, flat } from "./tree.js";
+
 export const choiceOf = (/** @type {string} */ kind) => STEP_CHOICES.find((c) => c.kind === kind);
 export const triggerOf = (/** @type {string} */ kind) => TRIGGERS.find((t) => t.id === kind);
 
@@ -80,6 +82,9 @@ export function stepSummary(s, o, d) {
     case "email": return `Email ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the address from the form" : s.to.trim()) : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
+    case "decide": return `If ${condWords(s.cond, d ? d.trigger : { kind: "manual" })}: ${(s.then || []).length} step${(s.then || []).length === 1 ? "" : "s"}, otherwise ${(s.else || []).length}`;
+    case "repeat": return `For each item${s.over ? ` of ${s.over}` : ""}: ${(s.steps || []).length} step${(s.steps || []).length === 1 ? "" : "s"}`;
+    case "parallel": return `Do ${(s.lanes || []).length} things side by side, then carry on`;
     case "advanced": return s.summary || `Advanced step (${s.raw?.kind || "other"})`;
     default: return choiceOf(s.kind)?.label || s.kind;
   }
@@ -92,7 +97,7 @@ const crew = (s, o) => `${s.checker ? `, checked by ${whoWords(s.checker, o)}` :
 export function linkWords(ref, d, o) {
   if (!ref) return "no record";
   if (ref === "trigger") return "the record that started the Flow";
-  const made = d && d.steps.find((x) => x.id === ref);
+  const made = d && findStep(d.steps, ref);
   const type = made && o ? named(o.types, made.type) : "";
   return type ? `the new ${type} record` : "the record made before";
 }
@@ -117,6 +122,8 @@ export function stepProblem(s, o) {
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
+    case "decide": return s.cond && s.cond.mode === "formula" ? ((s.cond.formula || "").trim() ? null : "Write the condition.") : !s.cond || !(s.cond.field || "").trim() || String(s.cond.value ?? "").trim() === "" ? "Say what to check: a field, how, and a value." : null;
+    case "repeat": return (s.over || "").trim() ? null : "Choose the list to go through.";
     default: return null;
   }
 }
@@ -130,7 +137,7 @@ export function draftProblems(d, o) {
   if (t.kind === "stage" && !(t.stage || "").trim()) out.push("Name the stage that starts it.");
   if (t.kind === "schedule" && !t.every) out.push("Choose how often it runs.");
   if (!d.steps.length) out.push("Add a first step.");
-  d.steps.forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
+  flat(d.steps).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
   return out;
 }
 
@@ -171,6 +178,9 @@ export function stepDefinition(s, d) {
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
+    case "decide": return { id: s.id, kind: "decide", if: condExpr(s.cond, d.trigger) || "false", then: (s.then || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)), else: (s.else || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+    case "repeat": return { id: s.id, kind: "repeat", over: s.over || "steps.none.rows", as: s.as || "item", max: 50, steps: (s.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
+    case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
@@ -195,10 +205,11 @@ export function toDefinition(d) {
 
 /** A fresh step with sensible choices from the others. @param {string} kind @param {Draft} d @param {Options} o @returns {DraftStep} */
 export function newStep(kind, d, o) {
-  let n = d.steps.length + 1;
-  while (d.steps.some((s) => s.id === `${kind}${n}`)) n++;
+  const all = flat(d.steps);
+  let n = all.length + 1;
+  while (all.some((s) => s.id === `${kind}${n}`)) n++;
   const id = `${kind}${n}`;
-  const lastMade = [...d.steps].reverse().find((s) => s.kind === "create");
+  const lastMade = [...all].reverse().find((s) => s.kind === "create");
   const link = lastMade ? lastMade.id : isRecordTrigger(d.trigger) ? "trigger" : "";
   switch (kind) {
     case "create": return { id, kind, type: d.trigger.kind === "created" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
@@ -207,6 +218,9 @@ export function newStep(kind, d, o) {
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "email": return { id, kind, to: "", subject: "", body: "" };
     case "ask": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
+    case "decide": return { id, kind, cond: { mode: "build", source: "trigger", field: "", op: ">", value: "" }, then: [], else: [] };
+    case "repeat": return { id, kind, over: "", as: "item", steps: [] };
+    case "parallel": return { id, kind, lanes: [{ steps: [] }, { steps: [] }] };
     default: return { id, kind, record: link, type: lastMade?.type || d.trigger.type || "", field: "", value: "" };
   }
 }
@@ -267,11 +281,24 @@ function triggerFrom(t) {
 /** @param {any} s */
 const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
 
+/** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
+function condFrom(e) {
+  const m = /^(trigger\.after\.|trigger\.|steps\.([a-z0-9_]+)\.)([A-Za-z0-9_.]+) (==|!=|>=|<=|>|<) (-?\d+(?:\.\d+)?|"[^"]*")$/.exec(e || "");
+  if (!m) return { mode: "formula", formula: e || "" };
+  return { mode: "build", source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
+}
+
 /** @param {any} s @returns {DraftStep} */
 function stepFrom(s) {
   const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
+    case "decide": {
+      const cond = condFrom(s.if);
+      return typeof s.if === "string" && keys(s, ["id", "kind", "if", "then", "else", "label"]) ? { id: s.id, kind: "decide", cond, then: (s.then || []).map(stepFrom), else: (s.else || []).map(stepFrom) } : adv;
+    }
+    case "repeat": return typeof s.over === "string" && typeof s.as === "string" && (s.max === undefined || s.max === 50) && keys(s, ["id", "kind", "over", "as", "max", "steps", "label"]) ? { id: s.id, kind: "repeat", over: s.over, as: s.as, steps: (s.steps || []).map(stepFrom) } : adv;
+    case "parallel": return (s.steps || []).every((/** @type {any} */ b) => b.kind === "branch" && keys(b, ["id", "kind", "steps"])) && keys(s, ["id", "kind", "steps", "label"]) ? { id: s.id, kind: "parallel", lanes: (s.steps || []).map((/** @type {any} */ b) => ({ steps: (b.steps || []).map(stepFrom) })) } : adv;
     case "create": {
       const set = s.set || {};
       const fields = Object.entries(set).map(([field, v]) => ({ field, value: unval(v) }));
@@ -315,3 +342,34 @@ export function fromDefinition(flow) {
 
 /** Who can approve: a person, a team or role, or an agent made by an owner or an admin (an agent checks internal work only: a send or a stage hold still waits for a person; the kernel checks the maker again each time). @param {Options} o @returns {[string, string][]} */
 export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter(([v]) => !v.startsWith("agent:") || o.agents.some((a) => `agent:${a.name}` === v && a.staff === true))];
+
+
+/** The operators of a condition, as [symbol, words]. */
+export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!=", "is not"], [">", "is more than"], ["<", "is less than"], [">=", "is at least"], ["<=", "is at most"]]);
+
+/** What a condition field reads: where it comes from and its name. `source` is "trigger" or an earlier step's id. @param {{ source?: string, field?: string }} c @param {Trigger} t */
+export function fieldExpr(c, t) {
+  const f = String(c.field || "").trim().replace(/[^A-Za-z0-9_.]/g, "_");
+  if (!f) return "";
+  if (!c.source || c.source === "trigger") return t.kind === "created" || t.kind === "stage" ? `trigger.after.${f}` : `trigger.${f}`;
+  return `steps.${c.source}.${f}`;
+}
+
+/** A condition as the expression the engine reads: built from a field, an operator and a value, or the formula as typed. @param {any} c @param {Trigger} t */
+export function condExpr(c, t) {
+  if (!c) return "";
+  if (c.mode === "formula") return String(c.formula || "").trim();
+  const left = fieldExpr(c, t);
+  if (!left || c.value === undefined || String(c.value).trim() === "") return "";
+  const v = String(c.value).trim();
+  return `${left} ${c.op || "=="} ${/^-?\d+(\.\d+)?$/.test(v) ? v : JSON.stringify(v)}`;
+}
+
+/** A condition in words for a collapsed card. @param {any} c @param {Trigger} t */
+export function condWords(c, t) {
+  if (!c) return "a condition holds";
+  if (c.mode === "formula") return String(c.formula || "").trim() || "a condition holds";
+  const op = OPERATORS.find(([x]) => x === c.op)?.[1] || "is";
+  return c.field && String(c.value ?? "").trim() !== "" ? `${c.field} ${op} ${c.value}` : "a condition holds";
+}
+void fieldExpr;
