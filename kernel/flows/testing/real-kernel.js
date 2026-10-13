@@ -97,7 +97,8 @@ export class RealKernel {
     /** @type {Record<string, any[]>} */ this.roles = {};
 
     this.authorize = async input => {
-      this.authorizeCalls.push({ action: input.action, resource: input.resource, chain: input.chain });
+      // a check made when a step is added (purpose "define") is not a step running: the tests that read the calls of a run skip it
+      if (input.purpose !== "define") this.authorizeCalls.push({ action: input.action, resource: input.resource, chain: input.chain });
       const rule = this.rules.find(r => r.match(input));
       if (rule) return { effect: rule.effect, reason: rule.reason, grants: [], obligations: rule.obligations || [], ...(rule.rule ? { rule: rule.rule } : {}), decision: "dec_" + mintUuid(), policy_version: 1 };
       const approver = input.chain.hops[input.chain.hops.length - 1].actor;

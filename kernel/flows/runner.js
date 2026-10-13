@@ -182,7 +182,7 @@ export class FlowRunner {
       /** @type {{ path: string, message: string, step: string }[]} */ const refused = [];
       for (const n of flowNeeds(flow, cat)) {
         if (!mine.has(n.step)) continue;
-        const d = await this.k.authorize({ chain, action: n.action, resource: n.resource }).catch(() => null);
+        const d = await this.k.authorize({ chain, action: n.action, resource: n.resource, purpose: "define" }).catch(() => null);
         if (d && d.effect === "deny") refused.push({ path: n.path, step: n.step, message: `step ${n.step}: you cannot reach what it touches (${n.action} on ${n.resource.replace(/^vyre:\/\/[^/]+\//, "")}), so you cannot add it` });
       }
       if (refused.length) return { ok: false, errors: refused, warnings: compiled.warnings, effects: compiled.effects };
