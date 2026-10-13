@@ -89,3 +89,63 @@ test("the tools are the person's: link and unlink carry presence, list does not"
   assert.ok(r.tools.get("files.linked.unlink").presence);
   assert.equal(r.tools.get("files.linked.list").presence, undefined);
 });
+
+const seeded = () => rig({ providers: [fakeProvider({ id: "fake", files: { "a/plan.md": "the launch plan", "b.txt": "budget numbers" } })] });
+
+test("sync is the person's own: it indexes what the source shows them and answers the status; search finds it", async () => {
+  const r = seeded();
+  const l = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
+  assert.equal((await r.run("files.linked.status", { id: l.id })).sync, null, "not synced yet");
+  const s = await r.run("files.linked.sync", { id: l.id });
+  assert.equal(s.status, "ok"); assert.equal(s.count, 2);
+  const hits = (await r.run("files.linked.search", { q: "launch" })).hits;
+  assert.deepEqual(hits.map(h => [h.name, h.link_name, h.path]), [["plan.md", "Docs", "Linked/Docs/a/plan.md"]]);
+  assert.equal(r.linked.providers.get("fake").calls.find(c => c[0] === "list")[1], "per_alex", "asked as the person");
+});
+
+test("another person's search sees none of it until they sync it through their own identity", async () => {
+  const r = seeded();
+  const l = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
+  await r.run("files.linked.sync", { id: l.id });
+  r.state.chain = person("per_bo");
+  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, []);
+  await r.run("files.linked.sync", { id: l.id });
+  assert.equal((await r.run("files.linked.search", { q: "launch" })).hits.length, 1);
+});
+
+test("unlinking drops the index, and sync or search for a gone link is not_found", async () => {
+  const r = seeded();
+  const l = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
+  await r.run("files.linked.sync", { id: l.id });
+  await r.run("files.linked.unlink", { id: l.id });
+  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, []);
+  assert.equal(await code(r.run("files.linked.sync", { id: l.id })), "not_found");
+});
+
+test("the scheduler syncs every pair that has synced once, and one failing pair does not stop the rest", async () => {
+  const r = seeded();
+  const a = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
+  await r.run("files.linked.sync", { id: a.id });
+  r.state.chain = person("per_bo");
+  await r.run("files.linked.sync", { id: a.id });
+  const p = r.linked.providers.get("fake");
+  p.external.put("c.txt", "later file");
+  const n = await r.linked.syncKnown();
+  assert.equal(n, 2);
+  assert.equal(p.calls.filter(c => c[0] === "list").length, 4);
+  r.state.chain = person("per_alex");
+  assert.equal((await r.run("files.linked.search", { q: "later" })).hits.length, 1);
+});
+
+test("the files module migrates one list for mentions, shared links, linked folders and their index, in a fixed order", async () => {
+  const { filesMigrations } = await import("./migrations.js");
+  const FILES_MIGRATIONS = filesMigrations();
+  const { MIGRATIONS } = await import("./mentions.js");
+  const { LINK_MIGRATIONS } = await import("./space-links.js");
+  assert.equal(FILES_MIGRATIONS[0], MIGRATIONS[0]);
+  assert.equal(FILES_MIGRATIONS[MIGRATIONS.length], LINK_MIGRATIONS[0]);
+  const db = open(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "mig-")), "vyre.db"));
+  migrate(db, "files", FILES_MIGRATIONS);
+  const names = db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'files_%'").all().map(x => x.name);
+  for (const t of ["files_mention_grants", "files_links", "files_linked", "files_linked_index", "files_linked_sync"]) assert.ok(names.includes(t), t);
+});

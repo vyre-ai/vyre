@@ -414,10 +414,13 @@ export default {
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).
     registerSpaceLinks(ctx);
     // Files > Linked: live folders from a source, shown at Linked/<name> (core/files/linked.js). Providers are added as they land (Google Drive first).
-    registerLinked(ctx, { providers: [] });
+    const linked = registerLinked(ctx, { providers: [] });
+    // Each person's index of a linked folder is brought up to date on a timer, as that person (a pair is known once they have synced).
+    const resync = setInterval(() => { linked.syncKnown().catch(() => {}); }, 10 * 60_000);
+    resync.unref();
     // The folders, for a new session or a terminal (dirs.js).
     dirs(ctx, { role, g, target, forward });
 
-    return { async stop() { await dropped.stop(); } };
+    return { async stop() { clearInterval(resync); await dropped.stop(); } };
   },
 };

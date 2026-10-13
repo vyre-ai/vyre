@@ -5,11 +5,16 @@
 //
 //   files.linked.link    { space?, name, provider, source }  -> { id, name, path, provider, source, linked_by, at }
 //   files.linked.list    { space? }                          -> { links: [{ id, name, path, provider, source, linked_by, at }] }
-//   files.linked.unlink  { space?, id }                      -> { unlinked: true }      only who linked it, or the Space owner; the source is never touched
+//   files.linked.unlink  { space?, id }                      -> { unlinked: true }      only who linked it, or the Space owner; the source is never touched; the index of it goes too
+//   files.linked.sync    { space?, id, full? }               -> { status, count, at, error? }   bring the CALLER'S index of this folder up to date, as the caller (linked-index.js)
+//   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
+//   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
 import crypto from "node:crypto";
 import { createDoor } from "../../lib/gateway-door.js";
 import { linkedDir } from "../../lib/files/layout.js";
 import { assertProvider } from "./linked-provider.js";
+import { linkedIndex } from "./linked-index.js";
+import { filesMigrations } from "./migrations.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -37,7 +42,9 @@ export function registerLinked(ctx, o) {
   /** @type {Map<string, any>} */ const providers = new Map();
   for (const p of o.providers || []) providers.set(assertProvider(p).id, p);
   let ready = false;
-  const db = () => { if (!ready) { ctx.store.migrate(LINKED_MIGRATIONS); ready = true; } return ctx.store.db; };
+  const db = () => { if (!ready) { ctx.store.migrate(filesMigrations()); ready = true; } return ctx.store.db; };
+  /** @type {any} */ let idx;
+  const index = () => idx || (idx = linkedIndex({ db: db(), providers, now }));
   const view = (/** @type {any} */ r) => ({ id: r.id, name: r.name, path: linkedDir(r.name), provider: r.provider, source: JSON.parse(r.source), linked_by: r.linked_by, at: r.at });
 
   const t = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {any} */ extra, /** @type {(i: any, d: any, who: string) => Promise<any>} */ run) =>
@@ -70,8 +77,40 @@ export function registerLinked(ctx, o) {
       if (!r) throw refuse("no such linked folder", "not_found");
       if (r.linked_by !== who && who !== String(ctx.kernel.owner)) throw refuse("only who linked this folder, or the Space owner, can unlink it", "denied");
       db().prepare("UPDATE files_linked SET removed_at = ? WHERE id = ?").run(now(), r.id);
+      index().forget(r.id);
       return { unlinked: true };
     });
 
-  return { providers, db, view };
+  const linkOf = (/** @type {any} */ i, /** @type {any} */ d) => {
+    const r = db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(String(i.id ?? ""), d.space);
+    if (!r) throw refuse("no such linked folder", "not_found");
+    return r;
+  };
+  const asLink = (/** @type {any} */ r) => ({ id: r.id, provider: r.provider, source: JSON.parse(r.source) });
+
+  t("files.linked.sync", "Bring your own index of a linked folder up to date, as you (what your account sees there): { space?, id, full? }.", obj({ space: str, id: str, full: { type: "boolean" } }, ["id"]), {},
+    async (i, d, who) => index().sync(asLink(linkOf(i, d)), who, { full: i.full === true }));
+
+  t("files.linked.status", "A linked folder and how your index of it stands: { space?, id }.", obj({ space: str, id: str }, ["id"]), {},
+    async (i, d, who) => { const r = linkOf(i, d); return { link: view(r), sync: index().status(r.id, who) }; });
+
+  t("files.linked.search", "Search the linked folders by name, path and text, among what your account sees: { space?, q, id?, limit? }.", obj({ space: str, q: str, id: str, limit: { type: "integer" } }, ["q"]), {},
+    async (i, d, who) => {
+      const names = new Map(db().prepare("SELECT id, name FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).map((/** @type {any} */ r) => [r.id, r.name]));
+      const hits = index().search(who, String(i.q ?? ""), { limit: i.limit, ...(i.id ? { link: String(i.id) } : {}) }).filter((/** @type {any} */ h) => names.has(h.link));
+      return { hits: hits.map((/** @type {any} */ h) => ({ link: h.link, link_name: names.get(h.link), path: `${linkedDir(names.get(h.link))}/${h.path}`, name: h.name, mime: h.mime, size: h.size, modified: h.modified, snippet: h.snippet })) };
+    });
+
+  /** The scheduler's pass: every (link, person) pair that has synced once, one after another; a failing pair records its error and the rest go on. Answers how many it ran. */
+  async function syncKnown() {
+    let n = 0;
+    for (const k of index().known()) {
+      const r = db().prepare("SELECT * FROM files_linked WHERE id = ? AND removed_at IS NULL").get(k.link);
+      if (!r) { index().forget(k.link); continue; }
+      await index().sync(asLink(r), k.person); n++;
+    }
+    return n;
+  }
+
+  return { providers, db, view, syncKnown, index };
 }

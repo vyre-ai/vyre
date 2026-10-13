@@ -2,6 +2,8 @@
 // A fake linked source for tests: files in a map, a change log for tokens, and a record of every call. It is not Google, SharePoint or GitHub and reaches nothing.
 import { PROVIDER_METHODS } from "./linked-provider.js";
 
+const mimeOf = (/** @type {string} */ p) => /\.png$/.test(p) ? "image/png" : /\.md$/.test(p) ? "text/markdown" : "text/plain";
+
 /** @param {{ id?: string, files?: Record<string, string> }} [o] */
 export function fakeProvider({ id = "fake", files = {} } = {}) {
   /** @type {Map<string, { id: string, path: string, bytes: Buffer, rev: number, modified: number, deleted?: boolean, revs: any[] }>} */
@@ -18,7 +20,7 @@ export function fakeProvider({ id = "fake", files = {} } = {}) {
     return f;
   };
   for (const [p, t] of Object.entries(files)) put(p, Buffer.from(t));
-  const view = (/** @type {any} */ f) => ({ id: f.id, path: f.path, name: f.path.split("/").pop(), mime: "text/plain", size: f.bytes.length, modified: f.modified, rev: String(f.rev), ...(f.deleted ? { deleted: true } : {}) });
+  const view = (/** @type {any} */ f) => ({ id: f.id, path: f.path, name: f.path.split("/").pop(), mime: mimeOf(f.path), size: f.bytes.length, modified: f.modified, rev: String(f.rev), ...(f.deleted ? { deleted: true } : {}) });
   const find = (/** @type {any} */ e) => { const f = store.get(e.id); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); return f; };
   const provider = {
     id, calls, touched, store,
@@ -30,7 +32,7 @@ export function fakeProvider({ id = "fake", files = {} } = {}) {
       const since = Number(o.token), ids = new Set(log.filter(l => l.seq > since).map(l => l.id));
       return { entries: [...ids].map(i => view(/** @type {any} */ (store.get(i)))), next: String(seq), full: false };
     },
-    async read(/** @type {any} */ link, /** @type {any} */ person, /** @type {any} */ entry) { calls.push(["read", person, entry.id]); const f = find(entry); return { bytes: new Uint8Array(f.bytes), mime: "text/plain", rev: String(f.rev) }; },
+    async read(/** @type {any} */ link, /** @type {any} */ person, /** @type {any} */ entry) { calls.push(["read", person, entry.id]); const f = find(entry); return { bytes: new Uint8Array(f.bytes), mime: mimeOf(f.path), rev: String(f.rev) }; },
     async write(/** @type {any} */ link, /** @type {any} */ person, /** @type {string} */ path, /** @type {Uint8Array} */ bytes, /** @type {{ baseRev?: string }} */ o = {}) {
       calls.push(["write", person, path, o.baseRev ?? null]);
       const cur = [...store.values()].find(f => f.path === path && !f.deleted);
