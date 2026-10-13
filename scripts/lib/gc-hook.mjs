@@ -23,3 +23,15 @@ if (out && gc) {
     });
   });
 }
+
+// TEMPORARY diagnostics (work/rc3/perf22): a memory timeline for the first 40 s.
+if (process.env.VYRE_PERF_TRACE) {
+  const t0 = Date.now();
+  const mb = n => Math.round(n / 1024 / 1024);
+  const iv = setInterval(() => {
+    const m = process.memoryUsage();
+    try { fs.appendFileSync(process.env.VYRE_PERF_TRACE, `${((Date.now() - t0) / 1000).toFixed(1)}s rss=${mb(m.rss)} heapTotal=${mb(m.heapTotal)} heapUsed=${mb(m.heapUsed)} ext=${mb(m.external)} ab=${mb(m.arrayBuffers)}\n`); } catch {}
+    if (Date.now() - t0 > 40000) clearInterval(iv);
+  }, 500);
+  iv.unref();
+}

@@ -1,0 +1,24 @@
+name: perf22
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/rc3/perf22"]
+permissions:
+  contents: read
+jobs:
+  perf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: three perf-check runs
+        run: |
+          for i in 1 2 3; do
+            echo "== run $i (load $(cut -d" " -f1-3 /proc/loadavg))"
+            rm -f /tmp/perf-trace.txt
+            VYRE_PERF_TRACE=/tmp/perf-trace.txt node scripts/perf-check 2>&1 | grep -E "CPU \(|RSS|heap|FAIL|host load" || true
+            echo "-- timeline (every 2.5s)"; awk "NR%5==1" /tmp/perf-trace.txt | head -20
+          done
