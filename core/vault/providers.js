@@ -19,7 +19,7 @@ export const CAPABILITIES = /** @type {const} */ (["send_mail", "read_mail", "ca
 
 import { valuePattern } from "../../lib/credential-shapes.js";
 
-const key = (/** @type {string} */ label, /** @type {string} [pattern] */ pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
+const key = (/** @type {string} */ label, /** @type {string | undefined} */ pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
 
 /** @type {Provider[]} */
 const LIST = [
