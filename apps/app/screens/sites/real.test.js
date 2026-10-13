@@ -32,7 +32,7 @@ test("a site is every version of one name; its status says who is waiting", { sk
   const ss = m.sites(await sitesSource(b.call).list());
   assert.deepEqual(b.seen, [{ tool: "publish.list", input: {} }]);
   assert.deepEqual(ss.map((s) => [s.name, s.versions.map((v) => v.version), s.live?.id ?? null, s.current.id, s.status.label]), [
-    ["intake", [3, 2, 1], "dep_2", "dep_3", "In preview"], ["menu", [1], null, "dep_5", "Waiting on you"], ["pricing", [1], null, "dep_4", "Draft"],
+    ["intake", [3, 2, 1], "dep_2", "dep_3", "Preview"], ["menu", [1], null, "dep_5", "Needs you"], ["pricing", [1], null, "dep_4", "Draft"],
   ]);
   assert.deepEqual(DEPS.map((d) => m.nextStep(d)?.tool ?? null), [null, null, "approve", "preview", "publish"]);
   assert.equal(m.nextStep({ ...DEPS[1], previous: "dep_1" })?.tool, "rollback");
@@ -102,6 +102,13 @@ test("sites list: each site becomes one list row, its state a tone the list can 
   const rows = m.siteRows(m.sites([dep({ name: "b-site", version: 2, stage: "Approved" }), dep({ name: "a-site", version: 3, stage: "Production", domains: [{ host: "a.example.com", status: "verified" }] })]));
   assert.deepEqual(rows, [
     { id: "a-site", title: "a-site", subtitle: "live version 3 at a.example.com", icon: "sites", accessory: "Live", tone: "ok" },
-    { id: "b-site", title: "b-site", subtitle: "not live, version 2 in approved", icon: "sites", accessory: "Waiting on you", tone: "accent" },
+    { id: "b-site", title: "b-site", subtitle: "not live, version 2 in approved", icon: "sites", accessory: "Needs you", tone: "accent" },
   ]);
+});
+
+test("a job run reads as one line with how long ago", async () => {
+  const { jobLine } = await import("./real-model.ts");
+  const now = 1_000_000_000;
+  assert.equal(jobLine({ at: now - 3_600_000, ok: true, seconds: 3.6 }, now), "Ran in 4 s, 1 h ago");
+  assert.equal(jobLine({ at: now - 30_000, ok: false, code: 1, message: "it broke" }, now), "Failed (exit 1): it broke, just now");
 });
