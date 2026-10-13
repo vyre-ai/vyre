@@ -29,6 +29,7 @@ import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
+import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
 import { useChatProject } from "./useChatProject";
 import { chatPrefs, useChatPrefs } from "../state/chat-prefs";
 import { SelectionAsk } from "./SelectionAsk";
@@ -171,6 +172,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   // Find in this conversation (Cmd-F): the rows that hold the words, one at a time, the current one scrolled to and lit.
   const [findOpen, setFindOpen] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [findQ, setFindQ] = useState("");
   const [findAt, setFindAt] = useState(-1);
   const matches = useMemo(() => (findOpen ? findMatches(rows.filter((r) => r.kind === "user" || r.kind === "text").map((r) => ({ key: r.key, text: String(store.item(r.key)?.text ?? "") })), findQ) : []), [findOpen, findQ, rows, store]);
@@ -249,6 +251,7 @@ export function ChatScreen(p: ChatScreenProps) {
         flashTimer.current = setTimeout(() => setFlash(null), 1800);
       },
       onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
+      onOpenFile: (path: string) => setViewing(path),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
@@ -312,10 +315,8 @@ export function ChatScreen(p: ChatScreenProps) {
   ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   const paneOpen = usePreviewPane();
-  const body = (
-    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
-      <ChatPanel
+  const panelEl = (
+    <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
@@ -327,6 +328,11 @@ export function ChatScreen(p: ChatScreenProps) {
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
+  );
+  const body = (
+    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <FileViewerSheet path={viewing} onClose={() => setViewing(null)} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
 
@@ -417,7 +423,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {highlights.length ? (
-        <View accessibilityLabel="Highlighted for the assistant" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
           {highlights.map((h) => (
             <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <Icon name="chat" tone="label" />
@@ -469,5 +475,7 @@ export function ChatScreen(p: ChatScreenProps) {
     </View>
   );
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
-  return paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
+  return phone ? <>{main}{panelEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}</View>;
 }

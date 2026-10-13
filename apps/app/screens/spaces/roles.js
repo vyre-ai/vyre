@@ -8,7 +8,7 @@ import { ROLE_IDS, ROLE_RANK, ROLE_LABELS } from "../../../../kernel/contracts/i
 /** @type {Record<Role, string>} */
 const LINES = {
   owner: "Everything, including deleting, moving or handing over the space.",
-  admin: "Members, devices, Customize, connectors and assistants. Cannot delete or move the space.",
+  admin: "Members, devices, Customize, connectors and agents. Cannot delete or move the space.",
   manager: "Creates and runs projects, sets teams and tasks. Cannot change types or manage members.",
   member: "Works on the projects they belong to.",
   temp: "Only the projects shared with them, until an end date.",

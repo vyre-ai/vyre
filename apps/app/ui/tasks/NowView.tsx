@@ -32,12 +32,12 @@ type Props = { world: World; onAction: (task: any, id: string, input?: string) =
 /** The project emblem a record shows as, at any size. */
 export const emblemOf = (world: World, rec: any): AvatarRef => ({ kind: "project", id: rec?.id ?? "", name: recordTitle(world, rec), seed: rec?.data?.avatar_seed });
 
-/** An accent text row that opens more: "4 more waiting", "Show fewer". */
+/** A text row that opens more: "4 more waiting", "Show fewer". */
 function MoreRow({ label, onPress, up }: { label: string; onPress: () => void; up?: boolean }) {
   return (
     <PressableScale depth={0.985} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 4 }}>
-      <Text medium tone="accent" style={{ fontSize: 15, lineHeight: 20 }}>{label}</Text>
-      <Icon name={up ? "chevron-up" : "chevron-down"} size={16} tone="accent" />
+      <Text medium tone="muted" style={{ fontSize: 15, lineHeight: 20 }}>{label}</Text>
+      <Icon name={up ? "chevron-up" : "chevron-down"} size={16} tone="text-2" />
     </PressableScale>
   );
 }

@@ -117,7 +117,7 @@ test("a task is given to a role, the project lead, a person or an assistant, eac
   const b = base();
   const ch = assigneeChoices(b, [{ id: "per_bob", name: "Bob Reyes" }], [{ id: "research", name: "Research" }]);
   assert.deepEqual(ch.map(([v]) => v), ["role:attorney", "role:researcher", "lead", "person:per_bob", "teammate:research"]);
-  assert.deepEqual(ch.map(([, l]) => l), ["The attorney", "The researcher", "The project lead", "Bob Reyes", "Research (assistant)"]);
+  assert.deepEqual(ch.map(([, l]) => l), ["The attorney", "The researcher", "The project lead", "Bob Reyes", "Research (agent)"]);
   assert.equal(assigneeWords("lead", [], []), "The project lead");
   assert.equal(assigneeWords("person:per_x", [], []), "A person");
   assert.deepEqual(["role:a", "lead", "person:p", "teammate:t", "owner"].map(kindOfDoer), ["role", "lead", "person", "agent", "role"]);

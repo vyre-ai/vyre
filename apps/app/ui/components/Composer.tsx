@@ -13,7 +13,7 @@ export function Composer({ value, onChangeText, onSend, placeholder, label, send
   const [focus, setFocus] = useState(false);
   const faces = facesFor(resolved.font);
   return (
-    <View style={{ height: 48, borderRadius: 18, borderWidth: 1, borderColor: focus ? color.accent : color.edge, backgroundColor: color["surface-3"], flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 6 }}>
+    <View style={{ height: 48, borderRadius: 18, borderWidth: 1, borderColor: focus ? color.primary : color.edge, backgroundColor: color["surface-3"], flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 6 }}>
       <TextInput
         value={value}
         onChangeText={onChangeText}

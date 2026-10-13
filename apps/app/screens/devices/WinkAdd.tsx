@@ -73,7 +73,7 @@ export function WinkAdd() {
   if (ring) {
     if (step === 0) {
       left = <Screen cap={newCap}><View className="w-ring"><Ring seed={kind === "computer" ? 5 : 4} /></View><Text strong>{`Add this ${noun}`}</Text><Text tone="muted" className="text-center">Open Vyre on your phone, then scan this, or paste the long code. Good for 5 minutes.</Text><Chip>{FP}</Chip></Screen>;
-      right = <Screen cap="Your phone"><Text strong>Access</Text><Text tone="muted">Devices, people, assistants</Text><Button kind="primary" size="sm" icon="plus" label={`Add a ${noun}`} onPress={() => setStep(1)} /></Screen>;
+      right = <Screen cap="Your phone"><Text strong>Access</Text><Text tone="muted">Devices, people, agents</Text><Button kind="primary" size="sm" icon="plus" label={`Add a ${noun}`} onPress={() => setStep(1)} /></Screen>;
     } else if (step === 1) {
       left = <Screen cap={newCap} dim><View className="w-ring"><Ring seed={kind === "computer" ? 5 : 4} /></View><Text tone="muted">Waiting for your phone</Text></Screen>;
       right = <Screen cap="Your phone"><Text strong>{`Add a ${noun}`}</Text><PairEntry onCode={got} sample={SAMPLE_CODE} /></Screen>;

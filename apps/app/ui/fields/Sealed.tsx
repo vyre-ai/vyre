@@ -58,7 +58,7 @@ export function SealedView({ p }: ViewProps) {
         </>
       )}
       <Sheet open={ask} onClose={() => setAsk(false)} title={`Reveal ${p.definition.label}`}>
-        <Text tone="muted">Vyre shows it on this screen for 30 seconds, then masks it again. No assistant sees it.</Text>
+        <Text tone="muted">Vyre shows it on this screen for 30 seconds, then masks it again. No agent sees it.</Text>
         {failed ? <Text tone="err">{failed}</Text> : null}
         <View className="flex-row gap-s2">
           <Button kind="primary" icon="faceid" label="Ask for my yes" loading={busy} onPress={go} />

@@ -99,7 +99,7 @@ export function AgentsHome() {
           {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={load} /></Card> : null}
           {agents === null && !err ? <LoadingState rows={4} /> : null}
           {agents && !agents.length ? (
-            <Card><EmptyState title="No agents yet" body="Your assistant and any agents you make appear here." action={{ label: "New agent", onPress: () => router.push("/u/settings/assistants/new" as never) }} /></Card>
+            <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here." action={{ label: "New agent", onPress: () => router.push("/u/settings/assistants/new" as never) }} /></Card>
           ) : null}
           {agents && agents.length ? (
             <>

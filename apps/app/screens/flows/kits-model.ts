@@ -24,7 +24,7 @@ export const listed = (rows: KitRow[]): KitRow[] => rows.filter((k) => k.status 
 
 export function kitRefusal(code: string | undefined, message: string): string {
   if (code === "unknown_action") return "This box cannot install Kits yet. It will once it is updated.";
-  if (code === "chain_not_person") return "Only a person removes a Kit, not an assistant.";
+  if (code === "chain_not_person") return "Only a person removes a Kit, not an agent.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That Kit is already gone.";
   return message || "Kits did not answer.";
@@ -53,11 +53,11 @@ export function cardLines(card: Card): { head: string; lines: string[]; notes: s
   const a = card.adds ?? {};
   const names = (xs: any[] | undefined, pick: (x: any) => string) => (Array.isArray(xs) ? xs.map(pick) : []);
   const lines = [
-    ...names(a.types, (t) => `Record type ${t.label || t.name}, ${t.fields} fields${t.sealed?.length ? `, ${t.sealed.length} sealed` : ""}`),
+    ...names(a.types, (t) => `Object ${t.label || t.name}, ${t.fields} fields${t.sealed?.length ? `, ${t.sealed.length} sealed` : ""}`),
     ...names(a.flows, (f) => `Flow ${f.label || f.name}${f.outward?.length ? ", sends or publishes" : ""}${f.code?.length ? ", runs code" : ""}`),
-    ...names(a.templates, (t) => `Template ${t.name}`),
+    ...names(a.templates, (t) => `Playbook ${t.name}`),
     ...names(a.roles, (r) => `Role ${r.name}`),
-    ...names(a.teammates, (t) => `Assistant ${t.name}`),
+    ...names(a.teammates, (t) => `Agent ${t.name}`),
     ...names(a.views, (v) => `View ${String(v)}`),
   ];
   const k = card.kit ?? {};
@@ -81,7 +81,7 @@ export function updatesOf(rows: KitRow[], lib: LibraryKit[]): Record<string, num
   return out;
 }
 
-const KIND_WORD: Record<string, string> = { type: "Record type", flow: "Flow", template: "Template", role: "Role", teammate: "Assistant", view: "View" };
+const KIND_WORD: Record<string, string> = { type: "Object", flow: "Flow", template: "Playbook", role: "Role", teammate: "Assistant", view: "View" };
 const partText = (p: Part): string => `${KIND_WORD[p.kind] ?? p.kind} ${p.name}`;
 
 /** The diff as lines for the diff block: a plus for a part added, a minus for one removed, a plain line for one changed. */

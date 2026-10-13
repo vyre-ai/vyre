@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, Menu, Row, Segmented, Text, showToast, useWork } from "@vyre/ui";
+import { Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, Menu, Row, Text, showToast, useWork } from "@vyre/ui";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
+import { usePhone } from "../places/Page";
 import { StartSheet, type StartExtras } from "../projects/StartSheet";
 import { errWords, projectIdOf, startWords, type Body, type Row as TemplateRow } from "./model";
 import { blank } from "./edit";
@@ -22,6 +23,7 @@ type Lib = Awaited<ReturnType<typeof templates.library>>;
  */
 export default function TemplatesScreen() {
   const router = useRouter();
+  const phone = usePhone();
   const mayMake = useMayMakeTemplates();
   const work = useWork();
   const [rows, setRows] = useState<TemplateRow[] | null>(null);
@@ -30,7 +32,6 @@ export default function TemplatesScreen() {
   const [showKits, setShowKits] = useState(false);
   const [draft, setDraft] = useState<Body | null>(null);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [starting, setStarting] = useState<TemplateRow | null>(null);
@@ -38,7 +39,7 @@ export default function TemplatesScreen() {
   useEffect(load, [load]);
   useEffect(() => { (rows || []).forEach((r) => { if (!bodies[r.template]) templates.get(r.template, r.live ?? r.latest).then((v) => v.body && setBodies((b) => ({ ...b, [r.template]: v.body! }))).catch(() => undefined); }); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const running = useMemo(() => { const m = new Map<string, number>(); for (const i of (work.data?.items ?? []) as any[]) { const t = i.row?.data?.template; if (i.def?.name === "project" && t) m.set(String(t), (m.get(String(t)) || 0) + 1); } return m; }, [work.data]);
-  const shown = filterRows(rows || [], query, status);
+  const shown = filterRows(rows || [], query, "all");
   const items = shown.map((r) => ({ r, c: cardOf(r, bodies[r.template] ?? null, running.get(r.template) || 0), group: cardOf(r, null, 0).group }));
   const act = async (name: string, fn: () => Promise<void>) => { setBusy(name); try { await fn(); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); } };
   const create = () => act("new", async () => { const v = await templates.define(draft!, undefined, "made in the studio"); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
@@ -57,14 +58,13 @@ export default function TemplatesScreen() {
                 <Text strong numberOfLines={1}>{c.name}</Text>
                 <Text size="caption" tone="label" numberOfLines={1}>{`${c.projects} · ${c.status}`}</Text>
               </View>
-              <View className={`h-2 w-2 rounded-full ${r.live !== null ? "bg-label" : "border border-edge-strong"}`} accessibilityLabel={r.live !== null ? "Live" : "Draft"} />
-              {menu}
+                            {menu}
             </View>
           </Pressable>
           {c.stages.length ? <Text size="caption" tone="label" numberOfLines={1}>{c.stages.join("  ›  ")}</Text> : null}
           <View className="flex-row flex-wrap items-center gap-s2">
             <Text size="caption" tone="muted" numberOfLines={1}>{c.counts || " "}</Text>
-            <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="ghost" size="sm" label="Open" onPress={() => router.push(playbookPath(r.template) as never)} />}</View>
+            <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="primary" size="sm" label="Open" onPress={() => router.push(playbookPath(r.template) as never)} />}</View>
           </View>
         </View></Card>
       )}
@@ -78,17 +78,14 @@ export default function TemplatesScreen() {
         { label: "Describe a playbook to the Engineer", onPress: () => router.push("/u/engineer" as never) },
       ]} /> : undefined}>
       {draft ? <Sec title="A new playbook"><TemplateEditor body={draft} onChange={setDraft} onSave={() => void create()} onCancel={() => setDraft(null)} saving={busy === "new"} /></Sec> : null}
-      <View className="flex-row flex-wrap items-center gap-s2">
-        <View className="min-w-menu flex-1"><Field label="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} /></View>
-        <Segmented label="Show" value={status} onChange={setStatus} options={[["all", "All"], ["live", "Live"], ["draft", "Draft"]]} />
-      </View>
+      <Field name="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} />
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
       {rows === null && !err ? <LoadingState rows={3} /> : null}
       {rows && !rows.length ? <Card><EmptyState title="Nothing here yet" body="Make one with New playbook, or add one from a Kit." /></Card> : null}
       {rows && rows.length && !items.length ? <Card><EmptyState title="No match" body="Try another word, or show All." /></Card> : null}
       {items.length ? (
         <GroupedList groups={[{ name: "Live" }, { name: "Drafts" }].filter((g) => items.some((i) => i.group === g.name))} items={items.map((i) => ({ ...i, group: i.group }))} itemNoun="playbooks"
-          renderItems={(list) => <View className="flex-row flex-wrap gap-s3">{list.map((i) => <View key={i.r.template} style={{ flexGrow: 1, flexBasis: 340 }}>{card(i.r, i.c)}</View>)}</View>} />
+          renderItems={(list) => <View className="flex-row flex-wrap gap-s3">{list.map((i) => <View key={i.r.template} style={{ width: phone ? "100%" : 340 }}>{card(i.r, i.c)}</View>)}</View>} />
       ) : null}
       {showKits && lib.length ? (
         <Sec title="From Kits">

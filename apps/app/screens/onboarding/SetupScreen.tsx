@@ -78,9 +78,9 @@ export function SetupScreen({ onDone }: { onDone?: () => void } = {}) {
           {view.finished || ending ? <Done ending={ending} checking={checking} retry={tryAgain} open={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} />
             : view.current === "assistant" ? (
               <Card>
-                <Panel view={view} id="assistant" title="You and your assistant" lead="Steps 1 to 7 are done. Tell Vyre your name, and name the assistant that will help you.">
+                <Panel view={view} id="assistant" title="You and your agent" lead="Steps 1 to 7 are done. Tell Vyre your name, and name the agent that will help you.">
                   <Field label="Your name" name="Your name" value={name} onChangeText={(v) => { setTyped(true); setName(v); }} />
-                  <Field label="Your assistant's name" name="Your assistant's name" value={assistant} onChangeText={setAssistant} placeholder={own.status.assistant || "Juno"} />
+                  <Field label="Your agent's name" name="Your agent's name" value={assistant} onChangeText={setAssistant} placeholder={own.status.assistant || "Juno"} />
                   <View className="flex-row"><Button kind="primary" label="Continue" disabled={busy} onPress={goName} /></View>
                 </Panel>
               </Card>
@@ -161,7 +161,7 @@ function HistoryStep({ view, status, busy, onContinue, onSkip }: { view: SetupVi
 }
 
 function Done({ ending, checking, retry, open }: { ending: Ending | null; checking: boolean; retry: () => void; open: (thread: string) => void }) {
-  const who = ending?.display || ending?.name || "Your assistant";
+  const who = ending?.display || ending?.name || "Your agent";
   return (
     <Card>
       <View className="gap-s3">
@@ -176,7 +176,7 @@ function Done({ ending, checking, retry, open }: { ending: Ending | null; checki
         ) : ending?.thread ? (
           <>
             <Text size="page" strong>{`${who} is ready`}</Text>
-            <Text tone="muted">Setup is finished. Your assistant has said hello in its first chat.</Text>
+            <Text tone="muted">Setup is finished. Your agent has said hello in its first chat.</Text>
             <View className="flex-row"><Button kind="primary" label={`Open ${who}'s chat`} onPress={() => open(ending.thread as string)} /></View>
           </>
         ) : (
