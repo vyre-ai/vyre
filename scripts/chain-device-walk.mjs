@@ -37,8 +37,8 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
   const p = mac.pairing;
   const dir = fs.mkdtempSync(path.join(out, "dev-"));
   const crypto2 = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "k.json"));
-  const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "Chain device", crypto: crypto2, keyStore,
-    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "Chain device" }); const { deviceId } = await import("../core/relay/index.js"); console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
+  const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "chain-device", crypto: crypto2, keyStore,
+    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "chain-device" }); const { deviceId } = await import("../core/relay/index.js"); console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
   return conn;
 }
 /** One tool call as that device: { status, text }. */
@@ -96,7 +96,7 @@ try {
   // 1-3: the founder's own chain key, on a NEW Noise device the server never paired
   /** @type {any} */ let conn = null;
   await step("1-4. a never-paired device with the founder chain key dials with chainHello: admitted, calls run as the owner; the box string is accepted", async () => {
-    conn = await dial({ key: mac.identity.key, entry: mac.identity.key.eid, name: "Founder laptop" });
+    conn = await dial({ key: mac.identity.key, entry: mac.identity.key.eid, name: "founder-laptop" });
     const info = await callAs(conn, "system.info");
     assert.equal(info.status, 200, `system.info: ${info.status} ${info.text}`);
     const sp = await callAs(conn, "spaces.list");
@@ -129,7 +129,7 @@ try {
   await step("6. a NEWCOMER chain entry is admitted but limited: refused the device-admin tools with a next step, not refused records.list", async () => {
     newKey = await generateDeviceKey({ forceSoftware: true });
     await enrolDevice({ name: mac.identity.name, eid: mac.identity.key.eid, pin: mac.identity.pin, base: ins.names, sign: (/** @type {Uint8Array} */ m) => mac.identity.key.sign(m), entry: { publicKey: newKey.publicKey } });
-    const c = await dial({ key: newKey, entry: newKey.eid, name: "Newcomer" });
+    const c = await dial({ key: newKey, entry: newKey.eid, name: "newcomer" });
     const out2 = /** @type {string[]} */ ([]);
     const ok = await callAs(c, "records.list", { type: "contact" });
     out2.push(`records.list ${ok.status}`);
@@ -159,7 +159,7 @@ try {
     const r = await appendOp({ type: "remove", target: newKey.eid });
     assert.ok(r.status < 400, `the directory took the remove: ${r.status} ${r.body.slice(0, 160)}`);
     await new Promise((res) => setTimeout(res, 5.5 * 60_000));
-    let said = ""; try { const c = await dial({ key: newKey, entry: newKey.eid, name: "Removed" }); said = JSON.stringify(await callAs(c, "system.info")); } catch (e) { said = "refused: " + String(/** @type {any} */ (e).message).slice(0, 160); }
+    let said = ""; try { const c = await dial({ key: newKey, entry: newKey.eid, name: "removed-device" }); said = JSON.stringify(await callAs(c, "system.info")); } catch (e) { said = "refused: " + String(/** @type {any} */ (e).message).slice(0, 160); }
     assert.match(said, /refused|removed|4\d\d|bad_proof/i, said);
     return said.slice(0, 220);
   });
