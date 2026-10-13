@@ -105,7 +105,8 @@ await walk("new person, creates a space that allows computers", async (t) => {
   await t.press("Create my master password"); await t.at("Create your master password");
   await t.field(0, "abc"); await t.field(1, "abc"); await t.press("Continue"); await t.sees("too easy to guess");
   await t.field(0, PHRASE); await t.field(1, PHRASE); await t.press("Continue"); await t.at("Only you know it");
-  await t.toggle(); await t.press("Open my vault"); await t.at("Connect your AI");
+  await t.toggle(); await t.press("Open my vault"); await t.at("Save your vault recovery secret");
+  await t.toggle(); await t.press("Continue"); await t.at("Connect your AI");
   await t.press("Sign in"); await t.sees("Signed in");
   await t.p.getByRole("button", { name: "Sign in" }).nth(1).click(); await t.sees("did not finish signing in");
   await t.press("Try again"); await t.press("Add a key"); await t.at("Add an API key");
