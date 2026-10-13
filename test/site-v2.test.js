@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["", "mac", "windows", "linux", "phone", "downloads", "direction", "architecture", "vault", "records", "flows", "agents", "start", "privacy", "computer", "computer/chrome", "computer/architecture", "for", "for/law-firms", "for/accounting-firms", "for/consulting-firms", "for/marketing-agencies", "for/real-estate-brokerages", "compare", "compare/automation-tools", "compare/work-management", "compare/ai-assistants", "compare/practice-software"];
+const PAGES = ["", "mac", "windows", "linux", "phone", "downloads", "direction", "architecture", "vault", "records", "flows", "agents", "start", "privacy", "computer", "computer/chrome", "computer/architecture", "for", "for/law-firms", "for/accounting-firms", "for/consulting-firms", "for/marketing-agencies", "for/real-estate-brokerages", "compare", "compare/automation-tools", "compare/work-management", "compare/ai-assistants", "compare/practice-software", "map", "agenthome"];
 const read = (p) => fs.readFileSync(path.join(SITE, p), "utf8");
 const pageFile = (slug) => (slug ? `${slug}/index.html` : "index.html");
 const BANNED = /[—§]/;
@@ -72,7 +72,7 @@ test("site v2: llms.txt, llms-full.txt, agents.md and the agent file exist and a
   assert.equal(agent.license, "Apache-2.0");
   assert.match(read("llms-full.txt"), /Network: built in/);
   assert.ok(!/Tailscale/i.test(read("llms-full.txt")), "no other VPN product in the full text");
-  assert.match(read("agents.md"), /Do not run the install line/);
+  assert.match(read("agents.md"), /Do not run an install line/);
 });
 
 test("site v2: the pages leave the installers and the setup page alone", () => {

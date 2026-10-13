@@ -187,13 +187,12 @@ Practice management and CRM suites are built for one job and do it well. Vyre do
 - Later: Screen Share (watch and take over your agents' computers and Chrome, on every device).
 - Later: a Vyre-hosted home for people without a server.
 
-## Known gaps in 0.5.0
-- A member can read every row of a record type the Space defined itself; per-record privacy for custom types is planned for 0.5.1.
-- An agent step has no deadline yet. A session that ends without finishing is marked stuck.
-- A Flow email cannot yet carry CC, BCC or attachments.
-- CSV export is in the web app; a phone does not offer it yet.
-- The Mac and Windows apps are not signed with a store identity yet, and the iPhone app is built from source.
-See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
+## Map your business onto Vyre
+To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to https://vyre.run/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. https://vyre.run/map/ has a short form that adds your firm's details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
+
+```
+Read https://vyre.run/agenthome.md and follow it to show me how my business would run on Vyre, the agentic command center for AI-native teams. Ask me what you need.
+```
 
 ## FAQ
 ### Is Vyre free?
@@ -224,4 +223,4 @@ Anything that leaves your server, such as an email, a payment, a deletion or a p
 Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. Point your AI agent at the repo and it can show how your business would run on Vyre.
 
 ### Is it ready?
-It is 0.5.0, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.5.0 does not do yet.
+It is 0.5.0, and what this page shows works today. What comes next is labelled with its version on the direction page and in the roadmap.

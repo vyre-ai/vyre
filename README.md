@@ -12,7 +12,8 @@
   <a href="docs/index.md">Docs</a> ·
   <a href="ARCHITECTURE.md">Architecture</a> ·
   <a href="roadmap/README.md">Roadmap</a> ·
-  <a href="docs/for-agents/MAP-YOUR-BUSINESS.md">Map your business</a>
+  <a href="docs/for-agents/MAP-YOUR-BUSINESS.md">Map your business</a> ·
+  <a href="docs/for-agents/PROMPT.md">Prompt for your AI agent</a>
 </p>
 
 <p align="center">
@@ -27,6 +28,8 @@
 In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
 
 Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not. Open source, self-hosted, any model.
+
+**See your business on Vyre.** Give your AI agent [this prompt](docs/for-agents/PROMPT.md). It sends the agent to [one page for agents](docs/for-agents/START-HERE.md), which tells it to read these docs, ask a few short questions, draw your business as an AI-native version of itself (members, records, Playbooks, Flows, agents, approvals), and offer to set Vyre up for you. The same prompt, tailored by a short form, is at [vyre.run/map](https://vyre.run/map/).
 
 ## What you get in 0.5
 
@@ -97,7 +100,7 @@ Every call, whether it comes from a person, an agent or a Flow, goes through one
 | Grok | Grok Build, over the Agent Client Protocol | your Grok sign-in, or an xAI API key |
 | OpenRouter | hundreds of models | an OpenRouter API key |
 
-Your conversations, memory and files belong to Vyre, not to a provider, so changing the model doesn't mean starting over. Each reply shows which provider wrote it. Your prompts go only to the provider you choose. Claude is the provider proven most on real accounts; [known gaps](docs/known-gaps.md) says what is not.
+Your conversations, memory and files belong to Vyre, not to a provider, so changing the model doesn't mean starting over. Each reply shows which provider wrote it. Your prompts go only to the provider you choose. Claude is the provider proven most on real accounts, and Codex, Grok and OpenRouter answer in the same chat.
 
 ## Security
 
@@ -145,7 +148,7 @@ Step by step: [Install](docs/get-started/install.md). The first hour: [Your firs
 
 ## Where Vyre is going
 
-This is direction, not a promise of dates. The line-by-line list is in [docs/roadmap.md](docs/roadmap.md); what is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](docs/known-gaps.md).
+This is direction, not a promise of dates. The line-by-line list is in [docs/roadmap.md](docs/roadmap.md); what is true today is in the [releases](https://github.com/vyre-ai/vyre/releases).
 
 **Next (0.5.1):** reliable Flows. See [roadmap/0.5.1.md](roadmap/0.5.1.md).
 

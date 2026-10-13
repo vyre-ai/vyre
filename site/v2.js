@@ -44,6 +44,125 @@
     });
   });
 
+  // Copy a block of text by id (the agent prompt). The button reads the element at click time, so a tailored prompt copies as shown.
+  doc.querySelectorAll('[data-copy-from]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var src = doc.getElementById(b.getAttribute('data-copy-from')); if (!src) return;
+      var text = src.textContent, old = b.textContent;
+      function done() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = old; }, 1600); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () {});
+      else { var ta = doc.createElement('textarea'); ta.value = text; doc.body.appendChild(ta); ta.select(); try { doc.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
+    });
+  });
+
+  // Map your business (/map/): the form builds a tailored prompt and a live sketch of the firm on Vyre. No network, nothing stored.
+  var mapEl = doc.getElementById('mapper'), mapJson = doc.getElementById('map-data'), outEl = doc.getElementById('prompt-out');
+  if (mapEl && mapJson && outEl) (function () {
+    var D = JSON.parse(mapJson.textContent), CATS = ['roles', 'things', 'work', 'tools', 'nevers'];
+    var base = outEl.textContent, opts = {}, sel = {}, custom = {};
+    var ind = doc.getElementById('m-industry'), size = doc.getElementById('m-size'), sketch = doc.getElementById('sketch');
+    function el(tag, cls, text) { var e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+    function has(a, x) { return a.indexOf(x) > -1; }
+    function setIndustry() {
+      var p = D.industries[ind.value];
+      CATS.forEach(function (c) {
+        var cu = custom[c] || (custom[c] = []);
+        opts[c] = p[c].concat(D.more[c].filter(function (x) { return !has(p[c], x); }), cu.filter(function (x) { return !has(p[c], x) && !has(D.more[c], x); }));
+        sel[c] = p[c].concat(cu);
+      });
+      chips();
+    }
+    function chips() {
+      CATS.forEach(function (c) {
+        var box = mapEl.querySelector('[data-cat="' + c + '"]'); box.textContent = '';
+        opts[c].forEach(function (name) {
+          var b = el('button', '', name); b.type = 'button'; b.setAttribute('aria-pressed', has(sel[c], name) ? 'true' : 'false');
+          b.addEventListener('click', function () {
+            if (has(sel[c], name)) sel[c].splice(sel[c].indexOf(name), 1); else sel[c].push(name);
+            b.setAttribute('aria-pressed', has(sel[c], name) ? 'true' : 'false'); update();
+          });
+          box.appendChild(b);
+        });
+      });
+      update();
+    }
+    function add(c) {
+      var inp = mapEl.querySelector('[data-add="' + c + '"]'), v = inp.value.replace(/\s+/g, ' ').trim();
+      if (!v) return; inp.value = '';
+      if (!has(opts[c], v)) { opts[c].push(v); custom[c].push(v); }
+      if (!has(sel[c], v)) sel[c].push(v);
+      chips();
+    }
+    CATS.forEach(function (c) {
+      var inp = mapEl.querySelector('[data-add="' + c + '"]'), btn = mapEl.querySelector('[data-addbtn="' + c + '"]');
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(c); } });
+      btn.addEventListener('click', function () { add(c); });
+    });
+    ind.addEventListener('change', setIndustry); size.addEventListener('change', update);
+
+    function join(a) { return a.join(', '); }
+    function model() {
+      var roles = sel.roles.slice(), things = sel.things.slice(), approver = roles[0] || 'the owner', doer = roles[roles.length - 1] || 'the owner';
+      var rec = things.map(function (t, i) {
+        var d = D.things[t] || ['Name, Status, Owner, Dates', ''];
+        return { name: t, fields: d[0], sealed: d[1], link: i === 0 ? 'Projects and tasks' : (things[0] + ', Projects') };
+      });
+      var wk = sel.work.map(function (w) { var d = D.work[w] || { stages: ['To do', 'In progress', 'Review', 'Done'], trigger: 'A person, a schedule or a record change', steps: ['Find the record', 'Agent drafts', 'Ask a person', 'Carry out'], gate: 'Anything that leaves the team', agent: [w + ' helper', 'does the first pass; a person decides'] }; return { name: w, d: d }; });
+      var tl = sel.tools.map(function (t) { return { name: t, planned: has(D.planned, t) }; });
+      return { roles: roles, rec: rec, wk: wk, tl: tl, nevers: sel.nevers.slice(), approver: approver, doer: doer };
+    }
+    function table(head, rows) {
+      var w = el('div', 'tblw'), t = el('table'), th = el('thead'), tr = el('tr');
+      head.forEach(function (h) { tr.appendChild(el('th', '', h)); }); th.appendChild(tr); t.appendChild(th);
+      var tb = el('tbody'); rows.forEach(function (r) { var x = el('tr'); r.forEach(function (c) { var td = el('td'); if (c && c.nodeType) td.appendChild(c); else td.textContent = c; x.appendChild(td); }); tb.appendChild(x); });
+      t.appendChild(tb); w.appendChild(t); return w;
+    }
+    function render(m) {
+      sketch.textContent = '';
+      var sz = size.value;
+      sketch.appendChild(el('h3', '', 'People become members'));
+      sketch.appendChild(el('p', 'sk-sum', 'A Space for ' + sz + ' people, plus the agents that work beside them. One server, one Space, roles decide who sees what.'));
+      sketch.appendChild(table(['Role', 'In Vyre', 'Reach'], [['Owner (you)', 'Owner', 'Everything, and the Gate'] ].concat(m.roles.map(function (r) { return [r, 'Member with a role', 'The records and projects their role and project team allow']; }))));
+      sketch.appendChild(el('h3', '', 'Things become record types'));
+      sketch.appendChild(table(['Record type', 'Fields', 'Links to'], m.rec.map(function (r) {
+        var f = el('span'); f.appendChild(doc.createTextNode(r.fields)); if (r.sealed) { f.appendChild(el('br')); f.appendChild(el('span', 'seal', 'Sealed: ' + r.sealed)); } return [r.name, f, r.link];
+      })));
+      sketch.appendChild(el('h3', '', 'Work becomes Playbooks and Flows'));
+      m.wk.forEach(function (w) {
+        var b = el('div', 'skblock'), p = el('p'); p.appendChild(el('b', '', w.name)); p.appendChild(doc.createTextNode(' Playbook: ' + join(w.d.stages)));
+        b.appendChild(p); var fl = el('ul', 'flow'); fl.appendChild(el('li', 'tr', w.d.trigger));
+        w.d.steps.forEach(function (s) { fl.appendChild(el('li', '', s)); });
+        fl.appendChild(el('li', 'ap', 'Needs you: ' + w.d.gate + ' (' + m.approver + ')')); b.appendChild(fl); sketch.appendChild(b);
+      });
+      if (!m.wk.length) sketch.appendChild(el('p', 'sk-sum', 'Pick the work you repeat and each kind becomes its own Playbook and Flows, side by side over the same records.'));
+      sketch.appendChild(el('h3', '', 'Agents with one job each'));
+      sketch.appendChild(table(['Agent', 'Job and reach'], m.wk.map(function (w) { return [w.d.agent[0], w.d.agent[1] + '. Shared with ' + m.doer + '.']; })));
+      if (m.nevers.length) {
+        sketch.appendChild(el('h3', '', 'Held at the Gate until a person says yes'));
+        var ul = el('ul', 'flow'); m.nevers.forEach(function (n) { ul.appendChild(el('li', 'ap', n)); }); sketch.appendChild(ul);
+      }
+      if (m.tl.length) {
+        sketch.appendChild(el('h3', '', 'Your tools'));
+        sketch.appendChild(table(['Tool', 'How it connects'], m.tl.map(function (t) {
+          var c = el('span'); c.appendChild(doc.createTextNode('Today: a connection plus a Flow step, or a custom module. ')); c.appendChild(el('span', 'next', t.planned ? 'Next 0.5.2: packaged Integration' : 'Next 0.5.2: make an Integration from its API')); c.appendChild(doc.createTextNode('*'));
+          return [t.name, c];
+        })));
+        sketch.appendChild(el('p', 'sk-sum', '*Where the vendor provides an API.'));
+      }
+    }
+    function prompt(m) {
+      var part = ['Industry: ' + D.industries[ind.value].name, 'a team of ' + size.value];
+      if (m.roles.length) part.push('roles: ' + join(m.roles));
+      if (sel.things.length) part.push('we track: ' + join(sel.things));
+      if (sel.work.length) part.push('repeated work: ' + join(sel.work));
+      if (sel.tools.length) part.push('tools: ' + join(sel.tools));
+      if (m.nevers.length) part.push('never goes out without a yes: ' + join(m.nevers));
+      return base + '\n\nAbout my business: ' + part.join('; ') + '.';
+    }
+    function update() { var m = model(); render(m); outEl.textContent = prompt(m); var l = doc.getElementById('out-lbl'); if (l) l.textContent = 'Prompt · tailored to your firm'; }
+    setIndustry();
+  })();
+
   // Reveal on scroll
   var rv = doc.querySelectorAll('.rv');
   if ('IntersectionObserver' in window && !reduce) {
