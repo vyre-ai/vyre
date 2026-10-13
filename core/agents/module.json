@@ -126,67 +126,67 @@
       },
       {
         "name": "agents.docs.get",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "agents.docs.set",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.context.list",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "agents.context.add",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.context.remove",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.context.link",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.context.unlink",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.vault.list",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "agents.vault.assign",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.vault.unassign",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "agents.used",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "agents.access.get",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "agents.access.set",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       }
     ]
