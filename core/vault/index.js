@@ -10,6 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { refuseNonPerson } from "../../lib/person-body.js";
 import { gateTools } from "./member-gate.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
@@ -484,7 +485,7 @@ export default {
 
     tool("vault.relay", ["cli", "local", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
-      (input, { caller }) => vault.relayOut(input, caller));
+      (input, meta) => { refuseNonPerson(meta, "relays a request with a Vault item"); return vault.relayOut(input, meta.caller); });
 
     // Emergency access (ADR 0028, decision 8). Adding and refreshing open every item, and the
     // contact's status call may take them in, so those need a person; deny and remove never do.

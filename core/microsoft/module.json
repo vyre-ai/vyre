@@ -20,22 +20,22 @@
     "tools": [
       {
         "name": "microsoft.accounts",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "read"
       },
       {
         "name": "microsoft.add",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "microsoft.remove",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
         "name": "microsoft.members.email",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
