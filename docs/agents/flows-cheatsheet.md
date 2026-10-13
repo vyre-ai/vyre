@@ -4,7 +4,7 @@ summary: The whole Flows language on one page, generated from the code: triggers
 audience: agents
 owner: docs
 status: stable
-tokens: 1800
+tokens: 2200
 when: You are about to write or change a Flow and need the exact keys, an example of each step, and the limits.
 ---
 
@@ -46,7 +46,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - update: type, record, set
     mark update type=matter record=`steps.make.record.id` set={stage: Active}
 - upsert: type, match, set, update
-    save upsert type=client match={email: `trigger.email`} set={name: `trigger.name`}
+    save upsert type=client match={email: `trigger.email`} set={name: `trigger.name`} update={}
 - remove: type, record
     drop remove type=matter record=`steps.make.record.id`
 - decide: if, then, else; only on_fail, verify
@@ -100,6 +100,9 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.
 - `call` step `with=<earlier send step>`: this send rides that step's yes (one question names both; the earlier tool must list this one in its `covers`; same path, not out of a loop or lane).
 - `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).
+- Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.
+- `ask` goes to `person:<id>` or `role:<name>`, never an agent.
+- Email: `call action=comms.email resource=vyre://space/comms input={to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.
 - A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
 ## If it can fail
@@ -108,9 +111,11 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - verify={check: `output.record`, essential: true|false, say: "what was checked"} or {readback: true} on create, update, upsert, stage. Put an essential verify on every step that changes something.
 
 ## Expressions
-- Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for datetime(x, tz), which prints "Wed 14 Oct, 2:00 pm"), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].
+- Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for the time functions), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].
 - An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.
-- Functions: date, datetime, len, lower, upper, trim, startsWith, endsWith, coalesce, round, floor, min, max, number, text, isnull, days, hours, minutes. Nothing else is callable.
+- Text with values is one expression: `"Hi " + text(trigger.after.name) + " at " + format(trigger.after.starts_at, "weekdaytime", tz)`. A missing value is empty text; a sealed field prints its placeholder. The builder writes it from "Hi {name}".
+- Times: `format(t, "weekdaytime", tz)` prints "Sat 31 Oct, 9:00 am"; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, "time", tz, -1, "day")` moves first. `addtime(t, 2, "hours", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving). Use one call; they nest only two deep.
+- Functions: first, date, datetime, addtime, format, len, lower, upper, trim, startsWith, endsWith, coalesce, round, floor, min, max, number, text, isnull, days, hours, minutes. Nothing else is callable.
 
 ## Limits
 - 200 steps a Flow, 6 levels of nesting, repeat at most 1000, a Code step's source at most 64 KB. Step ids: lowercase letters, digits, underscores, starting with a letter.

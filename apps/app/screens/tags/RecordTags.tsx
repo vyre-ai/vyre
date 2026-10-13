@@ -10,7 +10,7 @@ export function RecordTags({ rec, onChanged }: { rec: { urn: string; version?: n
   const { data: world } = useRecordsWorld();
   const known = world ? tallyTags(Object.values(world.byType).flat()).map((t) => t.tag) : [];
   const save = async (next: string) => {
-    try { await store.update(rec.urn, { tags: next }, rec.version); onChanged?.(); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "The tags were not saved. Try again."); throw e; }
+    try { await store.update(rec.urn, { tags: next }, rec.version as number); onChanged?.(); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "The tags were not saved. Try again."); throw e; }
   };
   const text = rec.data?.tags;
   return <TagRow tags={tagsOf(text)} known={known} onOpen={(t) => router.push(href(t) as never)} onAdd={(t) => save(withTag(text, t))} onRemove={(t) => save(withoutTag(text, t))} />;

@@ -25,6 +25,7 @@ const ALLOWED = new Map([
   ["core/resilience/node.js", "dials the person's own vyred (a unix socket, or the LAN, tailnet or relay address they paired), never a public service"],
   ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
   ["local/voice/ws.js", "the voice provider's WebSocket handshake needs the raw upgraded socket, which the client cannot give; it checks the address through lib/http.js pin() and dials the checked address"],
+  ["core/files/dropbox-seam.js", "only the two fixed Dropbox hosts (api and content.dropboxapi.com) over https with redirects refused, built in this file and never an address a person gave; the fetch is injectable for tests"],
   ["escrow/worker/", "a Cloudflare Worker: `fetch(request)` is its request handler, not an outbound call, and it runs where lib/ is not available"],
   ["relay/node/resolve.js", "the relay container's one call to the operator's own names directory (VYRE_TUNNEL_DIRECTORY, set by whoever runs the edge, never by a request), 3 s deadline, a shared secret in a header; the container has no user-supplied address to guard"],
   ["lib/siteops/page.js", "the TEXT of a function that runs inside the signed-in page (a browser), which signs the call with the page's own cookies"],
