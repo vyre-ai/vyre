@@ -1,18 +1,35 @@
-# Vyre architecture
+# Vyre: the agentic command center for AI-native teams
 
-This is the front door to how Vyre is built. Read the first two sections, then follow the table of contents to the page you need. If you are an AI agent that someone pointed at this repository, the last section tells you where to start.
+Our mission is to help every professional services team become AI-native.
+
+In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
+
+This file is the front door to how Vyre is built. Read the next two sections, then follow the table of contents to the page you need. If you are an AI agent that someone pointed at this repository, the last section tells you where to start.
 
 ## What Vyre is
 
-Vyre runs a team's work together with its AI agents, on a server the team owns. People and agents share one set of chats, records, tasks, files and automations (Flows). Where the outcome must be exact, such as who may see a record, what a Flow does or what was sent, Vyre follows declared rules and does not leave it to a model. Anything that leaves the server (an email, a payment, a deletion, a publication) waits for a person's yes. A model never sees a stored secret; it sees a placeholder.
+People and agents share one set of chats, records, tasks, files and automations (Flows). A server the team owns holds all of it. Where the outcome has to be exact, such as who may see a record, what a Flow does or what got sent, declared rules decide and a model does not. Anything that leaves the server, whether an email, a payment, a deletion or a published page, waits for a person to approve the exact words. A model sees a placeholder where a secret would be.
 
 Three ideas shape the code:
 
-- **A small trusted core.** `kernel/` decides who may do what, writes the event log and seals secrets. It has almost no dependencies. Every feature is a module around it and cannot invent a new kind of permission.
+- **A small trusted core.** `kernel/` decides who may do what, writes the event log and seals secrets. It has almost no dependencies. Every feature is a module around it, and no module can invent a new kind of permission.
 - **A person decides, and proves it.** An agent can ask for an outward act. Only a person's own device can approve it.
-- **Secrets stay out of the model's reach.** The real value is put in at the moment of sending, outside the model.
+- **Secrets stay out of the model's reach.** The real value goes in at the moment of sending, outside the model.
 
-One program, `vyred`, runs on each machine (a Linux server, a Mac, or a computer that joins a server). The Vyre app, the `vyre` command line and outside AI tools all call it.
+One program, `vyred`, runs on each machine: a Linux server, a Mac, or a computer that joins a server. The Vyre app, the `vyre` command line and outside AI tools all call it.
+
+## What makes Vyre strong
+
+- **Records you shape.** Define as many objects as the business has, and link them in whatever web the business needs. A token can reach through several links (`{matter.client.phone}`). Give each object list, board, calendar, page or dashboard views. Mark a field sealed and no model ever reads it. See [Records](docs/architecture/features/records.md).
+- **Flows that run the same way every time.** A trigger (a person, a schedule, a record change or stage, a form, a watcher), then steps: find or create, update, wait for a date or an event, ask a person, assign, send, hand to an agent. Approvals, a run page with a timeline, and failure paths are in the engine. See [Flows](docs/architecture/features/flows.md).
+- **One group chat across providers.** Claude, Codex, Grok and others, through the sign-ins and keys you add, answer in the same chat. Give agents different jobs: a team that does the work, one model that reviews, one that plans. See [Sessions and models](docs/architecture/features/sessions-and-models.md) and [MCP and the Engineer](docs/architecture/features/mcp-and-engineer.md).
+- **Playbooks.** A project template holds stages, the tasks in each stage, and who does each task, whether a person or an agent. A business with several kinds of work runs each as its own Playbook and its own Flows, side by side, over shared records. See [Tasks, Needs you and Playbooks](docs/architecture/features/tasks-and-needs-you.md).
+- **A vault for people and agents.** An agent uses a credential without seeing it. Each member has a vault of their own. Revealing a value or sending with it takes a person's yes. See [Vault](docs/architecture/features/vault.md).
+- **Sites.** An agent builds a site, previews it at a private address and puts it live on one yes, on your own domain with the DNS record shown. Every version stays in the history. See [Sites and publishing](docs/architecture/features/sites-and-publishing.md).
+- **Documents.** Vyre fills your own Word templates from a record and the records linked to it. A model never rewrites the document. See [Documents and signing](docs/architecture/features/documents-and-signing.md).
+- **Signing.** Send a document for signature from a record. The signer needs no account. The signed copy files back on the record, and the signature can start the next Flow. Same page as Documents.
+
+Anything the business needs beyond this, a custom module or an Integration adds. A module is a folder with a manifest and an entry file, and an agent can write one on your own server. See [How to extend Vyre](#how-to-extend-vyre).
 
 ## The system on one page
 
@@ -26,7 +43,7 @@ flowchart TB
   RELAY["Relay: encrypted path to a server with no open port"]
   subgraph Daemon["vyred, one daemon per machine"]
     DOOR["Door: who is calling, what may they reach"]
-    subgraph Modules["Core modules in core/"]
+    subgraph Modules["Modules in core/ and your own"]
       WORK["Work: chats, tasks, records, flows, agents, documents"]
       KEEP["Keep: files, vault, memory"]
       OUTW["Outward: gate, publish, connections"]
@@ -49,7 +66,7 @@ flowchart TB
   OUTW -- "only after a person's yes" --> WORLD
 ```
 
-How a call flows: the door works out who is calling (a person on a paired device, an agent acting for a person, a module, an outside tool) and builds that caller's chain. The module's tool runs. Every read or write of a record, grant or event goes through the kernel's gateway, which asks `authorize` for the action under that chain. A tool marked outward is held at the Gate until a person approves. The full walk is in [The Vyre map, section 13](docs/architecture/map.md#13-one-request-end-to-end).
+A call starts at the door, which works out who is calling (a person on a paired device, an agent acting for a person, a module, an outside tool) and builds that caller's chain. The module's tool runs. Every read or write of a record, grant or event goes through the kernel's gateway, which asks `authorize` for the action under that chain. A tool marked outward is held at the Gate until a person approves. [The Vyre map, section 13](docs/architecture/map.md#13-one-request-end-to-end) walks one request from start to finish.
 
 ## Table of contents
 
@@ -58,15 +75,15 @@ How a call flows: the door works out who is calling (a person on a paired device
 | Page | What it gives you |
 | --- | --- |
 | [Architecture overview](docs/architecture/overview.md) | A ten-minute picture: layers, how a call flows, how an agent's turn runs, where data lives, the Gate. |
-| [The Vyre map](docs/architecture/map.md) | A 30-minute tour with every top-level folder, kernel folder and module listed (kept current by a test). |
-| [Architecture index](docs/architecture/index.md) | The short version, plus the decision records. |
+| [The Vyre map](docs/architecture/map.md) | A 30-minute tour that lists every top-level folder, kernel folder and module. A test keeps it current. |
+| [Architecture index](docs/architecture/index.md) | The short version and the decision records. |
 | [Specification](docs/architecture/spec.md) | The source of truth for detail. |
-| [Known gaps](docs/known-gaps.md) | What 0.5 does not do yet. Every feature page repeats the part that applies to it. |
-| [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) | A method for an AI agent (or a person) to turn a business into people, records, Flows, agents and Gate rules. |
+| [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) | A method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules. |
+| [Known gaps](docs/known-gaps.md) | Where 0.5 stops, with what to do today. |
 
 ### One page per feature
 
-Every feature page uses the same headings: What it is, What a person sees, How it works, Where the code lives, How agents use it, Limits today, Related.
+Each feature page has the same headings: What it is, What a person sees, How it works, Where the code lives, How agents use it, Extend it, Related.
 
 | Feature | Page | Main code |
 | --- | --- | --- |
@@ -76,15 +93,15 @@ Every feature page uses the same headings: What it is, What a person sees, How i
 | Chats with people and agents, @ and # | [chats](docs/architecture/features/chats.md) | `core/comms`, `core/mentions`, `core/switchboard` |
 | Agents: AGENTS.md, memory and lessons, waking on tasks, stuck | [agents](docs/architecture/features/agents.md) | `core/agents`, `core/daemon/agent-wake.js` |
 | Sessions and models: switchboard, provider CLIs, own computer or server, accounts | [sessions-and-models](docs/architecture/features/sessions-and-models.md) | `core/sessions`, `core/switchboard`, `core/providers` |
-| Records: objects, fields, tokens, links, tags, import and export | [records](docs/architecture/features/records.md) | `records/`, `core/records-tools` |
+| Records: objects, fields, tokens, links, tags, views, import and export | [records](docs/architecture/features/records.md) | `records/`, `core/records-tools` |
 | Flows: triggers, steps, templates and dates, approvals, run page | [flows](docs/architecture/features/flows.md) | `kernel/flows`, `core/flows` |
-| Tasks and Needs you | [tasks-and-needs-you](docs/architecture/features/tasks-and-needs-you.md) | `kernel/tasks`, `core/approvals` |
+| Tasks, Needs you and Playbooks | [tasks-and-needs-you](docs/architecture/features/tasks-and-needs-you.md) | `kernel/tasks`, `core/approvals`, `core/work` |
 | The Gate: held outward actions | [gate](docs/architecture/features/gate.md) | `core/gate`, `lib/one-yes.js` |
 | Vault: groups, items, member vaults, leases | [vault](docs/architecture/features/vault.md) | `core/vault`, `lib/vault-kinds` |
 | Files: Drive, Dropbox | [files](docs/architecture/features/files.md) | `core/files` |
-| Documents and signing | [documents-and-signing](docs/architecture/features/documents-and-signing.md) | `core/documents` |
+| Documents and signing | [documents-and-signing](docs/architecture/features/documents-and-signing.md) | `core/documents`, `core/appmods` |
 | Sites and publishing | [sites-and-publishing](docs/architecture/features/sites-and-publishing.md) | `core/publish` |
-| MCP and the Engineer | [mcp-and-engineer](docs/architecture/features/mcp-and-engineer.md) | `core/mcp`, `harness/` |
+| MCP and the Engineer, agent teams | [mcp-and-engineer](docs/architecture/features/mcp-and-engineer.md) | `core/mcp`, `core/team`, `harness/` |
 | Relay and networking | [relay-and-networking](docs/architecture/features/relay-and-networking.md) | `relay/`, `core/relay`, `core/network`, `wink/` |
 | Apps: Mac, Windows, phone, web | [apps](docs/architecture/features/apps.md) | `apps/app`, `local/capsule` |
 
@@ -92,18 +109,21 @@ Every feature page uses the same headings: What it is, What a person sees, How i
 
 - [The box and the Mac](docs/concepts/box-and-mac.md), [Network](docs/concepts/network.md), [Presence](docs/concepts/presence.md), [The security floor](docs/concepts/floor.md), [Modules](docs/concepts/modules.md).
 - [Boundaries](docs/architecture/boundaries.md) and [Performance](docs/architecture/performance.md).
-- [Tools reference](docs/reference/tools.md), [Events](docs/reference/events.md), [Module reference](docs/reference/modules.md), [Files layout](docs/reference/files-layout.md), [CLI](docs/reference/cli.md).
-- [Decision records](docs/adr/) for why each hard choice went the way it did.
+- [Tools](docs/reference/tools.md), [Events](docs/reference/events.md), [Modules](docs/reference/modules.md), [Files layout](docs/reference/files-layout.md), [CLI](docs/reference/cli.md).
+- [Decision records](docs/adr/), which say why each hard choice went the way it did.
 - [Roadmap](docs/roadmap.md), [Changelog](CHANGELOG.md), [Release notes for 0.5.0](release/notes/0.5.0.md).
 
-### For agents
+## How to extend Vyre
 
-- [The agent docs](docs/agents/index.md): short pages an agent reads for what it is about to do (authority, outward acts, records, Flows, errors).
-- [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md).
+When a business needs something that is not built in, add it as a module. A module is a folder with a `module.json` and an entry file. It registers tools, emits events and can add Flow steps, and the loader in `core/modules` checks it against the same contract as the built-in ones. It runs under the supervisor in `kernel/modules`, so it gets the kernel's checks and cannot add a new kind of permission.
+
+- The contract: [module contract](docs/build/module-contract.md), [writing a module](docs/build/writing-a-module.md), [first module](docs/build/first-module.md), [the module list](docs/MODULES.md). Kernel types are in `kernel/contracts/`.
+- Integrations with popular applications are planned (roadmap item R051-01). An Integration wraps an outside app's API and ships its own Flow steps, triggers, connection and agent tools.
+- An agent can build a module or an Integration for the business on the business's own server. [The agent brief](docs/build/AGENT-BRIEF.md) is the place to start.
 
 ## Repository layout
 
-The generated and tested table of every folder is in [the map, section 14](docs/architecture/map.md#14-the-repository-top-to-bottom). The ones you open first:
+[The map, section 14](docs/architecture/map.md#14-the-repository-top-to-bottom) lists every folder and a test keeps the list true. The ones you open first:
 
 ```
 kernel/    the trusted core: identity, grants, event log, Flow runner, sealing
@@ -119,6 +139,6 @@ docs/      all documentation
 
 ## If you are an AI agent reading this
 
-1. Read the overview and the feature page for the thing you are asked about. Each page names the real tool names and code paths, so check them in the code before you rely on them.
-2. If the question is "how would my business run on Vyre", follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) step by step and end with the one-page picture it describes.
-3. Say what Vyre cannot do yet. [Known gaps](docs/known-gaps.md) is the list; do not promise around it.
+1. Read the overview and the feature page for the thing you were asked about. Each page names real tool names and code paths. Check them in the code before you rely on them.
+2. If the question is "how would my business run on Vyre", follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) step by step and finish with the one-page picture it describes.
+3. If the business needs something Vyre does not have, offer to build it as a module or an Integration on their server. [Known gaps](docs/known-gaps.md) lists what 0.5 leaves out.

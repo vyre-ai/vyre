@@ -10,7 +10,7 @@ status: stable
 
 ## What it is
 
-The relay is the path that always works: a server dials out to a relay, and a device meets it there over an end-to-end encrypted channel. Around it sit the name directory (`<name>.vyre.run`), the built-in Wink network that pairs devices and tries a direct path, and `vyre doctor`, which says which path is in use.
+A server dials out to the relay, and a device meets it there over an end-to-end encrypted channel. This path always works. Around it sit the name directory (`<name>.vyre.run`), the built-in Wink network that pairs devices and tries a direct path, and `vyre doctor`, which says which path is in use.
 
 ## What a person sees
 
@@ -52,15 +52,15 @@ The relay is the path that always works: a server dials out to a relay, and a de
 
 - Open to models: `relay.status`, `relay.setup.status`, `names.status`, `names.check`, `names.domain.check`, `network.wink.status`, `network.wink.whois` (reads, no secrets).
 - Person-only: `relay.enable`, `relay.disable`, `relay.devices.list`, `relay.devices.remove`, `relay.devices.trust`, `network.wink.join`, `network.wink.leave`, `names.serve`, `names.unserve`, and nearly every `wink.*` act, which needs presence. Module-only tools (`relay.ticket.mint`, `relay.devices.all`, `relay.route.sign`) are not reachable by a model.
-- An agent does not add or remove devices or pair anything: the person approves on a device. See authority (agent doc "authority") and tools (agent doc "tools").
+- An agent adds, removes and pairs no device. The person approves on a device. See authority (agent doc "authority") and tools (agent doc "tools").
 
-## Limits today
+## Extend it
 
-- Direct paths through a home router (IPv6, UPnP, NAT-PMP) are unproven behind a real home router. The relay always works, so a connection may stay on the relay. `vyre doctor` shows whether the path is direct.
-- Nothing has been walked on a real iPhone or Android, including Face ID pairing and the removed-phone wipe.
-- Continue with GitHub needs the relay Worker and escrow Worker deployed; update every server before linking GitHub.
-- On Windows without Hello, the key signs without asking each time and a team server does not accept it.
-- If you run another VPN of your own, Wink does not use it and the link stays on the relay.
+- In 0.5 the relay carries every connection. Direct paths (IPv6, UPnP, NAT-PMP) were tried on servers with public addresses, not behind a home router, so a connection may stay on the relay. `vyre doctor` shows whether the path is direct.
+- Pairing runs by signing in with the person's name and approving on a device already signed in. Continue with GitHub needs the relay Worker and the escrow Worker deployed, and every server updated first.
+- If the person runs another VPN, Wink starts no node and the link stays on the relay. A Windows PC with no Hello keeps its key in the app, and a team server does not accept that key. The phone apps are not yet walked on real devices.
+- To add another way in or another kind of path for a business, write a custom module: a folder with `module.json` and an entry file that registers tools and emits events (see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md)). kernel/modules runs it under the supervisor, and an agent can write it on the business's own server.
+- The full list is in [known gaps](../../known-gaps.md).
 
 ## Related
 

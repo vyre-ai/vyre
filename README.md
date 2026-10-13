@@ -2,10 +2,9 @@
   <img src="docs/images/readme/vyre-mark.svg" width="96" alt="Vyre">
 </p>
 
-<h1 align="center">Vyre</h1>
+<h1 align="center">Vyre: the agentic command center for AI-native teams</h1>
 
-<p align="center"><b>Your team and your AI agents, working together on a server you own.</b><br>
-Open source. Self-hosted. Any model.</p>
+<p align="center"><b>Our mission is to help every professional services team become AI-native.</b></p>
 
 <p align="center">
   <a href="https://vyre.run">Website</a> ·
@@ -24,9 +23,9 @@ Open source. Self-hosted. Any model.</p>
   <img src="docs/images/readme/vyre-tour.gif" width="860" alt="A tour of the Vyre app: what needs you today, a conversation where an agent runs the tests and fixes a failure, the vault showing which agents used a login without seeing it, your projects, and your automations.">
 </p>
 
-AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same records your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.
+In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
 
-Vyre is the place where they can. It is one product for a team and its agents. Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome must be exact, such as who may see a record, what a Flow does, or what was sent, Vyre follows declared rules and does not leave it to a model. Every action that leaves your server waits for a person's yes.
+Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not. Open source, self-hosted, any model.
 
 ## What you get in 0.5
 

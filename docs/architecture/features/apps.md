@@ -11,7 +11,7 @@ status: stable
 ## What it is
 
 There is one Vyre app, an Expo codebase in `apps/app`. It is the web app a server serves at /app/, the hosted app at app.vyre.run, the Android APK and the iPhone build. The Mac and Windows apps are thin native shells around the same pages, plus native pieces such as the Lumen command bar on the Mac.
-The app holds no logic of its own that the server does not check: every read and write goes to a server over the app client, and the server's kernel decides.
+The server checks everything the app does. Every read and write goes to a server over the app client, and the server's kernel decides.
 
 ## What a person sees
 
@@ -52,19 +52,16 @@ The app holds no logic of its own that the server does not check: every read and
 
 ## How agents use it
 
-- Agents do not use the app; they use tools. The tools that touch app surfaces: `capsule.show` and `capsule.status` (local role), `push.test` and `push.settings` (person surfaces). Push and capsule tools take a person caller, not a model.
+- Agents use tools, not the app. The tools that touch app surfaces: `capsule.show` and `capsule.status` (local role), `push.test` and `push.settings` (person surfaces). Push and capsule tools take a person caller, not a model.
 - An agent shows the person something by posting a card or a preview through chat and previews, not by driving the app. See [Chats](./chats.md) and [Tasks and Needs you](./tasks-and-needs-you.md).
 - Docs: Tools (agent doc "tools"), Outward acts (agent doc "outward-acts").
 
-## Limits today
+## Extend it
 
-- Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Only web push works. Native push needs Apple and Google push accounts, which are not set up.
-- The Windows app is not code-signed; Windows asks the person to choose More info, then Run anyway. Computer use on Windows is not built. Windows Hello has not been walked on a real PC, and without Hello the Windows key signs without asking each time.
-- A Windows PC runs no sessions of its own; a Windows home is planned.
-- CSV export is in the web app only; a phone does not offer it yet.
-- The Mac server installer is tested on a clean macOS in CI, not on real Mac hardware.
-- The first Windows install checks a SHA-256 checksum, not the release signature.
+- In 0.5 push goes out as web push. Native push waits for Apple and Google push accounts. The Windows app is unsigned, so Windows asks for **More info**, then **Run anyway**. A Windows PC is a device and runs no sessions of its own, and CSV export is in the web app. Real iPhone and Android walks are still to come.
+- A business that wants its own screen or action adds a custom module: a folder with `module.json` and an entry file that registers tools and emits events (see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md)). core/modules loads it, kernel/modules supervises it, and its tools reach Flows and agents. An agent can write it on the business's own server.
+- For an outside app, an Integration is planned (docs/roadmap.md R051-01). It wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
+- The full list is in [known gaps](../../known-gaps.md).
 
 ## Related
 

@@ -11,7 +11,7 @@ status: stable
 ## What it is
 
 Vyre speaks MCP in three directions. The Vyre MCP server (`harness/mcp/server.js`) offers Vyre's tools to Claude Code and any MCP client. The MCP hub (`core/mcp`) connects Vyre sessions to other MCP servers. Two doors (`core/mcpconn`, `core/outside`) let an AI that is not a Vyre session call in over HTTP.
-The Engineer is a built-in agent that helps an owner or admin shape a Space (record types, Flows, Kits, Playbooks, agent instructions) by proposing changes. It never applies them.
+The Engineer is a built-in agent that helps an owner or admin shape a Space (record types, Flows, Kits, Playbooks, agent instructions). It proposes changes and applies none.
 
 ## What a person sees
 
@@ -44,6 +44,10 @@ The Engineer is a built-in agent that helps an owner or admin shape a Space (rec
 
 **The Engineer.** Defined as `ENGINEER` in `core/agents/index.js`: a built-in agent (`builtin` column) that cannot be deleted, renamed, or given projects, credentials or a computer. Its session may call only a fixed list: Flow drafting and checking (`flows.define`, `flows.compile-text`, `flows.simulate`, `flows.test.save`), proposing (`flows.propose`, `flows.kit.propose`), Playbook tools (`work.template.define`, `work.template.test`), reads (`agents.list`, `skills.find`, `docs.find`, `docs.read`), and nothing that approves or applies. A person's yes on one card applies a change, and each applied change is a version that can be rolled back. It runs on the person's own chain and model, so it can build only what that person can. Any person may have an Engineer chat (`core/work/persistent.js`).
 
+**A team of agents in one project (`core/team`).** A project can hold several teammates, one per role. `team.add` takes `project`, `role` and a `brief` (what work goes to this teammate), plus optional `instructions`, `tools` and `isolation`; it makes the agent `<role>-<project>`, with its own notes file as memory. A model that adds a teammate gets the default tools and models, and the approval binds the project and the role, so the person sets the rest. `team.ask` sends work to a role (`to`, `text`) and takes an optional `model`: a provider such as `codex` or `grok`, `provider/model`, or a Claude model name. That request runs in its own session on that model, through the same Gate and spend. A teammate can also hold standing duties (`team.duties.create`, in `core/team/duties.js`): a trigger, such as an event like `thread.finished`, or a schedule like `daily 07:00`, and an instruction. A duty a teammate proposes for itself starts off and does not run until a person turns it on.
+
+A "reviewer" or a "planner" is not a named feature. A person assembles one: add a teammate with the role `reviewer` and a brief that says what to check, give it a duty on `thread.finished` that reads the finished work and files notes, and send it work with `team.ask`. The Planner module (`core/planner`) is a different thing. It keeps alarms, timers, reminders, to-dos, notes and a calendar as the Space's records and fires `planner.fired`. It is not an agent. Chat across Claude, Codex, Grok and other providers in one group chat is covered in [Sessions and models](./sessions-and-models.md).
+
 **The builder.** `core/builder` answers `builder.build` for Publish (module-only). It builds a folder of ready files or a public GitHub repo, and with a build command it writes a Dockerfile and builds in a container; apps with their own server are refused in this release. See [Sites and publishing](./sites-and-publishing.md).
 
 ## Where the code lives
@@ -65,13 +69,14 @@ The Engineer is a built-in agent that helps an owner or admin shape a Space (rec
 - Person or module only: `mcp.add`, `mcp.update`, `mcp.remove`, `mcpconn.connect`, `mcpconn.revoke`, `pluginagent.grant`, `outside.register`.
 - The Engineer: ask it from its pinned chat; it proposes, a person approves. Docs: Tools (agent doc "tools"), Connections (agent doc "connections"), Authority (agent doc "authority"), [Claude Code](../../using/claude-code.md).
 
-## Limits today
+## Extend it
 
-- Members cannot inspect a Flow over MCP (`flows.describe`, `flows.runs` and `flows.connections` are for owners).
-- A member's MCP servers that they sign in to inside a session are not carried to their next session.
-- A member cannot add a setup token or API key as their own AI account.
-- Connecting a person's AI works for the person who owns the Vyre, on their own computer: a member's device is refused (see `mcpconn.connect`).
-- Publishing apps with their own server is turned off in this test release; a folder of ready files and a React page still publish.
+- In 0.5 `flows.describe`, `flows.runs` and `flows.connections` over MCP are for owners. A member's own AI account is a provider sign-in, a member's session-level MCP sign-ins last for that session, and a connected AI belongs to the person who owns the Vyre, on their own computer. 0.5.1 work is on the [roadmap](../../roadmap.md).
+- Publishing apps with their own server depends on the setting `publish.servers`; a folder of ready files and a React page publish today.
+- A custom module adds tools that every MCP client then sees, because the server lists what vyred has. Write it as a folder with `module.json` and an entry file that registers tools and emits events; see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). core/modules loads it under the supervisor in kernel/modules, and the hosted allowlist places each new tool before a hosted key can call it. An agent can write such a module on the business's own server.
+- Another MCP server joins through the hub (`mcp.add`, by a person), with its credentials in the Vault.
+- An outside app can become an Integration (planned: docs/roadmap.md R051-01) with its own Flow steps, triggers, connection and agent tools.
+- The full list is in [known gaps](../../known-gaps.md).
 
 ## Related
 

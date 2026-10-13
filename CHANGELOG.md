@@ -1,7 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
-- docs: ARCHITECTURE.md at the repo root is the front door (what Vyre is, a Mermaid map, a table of contents), with one page per 0.5 feature in docs/architecture/features/ (17 pages, one template) and docs/for-agents/MAP-YOUR-BUSINESS.md, a method an AI agent follows to map a business onto Vyre; the README points to both.
+- docs: ARCHITECTURE.md at the repo root is the front door (mission, what Vyre is, what makes it strong, a Mermaid map, a table of contents, how to extend it), with one page per 0.5 feature in docs/architecture/features/ (17 pages, one template, each ending in Extend it) and docs/for-agents/MAP-YOUR-BUSINESS.md, a method an AI agent follows to map a business onto Vyre; the mission leads the README and docs home.
 - fix(tests): test/peer-race.test.js keeps its fake chain unreadable for all 12 reads of a call (three reads a look, four looks) now that an unreadable chain is retried; assertions unchanged.
 - security (GHSA-32h6-gq86-772f): fixed in 0.5.0. A call from a device removed from a Space is refused, and facts the kernel refuses never fall back to a module's service chain (commits 9af8d7c8 and 94a65fd9, merged on the stage in c2b4ca3d and c3a33ef0).
 - fix(daemon): an unreadable process chain on a socket call (a /proc read that raced on a busy box) is retried like an empty peer read, same count and backoff, so a busy box no longer refuses its own terminal with "could not tell who is calling"; after the retries the refusal is unchanged (fail closed, no fallback).
