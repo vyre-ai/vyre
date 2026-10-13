@@ -45,7 +45,7 @@ export default function NeedDetail() {
       <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
         <Back />
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemeProvider><PublishHold need={n} who={n.agent ?? undefined} /></ThemeProvider>
+          <ThemeProvider><View style={{ maxWidth: 720, width: "100%", alignSelf: "center", paddingHorizontal: 16 }}><PublishHold need={n} who={n.agent ?? undefined} /></View></ThemeProvider>
           {n.thread ? (
             <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: "/u/chats/[id]", params: { id: n.thread as string } })} style={styles.link}>
               <Text style={[type.readStrong, { color: color.focus }]}>Open chat</Text>
