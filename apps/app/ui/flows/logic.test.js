@@ -64,10 +64,10 @@ test("a stored Flow opens as a draft and saves back the same", () => {
 });
 
 test("a step the palette cannot say is kept as it was", () => {
-  const stored = { ...toDefinition(REFUND_DRAFT), concurrency: 2, steps: [...toDefinition(REFUND_DRAFT).steps, { id: "look", kind: "find", type: "client", where: "record.x == 1" }] };
+  const stored = { ...toDefinition(REFUND_DRAFT), concurrency: 2, steps: [...toDefinition(REFUND_DRAFT).steps, { id: "look", kind: "classify", input: { expr: "trigger.a + trigger.b" }, labels: ["x", "y"] }] };
   const d = fromDefinition(stored);
   assert.equal(d.steps.at(-1).kind, "advanced");
-  assert.equal(stepSummary(d.steps.at(-1), O), "Advanced step (find)");
+  assert.equal(stepSummary(d.steps.at(-1), O), "Advanced step (classify)");
   assert.deepEqual(toDefinition(d), stored);
 });
 
