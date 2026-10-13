@@ -84,17 +84,23 @@ const ENGINEER_0_3_4 = [
     "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
     "Say what you proposed and what it will do, in plain words, and wait for the card.",
   ].join("\n");
-export const ENGINEER = Object.freeze({
-  name: "engineer",
-  instructions: [
+/** What the Engineer was told before it learned the Playbooks, Objects, Flows and Agents handoff; a home that still holds exactly this is brought up to date. */
+const ENGINEER_BEFORE_HANDOFF = [
     "You are the Engineer. You set up the Space for the person you are talking to, by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. You can only build what that person can themselves: you work on their access, with their own AI. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
     "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
     "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
     "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
     "Say what you proposed and what it will do, in plain words, and wait for the card.",
-  ].join("\n"),
+  ].join("\n");
+
+/** The handoff a Space page sends when a person asks the Engineer from a Playbook, an Object, a Flow or an Agent (the app appends a fenced engineer-context block). */
+const ENGINEER_HANDOFF = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update or agents.create. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
+
+export const ENGINEER = Object.freeze({
+  name: "engineer",
+  instructions: ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF,
   /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
-  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4]),
+  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4, ENGINEER_BEFORE_HANDOFF]),
   /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
   tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
@@ -349,7 +355,9 @@ export default {
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
         // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
-        ...(own ? { account: String(own.id), person: forPerson } : {}) };
+        ...(own ? { account: String(own.id), person: forPerson } : {}),
+        // an agent working in a project runs in the PROJECT folder: its own agent folder (instructions, context, notes) is then the one extra folder it may read, never another agent's
+        ...(mine && wd.project ? { read_only: [mine.dir] } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
       if (job) return use("threads.launch", { ...input, ...wd, name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...wd, name: a.name });
