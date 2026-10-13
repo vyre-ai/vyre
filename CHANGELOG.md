@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): /map/ becomes a guided experience: a five-step stepper with industry presets, a live SVG diagram of the business (people, agents, linked records, Playbooks, Flows with the Gate hold, tool connections), a generated result with counts, a day in the life and what Vyre does for each tool, and a copyable prompt, build prompt and share link (URL hash only, no network, no storage); script in site/map.js.
 - fix(app-out): the hosted app's manifest and Worker also accept + in a file path (the web export's `+not-found-<hash>.js`); a full export uses no other characters beyond [ ] and +.
 - docs(site): a /downloads page (Mac Apple silicon and Intel, Windows, Android, iPhone steps, Linux and Mac server line, web app, signature note), a Log in button in the nav, and a 404 with the halftone V drifting back and a Needs you card of links; built by scripts/site/pages.mjs.
 - docs(site): vyre.run alignment pass: one content grid on every page (FAQ and the agent note span the grid, text-only rows align to the top, mirrored feature rows keep the same copy width, direction and prose pages fill the grid), CSS only.
