@@ -23,3 +23,15 @@ export function spaceName(s) {
   console.warn(`space ${s.id} has no readable name (displayName, label and name are empty or ids); showing "Space"`);
   return "Space";
 }
+
+/**
+ * The small tag that goes on everything (12 Oct ruling): where a thing lives, in words. A personal space with no server (tier "basic") is "Personal - Home"; a personal space on her own server (tier "cloud") is
+ * "Personal - Cloud"; anything that belongs to a team Space says that Space's own name ("Acme"), without the "'s Cloud" the switcher adds. One function decides it, from the space row; no screen guesses.
+ * @param {SpaceNameRow} s @returns {string}
+ */
+export function placeTag(s) {
+  if (isPersonal(s)) return s.tier === "cloud" ? "Personal - Cloud" : "Personal - Home";
+  if (s.tier === "basic" && !nameable(s.displayName) && !nameable(s.label) && !nameable(s.name)) return "Personal - Home";
+  const n = nameable(s.displayName) || nameable(s.label) || nameable(s.name);
+  return n ? n.replace(/'s Cloud$/i, "") : "Space";
+}

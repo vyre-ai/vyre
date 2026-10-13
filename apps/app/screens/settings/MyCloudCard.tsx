@@ -9,7 +9,7 @@ import { hashMatches } from "../../src/real/payload-hash.js";
 import { yesSigner } from "../../src/personal/signer";
 import { createSpace } from "../../src/real/install";
 import { AddServerCard } from "./AddServerCard";
-import { MOVE, SET_UP, approvalLine, blockersOf, canMove, cloudState, offerFor, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
+import { MOVE, SET_UP, approvalLine, blockersOf, canMove, cloudState, offerFor, rowsOnFailure, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
 
 type Step = { kind: "idle" } | { kind: "plan"; plan: any } | { kind: "report"; report: ReturnType<typeof reportLines> };
 
@@ -24,7 +24,7 @@ export function MyCloudCard() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const load = () => {
-    tool<any[]>("spaces.list").then((d) => setRows(Array.isArray(d) ? d : [])).catch(() => setRows(null));
+    tool<any[]>("spaces.list").then((d) => setRows(Array.isArray(d) ? d : [])).catch(async () => setRows(rowsOnFailure(Boolean(await import("../../src/api/relay").then((m) => m.loadPairing()).catch(() => null)))));
     tool("spaces.servers").then((d) => setServers(serversOf(d))).catch(() => setServers([]));
   };
   useEffect(load, []);

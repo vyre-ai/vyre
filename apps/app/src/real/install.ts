@@ -142,10 +142,10 @@ export async function proposeKitFor(space: string, id: string): Promise<{ ok: bo
  * ONE SPACE PER SERVER: make the paired server's OWN Space the team's (nameServerOwnSpace: spaces.name-here, the directory record for the existing id), keep its root public key beside it, and answer
  * the id. Nothing is hosted. Refusals keep their codes: store_unavailable (the server cannot run the record store, Twenty; its plain words are shown), server_too_old, on_phone (a browser), the directory's own.
  */
-export async function makeServerSpace(slug: string, displayName: string): Promise<string> {
+export async function makeServerSpace(slug: string, displayName: string, server?: { key: string; route: { relay: string; route: string; box: string } | null }): Promise<string> {
   const { nameServerOwnSpace } = await import("./claim-space");
   const { keepRootPublic } = await import("../state/space-roots");
-  const made = await nameServerOwnSpace({ name: slug, displayName });
+  const made = await nameServerOwnSpace({ name: slug, displayName, ...(server ? { server } : {}) });
   await keepRootPublic(made.space, made.rootPublic);
   return made.space;
 }

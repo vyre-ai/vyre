@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ServerLine } from "./ServerLine";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { BlockScreen, Card, Divider, IconTile, Row, Text, type BlockScreenData, type IconName } from "@vyre/ui";
@@ -42,6 +43,7 @@ export function SettingsHome() {
   };
   return (
     <Frame title="Settings" top>
+      <ServerLine />
       <BlockScreen screen={screen} handlers={{
         open: (_b, row) => router.push(row.id as never),
         // the Mac's "make this Mac a server" card sits under the Devices group, where it always has

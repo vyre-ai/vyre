@@ -28,7 +28,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9598 (class 3, lead ruling 12 Oct 2026, rc.3: "scoped to you or you have access to see"; +50 on 9548): chat records and file shares are kept by the work module (KEEPERS, the member door, the link read, the share's sharer in `created_for`); a communication, a team row, a project and a task are read by a per-record rule (PRIVATE_READS, one statement of staff); a file's events follow the file; the tasks service reads by the same task rule (ownership.js mayReadTask).
 // 9606 (roles-core, 13 Oct 2026, lead ruling: custom roles, +2 in grants/index.js: one checkCustom (a custom role is Member narrowed: base Member, only what Member holds, inside this Space, an expiry the one condition) shared by assignment and invite; the invite keeps the custom grants beside its hash). seats raises its own line to 9611: whoever merges second sets 9613.
 // 9604 (class 3, on 9598: a row-scoped grant given by an owner or an admin, never a delegation, is access to see for a communication, a team row, a project or a task: the authorizer already matched it to the row, the lead's ruling A of 12 Oct 2026, "whatever is scoped to you or you have access to see").
-const CAP = 9606;
+// 9611 (kernel +7 on 9604, per-project seat levels: a viewer on a project reads it and writes nothing in it, refused in words from the one folder guard and the gate; the rule that judges who writes a seat or a task is in gateway/ownership.js, which is not base).
+// 9613 (seats +7 and roles-core +2 together on 9604, merged on the stage 13 Oct 2026).
+const CAP = 9613;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

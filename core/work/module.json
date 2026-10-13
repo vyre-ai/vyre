@@ -136,6 +136,12 @@
         "reach": "modules"
       },
       {
+        "name": "work.project.level",
+        "summary": "set a person's level on a project: lead, contributor or viewer (a level only narrows their Space role)",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.serve",
         "summary": "a team member's own chat call on the team's server, as that member in that Space (the daemon's member door only)",
         "reach": "modules",

@@ -11,23 +11,26 @@ const LINES = {
   admin: "Members, devices, Customize, connectors and assistants. Cannot delete or move the space.",
   manager: "Creates and runs projects, sets teams and tasks. Cannot change types or manage members.",
   member: "Works on the projects they belong to.",
-  temp: "Only the projects named, until an end date.",
+  temp: "Only the projects shared with them, until an end date.",
 };
-export const ROLES = ROLE_IDS.map((id) => ({ id, label: ROLE_LABELS[id], line: LINES[id] }));
+/** What a screen calls a role: the kernel's Temp is a Guest, said once here. */
+const SCREEN_LABELS = { ...ROLE_LABELS, temp: "Guest" };
+export const ROLES = ROLE_IDS.map((id) => ({ id, label: SCREEN_LABELS[id], line: LINES[id] }));
 
 const RANK = ROLE_RANK;
 
 /** The Vyre name of a role; a Kit role has none here, so its own name. */
-export const roleLabel = (/** @type {string} */ r) => (Object.hasOwn(ROLE_LABELS, r) ? /** @type {any} */ (ROLE_LABELS)[r] : r);
+export const roleLabel = (/** @type {string} */ r) => (Object.hasOwn(SCREEN_LABELS, r) ? /** @type {any} */ (SCREEN_LABELS)[r] : r);
 
 /**
- * The roles `actor` may give from the app. An owner can give any but Owner; an admin can give roles below admin; nobody else can change roles.
+ * The roles `actor` may give from the app. An owner can give any but Owner; an admin can give roles below admin; nobody else can change roles. Manager is no longer offered
+ * (a custom role covers it); a person who already is one keeps it.
  * Owner is never given here: a server that has an owner is moved on the server itself, with the person's passkey (wink.server.adopt refuses the
  * paired app's call with presence_required). See `ownerMoveLine`.
  */
 export function assignable(/** @type {Role} */ actor) {
-  if (actor === "owner") return ROLES.filter((r) => r.id !== "owner").map((r) => r.id);
-  if (actor === "admin") return ROLES.filter((r) => RANK[r.id] < RANK.admin).map((r) => r.id);
+  if (actor === "owner") return ROLES.filter((r) => r.id !== "owner" && r.id !== "manager").map((r) => r.id);
+  if (actor === "admin") return ROLES.filter((r) => RANK[r.id] < RANK.admin && r.id !== "manager").map((r) => r.id);
   return [];
 }
 
