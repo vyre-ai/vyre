@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aliasTable, toAliasText, toPathText, dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
+import { parseDateToken, aliasTable, toAliasText, toPathText, dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
 import { fromDefinition, toDefinition } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
@@ -121,9 +121,8 @@ test("insert a date reads back in words, formats by the field's type, and an off
   assert.equal(dateWords(d), "Thing \u00b7 Start, minus 1 day, as date and time");
   assert.equal(dateWords({ ...d, dir: "at", kind: "date" }), "Thing \u00b7 Start, as weekday and date");
   assert.equal(dateWords({ ...d, dir: "after", amount: 3, kind: undefined }), "Thing \u00b7 Start, plus 3 days, as text");
-  assert.equal(dateToken(d), "{after.starts_at}");
-  assert.match(datePending(d), /offset .* Coming next/);
-  assert.equal(datePending({ ...d, dir: "at" }), null);
+  assert.equal(dateToken({ ...d, dir: "at" }), "{after.starts_at}");
+  assert.equal(datePending(d), null);
   assert.match(datePending({ ...d, dir: "at", kind: undefined }), /not a date type/);
 });
 
@@ -172,4 +171,33 @@ test("the owner reads friendly names and the engine gets its own paths, both way
   assert.equal(toAliasText("{email} {name}", aliasTable(f)), "{form.email} {form.name}");
   assert.equal(toPathText("{form.email}", aliasTable(f)), "{email}");
   assert.ok(g.every((x) => x.items.every((i) => i.alias && !/steps\./.test(i.alias))));
+});
+
+test("the date token is written and read back, offsets and formats, in the engine's grammar", () => {
+  const base = { ref: "{after.starts_at}", dir: "before", amount: 1, unit: "days", format: "date" };
+  assert.equal(dateToken(base), "{after.starts_at - 1 day as date}");
+  assert.equal(dateToken({ ...base, dir: "after", amount: 3, unit: "hours", format: "" }), "{after.starts_at + 3 hours}");
+  assert.equal(dateToken({ ...base, dir: "at", format: "weekdaytime" }), "{after.starts_at as weekdaytime}");
+  assert.equal(dateToken({ ...base, ref: "{now}", dir: "after", amount: 2, unit: "months", format: "iso" }), "{now + 2 months as iso}");
+  assert.equal(dateToken({ ...base, amount: 0 }), "{after.starts_at as date}");
+  assert.equal(dateToken({ ...base, ref: "" }), "");
+  for (const tok of ["{after.starts_at - 1 day as date}", "{now + 2 months as iso}", "{today}", "{after.starts_at + 3 hours}", "{x as time}"]) assert.equal(dateToken(parseDateToken(tok)), tok.replace(/ as (?=$)/, ""));
+  assert.deepEqual(parseDateToken("{after.starts_at - 1 day as date}"), { ref: "{after.starts_at}", dir: "before", amount: 1, unit: "days", format: "date" });
+  assert.equal(parseDateToken("Hello {name}"), null);
+  assert.equal(parseDateToken("{a} {b}"), null);
+  assert.equal(dateWords({ ...base, refLabel: "Thing \u00b7 Start" }), "Thing \u00b7 Start, minus 1 day, as date");
+  assert.equal(dateWords({ ...base, refLabel: "Thing \u00b7 Start", format: "weekdaytime", dir: "after", amount: 2 }), "Thing \u00b7 Start, plus 2 days, as weekday, date and time");
+});
+
+test("a template with offset tokens parses, shows friendly names and converts back", () => {
+  const o = { ...O, types: [{ name: "thing", label: "Thing", fields: [{ name: "starts_at", label: "Start", kind: "datetime" }] }] };
+  const g = insertList(draft([email], { kind: "created", type: "thing" }), "mail", o);
+  const t = aliasTable(g);
+  const stored = "See you {after.starts_at - 1 day as date} or {today} or {now + 2 hours}.";
+  assert.deepEqual(tokensOf(stored).map((x) => x.path), ["after.starts_at", "today", "now"]);
+  const shown = toAliasText(stored, t);
+  assert.equal(shown, "See you {thing.starts_at - 1 day as date} or {today} or {now + 2 hours}.");
+  assert.equal(toPathText(shown, t), stored);
+  assert.deepEqual(unknownTokens(stored, g), []);
+  assert.equal(renderPreview("{after.starts_at - 1 day}", {}, g), "[Thing \u00b7 Start, - 1 day]");
 });
