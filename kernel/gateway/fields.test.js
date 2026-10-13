@@ -99,3 +99,23 @@ test("computed fields: a bad definition is refused when the type is defined", as
   await bad({ name: "x", kind: "number", label: "X", computed: { over: { type: "t", via: "v", fn: "sum" } } }, "sum needs a field");
   await R.define(o, { add_types: [t({ name: "x", kind: "number", label: "X", computed: { expr: "a * 2" } })] });
 });
+
+test("field groups: a type names its sections in order, a field says which one it is in, both come back on read, and a bad shape is refused when the type is defined", async () => {
+  const { k, o } = await rigWithBob(), R = k.gateway.records;
+  const t = (groups, g) => ({ name: "asset", label: "Asset", ...(groups ? { groups } : {}), fields: [{ name: "name", kind: "text", label: "Name", ...(g ? { group: g } : {}) }, { name: "value", kind: "number", label: "Value", group: "Money" }] });
+  const bad = (groups, g, why) => assert.rejects(() => R.define(o, { add_types: [t(groups, g)] }), { code: "bad_input" }, why);
+  await bad(undefined, undefined, "a field names a group but the type has none");
+  await bad([{ name: "Money" }, { name: "money" }], undefined, "two groups with one name");
+  await bad([{ name: " " }], undefined, "a blank group name");
+  await bad([{ name: "Money" }], "Basics", "a field in a group the type does not list");
+  await bad([{ name: "Money", collapsed: "yes" }], undefined, "collapsed is true or false");
+  await bad(Array.from({ length: 21 }, (_, i) => ({ name: `G${i}` })), undefined, "more than 20 groups");
+  await bad([{ name: "M".repeat(61) }], undefined, "a name over 60 characters");
+  await R.define(o, { add_types: [t([{ name: "Basics" }, { name: "Money", collapsed: true }], "Basics")] });
+  const def = (await k.store.types()).find(d => d.name === "asset");
+  assert.deepEqual(def.groups, [{ name: "Basics" }, { name: "Money", collapsed: true }]);
+  assert.equal(def.fields.find(f => f.name === "value").group, "Money");
+  // a rename is one change_types; the data is untouched
+  await R.define(o, { change_types: [{ ...t([{ name: "Basics" }, { name: "Value" }], "Basics"), fields: [{ name: "name", kind: "text", label: "Name", group: "Basics" }, { name: "value", kind: "number", label: "Value", group: "Value" }] }] });
+  assert.equal((await k.store.types()).find(d => d.name === "asset").fields[1].group, "Value");
+});

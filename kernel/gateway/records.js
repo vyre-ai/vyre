@@ -435,7 +435,19 @@ export function createRecords(cfg) {
           if (not.includes(n)) throw bad(`${what} cannot name ${n}`);
         }
       };
+      // groups are presentation: the sections of the type in order, and each field's section. Never a permission.
+      if (t.groups !== undefined) {
+        if (!Array.isArray(t.groups) || t.groups.length > 20) throw bad("groups is a list of at most 20 sections");
+        const names = new Set();
+        for (const g of t.groups) {
+          if (!g || typeof g !== "object" || typeof g.name !== "string" || !g.name.length || g.name.length > 60 || g.name !== g.name.trim()) throw bad("a group has a name of 1 to 60 characters with no spaces at the ends");
+          if (g.collapsed !== undefined && typeof g.collapsed !== "boolean") throw bad(`${g.name}.collapsed is true or false`);
+          if (names.has(g.name.toLowerCase())) throw bad(`two groups are called ${g.name}`);
+          names.add(g.name.toLowerCase());
+        }
+      }
       for (const f of fields) {
+        if (f.group !== undefined && (typeof f.group !== "string" || !(t.groups || []).some((/** @type {any} */ g) => g.name === f.group))) throw bad(`${f.name}.group is one of the type's groups`);
         if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
         if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);

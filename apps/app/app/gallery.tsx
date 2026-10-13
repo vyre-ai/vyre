@@ -96,6 +96,7 @@ function Sample({ name }: { name: string }) {
   if (name === "setup-field-choice") return <FieldPaneDemo draft={DRAFTS.kind} />;
   if (name === "setup-field-link") return <FieldPaneDemo draft={DRAFTS.client} />;
   if (name === "setup-field-access") return <FieldPaneDemo draft={DRAFTS.value} rules={{ visible: null, required: { field: "kind", op: "is_not", value: "Other" } }} />;
+  if (name === "setup-field-seal") return <FieldPaneDemo draft={DRAFTS.sealed} />;
   if (name === "setup-field-errors") return <FieldPaneDemo draft={DRAFTS.broken} tried />;
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.

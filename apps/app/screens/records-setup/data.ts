@@ -40,6 +40,7 @@ export const DRAFTS = {
   kind: { ...newDraft("choice"), name: "kind", label: "Kind", required: true, description: "What sort of asset this is", options: ["Real estate", "Bank account", "Retirement account", "Life insurance"] },
   client: { ...newDraft("link"), name: "client", label: "Client", required: true, to: "contact", many: false, inverse: "Assets" },
   value: { ...newDraft("money"), name: "estimated_value", label: "Estimated value", hidden_from: ["intake"], required_if: 'kind != "Other"' },
+  sealed: { ...newDraft("text"), name: "account_number", label: "Account number", sealed: true, group: "Money", seal: { level: "human" as const, class: "bank-account", reveal_roles: ["admin"], hint_allowed: true } },
   broken: { ...newDraft("choice"), label: "Held in", options: ["Joint", "joint"], required: true, hidden: true },
 } satisfies Record<string, Draft>;
 

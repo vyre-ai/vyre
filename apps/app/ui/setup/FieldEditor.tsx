@@ -11,6 +11,7 @@ import { Text } from "../components/Text";
 import { KINDS as FIELD_KINDS } from "../fields/registry";
 import { ChoicesEditor } from "./ChoicesEditor";
 import { RelationEditor } from "./RelationEditor";
+import { SealEditor } from "./SealEditor";
 import { RuleBuilder, type Rule } from "./RuleBuilder";
 import { VisibilityMatrix } from "./VisibilityMatrix";
 import { canBeUnique, checkField, CHOICE_KINDS } from "./logic.js";
@@ -69,6 +70,7 @@ export function FieldEditor({ draft, onChange, owner, types, roles, siblings, ru
       <View className="gap-s2">
         <SectionLabel first>Who sees it</SectionLabel>
         <VisibilityMatrix roles={roles} hiddenFrom={draft.hidden_from} sealed={draft.sealed} onChange={(hidden_from) => set({ hidden_from })} onSeal={(sealed) => set({ sealed })} />
+        {draft.sealed ? <SealEditor seal={draft.seal} roles={roles} error={err("seal")} onChange={(seal) => set({ seal })} /> : null}
       </View>
 
       <View className="flex-row gap-s2">

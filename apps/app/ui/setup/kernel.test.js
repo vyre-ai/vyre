@@ -41,3 +41,17 @@ test("a new field becomes a definition with a name from its label", () => {
   const d = { ...newDraft("text"), label: "Date of birth", group: "Client details" };
   assert.deepEqual(applyDraft(undefined, d), { name: "date_of_birth", kind: "text", label: "Date of birth", group: "Client details" });
 });
+
+test("a seal set in the editor round-trips with its level, class, who may reveal and the hint", () => {
+  const def = { name: "ssn", kind: "text", label: "SSN" };
+  const d = { ...draftOf(def), sealed: true, seal: { level: "human", class: "us-ssn", reveal_roles: ["admin"], hint_allowed: true } };
+  const stored = applyDraft(def, d);
+  assert.deepEqual(stored.seal, { level: "human", class: "us-ssn", reveal_roles: ["admin"], hint_allowed: true });
+  assert.deepEqual(draftOf(stored).seal, d.seal);
+  assert.deepEqual(applyDraft(stored, draftOf(stored)), stored);
+});
+
+test("an AI-only seal stores no reveal roles and no hint", () => {
+  const out = applyDraft({ name: "a", kind: "text", label: "A" }, { ...draftOf({ name: "a", kind: "text", label: "A" }), sealed: true, seal: { level: "ai", class: "free", reveal_roles: ["admin"], hint_allowed: false } });
+  assert.deepEqual(out.seal, { level: "ai", class: "free" });
+});
