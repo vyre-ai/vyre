@@ -116,7 +116,7 @@ test("vyre commands --json: every visible command with its verbs, before vyred r
       assert.ok(Array.isArray(v.args) && Array.isArray(v.flags), `${c.name} ${v.verb}`);
     }
   }
-  assert.deepEqual(d.commands.find(c => c.name === "relay").verbs.map(v => v.verb).slice(0, 3), ["status", "pair", "devices"]);
+  assert.deepEqual(d.commands.find(c => c.name === "relay").verbs.map(v => v.verb).slice(0, 3), ["status", "devices", "remove"]);
   assert.ok(JSON.parse((await run(root, ["commands", "--all", "--json"])).stdout).commands.some(c => c.name === "home"));
   const one = JSON.parse((await run(root, ["commands", "phone", "--json"])).stdout);
   assert.deepEqual(one.commands.map(c => c.name), ["phone"]);
