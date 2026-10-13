@@ -20,6 +20,9 @@ import { json, emit, fail, usage, failTool, parse } from "../kit.js";
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 
+/** The label printed for each connection line the daemon returns, by the key it returns it under. */
+const SNIPPET_LABELS = [["claude", "Claude Code"], ["codex", "Codex"]];
+
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "harness", "mcp", "server.js");
 /** The Design and Module MCP: added when the work is design or building a module (harness/mcp/design-serve.js). */
 const DESIGN = path.join(path.dirname(SERVER), "design-serve.js");
@@ -89,14 +92,12 @@ async function connect(args) {
   out(`  ${signal("key made")} ${bold(d.name)} ${dim("· it acts as you; sending and publishing still wait for you · vyre mcp revoke " + d.id + " ends it")}`);
   out("");
   if (d.local) {
-    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
-    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    for (const [key, label] of SNIPPET_LABELS) out(`  ${bold(label.padEnd(11))}  ${d.snippets[key]}`);
     out(dim("  Run yours once, then in a new session run /mcp__vyre__setup-vyre, or tell it to call mcpconn_guide."));
   } else {
     out(`  ${bold("URL")}          ${d.url || "(shown when this server is reachable)"}`);
     out(`  ${bold("Key")}          ${d.key}   ${dim("shown only now")}`);
-    out(`  ${bold("Claude Code")}  ${d.snippets.claude}`);
-    out(`  ${bold("Codex")}        ${d.snippets.codex}`);
+    for (const [key, label] of SNIPPET_LABELS) out(`  ${bold(label.padEnd(11))}  ${d.snippets[key]}`);
     out(dim("  Any MCP client takes the URL and the key as a Bearer token over HTTP. vyre mcp revoke " + d.id + " ends it."));
   }
   return 0;

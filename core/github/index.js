@@ -862,6 +862,9 @@ export default {
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project }, meta = {}) => {
         inGrant(project, meta);
+        // Setting up a local repository is the person's act (13 Oct 2026): the projects, sessions and threads modules do it for the person, but an agent, a model, a guest or an MCP caller never does.
+        const who = String((meta && meta.caller) || "");
+        if (!who.startsWith("module:") && ((meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(who))) throw fail("only a person sets up a project's local repository; ask them to do it from the project page", "denied");
         checkModuleCaller("github.project.local-init", meta, MODULE_CALLERS["github.project.local-init"]);
         const row = await projectRow(project);
         if (!row) throw fail(`no project named ${project}`, "not_found");
