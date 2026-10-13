@@ -12,7 +12,7 @@ const base = { eid: "e".repeat(26), kind: "device", pub: "p", since: T - 9 * DAY
 
 test("the view carries the key, age and flags the door reads, and nothing else", () => {
   const v = entryView({ ...base, held: "web", alg: "webauthn-es256", rp: "vyre.run", enclave: "en", agree: "ag" });
-  assert.deepEqual(Object.keys(v).sort(), ["agree", "alg", "enclave", "eid", "founder", "held", "kind", "pub", "rp", "since"]);
+  assert.deepEqual(Object.keys(v).sort(), ["agree", "alg", "eid", "enclave", "founder", "held", "kind", "pub", "rp", "since"]);
   assert.ok(!("secret" in v) && !("addedBy" in v));
 });
 
