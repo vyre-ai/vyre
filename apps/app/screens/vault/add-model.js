@@ -43,8 +43,8 @@ const OWN = /** @type {Entry[]} */ ([
 /** The last row: bringing items in from another password manager (the Import screen). */
 export const IMPORT_ENTRY = /** @type {Entry} */ ({ id: "import", group: "Import", label: "Import from another password manager", blurb: "1Password, Bitwarden, Chrome, Dashlane or an .env file.", icon: "download", words: "1password bitwarden lastpass chrome csv", slug: "" });
 
-/** Every provider row the picker has, in the catalog's order. @returns {Entry[]} */
-const providerEntries = () => Object.values(PROVIDERS).map((p) => {
+/** Every provider row the picker has: the order written above, then any the catalog gained since. @returns {Entry[]} */
+const providerEntries = () => [...new Set([...Object.keys(PICK), ...Object.keys(PROVIDERS)])].filter((n) => PROVIDERS[n]).map((n) => PROVIDERS[n]).map((p) => {
   const s = PICK[p.name];
   return { id: p.name, group: PROVIDER_GROUP[p.name] ?? "Any API key", label: s?.label ?? p.label, blurb: s?.blurb ?? "", icon: s?.icon ?? "key", words: `${p.label} ${s?.words ?? ""}`, slug: s?.slug ?? p.name };
 });
