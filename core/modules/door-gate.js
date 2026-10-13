@@ -3,7 +3,9 @@
 // from the kernel's verified chain (the session token the socket stamped, or the facts the daemon proved), never from the caller's label. The chain's FIRST person hop decides:
 //   owner or admin: served as before. No person hop: passes (a module's own work). A member: only the tools on MEMBER_MAY. A chain that cannot be read: a member.
 // A server with no member but the owner has nobody to keep out, so nothing is gated there (asked on every call, nothing cached).
-import { MEMBER_MAY, PLUMBING, SELF_GATED } from "./door-lists.js";
+// What a member may call depends on her role (k.roleTools): a Member has MEMBER_MAY, a Guest (kernel role `temp`) has the smaller GUEST_MAY, and a custom role (Member-based) adds the tool groups it turns on
+// (mail, calendar, documents, files, publish, computers, browser: TOOL_GROUPS in door-lists.js, each tool owner-only otherwise). An unknown tool, or a role this gate cannot read, is refused.
+import { MEMBER_MAY, PLUMBING, SELF_GATED, GROUP_OF, GUEST_MAY } from "./door-lists.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
 import { WEB_REACH } from "./agent-reach.js";
 
@@ -37,6 +39,9 @@ const NOUN = Object.freeze({
  */
 const NEEDS_A_PERSON = Object.freeze({ "agents.list": "This device is not marked as yours yet, so it cannot see the Space's agents. Mark it as yours with `vyre relay mark <id>` (or the mark card in the app), then ask again." });
 
+/** What a refused Guest is told: the tool is a member's, not hers. */
+export const guestRefusal = () => "That is not open to a guest. Ask the owner or an admin to give you a role that has it.";
+
 /** What a refused member is told: what it is, whose it is, whom to ask. Never a tool name. @param {string} tool */
 export const refusal = (tool) => {
   const noun = /** @type {Record<string, string>} */ (NOUN)[tool.split(".")[0]];
@@ -44,42 +49,68 @@ export const refusal = (tool) => {
 };
 
 /**
- * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: (space?: string) => Promise<boolean> }} k
- * @returns {((tool: string, caller: string, meta: any) => Promise<{ error: { code: string, message: string } } | null>) & { hides: (caller: string, meta: any) => Promise<"member" | "pass"> }}
+ * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: (space?: string) => Promise<boolean>, roleTools?: (actor: any) => Promise<{ base: string, groups: readonly string[] } | null> }} k
+ *   roleTools: the person's base role and the tool groups her custom role turns on; absent or null is a plain Member (no group).
+ * @returns {((tool: string, caller: string, meta: any) => Promise<{ error: { code: string, message: string } } | null>) & { hides: (caller: string, meta: any) => Promise<"member" | "pass">, visible: (caller: string, meta: any) => Promise<((tool: string) => boolean) | null> }}
  */
 export function createDoorGate(k) {
-  /** Is this call a MEMBER's own session? `v` is "member" or "pass"; `noPerson` says a member verdict came from the label alone, with no person on the call. @param {string} caller @param {any} meta @returns {Promise<{ v: "member" | "pass", noPerson: boolean }>} */
+  /** Is this call a MEMBER's own session? `v` is "member" or "pass"; `noPerson` says a member verdict came from the label alone, with no person on the call. @param {string} caller @param {any} meta @returns {Promise<{ v: "member" | "pass", noPerson: boolean, actor: any }>} */
   const judged = async (caller, meta) => {
     const m = meta || {};
     let others = true;
     try { others = (await k.othersExist(isRelay(caller, m) && m.in_space_chain ? m.in_space_chain.space : undefined)) === true; } catch { others = true; }
-    if (!others) return { v: "pass", noPerson: false };
+    if (!others) return { v: "pass", noPerson: false, actor: null };
     const relayed = isRelay(caller, m);
     const claims = relayed || typeof m.token === "string" || (m.kernelFacts && typeof m.kernelFacts === "object");
     /** @type {any} */ let first = null;
     if (!claims) {
-      if (!UNPROVEN_LABEL.test(String(caller))) return { v: "pass", noPerson: false };
+      if (!UNPROVEN_LABEL.test(String(caller))) return { v: "pass", noPerson: false, actor: null };
     } else {
       try {
         const c = relayed ? m.in_space_chain : await k.chainOf(m);
         const hop = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person") : null;
-        if (!hop) return { v: "pass", noPerson: false };
+        if (!hop) return { v: "pass", noPerson: false, actor: null };
         first = hop.actor;
       } catch { first = null; }
     }
-    if (first) { let role = null; try { role = k.roleOf(first); } catch { role = null; } if (roleAtLeast(String(role), "admin")) return { v: "pass", noPerson: false }; }
-    return { v: "member", noPerson: !claims };
+    if (first) { let role = null; try { role = k.roleOf(first); } catch { role = null; } if (roleAtLeast(String(role), "admin")) return { v: "pass", noPerson: false, actor: null }; }
+    return { v: "member", noPerson: !claims, actor: first };
   };
   /** @param {string} caller @param {any} meta @returns {Promise<"member" | "pass">} */
   const judge = async (caller, meta) => (await judged(caller, meta)).v;
-  const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
-    if (Object.hasOwn(NEEDS_A_PERSON, tool) && MEMBER_MAY.has(tool)) { const j = await judged(caller, meta); if (j.v === "member" && j.noPerson) return { error: { code: "denied", message: /** @type {Record<string, string>} */ (NEEDS_A_PERSON)[tool] } }; }
-    if (PLUMBING.has(tool) || MEMBER_MAY.has(tool) || SELF_GATED.has(tool)) return null;
-    if (WEB_REACH.has(tool) && String(caller).startsWith("web:")) return null; // a browser's own short list, about itself only; agent-reach holds it to that list next
-    return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
+  /** The member's role as the door reads it: her base role and the tool groups her custom role turns on. A role that cannot be read is a plain Member. @param {any} actor */
+  const roleFor = async actor => {
+    if (!actor || typeof k.roleTools !== "function") return { base: "member", groups: /** @type {readonly string[]} */ ([]) };
+    try { const r = await k.roleTools(actor); return r && typeof r.base === "string" && Array.isArray(r.groups) ? r : { base: "member", groups: [] }; } catch { return { base: "member", groups: [] }; }
   };
+  /** May a member with this role call a tool? Pure: the same answer for a call and for her tool list. @param {string} tool @param {{ base: string, groups: readonly string[] }} r */
+  const roleMay = (tool, r) => {
+    if (PLUMBING.has(tool) || SELF_GATED.has(tool)) return true;
+    const group = GROUP_OF.get(tool);
+    if (group) return r.base !== "temp" && r.groups.includes(group);
+    if (!MEMBER_MAY.has(tool)) return false;
+    return r.base === "temp" ? GUEST_MAY.has(tool) : true;
+  };
+  const gate = async (/** @type {string} */ tool, /** @type {string} */ caller, /** @type {any} */ meta) => {
+    if (PLUMBING.has(tool) || SELF_GATED.has(tool)) return null;
+    const group = GROUP_OF.get(tool);
+    if (!MEMBER_MAY.has(tool) && !group) {
+      if (WEB_REACH.has(tool) && String(caller).startsWith("web:")) return null; // a browser's own short list, about itself only; agent-reach holds it to that list next
+      return (await judge(caller, meta)) === "member" ? { error: { code: "denied", message: refusal(tool) } } : null;
+    }
+    if (Object.hasOwn(NEEDS_A_PERSON, tool) && MEMBER_MAY.has(tool)) { const j = await judged(caller, meta); if (j.v === "member" && j.noPerson) return { error: { code: "denied", message: /** @type {Record<string, string>} */ (NEEDS_A_PERSON)[tool] } }; }
+    // on every member's list and every guest's: no role to read
+    if (MEMBER_MAY.has(tool) && GUEST_MAY.has(tool)) return null;
+    const j = await judged(caller, meta);
+    if (j.v === "pass") return null;
+    const r = await roleFor(j.actor);
+    if (roleMay(tool, r)) return null;
+    return { error: { code: "denied", message: group ? refusal(tool) : guestRefusal() } };
+  };
+  /** The test a tool list is cut by for this caller: null when the caller is not a member (the whole list), else whether a tool shows. @param {string} caller @param {any} meta */
+  const visible = async (caller, meta) => { const j = await judged(caller, meta); if (j.v === "pass") return null; const r = await roleFor(j.actor); return (/** @type {string} */ tool) => roleMay(tool, r); };
   /** Does this caller get a member's tool list (the owner's tools left off)? */
-  return Object.assign(gate, { hides: judge });
+  return Object.assign(gate, { hides: judge, visible });
 }
 
 /** Is a tool one a member's list shows? Owner-only tools are left off it. @param {string} tool */
