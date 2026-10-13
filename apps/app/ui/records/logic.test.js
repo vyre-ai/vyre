@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary } from "./logic.js";
+import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload } from "./logic.js";
 
 const FIELDS = [
   { name: "notes", label: "Notes", kind: "rich_text" },
@@ -53,4 +53,16 @@ test("the import preview finds the rows that would be refused", () => {
 test("the summary counts clean rows, rows with a problem, and unmapped columns", () => {
   const s = importSummary(5, [{ row: 2 }, { row: 2 }, { row: 4 }], { A: "x", B: "", C: "" });
   assert.deepEqual(s, { total: 5, ready: 3, flagged: 2, unmapped: 2 });
+});
+
+test("the create form leaves out what a person never types: the stage, a computed field, one a service owns", () => {
+  const fs = [...FIELDS, { name: "stage", label: "Stage", kind: "stage" }, { name: "total", label: "Total", kind: "number", computed: { expr: "1" } }, { name: "state", label: "State", kind: "text", owned_by: "kernel" }];
+  assert.deepEqual(formOrder(fs).map((f) => f.name), ["title", "kind", "ssn", "notes", "value"]);
+});
+
+test("a create splits what is plain from what is sealed, and drops what is empty", () => {
+  const fs = [...FIELDS.filter((f) => f.name !== "old"), { name: "acct", label: "Account", kind: "text", seal: { level: "ai", class: "free" } }];
+  const p = createPayload(fs, { title: " A ", kind: "Home", value: "", notes: null, ssn: "123-45-6789", acct: "9921" });
+  assert.deepEqual(p.plain, { title: "A", kind: "Home" });
+  assert.deepEqual(p.sealed, { ssn: "123-45-6789", acct: "9921" });
 });
