@@ -46,6 +46,10 @@ on:
         description: "Also set the names Worker's runtime secrets CF_API_TOKEN and CF_ZONE_ID from the environment's NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID (first deploy only)"
         type: boolean
         default: false
+      github_secrets:
+        description: "Also set the relay's GitHub sign-in secrets GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET from the deploy environment secrets GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET (GitHub reserves the GITHUB_ prefix) (relay/worker/github.js)"
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -141,6 +145,18 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           "$W" deploy
+      - name: relay/worker GitHub sign-in secrets
+        if: ${{ inputs.relay && inputs.github_secrets }}
+        working-directory: relay/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+        run: |
+          [ -n "$GITHUB_OAUTH_CLIENT_ID" ] && [ -n "$GITHUB_OAUTH_CLIENT_SECRET" ] || { echo "::error::GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET must be environment secrets"; exit 1; }
+          printf %s "$GITHUB_OAUTH_CLIENT_ID" | "$W" secret put GITHUB_OAUTH_CLIENT_ID
+          printf %s "$GITHUB_OAUTH_CLIENT_SECRET" | "$W" secret put GITHUB_OAUTH_CLIENT_SECRET
       - name: names/worker
         if: ${{ inputs.names }}
         working-directory: names/worker
