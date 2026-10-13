@@ -118,7 +118,7 @@ export function Models({ name }: { name: string }) {
   return (
     <>
       <Sec title="Which AI account it runs on">
-        <Banner>{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
+        <Banner icon="info">{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
         {rows.length ? (
           <Card flush>
             <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={92} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
@@ -135,7 +135,7 @@ export function Models({ name }: { name: string }) {
               )} />
           </Card>
         ) : <Card><Text tone="muted">{`No order of its own. In flows, ${name} runs on the Space's default. Add a sign-in to choose.`}</Text></Card>}
-        {ack ? <Banner>{ACK_WORDS}</Banner> : null}
+        {ack ? <Banner tone="warn" icon="warning">{ACK_WORDS}</Banner> : null}
         <View className="flex-row flex-wrap gap-s2">
           <Button size="sm" kind="secondary" label="Add a sign-in" onPress={() => setAdding(true)} />
           <Button size="sm" label="Save the plan" disabled={busy || !dirty} onPress={save} />

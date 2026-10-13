@@ -68,7 +68,13 @@ export function sizeLine(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${Math.round(n / 1024 / 1024)} MB`;
 }
-export const linkLine = (p: string) => ({ title: p.replace(/\/+$/, "").split("/").pop() || p, sub: p });
+/** A linked folder as a person reads it: its name, and its place in Files ("Files / Intake forms"), not a path on the computer. */
+export const linkLine = (p: string) => {
+  const clean = p.replace(/\/+$/, "");
+  const at = clean.lastIndexOf("/Files/");
+  const rel = at >= 0 ? clean.slice(at + "/Files/".length) : clean.split("/").slice(-2).join("/");
+  return { title: clean.split("/").pop() || p, sub: ["Files", ...rel.split("/").filter(Boolean)].join(" / ") };
+};
 /** An uploaded file's name is a name and nothing more: no folder, no dots up. */
 export const contextName = (s: string): string => String(s || "").trim().split(/[\\/]/).pop()!.replace(/^\.+/, "").trim();
 
@@ -76,7 +82,7 @@ export const NOT_USED = (name: string) => `${name} is not in any chat or flow ye
 /** Where the agent is used: its chats, and the flows that name it as a doer. */
 export function usedRows(d: any, agent: string): Used[] {
   const chats = (Array.isArray(d?.chats) ? d.chats : []).map((c: any): Used => ({ kind: "chat", id: String(c.id), title: String(c.title || "Chat"), sub: "Chat" }));
-  const flows = (Array.isArray(d?.flows) ? d.flows : []).map((f: any): Used => ({ kind: "flow", id: String(f.id), title: String(f.name || "Flow"), sub: `Flow. ${agent} is the doer` }));
+  const flows = (Array.isArray(d?.flows) ? d.flows : []).map((f: any): Used => ({ kind: "flow", id: String(f.id), title: String(f.name || "Flow"), sub: `Flow. ${agent} runs it` }));
   return [...chats, ...flows];
 }
 
