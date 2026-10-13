@@ -9,13 +9,13 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 
-const TOOLS = ["connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect", "google.add", "google.connect", "github.session.undo", "github.session.redo", "github.project.local-init", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay"];
+const TOOLS = ["connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect", "google.add", "google.connect", "github.session.undo", "github.session.redo", "github.project.local-init", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /** the tools first-party modules call: their body refuses, so an agent and an mcp caller get "denied" */
-const BODY = new Set(["mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay"]);
+const BODY = new Set(["vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "google.test", "vault.relay"]);
 
 /** inputs that satisfy each tool's schema, so the refusal is about who asked */
-const INPUT = /** @type {Record<string, any>} */ ({ "github.session.undo": { project: "app", session: "s1" }, "github.session.redo": { project: "app", session: "s1" }, "github.project.local-init": { project: "app" }, "mcp.add": { name: "x", transport: "http", url: "https://example.com" }, "mcp.update": { name: "x" }, "mcp.remove": { name: "x" }, "mcp.test": { name: "x" }, "google.test": { name: "x" }, "vault.relay": { item: "i", request: { url: "https://example.com" } } });
+const INPUT = /** @type {Record<string, any>} */ ({ "github.session.undo": { project: "app", session: "s1" }, "github.session.redo": { project: "app", session: "s1" }, "github.project.local-init": { project: "app" }, "mcp.add": { name: "x", transport: "http", url: "https://example.com" }, "mcp.update": { name: "x" }, "mcp.remove": { name: "x" }, "mcp.test": { name: "x" }, "google.test": { name: "x" }, "vault.relay": { item: "i", request: { url: "https://example.com" } }, "vault.me.store.get": { key: "k" }, "vault.me.store.put": { key: "k", value: 1 }, "vault.me.store.list": {}, "vault.me.store.remove": { key: "k" } });
 
 test("an agent, a model, a guest or an MCP caller is refused on the account and session-history tools: person surfaces only", { timeout: 120_000 }, async t => {
   const root = tempHome(t);

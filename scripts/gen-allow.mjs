@@ -223,6 +223,10 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  "vault.me.store.get": "7274907e9@13 Oct 2026",
+  "vault.me.store.put": "7274907e9@13 Oct 2026",
+  "vault.me.store.list": "7274907e9@13 Oct 2026",
+  "vault.me.store.remove": "7274907e9@13 Oct 2026",
   // 13 Oct 2026, the lead's final rulings: reads within the person's reach, and the six tools first-party modules call whose body refuses a non-person caller
   "vault.relay": "381a6fbf6@26 Sep 2026",
   "mcp.add": "2725eaba8@27 Sep 2026",
@@ -348,6 +352,10 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "vault.me.store.get": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "vault.me.store.put": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "vault.me.store.list": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
+  "vault.me.store.remove": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
   "vault.relay": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
   "mcp.add": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
   "mcp.update": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass",
