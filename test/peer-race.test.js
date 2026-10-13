@@ -128,7 +128,7 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   // connection for life.
   const flaky = {};
   let reads = 0;
-  const fdeps = { ...deps, insideClaude: () => (++reads <= 3 ? { inside: false, unknown: true, unreadable: true } : { inside: false }) };
+  const fdeps = { ...deps, insideClaude: () => (++reads <= 12 ? { inside: false, unknown: true, unreadable: true } : { inside: false }) };  // the whole first call unreadable: three reads per look, four looks (the first and PEER_RETRIES retries)
   const one = await asTaken("cli", flaky, registry, undefined, fdeps);
   assert.equal(one.model, true, "unreadable is a model's this time");
   await new Promise(r => setImmediate(r));
