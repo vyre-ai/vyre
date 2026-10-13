@@ -36,12 +36,12 @@ export function createChainAdmit(o) {
   /** @type {Map<string, number>} spent nonces to the time they may be forgotten */
   const nonces = new Map();
 
-  /** The chain for an identity: from the cache while it is fresh, else fetched, checked against the highest seen, and kept. Answers { state, stale } or { why }. @param {string} identity @param {boolean} known this device was admitted before */
-  async function chainOf(identity, known) {
+  /** The chain for an identity: from the cache while it is fresh, else fetched, checked against the highest seen, and kept. Answers { state, stale } or { why }. @param {string} identity @param {boolean} known this device was admitted before @param {string} [name] the Vyre name the hello claims, for an identity this server has never seen */
+  async function chainOf(identity, known, name) {
     const t = clock(), have = cache.get(identity);
     if (have && t - have.at <= REFRESH_MS) return { state: have.state, stale: false };
     /** @type {any} */ let state = null;
-    try { state = await o.fetchState(identity); } catch { state = null; }
+    try { state = await o.fetchState(identity, name); } catch { state = null; }
     if (!state || !Array.isArray(state.entries)) {
       // cannot be checked: a device already admitted keeps working for the grace from the last good fetch; a new one is refused
       if (have && known && t - have.at <= GRACE_MS) return { state: have.state, stale: true };
@@ -65,7 +65,7 @@ export function createChainAdmit(o) {
     async check(h, channelId) {
       const t = clock();
       const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-      if (!h || typeof h !== "object" || Array.isArray(h) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(Number(h.ts)) || typeof h.sig !== "string") return { ok: false, why: "bad_input" };
+      if (!h || typeof h !== "object" || Array.isArray(h) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(Number(h.ts)) || typeof h.sig !== "string" || (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/))) return { ok: false, why: "bad_input" };
       if (h.channel !== channelId) return { ok: false, why: "wrong_channel" };
       if (Math.abs(t - Number(h.ts)) > WINDOW_MS) return { ok: false, why: "stale" };
       for (const [n, exp] of nonces) { if (exp > t) break; nonces.delete(n); }
@@ -77,7 +77,7 @@ export function createChainAdmit(o) {
       const box = await o.boxId().catch(() => null);
       if (!box) return { ok: false, why: "cannot_check" };
       const known = admitted.has(`${h.identity}/${h.entry}`);
-      const c = await chainOf(h.identity, known);
+      const c = await chainOf(h.identity, known, h.name);
       if ("why" in c) return { ok: false, why: c.why };
       const entry = (c.state.entries || []).find((/** @type {any} */ e) => e && e.eid === h.entry && e.kind === "device" && typeof e.pub === "string");
       if (!entry) return refuse;
@@ -97,7 +97,8 @@ export function createChainAdmit(o) {
      * read keeps an admitted device for the grace and says "unknown" past it. @param {string} identity @param {string} entry @returns {Promise<"ok" | "gone" | "unknown">}
      */
     async stillListed(identity, entry) {
-      const c = await chainOf(identity, admitted.has(`${identity}/${entry}`) || true);
+      // a row exists for this device, so it was admitted before (maybe by an earlier run of this server): the grace applies
+      const c = await chainOf(identity, true);
       if ("why" in c) return "unknown";
       return (c.state.entries || []).some((/** @type {any} */ e) => e && e.eid === entry && e.kind === "device") ? "ok" : "gone";
     },
