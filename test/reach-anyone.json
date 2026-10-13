@@ -721,18 +721,6 @@
    "module": "google",
    "reason": "an invite with attendees is held at the Gate; a change with no attendees is written only on a connected account (forWrite) and tells nobody"
   },
-  "google.connect.cancel": {
-   "module": "google",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "google.connect.finish": {
-   "module": "google",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "google.find": {
-   "module": "google",
-   "reason": "read-only: names and states, never a value"
-  },
   "google.mail.draft": {
    "module": "google",
    "reason": "a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
@@ -748,14 +736,6 @@
   "google.mail.send": {
    "module": "google",
    "reason": "held at the Gate: always held until the person approves the final content; nothing sends from here"
-  },
-  "google.remove": {
-   "module": "google",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "google.test": {
-   "module": "google",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
   },
   "hands-desktop.act": {
    "module": "hands-desktop",
@@ -913,17 +893,9 @@
    "module": "mail",
    "reason": "read-only: names and states, never a value"
   },
-  "mail.compose": {
-   "module": "mail",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
   "mail.find": {
    "module": "mail",
    "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "mail.map": {
-   "module": "mail",
-   "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
   "mail.read": {
    "module": "mail",
@@ -936,10 +908,6 @@
   "mail.send": {
    "module": "mail",
    "reason": "held at the Gate: always held until the person approves; the account must be allowed to send (capabilities check)"
-  },
-  "mail.test": {
-   "module": "mail",
-   "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
   "memory.identity.lock": {
    "module": "memory",
@@ -1292,14 +1260,6 @@
   "relay.status": {
    "module": "relay",
    "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
-  },
-  "releases.cert": {
-   "module": "releases",
-   "reason": "callers limited in code to cli, deck, local, tailnet"
-  },
-  "releases.sign": {
-   "module": "releases",
-   "reason": "callers limited in code to cli, local, module"
   },
   "runner.place": {
    "module": "runner",
@@ -1750,10 +1710,6 @@
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
   },
   "vault.agent.grants": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
-  "vault.audit": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
   },

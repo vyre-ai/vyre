@@ -29,7 +29,7 @@
       { "name": "vault.generate", "effect": "write", "reach": "anyone" },
       { "name": "vault.import", "effect": "write", "reach": "anyone" },
       { "name": "vault.import.preview", "effect": "read", "reach": "anyone" },
-      { "name": "vault.audit", "effect": "read", "reach": "anyone" },
+      { "name": "vault.audit", "effect": "read", "reach": "person" },
       { "name": "vault.match", "effect": "read", "reach": "anyone" },
       { "name": "vault.unlock", "effect": "write", "reach": "anyone" },
       { "name": "vault.state", "effect": "read", "reach": "anyone" },

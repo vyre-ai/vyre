@@ -212,6 +212,8 @@ export const DECLARED = Object.freeze({
   "connectors.connection.propose": "565e81d11", "connectors.operation.run": "1d1318369",
   // 13 Oct 2026 (the lead's ruling for the golden refresh): the connector, GitHub and Google READS, and the two calendar writes held at the Gate, which an agent runs within its person's own reach; the hash is the commit that added the tool
   "connectors.calendar.today": "e611302f3@1 Oct 2026", "connectors.catalog": "949aacc9f@30 Sep 2026", "connectors.list": "00484fa80@4 Oct 2026", "connectors.mention.search": "951147830@30 Sep 2026", "github.project.issue.get": "122e4240d@30 Sep 2026", "github.project.issue.list": "122e4240d@30 Sep 2026", "github.project.pr.get": "29b864fe2@30 Sep 2026", "github.project.pr.status": "122e4240d@30 Sep 2026", "github.project.pr.comments": "122e4240d@30 Sep 2026", "github.session.history": "9de43db0d@30 Sep 2026", "github.mentions.resolve": "729bdb750@30 Sep 2026", "github.mentions.search": "729bdb750@30 Sep 2026", "github.project.of": "3a72ea7fc@28 Sep 2026", "github.repos": "3a72ea7fc@28 Sep 2026", "google.accounts": "e3cd9b295@27 Sep 2026", "google.calendar.list": "00484fa80@4 Oct 2026", "google.calendar.next": "e3cd9b295@27 Sep 2026", "google.calendar.search": "00484fa80@4 Oct 2026", "google.calendar.today": "e611302f3@1 Oct 2026", "google.calendar.create": "e3cd9b295@27 Sep 2026", "google.calendar.update": "e3cd9b295@27 Sep 2026",
+  // 13 Oct 2026, second batch of the golden refresh ruling: an agent acts within its person's reach and the tool is judged on the chain (mail and Google reads, google.mail.draft, google.mail.send held at the Gate, mcp.servers/tools/call where the server judges, the Vault reads of its own grants, and github.project.local-init whose body refuses an agent)
+  "mail.accounts": "a55772c09@27 Sep 2026", "mail.find": "a55772c09@27 Sep 2026", "mail.read": "00484fa80@4 Oct 2026", "mail.search": "00484fa80@4 Oct 2026", "google.mail.read": "00484fa80@4 Oct 2026", "google.mail.search": "00484fa80@4 Oct 2026", "google.mail.draft": "e3cd9b295@27 Sep 2026", "google.mail.send": "e3cd9b295@27 Sep 2026", "mcp.servers": "2725eaba8@27 Sep 2026", "mcp.tools": "00484fa80@4 Oct 2026", "mcp.call": "2725eaba8@27 Sep 2026", "vault.account.status": "00484fa80@4 Oct 2026", "vault.agent.grants": "ddbf4e500@27 Sep 2026", "github.project.local-init": "7bd4a038e@30 Sep 2026",
   "docs.find": "92291f02c", "docs.read": "92291f02c", "skills.find": "08ccfca4c", "skills.get": "08ccfca4c", "skills.list": "08ccfca4c", "vyre.core": "cb8fd02ae",
 });
 
@@ -315,6 +317,9 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "mcp.servers": "a read of the MCP servers set up; an agent acts within its person's reach, judged on the chain",
+  "mcp.tools": "a read of the tools an MCP server offers; an agent acts within its person's reach, judged on the chain",
+  "mcp.call": "calls a tool on one of the person's MCP servers; the server judges the call; an agent acts within its person's reach, judged on the chain",
   "connectors.calendar.today": "a read of today's events from the connected calendars; an agent reads within its person's own reach, the read is judged on the chain",
   "connectors.catalog": "a read of the catalogue of apps that can be connected; an agent reads within its person's own reach, the read is judged on the chain",
   "connectors.list": "a read of the apps already connected; an agent reads within its person's own reach, the read is judged on the chain",
