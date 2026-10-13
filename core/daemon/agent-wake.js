@@ -35,11 +35,11 @@ export function createAgentWake(o) {
   };
 }
 
-/** Whether a task is one an agent is to start on now: ready, an agent's, made by a Flow or by a request (not a person's own to-do), and not a note that only tells the agent about something. */
+/** Whether a task is one an agent is to start on now: ready, an agent's, made by a Flow or by a request (not a person's own to-do), and not a Flow's note that only tells the agent about someone else's task. */
 export function wakes(/** @type {any} */ t, /** @type {number} */ now) {
   if (!t || t.kernel || t.state !== "ready" || !t.doer || t.doer.kind !== "agent") return false;
   if (t.source === "manual") return false;
-  if (t.source === "flow_step" && t.output && t.output.kind === "note") return false;
+  if (t.form && t.form.fyi === true) return false;   // a follower's or an approver's note (kernel/flows/runner.js #task) tells the agent about a task; it is not the task
   if (typeof t.created_at === "number" && now - t.created_at > MAX_AGE_MS) return false;
   return true;
 }

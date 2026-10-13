@@ -51,11 +51,11 @@ test("a repeat after a crash between the wake and the write puts the thread on t
   assert.equal(r.edits.length, 2);
 });
 
-test("a task given to a person wakes nothing, and neither does a to-do, a note, a task not ready, a stale one or a kernel one", async () => {
+test("a task given to a person wakes nothing, and neither does a to-do, a follower's note, a task not ready, a stale one or a kernel one", async () => {
   const r = rig([
     task({ id: "p", doer: { kind: "person", id: "ana" } }),
     task({ id: "m", source: "manual" }),
-    task({ id: "n", output: { kind: "note" } }),
+    task({ id: "n", form: { brief: "fyi", fyi: true } }),
     task({ id: "w", state: "waiting" }),
     task({ id: "d", state: "done" }),
     task({ id: "old", created_at: NOW - 48 * 3600 * 1000 }),
