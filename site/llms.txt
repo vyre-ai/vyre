@@ -21,6 +21,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Vyre for consulting firms](https://vyre.run/for/consulting-firms/): Inquiry, scoping call, proposal, statement of work signed, engagement from a Playbook, weekly status, change requests, final report and renewal.
 - [Vyre for marketing and creative agencies](https://vyre.run/for/marketing-agencies/): Inquiry, discovery and brief, proposal and statement of work signed, onboarding with access in the Vault, a campaign Playbook per offer, creative review rounds, client approval, monthly report, renewal.
 - [Vyre for real estate brokerages](https://vyre.run/for/real-estate-brokerages/): Lead response, qualification, listing or buyer agreement signed, a transaction from a Playbook, key dates from the contract date, documents, client updates, closing and follow-up.
+- [Weekly update](https://vyre.run/updates/): one email a week at most with what changed in Vyre; sign up or leave in one click
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Compare

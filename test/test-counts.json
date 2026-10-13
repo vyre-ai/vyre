@@ -968,6 +968,7 @@
  "test/windows-sums-vector.test.js": 5,
  "test/workflows-yaml.test.js": 3,
  "test/ws-single.test.js": 5,
+ "updates/worker/worker.test.js": 18,
  "web/js/api.test.js": 5,
  "web/js/join-caps.test.js": 5,
  "web/js/person.test.js": 8,

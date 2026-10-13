@@ -96,59 +96,9 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://vyre.run/for/</loc>
+    <loc>https://vyre.run/updates/</loc>
     <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/for/law-firms/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/for/accounting-firms/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/for/consulting-firms/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/for/marketing-agencies/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/for/real-estate-brokerages/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/compare/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/compare/automation-tools/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/compare/work-management/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/compare/ai-assistants/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://vyre.run/compare/practice-software/</loc>
-    <lastmod>2026-10-13</lastmod>
-    <priority>0.7</priority>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://vyre.run/docs/</loc>

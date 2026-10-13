@@ -28,7 +28,7 @@ export function mustRunProblems(skipped, mustRun) {
   }
   return out;
 }
-export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/**/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js", "scripts/**/*.test.js", "site/**/*.test.js", "harness/**/*.test.js", "examples/**/*.test.js"];
+export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/**/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "updates/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js", "scripts/**/*.test.js", "site/**/*.test.js", "harness/**/*.test.js", "examples/**/*.test.js"];
 
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {

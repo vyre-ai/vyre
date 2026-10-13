@@ -1,0 +1,37 @@
+# The weekly update list for vyre.run (updates/worker/README.md). No account id here: wrangler takes it from the logged-in
+# account at deploy. Deploying needs the lead's approval, and so do the KV namespace and the secret below.
+#
+#   npx wrangler kv namespace create UPDATES        (then put the id it prints on the id line below)
+#   npx wrangler secret put UPDATES_SECRET          (32+ random characters; it signs row ids and unsubscribe links)
+#
+# The Worker takes only these paths on the vyre.run zone, so the static site (Cloudflare Pages) answers everything else and
+# the form posts to its own origin. A Worker route runs before Pages for the paths it matches.
+name = "vyre-updates"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+workers_dev = false
+routes = [
+  { pattern = "vyre.run/api/updates", zone_name = "vyre.run" },
+  { pattern = "vyre.run/api/updates/*", zone_name = "vyre.run" },
+]
+
+[vars]
+ORIGIN = "https://vyre.run"
+
+# One row per address: email, name, created_at, consent_version, source, confirmed_at. The key is a keyed hash, never the address.
+[[kv_namespaces]]
+binding = "UPDATES"
+id = "REPLACE_WITH_THE_NAMESPACE_ID"
+
+# Per-address limiting, as the relay does it. The namespace_id is this account's own choice (an integer unique across its
+# Workers); 28xxx is this Worker's block, the relay has 26xxx and the name directory 27xxx. Never a global limit (GHSA-25xh-w9j7-7v28).
+[[ratelimits]]
+name = "UPDATES_LIMITER"
+namespace_id = "28001"
+simple = { limit = 5, period = 60 }
+
+# Cloudflare keeps request logs, with addresses, whenever this is on; Vyre needs none of them (#70). The Worker also calls no
+# console function, so an address never reaches a log.
+[observability]
+enabled = false
