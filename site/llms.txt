@@ -32,6 +32,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Vyre with practice software and CRMs: Clio, Karbon, HubSpot](https://vyre.run/compare/practice-software/): Use Clio, Karbon, HubSpot or a similar suite with Vyre: the suite stays your system of record, and Vyre gives your people and agents a place to do the work around it.
 
 ## Devices
+- [Downloads](https://vyre.run/downloads/): every Vyre download in one place, from the latest release
 - [Mac: Vyre](https://vyre.run/mac/): the Vyre app in its own window
 - [Windows: Vyre](https://vyre.run/windows/): tray app with an Alt+Space panel
 - [Linux server](https://vyre.run/linux/): where Vyre runs

@@ -12,7 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { page404, downloadsPage } from './site/pages.mjs';
+import { page404 } from './site/pages.mjs';
 import { pillarPages, PILLAR_LLMS } from './site/pillars.mjs';
 import { computerPages, COMPUTER_LLMS, COMPUTER_FULL } from './site/computer.mjs';
 import { buildIndustries } from './site/industries.mjs';
@@ -42,6 +42,10 @@ const hash = (f) => createHash('sha256').update(readFileSync(join(site, f))).dig
 const CSS_V = `/v2.css?v=${hash('v2.css')}`, JS_V = `/v2.js?v=${hash('v2.js')}`;
 // The two faces are vyre.run's own files (site/fonts, the same as web/fonts): the first page someone opens does not call another company.
 const FONT_PRELOAD = '<link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>';
+// The Vyre mark, the app's own icon: a card with a folded corner, the V in cream halftone dots and the violet bead. It is site/favicon.svg itself,
+// inlined as vector so it is crisp at any size; ids are made unique per use. The bead is the only violet in it.
+const FAVICON = readFileSync(join(site, 'favicon.svg'), 'utf8');
+const vmark = (id, cls = '', attrs = '') => FAVICON.replace(/ width="64" height="64"/, ` class="vmark ${cls}" ${attrs} aria-hidden="true" focusable="false"`).replace(/id="(card|flap|shade)"/g, `id="$1-${id}"`).replace(/url\(#(card|flap|shade)\)/g, `url(#$1-${id})`);
 const ogDir = process.argv.includes('--og') ? resolve(process.argv[process.argv.indexOf('--og') + 1]) : null;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -81,6 +85,8 @@ const I = {
 const STAR = `<svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>`;
 const REPO = 'https://github.com/vyre-ai/vyre';
 const MAP_URL = 'https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS';
+const APP_URL = 'https://web.vyre.run';
+const DL = `${REPO}/releases/latest/download`;
 
 // ---------- layout ----------
 const NAV = [
@@ -94,7 +100,7 @@ function nav(slug) {
   const a = (t, h) => `<a href="${h}"${isCur(h) ? ' aria-current="page"' : ''}>${t}</a>`;
   const links = NAV.map((g) => g.items
     ? `<div class="nav-grp"><a class="nav-top" href="${g.h}"${g.items.some(([, h]) => isCur(h)) ? ' aria-current="page"' : ''}>${g.t}</a><div class="nav-pop">${g.items.map(([t, h]) => a(t, h)).join('')}</div></div>`
-    : a(g.t, g.h)).join('');
+    : a(g.t, g.h)).join('') + `<a class="only-m" href="${APP_URL}">Log in</a><a class="only-m" href="/start/">Set up Vyre</a>`;
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="wrap">
@@ -103,7 +109,7 @@ function nav(slug) {
     <div class="nav-end">
       <a class="star-pill" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star</span></a>
       <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
-      <a class="btn btn-sm nav-login" href="https://web.vyre.run">Log in</a>
+      <a class="btn btn-sm nav-login" href="${APP_URL}">Log in</a>
       <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
       <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     </div>
@@ -220,6 +226,7 @@ const homeBody = `
 <section class="hero" aria-labelledby="hero-h">
   <div class="wrap">
     <div class="copy">
+      <div class="hero-mark" aria-hidden="true">${vmark('hero', 'assemble', 'data-spread="near"')}</div>
       ${eyebrow('Open source. Apache 2.0. Self-hosted. Any model.')}
       <h1 id="hero-h" class="display">Vyre: <b>the agentic command center for AI-native teams</b></h1>
       <p class="mission">Our mission is to help every professional services team become AI-native.</p>
@@ -397,9 +404,9 @@ ${homeBlock(MAP_URL)}
 
 
 <section class="sec" id="faq" aria-labelledby="faq-h">
-  <div class="wrap">
-    <div class="sec-head rv">
-      ${eyebrow('Any questions?')}
+  <div class="wrap feat faq-wrap">
+    <div class="feat-copy rv">
+      <span class="num">Any questions?</span>
       <h2 id="faq-h" class="h2">Straight answers, <b>yes or no first.</b></h2>
     </div>
     ${faqHtml(HOME_FAQ)}
@@ -424,19 +431,87 @@ page({
 });
 
 // ---------- device pages ----------
+// ---------- downloads ----------
+const dlBtn = (file, label, fill = false) => `<a class="btn btn-sm${fill ? ' btn-fill' : ''}" href="${DL}/${file}" download>${label}</a>`;
+(() => {
+  const faq = [
+    ['Do the links always give the newest version?', 'Yes. Each button points at GitHub’s latest release, so it serves the newest file and the version on this page moves with each release.'],
+    ['Is there a Windows file besides the installer?', 'The PowerShell line and VyreSetup.exe do the same thing. The installer file is the one to double-click; the line is for a terminal.'],
+    ['Why is there no app store link?', 'The phone apps are not on a store yet. Android installs from a file you open on the phone. iPhone is built and installed with Xcode.'],
+    ['How do I know a file is what the release signed?', 'Every file is listed in SHA256SUMS, and SHA256SUMS.sig is an Ed25519 signature over that list by the release key. The Vyre app and the install line check it for you; to check it yourself, read the release page.'],
+  ];
+  const card = (ico, h, p, acts, foot) => `<div class="dl rv"><span class="dl-ic">${ico}</span><h3>${h}</h3><p>${p}</p><div class="dl-acts">${acts}</div><div class="dl-foot">${foot}</div></div>`;
+  const body = `
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Downloads</p>
+    ${eyebrow('Vyre ' + VERSION)}
+    <h1 class="display">Everything you can install, <b>in one place.</b></h1>
+    <p class="lead">The apps for your computers and phone, the line that sets up your server, and the web app. Every link points at the latest release.</p>
+    <div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="${REPO}/releases/latest">Release page</a></div>
+  </div>
+</section>
+<section class="sec" id="apps" aria-labelledby="apps-h">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="lbl" id="apps-h">The apps</span></div>
+    <div class="dl-grid">
+      ${card(I.mac, 'Mac', 'The Vyre app in its own window, with Touch ID. Apple silicon or Intel.', dlBtn('Vyre-aarch64.dmg', 'Apple silicon', true) + dlBtn('Vyre-x86_64.dmg', 'Intel'), '<a href="/mac/">How it works on a Mac</a>')}
+      ${card(I.win, 'Windows', 'A tray app with an Alt+Space panel. Run the installer, or paste the line in PowerShell.', dlBtn('VyreSetup.exe', 'VyreSetup.exe', true), term('irm vyre.run/w | iex', 'irm vyre.run/w | iex') + '<a href="/windows/">How it works on Windows</a>')}
+      ${card(I.phone, 'Android', 'The Vyre app from a file. Open it on the phone and allow installs when Android asks.', dlBtn('Vyre-android.apk', 'Vyre-android.apk', true), '<a href="/phone/">Pair your phone</a>')}
+      ${card(I.phone, 'iPhone', 'There is no App Store app yet. You build the app and install it with Xcode on a Mac.', `<a class="btn btn-sm btn-fill" href="${SITE}/docs/using/mobile">Install with Xcode</a>`, '<a href="/phone/">Pair your phone</a>')}
+      ${card(I.doc, 'Every file', 'The checksums, the signature and every other file of the release are on the release page.', `<a class="btn btn-sm btn-fill" href="${REPO}/releases/latest">Release page</a>`, `<a href="${DL}/SHA256SUMS">SHA256SUMS</a>`)}
+      ${card(I.sites, 'Web app', 'Vyre in any browser, with nothing to install. Log in with your passkey.', `<a class="btn btn-sm btn-fill" href="${APP_URL}">Open the web app</a>`, 'The same app as the desktop and phone apps.')}
+    </div>
+  </div>
+</section>
+<section class="sec" id="server" aria-labelledby="srv-h">
+  <div class="wrap feat">
+    <div class="feat-copy rv"><span class="num">Your server</span><h2 id="srv-h" class="h2">One line <b>sets up the server.</b></h2><p class="lead">Your agents live on a machine that stays on. Run the line as yourself, not as root. The app shows the same line with your code in it.</p></div>
+    <div class="rv">
+      <p class="lbl" style="margin:0 0 6px">Linux server</p>
+      ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}
+      <p class="sm" style="margin:6px 0 22px">Linux with Docker Compose 2.24 or newer. <a href="/linux/">More on the Linux server</a></p>
+      <p class="lbl" style="margin:0 0 6px">A Mac that stays on</p>
+      ${term('curl -fsSL vyre.run/box/install-mac-server.sh | sh', 'curl -fsSL vyre.run/box/install-mac-server.sh | sh')}
+      <p class="sm" style="margin:6px 0 0">Run it in Terminal. The Mac asks for its password once so Vyre starts when the Mac does. <a href="/start/">The steps in order</a></p>
+    </div>
+  </div>
+</section>
+<section class="sec" id="verify" aria-labelledby="ver-h">
+  <div class="wrap feat flip">
+    <div class="feat-copy rv"><span class="num">Check what you download</span><h2 id="ver-h" class="h2">Every file is <b>signed.</b></h2><p class="lead">The release lists each file and its checksum, and signs that list with a key the Vyre app and the install line already know.</p></div>
+    <div class="rv">
+      ${list([['SHA256SUMS', `The checksum of every file in the release. <a href="${DL}/SHA256SUMS">Download SHA256SUMS</a>`], ['SHA256SUMS.sig', `An Ed25519 signature over that list, by the release key. <a href="${DL}/SHA256SUMS.sig">Download SHA256SUMS.sig</a>`], ['The release page', `Release notes, every file and how to check them. <a href="${REPO}/releases/latest">Open the latest release</a>`]])}
+    </div>
+  </div>
+</section>
+<section class="sec" aria-labelledby="faq-h">
+  <div class="wrap feat faq-wrap"><div class="feat-copy rv"><span class="num">Questions</span><h2 id="faq-h" class="h2">Questions about <b>downloads.</b></h2></div>${faqHtml(faq)}</div>
+</section>
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Set up <b>Vyre.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
+  page({
+    slug: 'downloads', path: '/downloads/', title: 'Download Vyre: Mac, Windows, Android, iPhone, Linux and the web app',
+    desc: 'Every Vyre download in one place: the Mac app for Apple silicon and Intel, the Windows installer, the Android file, how to install on iPhone, the Linux server line and the web app.',
+    body, ogTitle: 'Download Vyre.', ogSub: 'Mac, Windows, Android, iPhone, the Linux server line and the web app, all from the latest release.',
+    ld: [crumbs([['Vyre', `${SITE}/`], ['Downloads', `${SITE}/downloads/`]]), faqLd(faq)],
+  });
+})();
+
 function devicePage({ slug, os, name, crumb, h1, lead, ogSub, desc, title, art, what, steps, needs, gapList, faq, extra = '' }) {
   const path = `/${slug}/`;
   const body = `
 <section class="phead">
-  <div class="wrap">
-    <p class="crumbs"><a href="/">Vyre</a> / ${crumb}</p>
-    ${eyebrow(name)}
-    <h1 class="display">${h1}</h1>
-    <p class="lead">${lead}</p>
-    <div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/start/">Read the steps</a></div>
+  <div class="wrap${art ? ' feat' : ''}">
+    <div class="feat-copy">
+      <p class="crumbs"><a href="/">Vyre</a> / ${crumb}</p>
+      ${eyebrow(name)}
+      <h1 class="display">${h1}</h1>
+      <p class="lead">${lead}</p>
+      <div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/start/">Read the steps</a></div>
+    </div>
+    ${art ? `<div class="mock rv">${art}</div>` : ''}
   </div>
 </section>
-${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div class="rv" style="max-width:880px;margin-inline:auto">${art}</div></div></section>` : ''}
 <section class="sec" aria-labelledby="what-h">
   <div class="wrap feat">
     <div class="feat-copy rv"><span class="num">What you get</span><h2 id="what-h" class="h2">${what.h}</h2>${what.lead ? `<p class="lead">${what.lead}</p>` : ''}</div>
@@ -458,7 +533,7 @@ ${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div cl
   </div>
 </section>
 <section class="sec" aria-labelledby="faq-h">
-  <div class="wrap"><div class="sec-head rv"><h2 id="faq-h" class="h2">Questions about <b>${name}.</b></h2></div>${faqHtml(faq)}</div>
+  <div class="wrap feat faq-wrap"><div class="feat-copy rv"><span class="num">Questions</span><h2 id="faq-h" class="h2">Questions about <b>${name}.</b></h2></div>${faqHtml(faq)}</div>
 </section>
 <section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Set up <b>Vyre.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
   page({
@@ -1002,8 +1077,7 @@ page({
 });
 
 // ---------- Downloads and 404 (scripts/site/pages.mjs) ----------
-const PAGES_CTX = { nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STAR, VERSION, term, eyebrow };
-page({ ...downloadsPage(PAGES_CTX), ld: [SOFT({ '@id': `${SITE}/downloads/#app` }), crumbs([['Vyre', `${SITE}/`], ['Downloads', `${SITE}/downloads/`]])] });
+const PAGES_CTX = { vmark, nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STAR, VERSION, term, eyebrow };
 writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
 
 // ---------- industry pages (scripts/site/industries.mjs) ----------
@@ -1034,6 +1108,7 @@ ${IND.llms}
 
 ${COMPARE.llmsBlock}
 ## Devices
+- [Downloads](${SITE}/downloads/): every Vyre download in one place, from the latest release
 - [Mac: Vyre](${SITE}/mac/): the Vyre app in its own window
 - [Windows: Vyre](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs

@@ -251,6 +251,35 @@
       (function tick(t) { if (vis && t - last > 110) { draw(t / 1000); last = t; } requestAnimationFrame(tick); })(0);
     }
   }
+
+  // The mark's dots find their way into the V. Each dot starts away from its place and settles; in the far spread (the 404 page) the dots
+  // start well outside the card and a few stay adrift. A visitor who asks for less motion gets the settled mark.
+  doc.querySelectorAll('svg.vmark.assemble').forEach(function (svg) {
+    if (reduce) return;
+    var far = svg.getAttribute('data-spread') === 'far', adrift = +svg.getAttribute('data-adrift') || 0;
+    var NS = 'http://www.w3.org/2000/svg', clip = svg.querySelector('g[clip-path]'), cs = [].slice.call(svg.querySelectorAll('circle'));
+    if (far) {
+      var free = doc.createElementNS(NS, 'g'); clip.parentNode.insertBefore(free, clip.nextSibling);
+      cs.forEach(function (c) { free.appendChild(c); }); svg.style.overflow = 'visible';
+    }
+    var lost = {}; for (var k = 0; k < adrift; k++) lost[Math.floor(Math.random() * cs.length)] = 1;
+    cs.forEach(function (c, i) {
+      var a = Math.random() * 6.2832, d = far ? 22 + Math.random() * 64 : 4 + Math.random() * 14, was = c.getAttribute('fill');
+      c._to = 'translate(' + (Math.cos(a) * d).toFixed(1) + 'px,' + (Math.sin(a) * d).toFixed(1) + 'px)';
+      c._was = was; c._lost = !!lost[i];
+      c.style.transform = c._to; c.style.opacity = '0';
+      if (far && was !== '#B8A4FF') c.style.fill = 'var(--ink-3)';
+    });
+    function go() {
+      cs.forEach(function (c, i) {
+        var delay = (far ? 200 : 0) + Math.random() * (far ? 1800 : 700);
+        if (c._lost) { c.style.transition = 'transform 2.4s cubic-bezier(.2,.7,.2,1) ' + delay + 'ms, opacity 1s ' + delay + 'ms'; c.style.transform = c._to.replace(/-?\d+\.\d/g, function (n) { return (n * .55).toFixed(1); }); c.style.opacity = '.7'; c.classList.add('adrift'); c.style.animationDelay = (Math.random() * -6).toFixed(1) + 's'; return; }
+        c.style.transition = 'transform ' + (far ? 2.6 : 1.5) + 's cubic-bezier(.2,.7,.2,1) ' + delay + 'ms, opacity .8s ' + delay + 'ms, fill 1.4s ease ' + (delay + 900) + 'ms';
+        c.style.transform = 'none'; c.style.opacity = '1'; if (far && c._was !== '#B8A4FF') c.style.fill = c._was;
+      });
+    }
+    if ('IntersectionObserver' in window) { var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); requestAnimationFrame(function () { requestAnimationFrame(go); }); } }); io.observe(svg); } else go();
+  });
   function paintAll() { painters.forEach(function (p) { p(); }); }
   doc.querySelectorAll('canvas.field').forEach(field);
   doc.querySelectorAll('canvas.markart').forEach(mark);
