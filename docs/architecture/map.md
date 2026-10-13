@@ -237,6 +237,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
 | `test/` | Tests that cross folders: boundaries, docs, installers, releases. |
 | `tools/` | Tooling for the Cloudflare workers. |
+| `updates/` | The weekly update sign-up: the Worker behind vyre.run/updates, with consent and unsubscribe. |
 | `web/` | Static web assets. |
 | `wink/` | The Go forwarder that carries Wink traffic, built into the server image. |
 

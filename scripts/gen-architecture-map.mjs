@@ -39,6 +39,7 @@ export const LAYOUT = {
   packaging: "Packaging for cloud images.",
   records: "The records language, Kits (starter sets of types and Flows) and connector declarations.",
   relay: "The relay that lets a paired device reach a server that has no open port: server, client library, web pages.",
+  updates: "The weekly update sign-up: the Worker behind vyre.run/updates, with consent and unsubscribe.",
   release: "Release data: the oldest version a release may update from, release notes.",
   roadmap: "The plan for each upcoming version, one document per version.",
   scripts: "Installers, the docs build, the test and walk harnesses, evals.",

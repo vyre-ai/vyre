@@ -1186,7 +1186,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ['/updates/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/vault/', '0.8'], ['/records/', '0.8'], ['/flows/', '0.8'], ['/agents/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ['/updates/', '0.5'], ...IND.sitemap, ...COMPARE.sitemap];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${[...SM, ...(await docsPaths(resolve(here, '..'))).map((p) => [p, '0.4'])].map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
