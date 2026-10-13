@@ -14,7 +14,6 @@
   "apps/app/src/api/client.test.js",
   "apps/app/src/api/client.ts",
   "apps/app/src/api/native-open.test.js",
-  "apps/app/src/api/pairing.test.js",
   "apps/app/src/auth/person-path.test.js",
   "apps/app/src/auth/person.test.js",
   "apps/app/src/auth/person.ts",
