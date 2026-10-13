@@ -2,7 +2,7 @@
 title: Chip token
 summary: A quiet, removable chip for state that differs from the default: a picked record, a person, where it runs, queued.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 

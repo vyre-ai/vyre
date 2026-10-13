@@ -43,7 +43,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
 
   const icon = (name: IconName, label: string, key: string | undefined, run: (() => void) | undefined, onShift?: () => void) => run ? (
     <Tip key={label} label={label} hint={key} side="top">
-      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={(e: any) => { if (onShift && (e?.shiftKey || e?.nativeEvent?.shiftKey)) onShift(); else run(); }}
+      <Pressable accessibilityRole="button" accessibilityLabel={label} {...(Platform.OS === "web" ? ({ title: key ? `${label} (${key})` : label } as object) : {})} onPress={(e: any) => { if (onShift && (e?.shiftKey || e?.nativeEvent?.shiftKey)) onShift(); else run(); }}
         style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
         <Icon name={name} size={16} tone="label" />
       </Pressable>
@@ -66,7 +66,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
       {icon("spark", "Ask about this", "A", actions.ask)}
       {items.length ? (
         <Menu items={items} trigger={
-          <Pressable accessibilityRole="button" accessibilityLabel="More actions" style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
+          <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
             <Icon name="more" size={16} tone="label" />
           </Pressable>
         } />
