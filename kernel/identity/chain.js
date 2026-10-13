@@ -322,7 +322,7 @@ export async function applyOp(state, op, ctx = {}) {
         if (isSpace || sensitive(target) || target.since <= /** @type {Entry} */ (signer).since) throw chainError("newcomer", "a sign-in under 24 hours old can remove only newer sign-ins");
       }
       entries = entries.filter(e => e.eid !== target.eid);
-      if (isSpace ? !entries.length : !entries.some(e => (e.kind === "device" && e.held !== "relay") || e.kind === "code")) throw chainError("last_entry", "that would leave nobody who can sign");
+      if (isSpace ? !entries.length : !entries.some(e => (e.kind === "device" && e.held !== "relay" && !(e.via && !e.confirmed)) || e.kind === "code")) throw chainError("last_entry", "that would leave nobody who can sign");
       break;
     }
     case "replace-code": {

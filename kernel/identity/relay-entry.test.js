@@ -130,3 +130,31 @@ test("an older verifier refuses a chain that holds the relay's key, so the key i
   assert.equal((await OLD.verifyChain(plain.ops, { now: T0 })).head, (await C.verifyChain(plain.ops, { now: T0 })).head);
   void relay;
 });
+
+test("the last real device cannot be removed while only the relay's key or an unconfirmed GitHub device would remain", async () => {
+  const { relay, w, t, phone } = await world();
+  const laptop = await key("laptop");
+  const w2 = await step(w, { type: "add", entry: github(laptop) }, relay, t);
+  await refused(step(w2, { type: "remove", target: phone.eid }, phone, t + H), "last_entry");
+  const w3 = await step(w2, { type: "confirm", target: laptop.eid }, phone, t + 2 * H);
+  const w4 = await step(w3, { type: "remove", target: phone.eid }, laptop, t + 2 * D);
+  assert.equal(w4.state.entries.some(e => e.eid === phone.eid), false);
+  // any full device removes the relay's key and a GitHub device
+  const w5 = await step(w2, { type: "remove", target: laptop.eid }, phone, t + H);
+  const w6 = await step(w5, { type: "remove", target: relay.eid }, phone, t + 2 * H);
+  assert.deepEqual(w6.state.entries.map(e => e.eid), [phone.eid]);
+});
+
+test("a space chain refuses the relay's key and a via github entry", async () => {
+  const a = await key("owner");
+  const p = await person(a);
+  const spaceEntry = { eid: p.state.id, kind: "owner", subject: p.state.id };
+  const viaPos = await C.viaOf(p.ops);
+  for (const extra of [{ held: "relay" }, { via: "github" }]) {
+    const g = await C.makeGenesis({ kind: "space", entry: { ...spaceEntry, ...extra }, nonce: "nonce-space-x", ts: T0 + H, via: a.eid, viaPos, sign: a.sign });
+    // shapeOfEntry for a space rebuilds an owner entry from known fields only, so the extra fields are dropped and never reach the list
+    const st = await C.verifyChain([g], { now: T0 + H, ownerOps: async () => p.ops });
+    assert.equal(st.entries[0].held, undefined);
+    assert.equal(st.entries[0].via, undefined);
+  }
+});
