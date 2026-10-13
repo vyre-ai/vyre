@@ -272,12 +272,13 @@ function ComposerCompare() {
 
 /** The one chat panel, open on a page: /gallery?f=composer shows it beside the composer; ?f=chat-panel&page=project|effort|... one page. */
 function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
+  const { color } = useUiTheme();
   const [page, setPage] = useState<PanelPage>(first);
   const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
   const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
   const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];
   return (
-    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#8883", borderRadius: 12, width: phone ? 390 : undefined }}>
+    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: color.edge, borderRadius: 12, width: phone ? 390 : undefined }}>
       <ChatPanel open phone={false} page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
         muted={false} pinned={false} onMute={() => {}} onPin={() => {}} onMove={() => {}} onLinkRecord={() => {}}
         project={{ current: cur, projects, move: async (to) => { setCur(projects.find((x) => x.slug === to) ?? null); return null; } }}
