@@ -79,6 +79,14 @@ export function createStages(o) {
   /** @param {string} spec @param {string} space */
   async function actorFor(spec, space, ctx) {
     const [kind, name] = String(spec).split(":");
+    // "lead" is the project's lead assistant, else its owner; "owner" and "creator" are its owner: read from the project the task is for
+    if (spec === "lead" || spec === "owner" || spec === "creator") {
+      const rid = ctx && typeof ctx.record === "string" ? ctx.record.split("/").pop() : "";
+      const d = rid && ctx.type ? await recordData(ctx.type, rid) : undefined;
+      const own = d && d.owner && d.owner.actor ? d.owner.actor : null;
+      if (spec === "lead" && d && typeof d.lead === "string" && d.lead) return { kind: "agent", id: d.lead, space };
+      return own ? { kind: own.kind, id: own.id, space: own.space || space } : null;
+    }
     if (kind === "teammate") return { kind: "agent", id: name, space };
     if (kind === "person") return { kind: "person", id: name, space };
     if (kind === "role") {
@@ -141,7 +149,7 @@ export function createStages(o) {
     /** @type {{ task: string, why: string }[]} */ const skipped = [];
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
-      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: `nobody can do ${t.doer}` }); continue; }
+      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "the project has no lead assistant and no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "the project has no lead assistant and no owner" : `nobody can do ${t.doer}` }); continue; }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
