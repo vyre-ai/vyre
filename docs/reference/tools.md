@@ -10950,7 +10950,7 @@ Sign the transport's device proof (a message that starts with vyre-wink-peer-v2)
 
 ### `spaces.identity.state`
 
-A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.
+A person's identity list as verified now: the chain's id, seq and head, and each entry's id, kind, key, age and founder flag. Read live each call. For the transport's personOf and a server's chain admission.
 
 - Input:
   - `person` string, required
