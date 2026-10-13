@@ -14,7 +14,7 @@ export function FormulaBox({ label, value, onChange, placeholder }: { label: str
       <Field label={label} value={value} onChangeText={onChange} placeholder={placeholder ?? "For example round(trigger.amount * 1.2)"} mono />
       <View className="flex-row flex-wrap items-center gap-s2">
         <Menu align="start" trigger={<Button kind="ghost" size="sm" icon="info" label="Functions" />} items={FUNCTION_HELP.map(([f, words]) => ({ label: `${f}: ${words}`, onPress: () => onChange(`${value}${value && !/\s$/.test(value) ? " " : ""}${f}`) }))} />
-        <Text size="caption" tone="label">Read a field as trigger.amount or steps.find1.rows. Use + - * / and and, or, not, ==, !=, &lt;, &gt;.</Text>
+        <Text size="caption" tone="label">Read a field as trigger.amount (trigger.after.amount when a record started the Flow) or steps.find1.rows. Use + - * / and and, or, not, ==, !=, &lt;, &gt;.</Text>
       </View>
       {value.trim() ? <Banner tone={p.ok ? "plain" : "warn"} icon={p.ok ? "check" : "warning"}><Text>{p.ok ? `On sample data this gives ${p.text}` : p.text}</Text></Banner> : null}
     </View>
