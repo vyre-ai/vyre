@@ -34,7 +34,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9633 (records-ux, 13 Oct 2026, [kernel +19: field groups, presentation only] on 9614: `group` on a field and `groups` on a type are checked when the type is defined in gateway/records.js checkShape, rc1-d signed).
 // [kernel +57: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; includes one import of lib/roles/staff.js] (flows-ux)
 // 9690 on the stage tip 9633: 9633 + 57.
-const CAP = 9690;
+// 9691 (fail-closed, 13 Oct 2026): the fail-closed change in kernel/index.js (a module is refused while the supervisor cannot prove its sandbox).
+const CAP = 9691;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
