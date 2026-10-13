@@ -172,7 +172,7 @@ export function stepProblem(s, o) {
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
-    case "ask": return !s.to ? "Choose who is asked." : !(s.title || "").trim() ? "Say what they are asked." : null;
+    case "ask": return !s.to ? "Choose who is asked." : String(s.to).startsWith("agent:") ? "A question goes to a person or a team or role. Choose one, or use Assign a task for an agent." : !(s.title || "").trim() ? "Say what they are asked." : null;
     case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
     case "find": case "remove": return s.type ? (s.kind === "remove" && !s.record ? "Choose which record." : null) : "Choose an object.";
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
@@ -515,6 +515,9 @@ export function fromDefinition(flow) {
 }
 
 /** Who can approve: a person, a team or role, or an agent made by an owner or an admin (an agent checks internal work only: a send or a stage hold still waits for a person; the kernel checks the maker again each time). @param {Options} o @returns {[string, string][]} */
+/** Who a question can go to: a person or a team or role. The engine refuses an agent for a question. @param {Options} o @returns {[string, string][]} */
+export const askChoices = (o) => whoChoices(o).filter(([v]) => !v.startsWith("agent:"));
+
 export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter(([v]) => !v.startsWith("agent:") || o.agents.some((a) => `agent:${a.name}` === v && a.staff === true))];
 
 
