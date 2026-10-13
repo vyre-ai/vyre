@@ -62,10 +62,12 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)));
   // The JSON store other modules use for a member's own entries (people.js personalStore): the mcp module and the space list call these with the member's inherited token.
   const store = (/** @type {string} */ id) => people.personalStore(id);
+  // A module (mcp, the space list) may call the store on the member's own turn: its hop inherits the member's token, so memberOf finds the one person in the chain. A module call with no person in its chain, or with an agent hop, is refused there.
+  const STORE_CALLERS = [...PERSON_SURFACES, "module"];
   const value = { description: "any JSON value up to 64 KB" };
-  tool("vault.me.store.get", PERSON_SURFACES, "Read one entry of your own store (a JSON value under a key), or null.", obj({ key: str }, ["key"]), mine((id, i) => store(id).get(i.key)));
-  tool("vault.me.store.put", PERSON_SURFACES, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), mine(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
-  tool("vault.me.store.list", PERSON_SURFACES, "Every entry of your own store.", obj({}), mine(id => store(id).list()));
-  tool("vault.me.store.remove", PERSON_SURFACES, "Delete one entry of your own store.", obj({ key: str }, ["key"]), mine(async (id, i) => ({ removed: await store(id).remove(i.key) })));
+  tool("vault.me.store.get", STORE_CALLERS, "Read one entry of your own store (a JSON value under a key), or null.", obj({ key: str }, ["key"]), mine((id, i) => store(id).get(i.key)));
+  tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), mine(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
+  tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), mine(id => store(id).list()));
+  tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), mine(async (id, i) => ({ removed: await store(id).remove(i.key) })));
   tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
 }
