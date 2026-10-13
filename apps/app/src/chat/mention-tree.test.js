@@ -107,18 +107,17 @@ test("searching # finds a record, a project and a file across categories", () =>
   assert.deepEqual(by("Files"), ["Okafor estate"]);
 });
 
-test("@ has People, Teams and roles, Agents, AIs; empty groups are left out", () => {
+test("@ has People, Teams and roles, one Agents group (the chat's AIs first); empty groups are left out", () => {
   const people = [
     { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" },
     { name: "juno", family: "assistant", doing: "Waiting" }, { name: "claude", family: "assistant", group: "ai" },
   ];
   const t = atTree({ people, teams: [{ name: "Attorneys", kind: "role" }, { name: "Intake", kind: "team" }] });
-  assert.deepEqual(t.map((n) => n.label), ["People", "Teams and roles", "Agents", "AIs"]);
+  assert.deepEqual(t.map((n) => n.label), ["People", "Teams and roles", "Agents"]);
   assert.deepEqual(t[0].kids.map((k) => k.label), ["alex", "Dana Okafor"]);
   assert.deepEqual(t[0].kids[0].pick, { pick: "alex" });
   assert.deepEqual(t[1].kids.map((k) => [k.label, k.sub]), [["Attorneys", "Role"], ["Intake", "Team"]]);
-  assert.equal(t[2].kids[0].sub, "Waiting");
-  assert.deepEqual(t[3].kids.map((k) => k.label), ["claude"]);
+  assert.deepEqual(t[2].kids.map((k) => [k.label, k.sub]), [["claude", "AI in this chat"], ["juno", "Waiting"]]);
   const none = atTree({ people: [{ name: "alex", family: "person" }], teams: [] });
   assert.deepEqual(none.map((n) => n.label), ["People"]);
 });
@@ -145,7 +144,7 @@ test("filesOf recovers folder names from the words the Drive gave each file", ()
   assert.deepEqual(r.names, { "Projects/okafor": "Okafor estate" });
 });
 
-test("the chat's own AIs (by name) are AIs, not agents", () => {
+test("the chat's own AIs (by name) lead the one Agents group", () => {
   const t = atTree({ people: [{ name: "Claude", family: "assistant" }, { name: "kit", family: "assistant" }], teams: [], ais: ["claude"] });
-  assert.deepEqual(t.map((n) => [n.label, n.kids.map((k) => k.label)]), [["Agents", ["kit"]], ["AIs", ["Claude"]]]);
+  assert.deepEqual(t.map((n) => [n.label, n.kids.map((k) => k.label)]), [["Agents", ["Claude", "kit"]]]);
 });

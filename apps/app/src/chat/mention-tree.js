@@ -1,7 +1,7 @@
 // @ts-check
 // The trees the nested @ and # pickers walk (ui/lib/nest-model.js). Pure: the box's answers go in, nodes come out.
 //   #  Projects (a template, then its projects) · Records (an object, then its records) · Files (folders, then files) · Tags
-//   @  People · Teams and roles · Agents · AIs
+//   @  People · Teams and roles · Agents (the chat's own AIs first, then the agents)
 // A branch you can choose whole carries a `pick` of kind "collection": a reference to the whole object, template, folder; its id is
 // type/<object>, template/<id> or folder/<path>. The server treats it as a reference, never as text. A single item picks as
 // "record", "project", "file" or "tag" (id: its urn, file/<path>, tag/<name>).
@@ -98,7 +98,7 @@ export function hashTree({ world, titleOf, templates, files, names }) {
 }
 
 /**
- * The @ tree. An empty group is left out. An assistant is an Agent unless it is one of the chat's own AIs (`ais`, by name).
+ * The @ tree. An empty group is left out. Assistants are one group, Agents; the chat's own AIs (`ais`, by name) come first and say so.
  * @param {{ people: readonly { name: string, family: string, doing?: string, group?: string }[], teams: readonly { name: string, kind: string }[], ais?: readonly string[] }} o
  * @returns {NestNode[]}
  */
@@ -108,8 +108,8 @@ export function atTree({ people, teams, ais = [] }) {
   const groups = [
     { key: "people", label: "People", kids: people.filter((p) => p.family !== "assistant").map(one) },
     { key: "teams", label: "Teams and roles", kids: teams.map((t) => ({ key: `${t.kind}:${t.name}`, label: t.name, sub: t.kind === "role" ? "Role" : "Team", pick: { pick: t.name } })) },
-    { key: "agents", label: "Agents", kids: people.filter((p) => p.family === "assistant" && !isAi(p)).map(one) },
-    { key: "ais", label: "AIs", kids: people.filter((p) => p.family === "assistant" && isAi(p)).map(one) },
+    // One group: the chat's own AIs first (said as "AI"), then the agents.
+    { key: "agents", label: "Agents", kids: [...people.filter((p) => p.family === "assistant" && isAi(p)).map((p) => ({ ...one(p), sub: "AI in this chat" })), ...people.filter((p) => p.family === "assistant" && !isAi(p)).map(one)] },
   ];
   return groups.filter((g) => g.kids.length);
 }
