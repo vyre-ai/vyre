@@ -17,7 +17,7 @@ Top: space switcher (logo or monogram, name, address). Places: Now, Chat, Projec
 38 high, radius 10, icon 18, label 15. Current row: raised fill, medium text. Count badge on Now only.
 
 ## Folded
-Cmd or Ctrl and backslash, or the Collapse row. Width 64, icons only, each named by a `Tip` on hover and focus. Search sits directly above the face. Remembered per device (`vyre.rail.collapsed`).
+Cmd or Ctrl and backslash, or the Collapse row. Width 64, icons only, each named by a `Tip` on hover and focus. Search sits directly above the face. Remembered per device.
 
 ## Drill-in
 A path inside Projects, Chat, Records, Drive, Agents, Flows or Settings turns the sidebar into that place's panel: Back, search, list grouped (current marked). Back, Escape and the browser back all leave it; `?side=main` keeps the page with the main sidebar. A panel slides (180 ms; none under reduced motion). Slots `before` and `after` carry Records' pinned views, "All record types", "New view".
