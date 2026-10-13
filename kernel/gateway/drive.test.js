@@ -213,3 +213,27 @@ test("drive.getRange: a range of a file under the caller's read grant, cut acros
   await assert.rejects(() => D.getRange(bob, "other/o.txt", { offset: 0, length: 1 }), { code: "not_found" });
   await assert.rejects(() => D.getRange(bob, "proj/r.txt", { offset: -1, length: 1 }), { code: "bad_input" });
 });
+
+test("drive upload sessions: a big file arrives in parts under one begin, only its starter may add to it, and commit writes ONE version", async () => {
+  const { D, owner, bob, files } = await mountWorld();
+  await assert.rejects(() => D.uploadBegin(bob, "other/big.bin"), { code: "not_found" }, "no write grant at the target: refused at the start");
+  const u = await D.uploadBegin(bob, "proj/big.bin");
+  assert.match(u.upload, /^[A-Za-z0-9_-]{16,}$/);
+  await D.uploadPart(bob, u.upload, 0, enc("hello "));
+  await D.uploadPart(bob, u.upload, 1, enc("big "));
+  await D.uploadPart(bob, u.upload, 2, enc("world"));
+  await D.uploadPart(bob, u.upload, 1, enc("BIG "));
+  await assert.rejects(() => D.uploadPart(owner, u.upload, 3, enc("x")), { code: "not_found" }, "another caller cannot add to it, not even an owner");
+  await assert.rejects(() => D.uploadCommit(owner, u.upload, 3), { code: "not_found" });
+  await assert.rejects(() => D.uploadCommit(bob, u.upload, 4), { code: "bad_input" }, "a part is missing");
+  const r = await D.uploadCommit(bob, u.upload, 3);
+  assert.equal(r.version, 1);
+  assert.equal(dec(await D.get(bob, "proj/big.bin")), "hello BIG world", "a re-sent part replaces the first");
+  assert.equal(files.get("proj/big.bin").length, 1, "one version for the whole file");
+  await assert.rejects(() => D.uploadCommit(bob, u.upload, 3), { code: "not_found" }, "a session ends at commit");
+  const a = await D.uploadBegin(bob, "proj/x.bin");
+  await D.uploadPart(bob, a.upload, 0, enc("x"));
+  await D.uploadAbort(bob, a.upload);
+  await assert.rejects(() => D.uploadPart(bob, a.upload, 1, enc("y")), { code: "not_found" });
+  for (const p of [...files.keys()].filter(k => k.startsWith(".upload/"))) assert.ok(files.get(p).at(-1).deleted, "staged parts are tombstoned: " + p);
+});
