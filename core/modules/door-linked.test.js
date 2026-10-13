@@ -33,5 +33,5 @@ test("a member's session reaches every linked-folder tool, mentions.resolve stay
   const res = await as("files.linked.mentions.resolve", { id: "x:y", thread: "t1" });
   assert.equal(res.error && res.error.message, refusal("files.linked.mentions.resolve"));
   const guest = await d.registry.call("files.linked.list", {}, "tailnet-guest:n1", {});
-  assert.equal(guest.error && guest.error.message, refusal("files.linked.list"), "a guest is refused");
+  assert.equal(guest.error && guest.error.code, "denied", `a guest is refused: ${JSON.stringify(guest).slice(0, 160)}`);
 });
