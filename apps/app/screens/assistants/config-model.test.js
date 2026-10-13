@@ -109,3 +109,24 @@ test("source: a refusal from the box reaches the screen in the box's own words",
   const b = box({ "agents.docs.set": { error: { code: "denied", message: "only the owner changes it" } } });
   await assert.rejects(() => configSource(b.call).saveDoc("rex", "AGENTS.md", "x"), /only the owner/);
 });
+
+test("models: a row dragged to a place lands there and the others close up; a drop out of range changes nothing", { skip: !strip }, async () => {
+  const m = await import("./config-model.ts");
+  const e = [{ provider: "a" }, { provider: "b" }, { provider: "c" }];
+  assert.deepEqual(m.moveTo(e, 0, 2).map((x) => x.provider), ["b", "c", "a"]);
+  assert.deepEqual(m.moveTo(e, 2, 0).map((x) => x.provider), ["c", "a", "b"]);
+  assert.deepEqual(m.moveTo(e, 1, 1), e);
+  assert.deepEqual(m.moveTo(e, 0, 9), e);
+  assert.equal(m.kindLine({ kind: "api-key" }), "API token");
+  assert.equal(m.kindLine(undefined), "Not available");
+});
+
+test("source: a login is lent through the vault's own grant for 30 days, listed live, and taken back by its id", { skip: !strip }, async () => {
+  const { configSource } = await import("./config-source.ts");
+  const b = box({ "vault.agent.grants": { data: { grants: [{ id: "ag_1", item: "mail", origin: "https://m.test", status: "active", expires: 5 }, { id: "ag_2", item: "x", origin: "https://x.test", status: "revoked" }] } } });
+  const s = configSource(b.call);
+  assert.deepEqual((await s.lent("rex")).map((g) => g.id), ["ag_1"], "a revoked one is not shown");
+  await s.lend("rex", "mail", "https://m.test");
+  await s.takeBack("ag_1");
+  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["vault.agent.grant", { agent: "rex", item: "mail", origin: "https://m.test", expires: "30d" }], ["vault.agent.revoke", { id: "ag_1" }]]);
+});

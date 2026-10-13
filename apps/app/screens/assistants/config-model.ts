@@ -43,6 +43,15 @@ export function move(list: Entry[], i: number, by: -1 | 1): Entry[] {
   [out[i], out[j]] = [out[j], out[i]];
   return out;
 }
+/** The row at `from` dropped at `to`, the others closing up. */
+export function moveTo(list: Entry[], from: number, to: number): Entry[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+  const out = list.slice();
+  out.splice(to, 0, out.splice(from, 1)[0]);
+  return out;
+}
+/** What kind of sign-in an account is, as a short line; an account that is gone says so. */
+export const kindLine = (a?: { kind?: string } | null): string => (a ? KIND_SUB[String(a.kind || "login")] || String(a.kind) : "Not available");
 export const drop = (list: Entry[], i: number): Entry[] => list.filter((_, k) => k !== i);
 export const add = (list: Entry[], e: Entry): Entry[] => (list.some((x) => x.provider === e.provider && (x.account || "") === (e.account || "")) ? list : [...list, e]);
 

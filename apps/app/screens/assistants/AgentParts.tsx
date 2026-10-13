@@ -2,11 +2,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { config } from "./config";
-import { ACK_WORDS, DOCS, NOT_USED, add, addable, contextName, docInput, drop, entriesOf, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
+import { ACK_WORDS, DOCS, NOT_USED, add, addable, contextName, docInput, drop, kindLine, moveTo, linkLine, move, needsAck, sizeLine, usedRows, type Doc, type Entry } from "./config-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 type Load<T> = { data: T | null; err: string; reload: () => void };
@@ -122,7 +122,7 @@ export function Models({ name }: { name: string }) {
   const { accounts } = q.data;
   const saved = JSON.stringify(q.data.entries);
   const dirty = JSON.stringify(plan) !== saved;
-  const rows = plan.map((e) => { const a = accounts.find((x) => x.id === e.account); return { e, a }; });
+  const rows = plan.map((e) => ({ e, a: accounts.find((x) => x.id === e.account) }));
   const ack = needsAck(plan);
   const save = () => { setBusy(true); config.savePlan(name, plan, ack).then(() => { showToast("Saved. It applies from the next turn."); q.reload(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
@@ -130,16 +130,15 @@ export function Models({ name }: { name: string }) {
       <Sec title="Runs on, in this order">
         {rows.length ? (
           <Card flush>
-            {rows.map(({ e, a }, i) => (
-              <View key={`${e.provider}:${e.account ?? i}`}>{i ? <Divider /> : null}
+            <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={68} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
+              render={({ e, a }, i) => (
                 <Row
                   title={a ? a.label : e.account ? "An account that was removed" : e.provider}
-                  sub={`${i === 0 ? "First" : `Then, if the one above runs out or fails`}. ${a ? (a.kind === "login" ? "Your sign-in" : a.kind === "setup-token" ? "Setup token" : "API token") : "Not available"}`}
+                  sub={i === 0 ? `First. ${kindLine(a)}` : `Used when the one above runs out or fails. ${kindLine(a)}`}
                   lead={<Chip>{String(i + 1)}</Chip>}
                   end={<View className="flex-row"><IconButton icon="chevron-up" label="Move up" onPress={() => setPlan(move(plan, i, -1))} /><IconButton icon="chevron-down" label="Move down" onPress={() => setPlan(move(plan, i, 1))} /><IconButton icon="x" label="Take off the plan" onPress={() => setPlan(drop(plan, i))} /></View>}
                 />
-              </View>
-            ))}
+              )} />
           </Card>
         ) : <Card><Text tone="muted">{`No plan of its own. ${name} runs on the Space's default model. Add a sign-in to choose.`}</Text></Card>}
         {ack ? <Banner>{ACK_WORDS}</Banner> : null}
@@ -170,10 +169,13 @@ export function Models({ name }: { name: string }) {
 export function Used({ name }: { name: string }) {
   const router = useRouter();
   const u = useLoad(() => config.used(name), [name]);
-  const v = useLoad(async () => { const [mine, all] = await Promise.all([config.vault(name), config.vaultItems().catch(() => [])]); return { assigned: mine.assigned, all }; }, [name]);
-  const [picking, setPicking] = useState(false);
+  const v = useLoad(async () => { const [mine, all, lent] = await Promise.all([config.vault(name), config.vaultItems().catch(() => []), config.lent(name).catch(() => [])]); return { assigned: mine.assigned, all, lent }; }, [name]);
+  const [picking, setPicking] = useState<"login" | "note" | null>(null);
   const rows = u.data ? usedRows(u.data, name) : [];
   const open = (r: { kind: string; id: string }) => router.push((r.kind === "chat" ? `/u/chats/${encodeURIComponent(r.id)}` : `/u/flows/${encodeURIComponent(r.id)}`) as never);
+  const sites = (v.data?.all ?? []).filter((x) => x.kind === "login").flatMap((x) => x.hosts.map((h) => ({ item: x.name, origin: /^https?:\/\//.test(h) ? h : `https://${h}` }))).filter((s) => !(v.data?.lent ?? []).some((g) => g.item === s.item && g.origin === s.origin));
+  const noteable = (v.data?.all ?? []).filter((x) => !v.data!.assigned.includes(x.name));
+  const lend = (item: string, origin: string) => config.lend(name, item, origin).then((r) => { showToast(r?.grant?.status === "pending" ? "Waiting for your yes." : `${name} can sign in to ${origin}.`); v.reload(); }).catch((e) => showToast(say(e)));
   const flip = (item: string, on: boolean) => (on ? config.assign(name, item) : config.unassign(name, item)).then(v.reload).catch((e) => showToast(say(e)));
   return (
     <>
@@ -187,22 +189,33 @@ export function Used({ name }: { name: string }) {
           </Card>
         ) : null}
       </Sec>
-      <Sec title="Vault items it can use">
+      <Sec title="Logins it can sign in with">
         {v.err ? <Card flush><ErrorState title="The Vault list did not load" reason={v.err} retry={v.reload} /></Card> : null}
-        {v.data && !v.data.assigned.length ? <Card><Text tone="muted">{`None. Put an item here and ${name} is told it exists. Using it still needs your yes, the same as for you.`}</Text></Card> : null}
-        {v.data && v.data.assigned.length ? (
+        {v.data && !v.data.lent.length ? <Card><Text tone="muted">{`None. Lend ${name} a login and it signs in to that one site as you, on its own computer. You can take it back at any time.`}</Text></Card> : null}
+        {v.data && v.data.lent.length ? (
           <Card flush>
-            {v.data.assigned.map((it, i) => <View key={it}>{i ? <Divider /> : null}<Row title={it} sub="Vault item" end={<IconButton icon="x" label={`Take ${it} away`} onPress={() => void flip(it, false)} />} /></View>)}
+            {v.data.lent.map((g, i) => <View key={g.id}>{i ? <Divider /> : null}<Row title={g.item} sub={`${g.origin}${g.expires ? `, until ${new Date(g.expires).toLocaleDateString()}` : ""}`} end={<IconButton icon="x" label={`Take ${g.item} back`} onPress={() => config.takeBack(g.id).then(v.reload).catch((e) => showToast(say(e)))} />} /></View>)}
           </Card>
         ) : null}
-        <View className="flex-row"><Button size="sm" kind="secondary" label="Put a Vault item here" onPress={() => setPicking(true)} /></View>
+        <View className="flex-row"><Button size="sm" kind="secondary" label="Lend a login" onPress={() => setPicking("login")} /></View>
       </Sec>
-      <Sheet open={picking} onClose={() => setPicking(false)} title="Put a Vault item here">
-        {v.data && v.data.all.filter((x) => !v.data!.assigned.includes(x.name)).length ? (
+      <Sec title="Other Vault items, noted for it">
+        {v.data && !v.data.assigned.length ? <Card><Text tone="muted">{`None. A note tells ${name} an item exists. It gives no access: using an API key or a secret still goes through you.`}</Text></Card> : null}
+        {v.data && v.data.assigned.length ? (
           <Card flush>
-            {v.data.all.filter((x) => !v.data!.assigned.includes(x.name)).map((x, i) => <View key={x.name}>{i ? <Divider /> : null}<Row title={x.name} sub={x.kind} onPress={() => { setPicking(false); void flip(x.name, true); }} /></View>)}
+            {v.data.assigned.map((it, i) => <View key={it}>{i ? <Divider /> : null}<Row title={it} sub="Noted for the agent. No access." end={<IconButton icon="x" label={`Remove the note for ${it}`} onPress={() => void flip(it, false)} />} /></View>)}
           </Card>
-        ) : <Text tone="muted">Nothing left in the Vault to add.</Text>}
+        ) : null}
+        <View className="flex-row"><Button size="sm" kind="ghost" label="Note an item" onPress={() => setPicking("note")} /></View>
+      </Sec>
+      <Sheet open={picking !== null} onClose={() => setPicking(null)} title={picking === "login" ? "Lend a login" : "Note an item"}>
+        {picking === "login" ? (
+          sites.length ? (
+            <Card flush>{sites.map((s, i) => <View key={`${s.item}:${s.origin}`}>{i ? <Divider /> : null}<Row title={s.item} sub={s.origin} onPress={() => { setPicking(null); void lend(s.item, s.origin); }} /></View>)}</Card>
+          ) : <Text tone="muted">No login in the Vault is for a site yet. Give a login its site in the Vault first.</Text>
+        ) : (
+          noteable.length ? <Card flush>{noteable.map((x, i) => <View key={x.name}>{i ? <Divider /> : null}<Row title={x.name} sub={x.kind} onPress={() => { setPicking(null); void flip(x.name, true); }} /></View>)}</Card> : <Text tone="muted">Nothing left in the Vault to note.</Text>
+        )}
       </Sheet>
     </>
   );

@@ -24,6 +24,7 @@ const accounts = [
   { id: "acc_key", provider: "claude", label: "Anthropic API token", kind: "api-key", vault_item: "anthropic-api-key" },
   { id: "acc_or", provider: "openrouter", label: "OpenRouter", kind: "api-key", vault_item: "openrouter-key" },
 ];
+let lent: { id: string; agent: string; item: string; origin: string; expires: number }[] = [{ id: "ag_0", agent: "intake", item: "lawmatics", origin: "https://app.lawmatics.com", expires: Date.now() + 20 * 86400000 }];
 const agent = () => ({ uid: "agt_intake", name: "intake", kind: "agent", role: "Intake assistant", projects: ["juniper"], instructions: state.instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
@@ -44,9 +45,12 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "sessions.accounts.list": () => accounts,
   "sessions.routes.get": () => ({ scope: "agent:intake", entries: state.routes.slice() }),
   "sessions.routes.set": (i) => { state.routes = i.entries; return { scope: i.scope, entries: i.entries }; },
-  "vault.list": () => ({ items: [{ name: "lawmatics-api", kind: "api-key" }, { name: "mail", kind: "login" }, { name: "anthropic-api-key", kind: "api-key" }], locked: false, personal: "none" }),
+  "vault.list": () => ({ items: [{ name: "lawmatics-api", kind: "api-key", hosts: [] }, { name: "lawmatics", kind: "login", hosts: ["https://app.lawmatics.com"] }, { name: "mail", kind: "login", hosts: ["https://mail.juniper.studio"] }, { name: "anthropic-api-key", kind: "api-key", hosts: [] }], locked: false, personal: "none" }),
   "agents.vault.list": () => ({ assigned: state.vault.slice() }),
   "agents.vault.assign": (i) => { if (!state.vault.includes(i.item)) state.vault.push(i.item); return { ok: true }; },
   "agents.vault.unassign": (i) => { state.vault = state.vault.filter((x) => x !== i.item); return { ok: true }; },
+  "vault.agent.grants": () => ({ grants: lent.map((g) => ({ ...g, status: "active", uses: 3 })) }),
+  "vault.agent.grant": (i) => { lent.push({ id: `ag_${lent.length + 1}`, agent: i.agent, item: i.item, origin: i.origin, expires: Date.now() + 30 * 86400000 }); return { grant: { status: "active", ...i } }; },
+  "vault.agent.revoke": (i) => { lent = lent.filter((g) => g.id !== i.id); return { revoked: true }; },
   "agents.used": () => ({ chats: [{ id: "thr_intake_1", title: "Priya Shah: first inquiry" }, { id: "thr_intake_2", title: "Weekly intake review" }], flows: [{ id: "flw_new_client", name: "New client intake" }] }),
 };

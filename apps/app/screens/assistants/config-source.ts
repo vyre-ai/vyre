@@ -43,11 +43,19 @@ export function configSource(call: Call) {
       const d = await ask<any>("files.dirs", { q: q.trim(), limit: 12 });
       return (Array.isArray(d?.dirs) ? d.dirs : []).filter((x: any) => x && typeof x.path === "string").map((x: any) => ({ name: String(x.name || x.path), path: x.path }));
     },
-    /** The Vault's items as names and kinds. Never a value. */
-    vaultItems: async (): Promise<{ name: string; kind: string }[]> => {
+    /** The Vault's items as names, kinds and the sites a login is for. Never a value. */
+    vaultItems: async (): Promise<{ name: string; kind: string; hosts: string[] }[]> => {
       const d = await ask<any>("vault.list");
-      return (Array.isArray(d?.items) ? d.items : []).filter((x: any) => x && typeof x.name === "string").map((x: any) => ({ name: x.name, kind: String(x.kind || "") }));
+      return (Array.isArray(d?.items) ? d.items : []).filter((x: any) => x && typeof x.name === "string").map((x: any) => ({ name: x.name, kind: String(x.kind || ""), hosts: Array.isArray(x.hosts) ? x.hosts.map(String) : [] }));
     },
+    /** The logins lent to this agent now (vault.agent.grants): the vault's own grant, bound to one site. */
+    lent: async (agent: string): Promise<{ id: string; item: string; origin: string; expires: number | null }[]> => {
+      const d = await ask<any>("vault.agent.grants", { agent });
+      return (Array.isArray(d?.grants) ? d.grants : []).filter((g: any) => g && g.status === "active").map((g: any) => ({ id: String(g.id), item: String(g.item), origin: String(g.origin), expires: typeof g.expires === "number" ? g.expires : null }));
+    },
+    /** Lend a login to the agent for one site, for 30 days. The vault asks the person's own proof; the answer may be a request that waits for their yes. */
+    lend: (agent: string, item: string, origin: string) => ask<any>("vault.agent.grant", { agent, item, origin, expires: "30d" }),
+    takeBack: (id: string) => ask("vault.agent.revoke", { id }),
     used: (agent: string) => ask<any>("agents.used", { agent }),
   };
 }

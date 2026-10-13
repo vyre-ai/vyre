@@ -11,7 +11,7 @@ export function SampleAssistantsScreen() {
   const router = useRouter();
   const { assistants, setAutonomy, setPaused } = useSettings();
   return (
-    <Page title="Assistants" back="/u/settings">
+    <Page title="Agents" back="/u/settings">
       <Card flush>
         {assistants.map((a, i) => (
           <View key={a.id}>

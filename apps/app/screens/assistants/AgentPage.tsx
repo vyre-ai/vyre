@@ -20,13 +20,13 @@ export default function AgentPage() {
   const [a, setA] = useState<AgentFull | null | undefined>(undefined);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState<Tab>("instructions");
-  const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your assistants did not answer."))); }, [who]);
+  const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={who} back="/u/settings/assistants" marks={[markRef(a?.kind === "assistant" ? "assistant" : "teammate", who)]}>
+    <Page title={who} back="/u/assistants" marks={[markRef(a?.kind === "assistant" ? "assistant" : "teammate", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
-      {a === null ? <Card><EmptyState title={`There is no assistant called ${who}`} body="It may have been removed." /></Card> : null}
+      {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}
       {a ? (
         <>
           <Header a={a} />
