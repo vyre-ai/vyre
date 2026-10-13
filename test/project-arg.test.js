@@ -27,7 +27,6 @@ const EXEMPT = {
   "work.team.context": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
   "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",
   "work.team.doing": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
-  "work.project.level": "person-only (agent-reach PERSON_ONLY): a project Lead's or staff's own act on the team's seats; `project` is a short name, id or address resolved and authorized under the caller's own kernel chain (setSeatLevel), and no agent reaches it",
   "agents.context.link": "person-only (agent-reach PERSON_ONLY): the person's own act of linking a folder to an agent, judged against the person adding it; an assistant must not widen an agent's reach",
   "agents.context.unlink": "person-only (agent-reach PERSON_ONLY): the person's own act of unlinking a folder from an agent",
   "import.sessions.list": "`folders` are folders on the person's own computer to look in, not a project of the Space; the person's own view (agent-reach), and the tool checks who runs it (mayRun)",
