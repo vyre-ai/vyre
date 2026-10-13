@@ -55,6 +55,16 @@ test("a member's device is admitted at exactly the member's role; an unknown ide
   assert.deepEqual([bad.ok, bad.why], [false, "bad_proof"], "the same refusal, so a probe cannot tell who is a member");
 });
 
+test("(e) a non-member and a member removed since both get bad_proof, the same as a bad signature", async () => {
+  const m = rig({ role: "member" });
+  assert.equal((await m.admit.check(m.hello(), CH)).ok, true);
+  m.r.role = null; // she was removed from the Space
+  const gone = await m.admit.check(m.hello(), CH);
+  assert.deepEqual([gone.ok, gone.why], [false, "bad_proof"]);
+  const never = rig({ role: null });
+  assert.equal((await never.admit.check(never.hello(), CH)).why, "bad_proof");
+});
+
 test("a hello replayed at another server, on another channel, or after the window is refused", async () => {
   const a = rig();
   const h = a.hello();
