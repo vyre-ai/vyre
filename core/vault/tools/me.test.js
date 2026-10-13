@@ -9,7 +9,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
-import { register, ME_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
+import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
 
 const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
 const PW = "a long master password";
@@ -28,7 +28,7 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
   ctx.tool("vault.get", { callers: ["cli"], run: async () => "space vault read" });
   const call = async (/** @type {string} */ name, /** @type {any} */ input, /** @type {string} */ who, /** @type {any} */ extra = {}) => {
-    const meta = { caller: "device:abcdef", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
+    const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
   return { call, reg, people };
@@ -36,8 +36,8 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
-  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS].sort());
-  for (const n of ME_TOOLS) assert.ok(reg.has(n), `${n} is registered`);
+  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS].sort());
+  for (const n of [...ME_TOOLS, ...ME_MODULE_TOOLS]) assert.ok(reg.has(n), `${n} is registered`);
 });
 
 test("a member makes, unlocks and uses their own vault", async t => {
@@ -117,5 +117,30 @@ test("vault.me.store.*: only the mcp module may call it, and only on a member's 
   assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] }))).error.code, "denied", "an agent hop is refused");
   assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, OWNER, via(OWNER))).error.code, "denied", "the owner is refused");
   for (const other of ["module:appmods", "module:spaces", "module:some-installed-app"]) for (const n of ["get", "list"]) assert.equal((await call("vault.me.store." + n, { key: "mcp/a" }, BOB, via(BOB, { caller: other }))).error.code, "denied", `${other} is refused even with her token`);
-  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { caller: "device:abc" }))).data, { t: "bob" }, "her own device still reads");
+  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { caller: "device:abcdefghijklmnop" }))).data, { t: "bob" }, "her own device still reads");
+});
+
+test("vault.me.release hands her Dropbox token to the files module only, for the one person in the chain", async t => {
+  const { call, people } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  await call("vault.me.put", { name: "dropbox", kind: "api-key", fields: { value: "sl.bob-dropbox-token-0001" } }, BOB);
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
+  const asFiles = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.release", input, who, { caller: "module:files", ...extra });
+  assert.deepEqual((await asFiles({ name: "dropbox", field: "value" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" });
+  assert.deepEqual((await asFiles({ name: "dropbox" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" }, "field defaults to value");
+  // another module, a person's surface, a model: refused
+  for (const caller of ["module:mcp", "module:sessions", "cli", "device:abcdef", "mcp", "harness", "mcp:agent:juno"]) assert.equal((await call("vault.me.release", { name: "dropbox" }, BOB, { caller })).error?.code, "denied", caller);
+  // only her dropbox item, never another of hers
+  assert.equal((await asFiles({ name: "claude", field: "token" }, BOB)).error.code, "denied");
+  // the person is the chain's, not the input's: Eve gets her own (none), never Bob's
+  assert.equal((await asFiles({ name: "dropbox", person: BOB }, EVE)).error.message, "no item named dropbox");
+  // the owner, no person, two people, an agent turn
+  assert.equal((await asFiles({ name: "dropbox" }, OWNER)).error.message, ME_REFUSAL);
+  assert.equal((await asFiles({ name: "dropbox" }, null)).error.code, "denied");
+  assert.equal((await asFiles({ name: "dropbox" }, BOB, { hops: [hop("person", BOB), hop("person", EVE)] })).error.code, "denied");
+  assert.equal((await asFiles({ name: "dropbox" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "denied");
+  // a locked vault answers locked, never a value
+  people.lock(BOB);
+  assert.equal((await asFiles({ name: "dropbox" }, BOB)).error.code, "locked");
 });

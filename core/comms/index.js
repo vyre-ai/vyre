@@ -123,7 +123,7 @@ export function registerComms(ctx, o = {}) {
   });
 
   ctx.tool("comms.email", {
-    description: "Send an email from the firm's own sending service (Resend, Mailgun, Postmark, SendGrid or SMTP), held at the Gate for a person's yes with the final words: { to, subject, text or html, replyTo?, from? }. A Flow's Send email step.",
+    description: "Send an email from the Space's sending service, held for a person's yes: { to, subject, text or html, replyTo?, from? }.",
     input: obj({ to: { anyOf: [str, { type: "array", items: str }] }, subject: str, text: str, html: str, body: str, replyTo: str, from: str, why: str }, ["to"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
@@ -158,7 +158,7 @@ export function registerComms(ctx, o = {}) {
   });
 
   ctx.tool("comms.service.test", {
-    description: "Send one test email to one address (the person's own) through the sending service, to prove the key works: { to }. The person approves it with their presence.",
+    description: "Send one test email to the person's own address to prove the sending key works: { to }. Needs their presence.",
     input: obj({ to: str }, ["to"]),
     callers: CALLERS,
     presence: { summary: (/** @type {any} */ i) => `Send a test email to ${String(i && i.to || "your address")} through your sending service` },
@@ -171,7 +171,7 @@ export function registerComms(ctx, o = {}) {
   });
 
   ctx.tool("comms.credentials", {
-    description: "The credentials a Flow's Send step can use, by kind: { kind: email | sms } -> { credentials: [{ id, name, provider, step }] }. Names and ids only, never a value. step is the Flow step that uses it.",
+    description: "The credentials a Flow's Send step can use, by kind (email or sms): names and ids only, never a value.",
     input: obj({ kind: { type: "string", enum: ["email", "sms"] } }, ["kind"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
