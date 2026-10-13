@@ -324,7 +324,8 @@ test("a dev server the chat starts on the computer can be previewed from the hom
   const dead = await w.r.home.openPreview({ session: "s_dev", port: 4399, person: BOB });
   const c = /** @type {any} */ (await ask(dead.port, "GET", "/"));
   assert.equal(c.status, 502);
-  assert.match(c.body, /did not answer/);
+  // Linux reaches the port through the shim and finds nothing listening; a Mac has no shim and serves only a port this chat's own processes listen on, so it refuses the unowned port in its own words
+  assert.match(c.body, /did not answer|not one this chat started/);
   // a server on the person's own loopback that is NOT the chat's (a dev database, the daemon, Docker) is not reachable through a preview, request or tunnel, on a Mac as much as on Linux (rows 27)
   const outside = http.createServer((q, r) => r.end("secret-of-the-person")); await new Promise(r => outside.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => outside.close());
   const outPort = /** @type {any} */ (outside.address()).port;

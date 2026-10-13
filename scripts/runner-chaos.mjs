@@ -146,6 +146,7 @@ else if (role === "lender") {
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: DEVICE, deviceKey: DEVICE }) }) },
   };
   seams.set(base, { heartbeatMs: BEAT_MS, now: () => Date.now() + faults.skew, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
+  process.env.VYRE_LENT_AGENT_DEV = "1";   // this is the development tree: the Space may name the fake agent by its path and its folder (a packaged computer obeys neither)
   process.env.VYRE_CLAUDE_BIN = path.join(agentDir, "agent.js");   // a chat's process the home spawns here runs the fake agent ("claude" resolves to it)
   const h = await mod.start(ctx);
   const run = (tool, input) => tools.get(tool).run(input, { caller: "cli" });

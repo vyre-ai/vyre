@@ -37,9 +37,10 @@ jobs:
       - name: a chat on a computer run by the real daemon, and the runner's lent-chat tests
         shell: bash
         run: node --test --test-timeout=240000 core/runner/lent-daemon.test.js core/runner/lent-pipe-runner.test.js core/runner/lent-pipe.test.js core/runner/lent-wire.test.js 2>&1 | tee lent.txt
-      - name: the home sandbox and the hardening tests, including the macOS-only ones (seatbelt, Mach denies, profiles) that skip everywhere else
+      - name: the home sandbox and the hardening tests, including the macOS-only ones (seatbelt, Mach denies, profiles, the home network) that skip everywhere else
+        if: always()
         shell: bash
-        run: node --test --test-timeout=240000 core/runner/homesandbox.test.js core/runner/hardening.test.js 2>&1 | tee home.txt
+        run: node --test --test-timeout=240000 core/runner/homesandbox.test.js core/runner/hardening.test.js core/runner/mac-hosted.test.js core/runner/home-network.test.js core/runner/rv2-seatbelt.test.js 2>&1 | tee home.txt
       - name: the chaos scenarios for a chat's pipe, its door and the lid shutting mid-turn
         shell: bash
         run: node scripts/runner-chaos.mjs pipe door lidMidTurn 2>&1 | tee chaos.txt
