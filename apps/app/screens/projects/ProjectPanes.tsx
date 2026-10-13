@@ -68,7 +68,7 @@ export function MemoryPane({ id }: { id: string }) {
 export function StagesPane({ snapshot, stage, template }: { snapshot: string; stage?: string; template?: string }) {
   const router = useRouter();
   let body: Body | null = null;
-  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Template"), stages: j.stages || [] }; } catch { body = null; }
+  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Playbook"), stages: j.stages || [] }; } catch { body = null; }
   if (!body) return <EmptyState title="No stages" body="This project's stages could not be read." />;
   const tree = treeOf(body);
   return (

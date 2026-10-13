@@ -63,7 +63,7 @@ export function DocumentsBar({ def, rec, related, email, canSend }: { def: any; 
       <Sheet open={!!make} onClose={() => setMake(null)} title="Make a document">
         {make ? (
           <View className="gap-s3">
-            <Text tone="muted">{`It is filled from ${def.label.toLowerCase()} ${rec.id ? "and the records linked to it" : ""}, and filed in the Drive.`}</Text>
+            <Text tone="muted">{`It is filled from ${def.label.toLowerCase()} ${rec.id ? "and the records linked to it" : ""}, and filed in Files.`}</Text>
             <View className="flex-row flex-wrap gap-s2">{templates.map((t) => <Chip key={t} selected={make.name === t} onPress={() => pick(t)}>{t}</Chip>)}</View>
             {make.name && make.asks.length ? <Banner tone="warn"><Text strong>This template also asks for</Text><Text size="caption" tone="muted">{make.asks.join(", ")}. Nothing here gives them; the box will say what is missing.</Text></Banner> : null}
             <Segmented<"docx" | "pdf"> label="Format" value={make.format} onChange={(format) => setMake({ ...make, format })} options={[["docx", "Word"], ["pdf", "PDF"]]} />

@@ -56,7 +56,7 @@ function SampleVaultScreen() {
           </View>
           {reveal.shown === cur.id ? <Text size="caption" tone="label">Shown for 30 seconds, then masked again.</Text> : null}
         </View>
-        <Sec title="Used by assistants, without seeing it">
+        <Sec title="Used by agents, without seeing it">
           {cur.use.length ? (
             <Card flush>
               {cur.use.map((u, i) => (
@@ -79,7 +79,7 @@ function SampleVaultScreen() {
             </Card>
           ) : <Text tone="muted">Only you.</Text>}
           <View className="self-start pt-s2">
-            <Menu trigger={<Button kind="ghost" size="sm" icon="plus" label="Share with a person or assistant" />}
+            <Menu trigger={<Button kind="ghost" size="sm" icon="plus" label="Share with a person or agent" />}
               items={PEOPLE.filter((p) => !cur.grants.some((g) => g.who === p)).flatMap((p) => (["use", "fill", "copy"] as Right[]).map((r) => ({ label: `${p}: ${RIGHTS[r].label}`, onPress: () => { setItems((xs) => addGrant(xs, cur.id, p, r)); showToast(`${p} can now ${RIGHTS[r].label.toLowerCase()} ${cur.name}.`); } })))} />
           </View>
         </Sec>
@@ -89,7 +89,7 @@ function SampleVaultScreen() {
 
   const faceSheet = (
     <FaceIdSheet open={!!reveal.ask} onClose={reveal.cancel} title="Reveal with Face ID"
-      body={`${askTitle ? ("name" in askTitle ? askTitle.name : `${askTitle.title}, ${askTitle.field}`) : "The value"} shows for 30 seconds, then masks again. Assistants never see it.`}
+      body={`${askTitle ? ("name" in askTitle ? askTitle.name : `${askTitle.title}, ${askTitle.field}`) : "The value"} shows for 30 seconds, then masks again. Agents never see it.`}
       confirm="Approve with Face ID" onConfirm={reveal.approve} />
   );
 
@@ -105,14 +105,14 @@ function SampleVaultScreen() {
 
   return (
     <Frame title="Vault" sub="Logins, keys and cards, per space." scope>
-      <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
+      <Footnote icon="shield">Agents never see a credential. Every use is logged.</Footnote>
       <Tabs<Tab> value={tab} onChange={setTab} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held fields"]]} />
       {tab === "Held" ? (
         <Card flush>
           {held.length ? held.map((h, i) => (
             <View key={h.id}>
               {i ? <Divider inset={60} /> : null}
-              <Row dense lead={<IconTile name="sealed" tone="warn" badge={<SpaceBadge sp={h.sp} />} />} title={`${h.title}, ${h.field}`} sub={`Held by the Vault. Assistants see "${h.field} on file, sealed".`}
+              <Row dense lead={<IconTile name="sealed" tone="warn" badge={<SpaceBadge sp={h.sp} />} />} title={`${h.title}, ${h.field}`} sub={`Held by the Vault. Agents see "${h.field} on file, sealed".`}
                 end={reveal.shown === h.id
                   ? <><Text mono>{h.value}</Text><Button kind="ghost" size="sm" label="Hide" onPress={reveal.hide} /></>
                   : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal.request(h.id)} />} />

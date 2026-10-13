@@ -68,7 +68,7 @@ export function assignGroups(actors: Assignee[], onProject: string[] = [], exclu
   const pool = actors.filter((a) => a.family !== "service" && !out.has(a.id));
   const first = pool.filter((a) => on.has(a.id)).sort(order);
   const rest = pool.filter((a) => !on.has(a.id)).sort(order);
-  return [first.length ? { title: "On this project", rows: first } : null, rest.length ? { title: first.length ? "Everyone" : "People and assistants", rows: rest } : null].filter(Boolean) as { title: string; rows: Assignee[] }[];
+  return [first.length ? { title: "On this project", rows: first } : null, rest.length ? { title: first.length ? "Everyone" : "People and agents", rows: rest } : null].filter(Boolean) as { title: string; rows: Assignee[] }[];
 }
 
 /** Narrow the groups by what was typed (name or role, any case). */

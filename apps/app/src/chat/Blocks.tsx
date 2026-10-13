@@ -241,7 +241,7 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
       </Pressable>
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
-      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
+      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
     </View>
   );
 }
@@ -293,7 +293,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
                     <DiffLines file={full} wide={ctx.wide} />
-                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
+                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
               </View>

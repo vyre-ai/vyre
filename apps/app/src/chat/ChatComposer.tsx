@@ -155,7 +155,7 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
-        { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
+        { key: "at", group: "Insert", label: "Mention a person or agent", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
       if (p.runsOn) {

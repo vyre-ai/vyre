@@ -105,7 +105,7 @@ export function ChatPanel(p: ChatPanelProps) {
       <SectionLabel first meta={String(p.participants.length)}>People</SectionLabel>
       {p.participants.map((x) => (
         <Row key={x.id} dense lead={<Face name={x.name} family={fam(x.family)} size={32} id={x.id} />} title={x.name}
-          sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Assistant${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
+          sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
           onPress={p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
       ))}
       {p.onAdd && p.addable ? (adding ? (
@@ -121,7 +121,7 @@ export function ChatPanel(p: ChatPanelProps) {
       <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => p.onPage("project")} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
       <Row dense lead={<Icon name="hash" size={20} />} title={p.info.record ? p.info.record.title : "Link to a record"} sub={p.info.record ? `${p.info.record.type}${p.info.space ? " in " + p.info.space : ""}` : "Types # in the message box and picks one"} chevron={!p.info.record} onPress={p.info.record ? undefined : () => { p.onClose(); p.onLinkRecord(); }} />
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 6 }}>
-        <Text size="caption" tone="muted">Assistants see this chat and the records you tag, with the grants of whoever asked.</Text>
+        <Text size="caption" tone="muted">Agents see this chat and the records you tag, with the grants of whoever asked.</Text>
         <View style={{ flexDirection: "row" }}><Chip tone="sealed" icon="shield">{p.info.sealed > 0 ? `${p.info.sealed} sealed field${p.info.sealed === 1 ? "" : "s"}, never shown` : "No sealed fields here"}</Chip></View>
       </View>
 

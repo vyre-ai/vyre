@@ -533,7 +533,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "ai") {
     body = (
-      <Page title="Connect your AI accounts" sub="Your assistant works on your own AI account. Connect Claude now, or later from Settings.">
+      <Page title="Connect your AI accounts" sub="Your agent works on your own AI account. Connect Claude now, or later from Settings.">
         {MOCK ? <Card><Row dense title="Claude" sub="Connected with your Claude subscription" /></Card> : <ConnectClaude />}
         <View className="flex-row gap-s2">
           <Button kind="primary" label="Continue" onPress={() => advance("ai")} />

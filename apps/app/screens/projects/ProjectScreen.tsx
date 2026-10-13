@@ -38,7 +38,7 @@ export default function ProjectScreen() {
     if (p === "stages") return <>{data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null}{q.data && f ? <ProjectView world={q.data.world} {...f} onOpenTask={(t) => void run(t, "open")} /> : null}</>;
     if (p === "timeline") return slug ? <TimelinePane slug={slug} /> : <EmptyState title="No timeline here" body="This project has no short name a timeline can be read under." />;
     if (p === "chats") return slug ? <ChatsPane slug={slug} /> : <EmptyState title="No chats here" body="This project has no short name chats can be filed under." />;
-    if (p === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id the Drive can keep files under." />;
+    if (p === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id Files can keep files under." />;
     return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   return (

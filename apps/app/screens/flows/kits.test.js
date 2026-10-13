@@ -54,7 +54,7 @@ test("the library lists what the box offers and nothing when the box has no such
   assert.equal(m.addsLine(lib[0]), "2 types, 1 Flow");
   const { kit, card } = await s.card("estate-planning");
   assert.deepEqual(b.seen.slice(-2), [{ tool: "records.kits.get", input: { id: "estate-planning" } }, { tool: "flows.kit.card", input: { kit: { id: "estate-planning", version: 1 } } }]);
-  assert.deepEqual(m.cardLines(/** @type {any} */ (card)).lines, ["Record type Matter, 4 fields, 1 sealed", "Flow Intake, sends or publishes"]);
+  assert.deepEqual(m.cardLines(/** @type {any} */ (card)).lines, ["Object Matter, 4 fields, 1 sealed", "Flow Intake, sends or publishes"]);
   await s.propose(kit);
   assert.deepEqual(b.seen.at(-1), { tool: "flows.kit.propose", input: { kit: { id: "estate-planning", version: 1 } } });
   assert.deepEqual(m.proposeNote({ ok: false, errors: [{ path: "version", message: "version 2 is already installed" }] }), { ok: false, text: "version: version 2 is already installed" });
@@ -72,7 +72,7 @@ test("an update: the library's newer version is offered, flows.kit.diff reads it
   const d = await s.diff(kit);
   assert.deepEqual(b.seen, [{ tool: "flows.kit.library.get", input: { id: "estate-planning" } }, { tool: "flows.kit.diff", input: { kit: { id: "estate-planning", version: 4 } } }]);
   assert.ok(!b.seen.some((x) => x.tool === "flows.kit.propose"), "reading the diff asks nobody");
-  assert.deepEqual(m.diffLines(d), [{ t: "a", s: "Flow weekly_digest" }, { t: "c", s: "Template welcome changes" }, { t: "d", s: "Role intern" }]);
+  assert.deepEqual(m.diffLines(d), [{ t: "a", s: "Flow weekly_digest" }, { t: "c", s: "Playbook welcome changes" }, { t: "d", s: "Role intern" }]);
   assert.equal(m.versionLine(d), "v3 to v4");
   assert.equal(m.widenings(d)[0].what, "now email.send");
   assert.match(m.risks(d)[0].what, /email is removed/);
