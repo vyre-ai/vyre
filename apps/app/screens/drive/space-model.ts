@@ -82,7 +82,7 @@ export function spaceDriveRefusal(code: string | undefined, message: string): st
   if (code === "not_found") return "That file is not there, or you may not read it.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "bad_input") return message || "That path is not allowed.";
-  return message || "Drive did not answer.";
+  return message || "Files did not answer.";
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------ shared links

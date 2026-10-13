@@ -99,6 +99,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.drive.share", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
   "files.drop.meta", "files.drop.pending", "files.drop.put", "files.drop.register", "files.drop.targets", "files.drop.unregister", "files.fetch", "files.mentions.search",
   "files.preview", "files.recent", "files.search", "files.stat",
+  // Linked folders (core/files/linked*.js): every handler keeps a caller to their OWN rows and their OWN account at the source, but no member-session test calls them yet and no source is wired on a
+  // server (providers are registered with the Google bridge), so they stay OWNER_ONLY until a member test and the bridge land; then the reads (list, ls, read, search, status, sync, tree, versions) move.
+  "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.resolve", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
   "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
   "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.request", "gate.revise", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",

@@ -2,7 +2,7 @@
 // from its first chunk (files.drive.read). The box refuses secrets and anything outside a share; a refusal reads as "not available".
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Sheet, Tabs, Text, ErrorState, LoadingState } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Sheet, Text, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
@@ -17,11 +17,12 @@ import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
 
 type Tab = "space" | "shared" | "linked" | "files" | "sharing";
+const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what assistants made for you", linked: "Live folders from Google Drive", files: "Folders your server offers", sharing: "Sharing to your computer" };
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
   const driveTag = usePlaceText("home");
-  const [tab, setTab] = useState<Tab>("space");
+  const [tab, setTab] = useState<Tab | null>(null);
   const [made, setMade] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
@@ -89,8 +90,14 @@ export default function RealDrive() {
   return (
     <Frame title="Files" sub="The space's files with their versions, linked folders, and your server's folders.">
       <PlaceTag of="home" />
-      <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
-      {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}
+      {tab === null ? (
+        <Card flush>
+          {(REAL_TABS as unknown as [Tab, string][]).map(([id, label], i) => (
+            <View key={id}>{i ? <Divider inset={60} /> : null}<Row chevron lead={<IconTile name={id === "linked" ? "share" : id === "sharing" ? "drive" : "folder"} />} title={label} sub={ROOT_SUB[id]} onPress={() => setTab(id)} /></View>
+          ))}
+        </Card>
+      ) : <Breadcrumb crumbs={[{ name: "Files", key: "" }, { name: (REAL_TABS as unknown as [Tab, string][]).find((t) => t[0] === tab)?.[1] ?? "", key: tab }]} onPress={() => setTab(null)} />}
+      {tab === null ? null : tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

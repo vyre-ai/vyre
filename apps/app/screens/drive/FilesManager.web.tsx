@@ -128,9 +128,9 @@ function Manager({ wide }: { wide: boolean }) {
   // columns
   const columns = useMemo<ColumnDef<FileRow>[]>(() => [
     { id: "name", header: "Name", accessorKey: "name", cell: (c) => <Cell r={c.row.original} /> },
-    { id: "kind", header: "Kind", accessorFn: (r) => KIND_WORD[r.kind], size: 110 },
-    { id: "modified", header: "Modified", accessorFn: (r) => when(r.modified), size: 130 },
-    { id: "size", header: "Size", accessorFn: (r) => (r.dir ? "" : sizeWord(r.size)), size: 90 },
+    { id: "kind", header: "Kind", accessorFn: (r) => KIND_WORD[r.kind], size: 84 },
+    { id: "modified", header: "Modified", accessorFn: (r) => when(r.modified), size: 104 },
+    { id: "size", header: "Size", accessorFn: (r) => (r.dir ? "" : sizeWord(r.size)), size: 72 },
   ], []);
   const table = useReactTable({ data: shown, columns, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.key });
   const scroller = useRef<HTMLDivElement>(null);
@@ -164,7 +164,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
         {shown.map((r, i) => (
           <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 12, padding: 12, border: "1px solid var(--edge, rgba(128,128,128,.25))", outline: sel.set.has(r.key) ? "2px solid var(--accent, #6b5cff)" : "none" }}>
-            <IconTile name={ICON[r.kind] as never}  />
+            <IconTile name={ICON[r.kind] as never} tone="text-2" />
             <div style={{ marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
           </div>
@@ -174,7 +174,7 @@ function Manager({ wide }: { wide: boolean }) {
       <Card flush>
         <div style={{ display: "flex", padding: "8px 16px" }}>
           {table.getHeaderGroups()[0].headers.map((h) => (
-            <div key={h.id} onClick={() => setSort(nextSort(sort, h.id as Sort["key"]))} style={{ flex: h.id === "name" ? 1 : "none", width: h.id === "name" ? undefined : h.getSize(), cursor: "pointer", userSelect: "none" }}>
+            <div key={h.id} onClick={() => setSort(nextSort(sort, h.id as Sort["key"]))} style={{ minWidth: 0, flex: h.id === "name" ? "1 1 0" : "none", width: h.id === "name" ? undefined : h.getSize(), cursor: "pointer", userSelect: "none" }}>
               <Text size="caption" strong tone="label">{flexRender(h.column.columnDef.header, h.getContext())}{sort.key === h.id ? (sort.dir === "asc" ? "  ▲" : "  ▼") : ""}</Text>
             </div>
           ))}
@@ -189,7 +189,7 @@ function Manager({ wide }: { wide: boolean }) {
                   style={{ position: "absolute", top: 0, left: 0, right: 0, height: ROW_H, transform: `translateY(${v.start}px)`, display: "flex", alignItems: "center", padding: "0 16px", cursor: "pointer", background: on ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", outline: v.index === focus ? "1px solid var(--accent, #6b5cff)" : "none" }}>
                   <MenuRow items={menuFor(r)}>{(menu) => (<>
                   {row.getVisibleCells().map((c) => (
-                    <div key={c.id} style={{ flex: c.column.id === "name" ? 1 : "none", width: c.column.id === "name" ? undefined : c.column.getSize(), minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div key={c.id} style={{ flex: c.column.id === "name" ? "1 1 0" : "none", width: c.column.id === "name" ? undefined : c.column.getSize(), minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {c.column.id === "name" ? flexRender(c.column.columnDef.cell, c.getContext()) : <Text size="caption" tone="muted">{String(c.getValue() ?? "")}</Text>}
                     </div>
                   ))}
@@ -238,7 +238,7 @@ function Manager({ wide }: { wide: boolean }) {
 }
 
 function Cell({ r }: { r: FileRow }) {
-  return <View className="flex-row items-center gap-s2"><IconTile name={ICON[r.kind] as never}  /><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></View>;
+  return <View className="min-w-0 flex-1 flex-row items-center gap-s2"><IconTile name={ICON[r.kind] as never} tone="text-2" /><View className="min-w-0 flex-1"><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></View></View>;
 }
 
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
