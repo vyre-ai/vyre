@@ -113,22 +113,21 @@ test("a member links, lists, syncs, reads and searches her own folder, as her ow
   assert.equal(Buffer.from((await r.run("files.linked.read", { id: l.id, path: "b.txt" })).base64, "base64").toString(), "budget numbers");
   assert.equal(r.linked.providers.get("fake").calls.find(c => c[0] === "list")[1], "per_bo", "asked as the member, not the owner");
   assert.equal((await r.run("files.linked.tree")).folders.length, 1);
+  assert.equal(await code(r.run("files.linked.unlink", { id: l.id })), null, "and unlinks it");
 });
 
-test("a member neither sees nor touches another member's folder; the owner sees every one", async () => {
+test("a member sees another member's link by name only: none of their index, no way to unlink it, and her own account decides what she opens", async () => {
   const r = seeded(); r.state.chain = person("per_bo");
   const l = await r.run("files.linked.link", { name: "Bo-docs", provider: "fake", source: { folder: "F1" } });
   await r.run("files.linked.sync", { id: l.id });
   r.state.chain = person("per_cy");
-  assert.deepEqual((await r.run("files.linked.list")).links, []);
-  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, []);
-  assert.deepEqual((await r.run("files.linked.tree")).folders, []);
+  assert.equal((await r.run("files.linked.list")).links.length, 1, "the link is the Space's, so she knows it is there");
+  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, [], "Bo's index is Bo's");
   assert.deepEqual((await r.run("files.linked.mentions.search", { q: "launch" })).items, []);
-  for (const [n, i] of [["status", {}], ["sync", {}], ["ls", {}], ["read", { path: "b.txt" }], ["versions", { path: "b.txt" }], ["write", { path: "b.txt", base64: "eA==" }], ["rename", { path: "b.txt", to: "c.txt" }], ["delete", { path: "b.txt" }]])
-    assert.equal(await code(r.run("files.linked." + n, { id: l.id, ...i })), "not_found", n);
+  assert.equal(await code(r.run("files.linked.read", { id: l.id, path: "b.txt" })), "not_found", "nothing opens until her own account has listed it");
   assert.equal(await code(r.run("files.linked.unlink", { id: l.id })), "denied");
-  r.state.chain = person("per_alex");
-  assert.equal((await r.run("files.linked.list")).links.length, 1, "the owner sees it");
+  await r.run("files.linked.sync", { id: l.id });
+  assert.equal(r.linked.providers.get("fake").calls.filter(c => c[0] === "list").at(-1)[1], "per_cy", "listed as her, not as Bo");
 });
 
 test("a guest and an agent with no person behind them are refused where the tool is the person's", async () => {

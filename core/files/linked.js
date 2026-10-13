@@ -49,8 +49,6 @@ export function registerLinked(ctx, o) {
   const db = () => { if (!ready) { ctx.store.migrate(filesMigrations()); ready = true; } return ctx.store.db; };
   /** @type {any} */ let idx;
   const index = () => idx || (idx = linkedIndex({ db: db(), providers, now }));
-  /** A link is its linker's: another member neither sees nor works it. The Space owner sees every one. */
-  const mine = (/** @type {any} */ r, /** @type {string} */ who) => r.linked_by === who || who === String(ctx.kernel.owner);
   const view = (/** @type {any} */ r) => ({ id: r.id, name: r.name, path: linkedDir(r.name), provider: r.provider, source: JSON.parse(r.source), linked_by: r.linked_by, at: r.at });
 
   const t = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {any} */ extra, /** @type {(i: any, d: any, who: string) => Promise<any>} */ run) =>
@@ -83,8 +81,8 @@ export function registerLinked(ctx, o) {
     return p.pick(who, i.parent === undefined ? {} : { parent: String(i.parent) });
   });
 
-  t("files.linked.list", "The folders linked in this Space: { space? } -> { links }.", obj({ space: str }), {}, async (_i, d, who) =>
-    ({ links: db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space).filter((/** @type {any} */ r) => mine(r, who)).map(view) }));
+  t("files.linked.list", "The folders linked in this Space: { space? } -> { links }.", obj({ space: str }), {}, async (_i, d) =>
+    ({ links: db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space).map(view) }));
 
   t("files.linked.unlink", "Stop showing a linked folder: { space?, id }. Only who linked it or the Space owner. The source folder is not touched.", obj({ space: str, id: str }, ["id"]),
     { presence: { summary: async () => "Unlink a linked folder" } },
@@ -99,7 +97,7 @@ export function registerLinked(ctx, o) {
 
   const linkOf = (/** @type {any} */ i, /** @type {any} */ d) => {
     const r = db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(String(i.id ?? ""), d.space);
-    if (!r || !mine(r, personOf(d.chain))) throw refuse("no such linked folder", "not_found");
+    if (!r) throw refuse("no such linked folder", "not_found");
     return r;
   };
   const asLink = (/** @type {any} */ r) => ({ id: r.id, provider: r.provider, source: JSON.parse(r.source) });
@@ -112,7 +110,7 @@ export function registerLinked(ctx, o) {
 
   t("files.linked.tree", "Every file in your own index of each linked folder, for the # picker: { space?, limit? } -> { folders: [{ id, name, files: [{ path }] }] }. A folder you have not synced (or whose last sync failed) is synced first, as you; one the source refuses comes back empty.",
     obj({ space: str, limit: { type: "integer" } }), {}, async (i, d, who) => {
-      const rows = db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space).filter((/** @type {any} */ r) => mine(r, who));
+      const rows = db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space);
       const folders = [];
       for (const r of rows) {
         const st = index().status(r.id, who);
@@ -124,7 +122,7 @@ export function registerLinked(ctx, o) {
 
   t("files.linked.search", "Search the linked folders by name, path and text, among what your account sees: { space?, q, id?, limit? }.", obj({ space: str, q: str, id: str, limit: { type: "integer" } }, ["q"]), {},
     async (i, d, who) => {
-      const names = new Map(db().prepare("SELECT id, name, linked_by FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).filter((/** @type {any} */ r) => mine(r, who)).map((/** @type {any} */ r) => [r.id, r.name]));
+      const names = new Map(db().prepare("SELECT id, name FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).map((/** @type {any} */ r) => [r.id, r.name]));
       const hits = index().search(who, String(i.q ?? ""), { limit: i.limit, ...(i.id ? { link: String(i.id) } : {}) }).filter((/** @type {any} */ h) => names.has(h.link));
       return { hits: hits.map((/** @type {any} */ h) => ({ link: h.link, link_name: names.get(h.link), path: `${linkedDir(names.get(h.link))}/${h.path}`, name: h.name, mime: h.mime, size: h.size, modified: h.modified, snippet: h.snippet })) };
     });
@@ -141,7 +139,7 @@ export function registerLinked(ctx, o) {
       const q = String(i && i.q || "").trim();
       if (!q) return { items: [] };
       const d = await door.open({}, meta || {}), who = personOf(d.chain);
-      const names = new Map(db().prepare("SELECT id, name, linked_by FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).filter((/** @type {any} */ r) => mine(r, who)).map((/** @type {any} */ r) => [r.id, r.name]));
+      const names = new Map(db().prepare("SELECT id, name FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).map((/** @type {any} */ r) => [r.id, r.name]));
       const hits = index().search(who, q, { limit: Math.min(50, Math.max(1, Number(i.limit) || 30)) }).filter((/** @type {any} */ h) => names.has(h.link) && h.entry);
       return { items: hits.map((/** @type {any} */ h) => { const dir = String(h.path).includes("/") ? `/${String(h.path).replace(/\/[^/]*$/, "")}` : ""; return { id: `${h.link}:${h.path}`, name: String(h.name), hint: `${linkedDir(names.get(h.link))}${dir}`, icon: "file" }; }) };
     },
@@ -158,7 +156,7 @@ export function registerLinked(ctx, o) {
       try { d = await door.open({}, meta || {}); who = personOf(d.chain); } catch { d = null; }
       // With a person behind the turn the file is read now, as them; without one the tag is still known, as a note.
       const row = d ? db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(tag.link, d.space) : db().prepare("SELECT * FROM files_linked WHERE id = ? AND removed_at IS NULL").get(tag.link);
-      if (!row || (d && !mine(row, who))) throw gone();
+      if (!row) throw gone();
       const note = `The person tagged the linked file "${tag.path}" in ${linkedDir(row.name)}. Read it with files.linked.read {id: "${row.id}", path: "${tag.path}"}.`;
       const base = { name: tag.path.split("/").pop() || tag.path, hint: linkedDir(row.name), note };
       if (!d) return base;
