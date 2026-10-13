@@ -58,9 +58,9 @@ An agent is a named, persistent helper that people chat with, assign tasks to an
 
 ## Extend it
 
-In 0.5 Claude is the model Vyre has run end to end on real accounts. Codex and Grok run against recorded sessions. An agent step has no deadline: a session that ends without finishing is marked stuck, and a session that never ends is not timed out. 0.5.1 plans a due time and a failure path on agent steps (roadmap R051-02) and credentials lent to a woken agent for one job (R051-04). A member signs in to an AI provider with the provider's own sign-in, since a setup token or API key is not accepted as a member's own account. The MCP servers a member signs in to inside a session do not carry to the next session.
+In 0.5 provider coverage differs ([Sessions and models](./sessions-and-models.md)). An agent step has no deadline: a session that ends without finishing is marked stuck, and a session that never ends is not timed out. 0.5.1 plans a due time and a failure path on agent steps (roadmap R051-03) and credentials lent to a woken agent for one job (R051-02). The MCP servers a member signs in to inside a session do not carry to the next session.
 
-When a business needs more, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. `core/modules` loads it and runs it under the supervisor in `kernel/modules`; kernel contracts are in `kernel/contracts/`. See [Modules](../../MODULES.md), [the module contract](../../build/module-contract.md) and [Writing a module](../../build/writing-a-module.md). An agent can write that module on the business's own server. For an outside app, the planned Integration (roadmap R051-01) wraps the app's API and brings its own Flow steps, triggers, connection and agent tools. [Known gaps](../../known-gaps.md) has the full list.
+A custom module adds what the built-in agents lack. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

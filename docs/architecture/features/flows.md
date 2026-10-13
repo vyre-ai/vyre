@@ -81,12 +81,10 @@ Every call runs under the caller's own chain, and a call with no person or sessi
 ## Extend it
 
 - In 0.5, a "For each" step takes up to 50 items in the editor, though the engine allows 1000. A longer list is cut, and the run page gives no note. A Flow written in the code view loops over up to the engine's 1000.
-- An agent step has no deadline in 0.5. A session that ends without finishing is marked stuck. 0.5.1 plans a due time on the step with a failure path, and a failure panel on every step in the editor (R051-02).
-- A Flow email carries no CC, BCC or attachments in 0.5. 0.5.1 plans all three, with date helpers (R051-06).
+- An agent step has no deadline in 0.5. A session that ends without finishing is marked stuck. 0.5.1 plans a due time on the step with a failure path, and a failure panel on every step in the editor (R051-03, R051-04).
+- A Flow email carries no CC, BCC or attachments in 0.5. 0.5.1 plans all three, with date helpers (R051-08).
 - In 0.5, `flows.describe`, `flows.runs` and `flows.connections` over MCP stay with owners, so a member cannot inspect a Flow that way.
-- When a business needs a step the palette lacks, such as a lookup in its own system, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. A Flow calls its tools with a `call` step and starts from its events. Core loads modules from core/modules under the supervisor in kernel/modules. See [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). An agent can write the module on the business's own server.
-- For an outside app, an Integration is planned (R051-01 in the [roadmap](../../roadmap.md)). It wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known-gaps](../../known-gaps.md).
+- When the palette lacks a step, such as a lookup in your own system, build a custom module. A Flow calls its tools with a `call` step and starts from its events. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

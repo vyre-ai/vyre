@@ -66,7 +66,7 @@ A person is a permanent identity id plus a signed, chained list of the keys that
 
 In 0.5 Face ID pairing and the removed-phone wipe have run in tests and have not been walked on a real iPhone or Android phone. Windows Hello has passed its tests with a stand-in authenticator and has not run on a PC with Hello set up. A Windows PC without Hello keeps a key marked as reachable by a page script. That key cannot change who speaks for your name, so list changes come from a phone or the recovery code. A direct path through a home router has not been tried, and the relay carries the connection until one exists.
 
-When a business needs its own step around sign-in or devices, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. `core/modules` loads it under the supervisor in `kernel/modules`, and it reads the contracts in `kernel/contracts/`. See [Modules](../../MODULES.md), [the module contract](../../build/module-contract.md) and [Writing a module](../../build/writing-a-module.md). An agent can write that module on the business's own server. For an outside identity app, the planned Integration (roadmap R051-01) wraps the app's API and brings its own Flow steps, triggers, connection and agent tools. [Known gaps](../../known-gaps.md) has the full list.
+A business that wants its own step around sign-in or devices builds a custom module that reads the contracts in `kernel/contracts/`. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

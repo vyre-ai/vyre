@@ -8,7 +8,7 @@ status: stable
 
 # Architecture overview
 
-Read this page first. It takes about ten minutes and gives you the picture. [The Vyre map](map.md) is the longer tour of the same ground (30 minutes, with every module listed), and the [specification](spec.md) is the source of truth for detail.
+Read this page first; it takes ten minutes. [The Vyre map](map.md) tours the same ground in 30 minutes and lists every module. The [specification](spec.md) is the source of truth for detail.
 
 Vyre is one product for a team and its agents. It runs on a server you own and on the computers your people use. Three ideas shape all of it:
 
@@ -168,5 +168,6 @@ Deeper: [the map, sections 5 and 13](map.md) and [Presence](../concepts/presence
 | `scripts/` | Installers, the docs build, test and walk harnesses. |
 | `test/` | Tests that cross folders. |
 | `release/` | Release data and release notes. |
+| `roadmap/` | The plan for each upcoming version. |
 
 The generated list of every folder is in [the map, section 14](map.md). To build on Vyre, start at [the module contract](../build/module-contract.md); to change it, start at [Contributing](../contributing/index.md).

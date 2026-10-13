@@ -50,10 +50,7 @@ An agent lists templates with `documents.template.list` and `documents.template.
 
 ## Extend it
 - In 0.5 a document comes from one Word template filled from records. A business that needs a bundle of documents per matter, another signing provider or a document fed by an outside system adds a custom module.
-- A module is a folder with `module.json` and an entry file that registers tools and emits events. core/modules loads it under the supervisor in kernel/modules, and kernel/contracts holds the contracts it meets. See [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md).
-- An agent can write that module on the business's own server.
-- For an outside app, an Integration is planned (docs/roadmap.md R051-01). It wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
-- The full list of gaps is in [known gaps](../../known-gaps.md).
+- [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 - [records](./records.md), [files](./files.md), [flows](./flows.md), [gate](./gate.md), [apps](./apps.md)

@@ -63,9 +63,7 @@ The Publish module (`core/publish`) puts a folder of ready files, a built site, 
 
 - In 0.5 a build from a Drive folder is not available, and a scheduled job has no network. Apps with their own server publish only where the setting `publish.servers` is on (see docs/using/publish.md).
 - Until the public door is on, `publish.quick` answers "Public once the public door is on", and the address works on the person's own devices.
-- A business that needs another target, such as a hosting service of its own or a build step Publish does not know, adds a custom module: a folder with `module.json` and an entry file that registers tools and emits events. See [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). An agent can write it on the business's own server, and kernel/modules runs it under the supervisor.
-- For an outside service, an Integration is planned (docs/roadmap.md R051-01) with its own Flow steps, connection and agent tools.
-- The full list is in [known gaps](../../known-gaps.md).
+- For another target, such as a hosting service of your own or a build step Publish does not know, add a custom module. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

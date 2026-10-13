@@ -16,7 +16,6 @@ The 0.5.1 plan is in [roadmap/0.5.1.md](../roadmap/0.5.1.md) and the 0.5.2 plan 
 
 ## Known gaps in 0.5
 
-
 ### Members and custom record types
 
 A member can read every row of a record type your Space defined itself, even when the row is linked to a project the member is not on. Matters, tasks and files of a project are already limited to that project's team. Per-record privacy for custom types is planned for 0.5.1.
@@ -65,10 +64,9 @@ Your server tries to make a direct path to your devices with IPv6, UPnP and NAT-
 
 What to do today: nothing. `vyre doctor` shows **Path to your server** and says whether it is direct.
 
-
 ### Real devices
 
-Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Chrome control works today; Screen Share is not built. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
+Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Chrome control works today; Screen Share is not built. The Mac server installer has not run on a real Mac yet. Direct paths through a home router are covered above.
 
 ### Notifications when the phone app is closed
 
@@ -91,7 +89,6 @@ What to do today: ask for one job at a time when several agents need Chrome.
 You can hand one message to several models and see each answer in its own block, then keep one. Only that answer fan-out across models is proven. Per-model plan and diff blocks are not: each reply carries the provider's logo, and plans, diffs, terminals and reasoning look the same for every provider.
 
 What to do today: use the fan-out for answers, and read plans and diffs as they come.
-
 
 ## True today, with no date
 

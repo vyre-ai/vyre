@@ -70,14 +70,12 @@ The Vault screen is in `apps/app/screens/vault/`. The header says "Vault". A sco
 
 ## Extend it
 
-- In 0.5, a member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read the other items in it yet. A woken agent borrows a credential through a task lease, and 0.5.1 plans credentials lent for one job, use only (R051-04).
+- In 0.5, a member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read the other items in it yet. A woken agent borrows a credential through a task lease, and 0.5.1 plans credentials lent for one job, use only (R051-02).
 - A member signs in to an AI provider with the provider's own sign-in and adds no setup token or API key as their own AI account.
 - The firm Microsoft 365 app reads in 0.5. Member sends are not open.
 - On the web, a member's Secret Key sits in browser storage, where the app's own scripts can read it. It opens nothing without the master password.
 - Nothing has been walked on a real iPhone or Android, including Face ID pairing.
-- When a business keeps credentials for a service the catalog lacks, add the item as a login or API key, then write a custom module that asks `vault.granted` and `vault.release` for it. A module is a folder with `module.json` and an entry file that registers tools and emits events. See [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). Kernel contracts are in kernel/contracts/, and the supervisor in kernel/modules runs the module. An agent can write it on the business's own server, and it never sees a value it was not granted.
-- For an outside app, an Integration is planned (R051-01 in the [roadmap](../../roadmap.md)). It brings its own connection, Flow steps, triggers and agent tools.
-- The full list is in [known-gaps](../../known-gaps.md).
+- For a service the catalog lacks, add the item as a login or API key, then write a custom module that asks `vault.granted` and `vault.release` for it. The module never sees a value it was not granted. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

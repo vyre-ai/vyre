@@ -63,7 +63,7 @@ A chat is a conversation thread. People and agents both take part, and the model
 
 In 0.5 a Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. A message can go to several models at once, and each answer shows in its own block. Plans, diffs and terminals look the same for every provider. The phone app receives web push when closed, and native push waits on Apple and Google push accounts. While an agent works in a private chat on a server, that server's operator can see the chat in use, see [Private chats](../../using/private-chats.md).
 
-When a business needs more, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. `core/modules` loads it and runs it under the supervisor in `kernel/modules`; kernel contracts are in `kernel/contracts/`. See [Modules](../../MODULES.md), [the module contract](../../build/module-contract.md) and [Writing a module](../../build/writing-a-module.md). An agent can write that module on the business's own server. For an outside app, the planned Integration (roadmap R051-01) wraps the app's API and brings its own Flow steps, triggers, connection and agent tools. [Known gaps](../../known-gaps.md) has the full list.
+A custom module adds what chats lack. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

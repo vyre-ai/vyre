@@ -73,10 +73,8 @@ A "reviewer" or a "planner" is not a named feature. A person assembles one: add 
 
 - In 0.5 `flows.describe`, `flows.runs` and `flows.connections` over MCP are for owners. A member's own AI account is a provider sign-in, a member's session-level MCP sign-ins last for that session, and a connected AI belongs to the person who owns the Vyre, on their own computer. 0.5.1 work is on the [roadmap](../../roadmap.md).
 - Publishing apps with their own server depends on the setting `publish.servers`; a folder of ready files and a React page publish today.
-- A custom module adds tools that every MCP client then sees, because the server lists what vyred has. Write it as a folder with `module.json` and an entry file that registers tools and emits events; see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). core/modules loads it under the supervisor in kernel/modules, and the hosted allowlist places each new tool before a hosted key can call it. An agent can write such a module on the business's own server.
+- A custom module adds tools that every MCP client then sees, because the server lists what vyred has. The hosted allowlist places each new tool before a hosted key can call it. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 - Another MCP server joins through the hub (`mcp.add`, by a person), with its credentials in the Vault.
-- An outside app can become an Integration (planned: docs/roadmap.md R051-01) with its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known gaps](../../known-gaps.md).
 
 ## Related
 

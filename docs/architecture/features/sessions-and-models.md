@@ -70,7 +70,7 @@ In 0.5 Claude is the model Vyre has run end to end on real accounts. Codex and G
 
 A new provider is a driver for the generic Agent Client Protocol driver in `core/sessions/drivers/acp.js`, checked by `core/sessions/conformance.js`.
 
-When a business needs more, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. `core/modules` loads it and runs it under the supervisor in `kernel/modules`; kernel contracts are in `kernel/contracts/`. See [Modules](../../MODULES.md), [the module contract](../../build/module-contract.md) and [Writing a module](../../build/writing-a-module.md). An agent can write that module on the business's own server. For an outside app, the planned Integration (roadmap R051-01) wraps the app's API and brings its own Flow steps, triggers, connection and agent tools. [Known gaps](../../known-gaps.md) has the full list.
+Anything else a business needs is a custom module. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

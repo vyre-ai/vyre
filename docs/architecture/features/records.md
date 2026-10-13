@@ -56,12 +56,9 @@ The kernel keeps the rows and judges every read and write. The `records` module 
 Models call `records.list`, `records.get`, `records.create`, `records.update`, `records.linked`, `records.reference` and the read tools, as the person they work for, within that person's grants. Sealed values never reach them. `records.reveal`, `records.seal-put` and `records.forget` are the person's own acts, and an agent proposes a forget instead. `records.define` changes types, and the kernel decides who may. See agent doc "records" and sealed-and-secrets (agent doc "sealed-and-secrets").
 
 ## Extend it
-- In 0.5, a member can read every row of a type the Space defined itself, even one linked to a project the member is not on. 0.5.1 plans per-record privacy for custom types, write-once fields and totals (R051-05 in the [roadmap](../../roadmap.md)). Until then, keep sensitive rows in a built-in type.
+- In 0.5, a member can read every row of a type the Space defined itself, even one linked to a project the member is not on. 0.5.1 plans per-record privacy for custom types, write-once fields and totals (R051-06 and R051-07 in the [roadmap](../../roadmap.md)). Until then, keep sensitive rows in a built-in type.
 - CSV export runs in the web app. Import adds rows, and a repeat is skipped or added anyway, not updated.
-- When a business needs behavior a type cannot hold, such as a nightly rollup, a check against an outside list or a new tool on its records, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. Core loads it from core/modules and runs it under the supervisor in kernel/modules. Start with [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). The kernel contracts are in kernel/contracts/.
-- An agent can write that module on the business's own server. The module still passes through the same grants and checks as any other.
-- For an outside app whose records belong beside yours, an Integration is planned (R051-01): it wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
-- The full list of open items is in [known-gaps](../../known-gaps.md).
+- For behavior a type cannot hold, such as a nightly rollup, a check against an outside list or a new tool on its records, build a custom module. It passes through the same grants and checks as any other. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 - [documents-and-signing](./documents-and-signing.md), [files](./files.md), [flows](./flows.md), [tasks-and-needs-you](./tasks-and-needs-you.md), [kernel](./kernel.md), [gate](./gate.md), [vault](./vault.md)

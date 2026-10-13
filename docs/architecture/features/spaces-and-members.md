@@ -62,9 +62,9 @@ A Space is one kernel with its own people, roles, grants and records. The `space
 
 ## Extend it
 
-In 0.5 a member can read every row of a custom record type, even a row linked to a project the member is not on. Matters, tasks and files follow the project's team. 0.5.1 plans per-record privacy for custom types. A Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. Renaming a project on a team server changes the short name that keys its folder group, so the next session there is refused until a re-key step ships. A member signs in to an AI provider with the provider's own sign-in, and sessions read the sign-ins, mail and calendar entries of that member's vault but no other items.
+In 0.5 a member can read every row of a custom record type, even a row linked to a project the member is not on. Matters, tasks and files follow the project's team. 0.5.1 plans per-record privacy for custom types. A Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. Renaming a project on a team server changes the short name that keys its folder group, so the next session there is refused until a re-key step ships. What sessions read from a member's vault is covered in [Vault](./vault.md).
 
-When a business needs a rule beyond these, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. `core/modules` loads it under the supervisor in `kernel/modules`, and its tools take a reach like any `spaces` tool. See [Modules](../../MODULES.md), [the module contract](../../build/module-contract.md), [Writing a module](../../build/writing-a-module.md) and the kernel types in `kernel/contracts/`. An agent can write that module on the business's own server. For an outside app, the planned Integration (roadmap R051-01) wraps the app's API and brings its own Flow steps, triggers, connection and agent tools. [Known gaps](../../known-gaps.md) has the full list.
+A rule beyond these is a custom module, and its tools take a reach like any `spaces` tool. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

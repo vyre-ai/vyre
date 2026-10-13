@@ -58,9 +58,8 @@ A server dials out to the relay, and a device meets it there over an end-to-end 
 
 - In 0.5 the relay carries every connection. Direct paths (IPv6, UPnP, NAT-PMP) were tried on servers with public addresses, not behind a home router, so a connection may stay on the relay. `vyre doctor` shows whether the path is direct.
 - Pairing runs by signing in with the person's name and approving on a device already signed in. Continue with GitHub needs the relay Worker and the escrow Worker deployed, and every server updated first.
-- If the person runs another VPN, Wink starts no node and the link stays on the relay. A Windows PC with no Hello keeps its key in the app, and a team server does not accept that key. The phone apps are not yet walked on real devices.
-- To add another way in or another kind of path for a business, write a custom module: a folder with `module.json` and an entry file that registers tools and emits events (see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md)). kernel/modules runs it under the supervisor, and an agent can write it on the business's own server.
-- The full list is in [known gaps](../../known-gaps.md).
+- If the person runs another VPN, Wink starts no node and the link stays on the relay. A team server does not accept the key of a Windows PC with no Hello ([Identity and devices](./identity-and-devices.md)). The phone apps are not yet walked on real devices.
+- To add another way in or another kind of path, write a custom module. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

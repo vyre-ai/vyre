@@ -79,13 +79,11 @@ A Playbook is a project template. It lists stages, the tasks of each stage and w
 
 ## Extend it
 
-- In 0.5, an agent step has no deadline. A session that ends without finishing is marked stuck, and one that never ends is not timed out. 0.5.1 plans a due time with a failure path (R051-02), and credentials lent to a woken agent for one job, use only (R051-04).
+- In 0.5, an agent step has no deadline. A session that ends without finishing is marked stuck, and one that never ends is not timed out. 0.5.1 plans a due time with a failure path (R051-03), and credentials lent to a woken agent for one job, use only (R051-02).
 - A "For each" step takes up to 50 items in the editor, and a longer list is cut without a note on the run page.
-- Matters, tasks and files of a project belong to that project's team. A member still reads every row of a Space-defined record type until 0.5.1 brings per-record privacy (R051-05).
+- Matters, tasks and files of a project belong to that project's team. Who can read a Space-defined record type is covered in [Records](./records.md).
 - Later is local to the device in 0.5, so another device still shows the card.
-- When a business needs its own kind of task source, a custom check or a new stage rule, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. See [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). Kernel contracts are in kernel/contracts/, and the supervisor in kernel/modules runs the module. An agent can write it on the business's own server.
-- For work that lives in an outside app, an Integration is planned (R051-01 in the [roadmap](../../roadmap.md)). It brings its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known-gaps](../../known-gaps.md).
+- For your own task source, a custom check or a new stage rule, build a custom module. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

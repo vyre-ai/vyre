@@ -4,17 +4,13 @@ Our mission is to help every professional services team become AI-native.
 
 In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
 
-This file is the front door to how Vyre is built. Read the next two sections, then follow the table of contents to the page you need. If you are an AI agent that someone pointed at this repository, the last section tells you where to start.
+This file is the front door to how Vyre is built. Read the next two sections, then follow the table of contents to the page you need. If you are an AI agent, start at the last section.
 
 ## What Vyre is
 
 People and agents share one set of chats, records, tasks, files and automations (Flows). A server the team owns holds all of it. Where the outcome has to be exact, such as who may see a record, what a Flow does or what got sent, declared rules decide and a model does not. Anything that leaves the server, whether an email, a payment, a deletion or a published page, waits for a person to approve the exact words. A model sees a placeholder where a secret would be.
 
-Three ideas shape the code:
-
-- **A small trusted core.** `kernel/` decides who may do what, writes the event log and seals secrets. It has almost no dependencies. Every feature is a module around it, and no module can invent a new kind of permission.
-- **A person decides, and proves it.** An agent can ask for an outward act. Only a person's own device can approve it.
-- **Secrets stay out of the model's reach.** The real value goes in at the moment of sending, outside the model.
+Three ideas shape the code: a small trusted core, a person who decides and proves it, and secrets that stay out of the model's reach. The [architecture overview](docs/architecture/overview.md) explains each. The core is `kernel/`. It decides who may do what, writes the event log and seals secrets, with almost no dependencies. Every feature is a module around it, and no module can invent a new kind of permission.
 
 One program, `vyred`, runs on each machine: a Linux server, a Mac, or a computer that joins a server. The Vyre app, the `vyre` command line and outside AI tools all call it.
 
@@ -118,7 +114,7 @@ Each feature page has the same headings: What it is, What a person sees, How it 
 When a business needs something that is not built in, add it as a module. A module is a folder with a `module.json` and an entry file. It registers tools, emits events and can add Flow steps, and the loader in `core/modules` checks it against the same contract as the built-in ones. It runs under the supervisor in `kernel/modules`, so it gets the kernel's checks and cannot add a new kind of permission.
 
 - The contract: [module contract](docs/build/module-contract.md), [writing a module](docs/build/writing-a-module.md), [first module](docs/build/first-module.md), [the module list](docs/MODULES.md). Kernel types are in `kernel/contracts/`.
-- Integrations with popular applications are planned (roadmap item R051-01). An Integration wraps an outside app's API and ships its own Flow steps, triggers, connection and agent tools.
+- Integrations with popular applications are planned (roadmap item R052-01). An Integration wraps an outside app's API and ships its own Flow steps, triggers, connection and agent tools.
 - An agent can build a module or an Integration for the business on the business's own server. [The agent brief](docs/build/AGENT-BRIEF.md) is the place to start.
 
 ## Repository layout

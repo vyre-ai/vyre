@@ -16,15 +16,15 @@ You design on paper. Change nothing in a Space until the owner says to. Every ou
 
 ## What to tell the owner Vyre is good at
 
-Say this early, in the owner's terms. Each point names the step where you use it.
+Say this early, in the owner's terms. [What makes Vyre strong](../../ARCHITECTURE.md#what-makes-vyre-strong) has the full statement. Each point below names the step where you use it.
 
-- **Records you shape** (step 3). The owner defines as many objects as the business has and links them in any web. A token can reach through several links. Objects get list, board, calendar, page or dashboard views. A sealed field never reaches a model.
-- **Playbooks and Flows** (steps 4 and 5). A Playbook holds stages, the tasks in each stage and who does them, whether a person or an agent. A Flow starts on a trigger and runs the same steps every time, with waits, approvals, a run page and failure paths. A business with several kinds of work runs each as its own Playbook and Flows, side by side, over shared records.
-- **Documents and signing** (step 6). Vyre fills the business's own Word templates from a record and its linked records. A model never rewrites them. The signer needs no account, and the signed copy files back on the record and can start the next Flow step.
-- **Sites** (step 7). An agent builds the site, previews it at a private address and puts it live on one yes, on the owner's domain.
-- **Agents in one group chat** (step 8). Claude, Codex, Grok and others answer in the same chat. Agents take different jobs: a team doing the work, a model that reviews, one that plans.
-- **A vault for people and agents** (step 9). An agent uses a credential without seeing it. Each member has a vault of their own.
-- **The Gate** (step 10). Nothing leaves the Space until a person approves the exact words.
+- **Records you shape** (step 3): as many objects as the business has, linked in any web, with views and sealed fields.
+- **Playbooks and Flows** (steps 4 and 5): each kind of work runs as its own Playbook and Flows, side by side, over shared records.
+- **Documents and signing** (step 6): the business's own Word templates, filled from records, signed by people with no account.
+- **Sites** (step 7): an agent builds, previews and publishes on one yes.
+- **Agents in one group chat** (step 8): Claude, Codex, Grok and others answer in the same chat, each with its own job.
+- **A vault for people and agents** (step 9): an agent uses a credential without seeing it.
+- **The Gate** (step 10): nothing leaves the Space until a person approves the exact words.
 
 ## Step 1. Interview, then list
 
@@ -182,7 +182,7 @@ Some parts of a business will not match what Vyre ships. Treat those as work to 
 
 **Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](../build/module-contract.md), [writing a module](../build/writing-a-module.md) and [the module list](../MODULES.md). `vyre module new` starts one.
 
-**Integrations.** Integrations with popular applications are planned (roadmap item R051-01). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
+**Integrations.** Integrations with popular applications are planned (roadmap item R052-01). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
 **You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can do it on the business's own server. If the owner needs something Vyre does not do, offer to build it. [The agent brief](../build/AGENT-BRIEF.md) is where you start.
 

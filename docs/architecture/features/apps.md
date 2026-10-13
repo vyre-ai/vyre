@@ -59,9 +59,7 @@ The server checks everything the app does. Every read and write goes to a server
 ## Extend it
 
 - In 0.5 push goes out as web push. Native push waits for Apple and Google push accounts. The Windows app is unsigned, so Windows asks for **More info**, then **Run anyway**. A Windows PC is a device and runs no sessions of its own, and CSV export is in the web app. Real iPhone and Android walks are still to come.
-- A business that wants its own screen or action adds a custom module: a folder with `module.json` and an entry file that registers tools and emits events (see [MODULES](../../MODULES.md), [the module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md)). core/modules loads it, kernel/modules supervises it, and its tools reach Flows and agents. An agent can write it on the business's own server.
-- For an outside app, an Integration is planned (docs/roadmap.md R051-01). It wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known gaps](../../known-gaps.md).
+- A business that wants its own screen or action adds a custom module, and its tools reach Flows and agents. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

@@ -65,11 +65,9 @@ An agent calls `gate.request` and gets back a held result with an id. It sends n
 
 - In 0.5, the Gate holds what Vyre recognises as a send, a payment, a delete or a computer-use act. A message sent from a shell, such as `curl` to a mail API, is not recognised as a send, and files a shell command changes are not recorded. An agent works through `gate.request` and the senders for that reason.
 - An interactive artifact made by a session that read outside content and touched private data opens without a hold. Vyre shows "Runs its own code and can reach the internet" on the frame and logs a second load. Open such an artifact when you trust what the session read.
-- A Flow email carries no CC, BCC or attachments in 0.5. 0.5.1 plans all three (R051-06). The `gmail` sender itself takes cc and bcc.
-- A Windows PC with no Hello keeps its key in the app. A script on the page could reach that key, so a team's server does not accept it for changes to your name's list.
-- When a business needs another way out, such as a fax service or its own case system, build a custom module that offers a sender with `gate.offer`. The Gate calls the module's tool after a person approves. A module is a folder with `module.json` and an entry file that registers tools and emits events. See [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). Kernel contracts are in kernel/contracts/, and the supervisor in kernel/modules runs the module. An agent can write it on the business's own server.
-- For an outside app, an Integration is planned (R051-01 in the [roadmap](../../roadmap.md)). It brings its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known-gaps](../../known-gaps.md).
+- A Flow email has no CC, BCC or attachments in 0.5 ([Flows](./flows.md)), though the `gmail` sender itself takes cc and bcc.
+- A Windows PC with no Hello keeps its key in the app, which a team's server does not accept ([Identity and devices](./identity-and-devices.md)).
+- For another way out, such as a fax service or a case system, build a custom module that offers a sender with `gate.offer`. The Gate calls the module's tool after a person approves. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 

@@ -50,9 +50,7 @@ Read tools are open to models as the person they work for: `files.drive.space.li
 - In 0.5, a Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly.
 - A Google Doc, Sheet or Slides file in a linked folder is read as text and is not written back as bytes (core/files/linked-gdrive.js).
 - Files that a shell command changes are not recorded, and the Gate does not watch shell file changes. Agents write through the `files.*` tools to get versions and holds.
-- To link a source beyond Google Drive and Dropbox, such as a case-management system's document store, build a custom module: a folder with `module.json` and an entry file that registers tools and emits events. Core loads it from core/modules under the supervisor in kernel/modules. See [MODULES](../../MODULES.md), the [module contract](../../build/module-contract.md) and [writing a module](../../build/writing-a-module.md). Kernel contracts are in kernel/contracts/. An agent can write the module on the business's own server.
-- For an outside app, an Integration is planned (R051-01 in the [roadmap](../../roadmap.md)). It wraps the app's API and brings its own Flow steps, triggers, connection and agent tools.
-- The full list is in [known-gaps](../../known-gaps.md).
+- To link a source beyond Google Drive and Dropbox, such as a case-management system's document store, build a custom module. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
 ## Related
 - [records](./records.md), [documents-and-signing](./documents-and-signing.md), [vault](./vault.md), [gate](./gate.md), [relay-and-networking](./relay-and-networking.md), [sessions-and-models](./sessions-and-models.md)
