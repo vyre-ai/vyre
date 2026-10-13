@@ -790,6 +790,7 @@ async function startLocked(opts, root, p, release) {
       const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && (process.env.VYRE_SUPERVISOR !== "docker" || spawnerThere()) ? ownLoader : undefined);
       // the person's own MCP servers for a lent session: their personal vault's store (vault `personalStore`), read for the person the lease names; never the owner's
       const memberMcpOf = async (/** @type {{ space: string, person: string }} */ q) => { const ps = /** @type {any} */ (registry.deps).personalStore; return typeof ps === "function" ? memberMcpConfig(ps(q.person, q.space)) : null; };
+      /** @type {any} */ (registry.deps).memberMcpOf = memberMcpOf;   // also read by the end-to-end test of a member's own accounts
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec, memberMcpOf, ...(typeof opts.lentKeyOf === "function" ? { keyOf: opts.lentKeyOf } : {}),
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },

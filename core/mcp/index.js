@@ -120,7 +120,7 @@ export default {
     // A team member's own servers ("Your accounts"): kept in THEIR personal vault, for the person the kernel names for the call, never one the input names. A member's call arrives here with its token
     // (a module hop inherits the turn), so vault.me.store.* resolves the same person; the owner has no personal vault and uses mcp.add.
     const MINE = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
-    const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input)));
+    const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input, { relay: true })));
     ctx.tool("mcp.mine.list", {
       effect: "read",
       description: "The MCP servers you brought yourself (your own accounts): name and address, never a credential.",
