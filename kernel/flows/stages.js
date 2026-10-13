@@ -116,6 +116,9 @@ export function createStages(o) {
     if (t.brief) parts.push(renderBrief(t.brief, data));
     if (Array.isArray(t.checklist) && t.checklist.length) parts.push(`Before this counts as done:\n${t.checklist.map((/** @type {any} */ c) => `- ${c.say}`).join("\n")}`);
     if (Array.isArray(t.credentials) && t.credentials.length) parts.push(`Connections you may use: ${t.credentials.join(", ")}.`);
+    // what the approver and the followers are told, written under who it is for (tags inside stay as written until the Flow side resolves them)
+    if (t.notes && t.notes.approver) parts.push(`For the approver: ${renderBrief(String(t.notes.approver), data)}`);
+    if (t.notes && t.notes.followers) parts.push(`For followers: ${renderBrief(String(t.notes.followers), data)}`);
     return parts.join("\n\n");
   }
 
@@ -156,10 +159,17 @@ export function createStages(o) {
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
       if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); continue; }
+      // followers are the task's helpers; one nobody can be is said, and the task is still made
+      const helpers = [];
+      for (const f of t.followers || []) {
+        const a = await actorFor(f, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
+        if (a && !helpers.some((/** @type {any} */ h) => h.kind === a.kind && h.id === a.id)) helpers.push(a);
+        else if (!a) emit("stage.notice", { record: e.urn, stage: e.stage, task: t.title, why: `${f} cannot follow "${t.title}": nobody holds it` });
+      }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
-        title: t.title, record: e.urn, stage: e.stage, doer,
+        title: t.title, record: e.urn, stage: e.stage, doer, ...(helpers.length ? { helpers } : {}),
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
