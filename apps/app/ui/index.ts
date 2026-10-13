@@ -95,8 +95,6 @@ export type { PinnedEntry } from "./views";
 export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, LAYOUTS, OPS, MINE, layoutsFor, fieldChoices, filterExpr, buildView, slugify, personalEntry, personalViewsOf, withPersonalViews, canShare, pinnedViews, pinList, unpinList, renameView, deleteView, reorderPinned, sharedEntry } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
-export { GroupedList } from "./components/GroupedList";
-export type { Group } from "./components/GroupedList";
 export { MenuRow } from "./blocks/RowMenu";
 export { SecretField, SECRET_REVEAL_MS, SECRET_CLIPBOARD_MS } from "./components/SecretField";
 export { AccessList, LEVEL_WORDS } from "./components/AccessList";

@@ -2636,6 +2636,14 @@
   "mcpconn.guide": {
    "module": "mcpconn",
    "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
+  },
+  "vault.access.get": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
+  },
+  "vault.access.set": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
   }
  }
 }
