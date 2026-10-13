@@ -9,8 +9,9 @@
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
+/** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
-/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], connections?: Named[], credentials?: { email: Cred[], sms: Cred[] } | null, recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 import { findStep, flat } from "./tree.js";
 
@@ -46,6 +47,9 @@ export const STEP_GROUPS = /** @type {const} */ ([
   { name: "Send", items: [
     { kind: "email", icon: "mail", label: "Send an email", hint: "Through your space's sending service", words: "mail message resend" },
     { kind: "sms", icon: "phone", label: "Send a text", hint: "An SMS through your sending account", words: "sms text twilio message" },
+  ] },
+  { name: "Web", items: [
+    { kind: "web", icon: "globe", label: "Fetch or post to a web service", hint: "Call an API through a connection kept in the vault", words: "http api request get post put fetch webhook url connection" },
   ] },
   { name: "AI", items: [
     { kind: "agent", icon: "agents", label: "Hand to an agent", hint: "With your instructions and the details", words: "assistant ai robot" },
@@ -122,6 +126,8 @@ export function stepSummary(s, o, d) {
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
     case "wait": return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
     case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
+    case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
+    case "web": return `${s.method === "GET" || !s.method ? "Fetch" : "Send"} ${s.path || "/"} ${s.method === "GET" || !s.method ? "from" : "to"} ${named(o.connections || [], s.connector) || "a web service"}`;
     case "sms": return `Text ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the number from the form" : s.to.trim()) : "someone"}`;
     case "classify": return `Sort the text into ${String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean).join(" or ") || "groups"}`;
     case "extract": return `Pull out ${(s.fields || []).map((/** @type {any} */ f) => f.name).filter(Boolean).join(", ") || "facts"} from the text`;
@@ -171,6 +177,7 @@ export function stepProblem(s, o) {
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
     case "wait": return Number(s.amount) > 0 ? null : "Say how long to wait.";
     case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
+    case "web": return !s.connector ? "Choose the connection (an owner adds one in the Vault)." : (s.path || "").trim().startsWith("/") ? null : "Start the path with /.";
     case "sms": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the text." : null;
     case "classify": return !(s.input || "").trim() ? "Say what to read." : String(s.labels || "").split(",").filter((x) => x.trim()).length < 2 ? "Give at least two groups, separated by commas." : null;
     case "extract": return !(s.input || "").trim() ? "Say what to read." : !(s.fields || []).some((/** @type {any} */ f) => (f.name || "").trim()) ? "Name at least one fact to pull out." : null;
@@ -248,7 +255,9 @@ export function stepDefinition(s, d) {
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: s.title, output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
-    case "email": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
+    case "email": return s.sendStep === "comms.email"
+      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } }
+      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: s.title };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: s.value || "" } };
     default: throw new Error(`no step kind ${s.kind}`);
@@ -294,6 +303,7 @@ export function newStep(kind, d, o) {
     case "remove": return { id, kind, type: lastMade?.type || "", record: link };
     case "stage": return { id, kind, type: lastMade?.type || d.trigger.type || "", record: link, to: "" };
     case "wait": return { id, kind, amount: 1, unit: "days" };
+    case "web": return { id, kind, connector: o.connections?.[0]?.name || "", method: "GET", path: "/", body: "" };
     case "formula": return { id, kind, formula: "" };
     case "sms": return { id, kind, to: "", body: "" };
     case "classify": return { id, kind, input: "", labels: "" };
@@ -385,6 +395,7 @@ function stepFrom(s) {
       const u = Object.entries(UNITS).reverse().find(([, ms]) => s.for_ms % ms === 0);
       return typeof s.for_ms === "number" && u && keys(s, ["id", "kind", "for_ms", "label"]) ? { id: s.id, kind: "wait", amount: s.for_ms / u[1], unit: u[0] } : adv;
     }
+    case "service": return typeof s.connector === "string" && typeof s.path === "string" && ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(s.method) && keys(s, ["id", "kind", "connector", "method", "path", "body", "label"]) && (s.body === undefined || unval(s.body) !== null) ? { id: s.id, kind: "web", connector: s.connector, method: s.method, path: s.path, body: s.body === undefined ? "" : unval(s.body) } : adv;
     case "classify": return keys(s, ["id", "kind", "input", "labels", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "classify", input: unval(s.input), labels: (s.labels || []).join(", ") } : adv;
     case "extract": return keys(s, ["id", "kind", "input", "fields", "label"]) && unval(s.input) !== null ? { id: s.id, kind: "extract", input: unval(s.input), fields: (s.fields || []).map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind || "text" })) } : adv;
     case "subflow": return typeof s.flow === "string" && keys(s, ["id", "kind", "flow", "input", "label"]) && rowsOf(s.input || {}) ? { id: s.id, kind: "subflow", flow: s.flow, fields: rowsOf(s.input || {}) } : adv;
@@ -408,6 +419,7 @@ function stepFrom(s) {
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
       if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unval(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unval(i.to), body: unval(i.body) };
+      if (s.action === "comms.email" && keys(i, ["to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", sendStep: "comms.email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }

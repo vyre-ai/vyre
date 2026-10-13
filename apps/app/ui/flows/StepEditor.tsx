@@ -135,7 +135,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
                   <ValueField label="To" value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or {email} from the form" draft={draft} stepId={s.id} options={options} />
                   <ValueField label="Subject" value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
                   <ValueField label="Message" multiline lines={5} value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
-                  <Text size="caption" tone="label">Sent through your space's sending service. You say yes to each one before it goes.</Text>
+                  <SendWith kind="email" s={s} set={set} options={options} />
                 </>
               ) : null}
               {s.kind === "ask" ? (
@@ -208,7 +208,16 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         <>
           <ValueField label="To" value={s.to ?? ""} onChange={(to) => set({ to })} placeholder="A number, or {phone} from the form" draft={draft} stepId={s.id} options={options} />
           <ValueField label="Message" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} />
-          <Text size="caption" tone="label">Sent through your space's sending account. You say yes to each one before it goes.</Text>
+          <SendWith kind="sms" s={s} set={set} options={options} />
+        </>
+      ) : null}
+      {s.kind === "web" ? (
+        <>
+          <Select label="Send with (a connection from the Vault)" value={s.connector ?? ""} options={pick(options.connections ?? [])} placeholder={(options.connections ?? []).length ? "Choose a connection" : "No connections yet"} onChange={(connector) => set({ connector })} />
+          <Select label="What to do" value={s.method ?? "GET"} options={[["GET", "Fetch (GET)"], ["POST", "Post (POST)"], ["PUT", "Replace (PUT)"], ["PATCH", "Change (PATCH)"], ["DELETE", "Delete (DELETE)"]]} onChange={(method) => set({ method })} />
+          <ValueField label="Path" value={s.path ?? "/"} onChange={(path) => set({ path })} placeholder="For example /v1/customers" draft={draft} stepId={s.id} options={options} />
+          {(s.method ?? "GET") !== "GET" ? <ValueField label="Body" multiline lines={4} value={s.body ?? ""} onChange={(body) => set({ body })} draft={draft} stepId={s.id} options={options} /> : null}
+          <Text size="caption" tone="label">The address and the key stay in the Vault connection: a step only names it, and Vyre never shows the key. A post or change is held for your yes.</Text>
         </>
       ) : null}
       {s.kind === "classify" ? (
@@ -237,6 +246,19 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
           <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Hand over" help="What the other flow starts with. It must be switched on in this space." />
         </>
       ) : null}
+    </>
+  );
+}
+
+/** The "Send with" choice of a Send step: only the Vault items that suit it (email: the sending service and mail logins; text: Twilio), by name, never a value. */
+function SendWith({ kind, s, set, options }: { kind: "email" | "sms"; s: DraftStep; set: (patch: Partial<DraftStep>) => void; options: Options }) {
+  const list = options.credentials ? options.credentials[kind] : null;
+  if (!list) return <Text size="caption" tone="label">An owner chooses the sending account. You say yes to each one before it goes.</Text>;
+  if (!list.length) return <Text size="caption" tone="label">{`No ${kind === "email" ? "sending service or mail login" : "text-sending account"} is in the Vault yet. An owner adds one there.`}</Text>;
+  return (
+    <>
+      <Select label="Send with" value={s.sendWith ?? ""} options={list.map((c): [string, string] => [c.id, `${c.name} (${c.provider})`])} placeholder="The space's default" onChange={(id) => { const c = list.find((x) => x.id === id); set({ sendWith: id, ...(kind === "email" ? { sendStep: c?.step } : {}) }); }} />
+      <Text size="caption" tone="label">Only items that suit this step are listed, by name. The key is never shown, and you say yes to each send.</Text>
     </>
   );
 }

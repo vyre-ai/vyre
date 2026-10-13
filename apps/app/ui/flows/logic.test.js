@@ -185,3 +185,20 @@ test("a formula previews on sample data with the engine's own language", () => {
   assert.equal(previewExpr("nope(1)").ok, false);
   assert.equal(previewExpr("").ok, false);
 });
+
+test("Send with picks the sending service, and the Web step names a vault connection", () => {
+  const d = { name: "Send", trigger: { kind: "signup" }, steps: [
+    { id: "email1", kind: "email", sendStep: "comms.email", sendWith: "v1", to: "{email}", subject: "Hi", body: "Hello" },
+    { id: "web2", kind: "web", connector: "crm_api", method: "POST", path: "/v1/customers", body: "{name}" },
+    { id: "web3", kind: "web", connector: "crm_api", method: "GET", path: "/v1/ping", body: "" },
+  ] };
+  const def = toDefinition(d);
+  assert.equal(def.steps[0].action, "comms.email");
+  assert.deepEqual(def.steps[0].input, { to: { expr: "trigger.email" }, subject: "Hi", body: "Hello" });
+  assert.equal(def.steps[1].kind, "service");
+  assert.equal(def.steps[2].body, undefined);
+  assert.deepEqual(checkFlow(def), []);
+  const back = fromDefinition(def);
+  assert.equal(back.steps[0].sendStep, "comms.email");
+  assert.deepEqual(toDefinition(back), def);
+});

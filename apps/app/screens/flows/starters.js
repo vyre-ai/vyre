@@ -25,6 +25,8 @@ export const SAMPLE_OPTIONS = {
     { id: "tpl_estate", name: "Estate plan", stages: [{ name: "Opening", tasks: [{ title: "Run the conflict check", doer: "role:paralegal" }] }, { name: "Closing", tasks: [] }] },
   ],
   flows: [{ name: "send_welcome", label: "Send the welcome" }],
+  connections: [{ name: "crm_api", label: "CRM API" }, { name: "slack_hook", label: "Slack alerts" }],
+  credentials: { email: [{ id: "v_resend", name: "Firm Resend", provider: "sending-service", step: "comms.email" }, { id: "v_gmail", name: "Office Gmail", provider: "google-oauth", step: "comms.send" }], sms: [{ id: "v_twilio", name: "Firm Twilio", provider: "twilio", step: "comms.send" }] },
   roles: [{ name: "attorney", label: "Attorney" }, { name: "paralegal", label: "Paralegal" }, { name: "manager", label: "Manager" }],
   people: [{ name: "ana", label: "Ana Ruiz" }, { name: "chris", label: "Chris Park" }],
 };
@@ -41,7 +43,7 @@ export const REFUND_DRAFT = {
       then: [{ id: "ask4", kind: "ask", to: "role:manager", title: "Approve this refund over $500" }],
       else: [{ id: "update5", kind: "update", type: "refund_requests", record: "create1", field: "Status", value: "Approved" }] },
     { id: "wait6", kind: "wait", amount: 1, unit: "days" },
-    { id: "email7", kind: "email", to: "{email}", subject: "About your refund request", body: "Hello {name}, we have looked at your refund request and will be in touch." },
+    { id: "email7", kind: "email", sendWith: "v_resend", sendStep: "comms.email", to: "{email}", subject: "About your refund request", body: "Hello {name}, we have looked at your refund request and will be in touch." },
   ],
 };
 

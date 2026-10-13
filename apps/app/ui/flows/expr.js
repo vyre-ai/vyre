@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck (the app does not type-check this copy of kernel/flows/expr.js; the kernel does)
 // The Expression language for conditions, filters and values inside a Flow (contract 5.2, "Expression"). No eval, no
 // Function, no regular expressions: a hand-written tokenizer and a Pratt parser, an AST, and an evaluator that counts its
 // own steps. A condition can read its scope and call a fixed list of pure functions; it cannot do anything else.
