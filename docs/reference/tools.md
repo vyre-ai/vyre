@@ -3671,7 +3671,7 @@ The sources a folder can be linked from: { } -> { providers: [{ id, label, pick 
 
 ### `files.linked.read`
 
-Open a file in a linked folder: { space?, id, path }. Fetched from the source now, as you, up to 8 MB. Keep rev to write it back.
+Open a file in a linked folder: { id, path }. Fetched from the source as you, up to 8 MB. Keep rev to write it back.
 
 - Input:
   - `id` string, required
@@ -3722,7 +3722,7 @@ Bring your own index of a linked folder up to date, as you (what your account se
 
 ### `files.linked.tree`
 
-Every file in your own index of each linked folder, for the # picker: { space?, limit? }. An unsynced folder is synced first, as you.
+Every file in your own index of each linked folder, for the # picker. An unsynced folder is synced first.
 
 - Input:
   - `limit` integer
