@@ -2,7 +2,7 @@
 // store: the rollups (docs/design/vitals.md). One row per minute for 24 h, folded into one row
 // per hour for 30 days, both pruned. The average and peak for a minute are worked out in memory
 // from whatever samples that minute saw (one, at idle cadence; up to thirty, while watched) and
-// written once, so a watched minute costs the same one write idle costs — never one write every
+// written once, so a watched minute costs the same one write idle costs - never one write every
 // 2 s.
 
 const MINUTE_MS = 60_000;

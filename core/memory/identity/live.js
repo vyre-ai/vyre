@@ -1,5 +1,5 @@
 // @ts-check
-// identity/live — the identity home (home.js) joined to the memory database on a space server.
+// identity/live - the identity home (home.js) joined to the memory database on a space server.
 //
 // The identity tables (the personal facts, what memory answered from them, what was offered to correct them) are never in the clear on disk once the person seals them. Sealing moves the rows
 // into the identity home as ciphertext and relocates the tables into an in-memory schema of the same connection (`idmem`): every query, which names the tables unqualified, now finds them

@@ -57,7 +57,7 @@ export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 export function parse(text, { format, filename } = {}) {
   if (typeof text !== "string") return fail(format ?? null, "the file could not be read as text");
   if (format && !FORMATS.includes(format)) return fail(null, `unknown format "${String(format).slice(0, 40)}"; expected one of ${FORMATS.join(", ")}`);
-  text = text.replace(/^﻿/, "");
+  text = text.replace(/^\ufeff/, "");
   const fmt = format ?? detect(text, filename);
   if (fmt === "1password-1pux") return fail(fmt, "a .1pux file is a zip archive; read it as bytes with parseFile");
   if (fmt && ZIP_FORMATS.includes(fmt)) return fail(fmt, `a ${fmt} export is a zip archive; read it as bytes with parseFile`);
@@ -119,7 +119,7 @@ export function parseFile(buffer, { format, filename } = {}) {
  * @returns {string[][]}
  */
 export function parseCSV(text) {
-  text = text.replace(/^﻿/, "");
+  text = text.replace(/^\ufeff/, "");
   /** @type {string[][]} */
   const rows = [];
   /** @type {string[]} */
@@ -748,7 +748,7 @@ const fit = (s, room) => s.slice(0, Math.max(1, 128 - room)).replace(/[-._]+$/, 
 
 /** Lowercase, runs of anything else to "-", trimmed. @param {string} s */
 export function slug(s) {
-  return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+  return s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 128).replace(/-+$/, "");
 }
 

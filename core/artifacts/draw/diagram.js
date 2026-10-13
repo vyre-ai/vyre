@@ -28,7 +28,7 @@ const SHAPES = /** @type {[string, string, string][]} */ ([
   ["((", "))", "circle"], ["([", "])", "stadium"], ["[[", "]]", "rect"], ["{{", "}}", "rect"], ["[(", ")]", "rect"],
   ["[", "]", "rect"], ["(", ")", "round"], ["{", "}", "diamond"], [">", "]", "rect"],
 ]);
-const ID = /^[A-Za-z0-9_À-￿]+/;
+const ID = /^[A-Za-z0-9_À-\uffff]+/;
 /** @param {string} t */ const cleanLabel = t => t.trim().replace(/^"([\s\S]*)"$/, "$1").replace(/<br\s*\/?>/gi, "\n").replace(/&quot;/g, '"').replace(/<[^>]+>/g, "").trim();
 
 /**

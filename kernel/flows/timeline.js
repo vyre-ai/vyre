@@ -5,7 +5,7 @@
 /** @param {number} ms */
 const span = ms => (ms < 1000 ? `${Math.max(0, Math.round(ms))}ms` : ms < 60_000 ? `${(ms / 1000).toFixed(1)}s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)}m` : `${(ms / 3_600_000).toFixed(1)}h`);
 /** @param {any} v @param {number} n */
-const cut = (v, n) => { const t = typeof v === "string" ? v : JSON.stringify(v) ?? ""; return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+const cut = (v, n) => { const t = typeof v === "string" ? v : JSON.stringify(v) ?? ""; return t.length > n ? t.slice(0, n - 1) + "\u2026" : t; };
 
 /** The steps of a Flow by id: { label, kind }. @param {any} flow @returns {Map<string, { label: string, kind: string }>} */
 export function stepIndex(flow) {

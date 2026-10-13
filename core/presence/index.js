@@ -134,7 +134,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
 
 /**
  * The person's own surfaces: a real terminal, the Deck, Capsule. Never `module`, `mcp`, `tailnet`,
- * `hook` or a guest kind — those already keep a model, an agent or another box's peer out on
+ * `hook` or a guest kind - those already keep a model, an agent or another box's peer out on
  * their own, so a tool naming one of them is not "person-only" by its callers alone.
  */
 /** The only tools a development build's stand-in satisfies without the caller offering it. */
@@ -147,7 +147,7 @@ export const PERSON_SURFACES = new Set(PERSON_SURFACE_LIST);
  * model's shell can claim "cli" exactly as a real terminal would, so anything left off that list
  * had nothing stopping it (e2e review, 28 Sep: files.receive was the latest instance; a sweep of
  * every module found dozens more). PERSON_ONLY is derived from the manifests now: it is default-
- * deny, and OPT_OUT is the only way off it — a short, explicit, reviewed list of tools that are
+ * deny, and OPT_OUT is the only way off it - a short, explicit, reviewed list of tools that are
  * harmless even if a model's own shell spoofs "cli", one line of reason each. It may only shrink
  * (test/person-only-guard.test.js freezes it); nothing on the reviewer's protect list (link.pair,
  * link.unpair, vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount,
@@ -438,7 +438,7 @@ export function parse(header) {
 }
 
 /** Control characters (C0, DEL, C1) and bidi overrides: a summary goes on a terminal and in a dialog. */
-const clean = s => String(s).replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]+/g, " ").replace(/ {2,}/g, " ").trim();
+const clean = s => String(s).replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g, " ").replace(/ {2,}/g, " ").trim();
 
 const b64url = n => crypto.randomBytes(n).toString("base64url");
 const sha = s => crypto.createHash("sha256").update(String(s)).digest();

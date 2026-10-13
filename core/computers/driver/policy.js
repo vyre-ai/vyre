@@ -1,12 +1,12 @@
 // @ts-check
 // policy: the exact create body and the exact exec that an agent's container is allowed, as a
-// function of the request and the box's own config — no network, no state beyond that config,
+// function of the request and the box's own config - no network, no state beyond that config,
 // nothing but the shapes in docs/adr/0009-container-hardening.md.
 //
 // This exists because that ADR's hardening lives in DockerDriver.create(), and holds only for
 // requests that actually go through it. A caller that reaches the restricted proxy directly
 // (found: a Claude session's own Bash, sharing vyred's container and network namespace) can send
-// any body it likes, and a proxy that only filters endpoints — never bodies — would forward it.
+// any body it likes, and a proxy that only filters endpoints - never bodies - would forward it.
 // box's proxy imports this file and calls allowCreate()/allowExec() on every request those
 // endpoints allow, so the hardening holds even when DockerDriver is bypassed entirely. It is the
 // one place both the proxy and docker.js's own tests agree on what a create body may look like:
@@ -14,9 +14,9 @@
 //
 // Everything here is an allowlist, not a denylist: an unknown key anywhere is refused, the same
 // direction as consequence.js's "cannot read what this control does, so it is treated as one
-// that matters" — a HostConfig field this file has never seen is not assumed safe.
+// that matters" - a HostConfig field this file has never seen is not assumed safe.
 //
-// What this file cannot do alone, from security's review (26 Sep) — the proxy itself must:
+// What this file cannot do alone, from security's review (26 Sep) - the proxy itself must:
 //   - inspect a volume that already exists before letting a create reuse it (VolumeOptions.Labels
 //     only take effect when Docker makes a NEW volume; naming an existing one bypasses them
 //     entirely), and refuse unless that volume's own labels name the same agent as the body;
@@ -33,7 +33,7 @@
 
 /**
  * Every container and volume this file's own labels touch carries a fixed `run.vyre: "1"` marker
- * (docker.js), independent of whatever `computers.labelPrefix` a box configures — but box's own
+ * (docker.js), independent of whatever `computers.labelPrefix` a box configures - but box's own
  * infrastructure containers (docker-api, tailscale, vyre itself) carry that same fixed marker
  * too, so it alone cannot tell an agent's computer apart from vyred's own container. The
  * `<prefix>.managed=true` / `<prefix>.computer=<agent>` pair is the real discriminator, and the
@@ -57,11 +57,11 @@ export const isComputerLabels = labels => computerLabels(labels) !== null;
 
 /**
  * Like `computerLabels`, but for a request that has not been created yet, where the caller
- * chooses every label in the body — including which prefix to use, and with `.find()`, which of
+ * chooses every label in the body - including which prefix to use, and with `.find()`, which of
  * two pairs to match if it sends more than one. Pinning to the box's own configured
  * `labelPrefix` closes both: only `${labelPrefix}.managed`/`${labelPrefix}.computer` count, and
  * any OTHER `*.managed`/`*.computer`-shaped key anywhere in the labels refuses the whole body,
- * rather than being silently ignored (security, 26 Sep — a caller was otherwise free to pick its
+ * rather than being silently ignored (security, 26 Sep - a caller was otherwise free to pick its
  * own prefix, and with it the volume name `isVolumeMount` derives from it).
  * @param {Record<string, any>} labels @param {string} labelPrefix
  * @returns {{ prefix: string, agent: string } | null}
@@ -81,7 +81,7 @@ function claimedComputerLabels(labels, labelPrefix) {
 /**
  * Refuse anything not in `allowed`, keyed by name, each an exact-match value or a `(v) => bool`
  * check. Every key of `obj` must be in `allowed`, and every key of `allowed` marked required must
- * be in `obj` — an allowlist checks both directions, or a field silently dropped would pass too.
+ * be in `obj` - an allowlist checks both directions, or a field silently dropped would pass too.
  * @param {Record<string, any>} obj
  * @param {Record<string, { required?: boolean, is: (v: any) => boolean }>} allowed
  * @param {string} where
@@ -237,7 +237,7 @@ function checkBodyShape(obj, allowed, where) {
  *
  * Residual, not closed by this check (security, 26 Sep): a caller naming a different agent in
  * Labels gets that agent's own existing volume back (its Source is derived from the claim, and
- * the proxy's own volume check then finds that agent's real labels on it, which match) — cross-
+ * the proxy's own volume check then finds that agent's real labels on it, which match) - cross-
  * agent access to a home volume, the same class as `allowExec`'s residual below and closed the
  * same way, once Claude's own sessions are off this network and vyred is the only caller left.
  * @param {any} body @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
@@ -254,7 +254,7 @@ export function allowCreate(body, config) {
 /**
  * May `POST /containers/<id>/exec` (or an attach to one) reach this container? `labels` is what
  * the Engine's own inspect of `id` says, read by the proxy itself, never trusted from the
- * request — a caller cannot claim a container is a computer's by naming it in the body. `cmd` is
+ * request - a caller cannot claim a container is a computer's by naming it in the body. `cmd` is
  * not restricted here: a computer's own hardening (no capabilities, a read-only root, a normal
  * user) bounds what an exec inside it can do; this only says which containers are open to one at
  * all, never vyred's own container, docker-api's, or the box's other services.

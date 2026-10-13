@@ -5,7 +5,7 @@
 /** @param {any} v */
 const canon = v => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 /** @param {any} v @param {number} [n] */
-const short = (v, n = 60) => { const t = typeof v === "string" ? v : canon(v) ?? "null"; return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+const short = (v, n = 60) => { const t = typeof v === "string" ? v : canon(v) ?? "null"; return t.length > n ? t.slice(0, n - 1) + "\u2026" : t; };
 const BLOCKS = ["then", "else", "steps"];
 
 /** Every step with where it sits: { step (without its children), parent, position }. @param {any} flow @returns {Map<string, { step: any, where: string, index: number }>} */

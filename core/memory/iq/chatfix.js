@@ -13,7 +13,7 @@ import { userWords } from "../personal/trust.js";
 import { questionKey } from "./fix.js";
 export { sourceOf } from "./fix.js";
 
-const norm = s => String(s || "").replace(/[‘’`]/g, "'").replace(/\s+/g, " ").trim();
+const norm = s => String(s || "").replace(/[\u2018\u2019`]/g, "'").replace(/\s+/g, " ").trim();
 const DENY = /^(?:no|nope|wrong|incorrect|that'?s (?:not right|wrong|incorrect|not true|not correct)|that is (?:not right|wrong|incorrect|not true)|not right|not correct|that isn'?t (?:right|true|correct))\b/i;
 const SAYS = [
   /^(?:no,?\s+)?(?:actually|in fact),?\s+(?:it'?s|it is|its|they'?re|that'?s|we use|we'?re using|we are using|we run|we host on|it was)\s+(.{2,80}?)[.!]?$/i,

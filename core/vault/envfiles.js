@@ -55,7 +55,7 @@ export function envEntries(text) {
   const found = new Map();
   /** @type {string[]} */
   const skipped = [];
-  const lines = String(text).replace(/^﻿/, "").split(/\r?\n|\r/);
+  const lines = String(text).replace(/^\ufeff/, "").split(/\r?\n|\r/);
   for (let n = 0; n < lines.length; n++) {
     const line = lines[n];
     const t = line.trim();
@@ -167,8 +167,8 @@ export function readEnv(text, { file, root } = {}) {
 export function rewriteEnv(text, item, keys) {
   const want = new Set(keys);
   const eol = /\r\n/.test(text) ? "\r\n" : "\n";
-  const bom = text.startsWith("﻿") ? "﻿" : "";
-  const lines = text.replace(/^﻿/, "").split(/\r?\n|\r/);
+  const bom = text.startsWith("\ufeff") ? "\ufeff" : "";
+  const lines = text.replace(/^\ufeff/, "").split(/\r?\n|\r/);
   const { entries } = envEntries(text);
   // Bottom up, so a multi-line value collapsing to one line leaves earlier spans where they were.
   for (const e of [...entries].sort((a, b) => b.start - a.start)) {

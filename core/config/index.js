@@ -1,5 +1,5 @@
 // @ts-check
-// config — where Vyre keeps things, and the user's settings.
+// config - where Vyre keeps things, and the user's settings.
 //
 // Everything personal lives under VYRE_HOME (default ~/.vyre), never in the repository. The
 // same code serves anyone who installs it: which folders hold projects, which domains are the

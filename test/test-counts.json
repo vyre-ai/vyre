@@ -23,7 +23,7 @@
  "apps/app/src/chat/member-poll.test.js": 4,
  "apps/app/src/api/client.test.js": 7,
  "apps/app/src/api/native-open.test.js": 6,
- "apps/app/src/api/pairing.test.js": 4,
+ "apps/app/src/api/pairing.test.js": 1,
  "apps/app/src/auth/person-path.test.js": 6,
  "apps/app/src/auth/person.test.js": 9,
  "apps/app/src/auth/presence.test.js": 4,

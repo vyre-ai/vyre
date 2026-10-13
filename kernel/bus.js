@@ -1,5 +1,5 @@
 // @ts-check
-// bus — the bus modules hear what happened on, over the kernel's log: there is one mechanism, the log.
+// bus - the bus modules hear what happened on, over the kernel's log: there is one mechanism, the log.
 //
 // Events are facts about the past, named "<noun>.<past-verb>": watcher.fired, thread.started,
 // gate.held. They are how modules built separately learn about each other without importing

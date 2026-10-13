@@ -1,5 +1,5 @@
 // @ts-check
-// link — the Mac and the box as one system (docs/SPEC.md, sections 3 and 9; ADR 0002).
+// link - the Mac and the box as one system (docs/SPEC.md, sections 3 and 9; ADR 0002).
 //
 // On the box, this module pairs Macs, answers their check-ins, and asks them for their sessions
 // (link.macs.call). On the Mac, it pairs with the box, carries ctx.remote(tool, input) to the

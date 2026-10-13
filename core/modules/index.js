@@ -1,5 +1,5 @@
 // @ts-check
-// modules — find modules, check their manifests, start them in order, and run their tools.
+// modules - find modules, check their manifests, start them in order, and run their tools.
 //
 // Everything in Vyre is a module on one contract (docs/SPEC.md, section 5): core services,
 // Harness pieces, surfaces and whatever a user installs. A module declares five things in
@@ -267,7 +267,7 @@ export function validate(m, { firstParty = false } = {}) {
     // Allowlist, not a denylist: other modules act on device.*, wink.*, name.*, relay.*, vault.*, turn.*, settings.* and spaces.* events, so an added module may emit only events named for itself
     // (`<its name>.verb`, the singular of it ("notes" says `note.added`) or `<its name>-x.verb`). A first-party module keeps the rule above.
     else if (!firstParty && SHARED_EVENT_NOUNS.has(e.split(".")[0])) out.push(`event "${e}": ${e.split(".")[0]}.* events are Vyre's own; an added module can't emit them`);
-    else if (!firstParty) { const noun = e.split(".")[0], own = String(m.name); if (noun !== own && noun !== own.replace(/s$/, "") && !noun.startsWith(`${own}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.…")`); }
+    else if (!firstParty) { const noun = e.split(".")[0], own = String(m.name); if (noun !== own && noun !== own.replace(/s$/, "") && !noun.startsWith(`${own}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.\u2026")`); }
   }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: toolEntries(m).map(t => t.name) }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
@@ -401,7 +401,7 @@ export function order(mods) {
   const visit = (m, trail) => {
     const n = m.manifest.name;
     if (seen.has(n)) return true;
-    if (stack.has(n)) { problems.set(n, `requires a cycle: ${[...trail, n].join(" → ")}`); return false; }
+    if (stack.has(n)) { problems.set(n, `requires a cycle: ${[...trail, n].join(" \u2192 ")}`); return false; }
     stack.add(n);
     for (const dep of requiresOf(m.manifest)) {
       const d = byName.get(dep);
@@ -1224,7 +1224,7 @@ export class Registry {
         const rec = this.modules.get(m.name);
         // firstParty: the loader's word that this module ships in the repo, for a tool that must
         // trust a first-party caller only (a home module could take a free name). Same mechanism
-        // as memory-iq's 2ecf79ba (reviewer-cleared, 0.1.1 batch) — kept identical, not a second one.
+        // as memory-iq's 2ecf79ba (reviewer-cleared, 0.1.1 batch) - kept identical, not a second one.
         const fp = Boolean(rec && this.isFirstParty(rec.dir));
         // An added module calls only what needs.tools names, one by one: module.* is for Vyre's
         // own. Its own tools need no entry (reviews/platform.md CR-H2, as testing.js does).

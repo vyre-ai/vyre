@@ -20,7 +20,7 @@ export const NEAR = 6;
 /** Only the person's latest turns count, and only while fresh. */
 export const FRESH = { back: 2, ms: 10 * 60_000 };
 const STOP = new Set("the a an is was are were be of to in on at for and or but with from that this it its your my our their his her you i me we they what whats which who whom when where why how did does do has have had".split(" "));
-const norm = s => String(s || "").toLowerCase().replace(/[‘’`]/g, "'");
+const norm = s => String(s || "").toLowerCase().replace(/[\u2018\u2019`]/g, "'");
 const tokens = s => norm(s).split(/[^\p{L}\p{N}'./@-]+/u).map(w => w.replace(/^[.'-]+|[.'-]+$/g, "")).filter(Boolean);
 
 /**

@@ -101,7 +101,7 @@ function said(body, secret) {
   return scrub(raw, secret).replace(/\s+/g, " ").trim().slice(0, 160);
 }
 /** @param {string} s @param {string} secret */
-const scrub = (s, secret) => (secret ? String(s).split(secret).join("…") : String(s));
+const scrub = (s, secret) => (secret ? String(s).split(secret).join("\u2026") : String(s));
 
 /**
  * Send one message through the firm's service. Returns { id, provider } (the service's own message id); a failure is an Error with a code (bad_input, auth, rate, refused, unavailable, network)

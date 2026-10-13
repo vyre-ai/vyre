@@ -1,5 +1,5 @@
 // @ts-check
-// keys — where the Vault's master key lives, and nothing else.
+// keys - where the Vault's master key lives, and nothing else.
 //
 // Three keystores, chosen in config (see docs/adr/0001-vault-crypto.md, decision 2):
 //   - keychain: the macOS keychain. The key is written through `security -i` on stdin, because

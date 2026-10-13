@@ -1,5 +1,5 @@
 // @ts-check
-// graph — reading Memory back: facts, what is relevant to a prompt, why a fact is believed, and
+// graph - reading Memory back: facts, what is relevant to a prompt, why a fact is believed, and
 // the one write a person makes directly (pin or mute).
 //
 // Every fact carries its source (the turn it came from), its age and a confidence, because the
@@ -549,8 +549,8 @@ export class Graph {
     const sc = this.view(project_cwds, room);
     const { phrases, longest } = this.phrases(sc?.room || "*");
     if (!phrases.size) return [];
-    const tokens = String(text || "").match(/&|[\p{L}\p{N}][\p{L}\p{N}'’._@/-]*/gu) || [];
-    const words = tokens.map(t => t.replace(/['’]s$/i, "").replace(/[._/-]+$/, "").toLowerCase());
+    const tokens = String(text || "").match(/&|[\p{L}\p{N}][\p{L}\p{N}'\u2019._@/-]*/gu) || [];
+    const words = tokens.map(t => t.replace(/['\u2019]s$/i, "").replace(/[._/-]+$/, "").toLowerCase());
     const hits = new Map();   // node -> { weight, matched }
     for (let i = 0; i < words.length;) {
       let step = 1;

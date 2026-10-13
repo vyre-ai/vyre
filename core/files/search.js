@@ -1,5 +1,5 @@
 // @ts-check
-// search — the ways the files module finds candidates: Spotlight on the Mac, a folder walk plus
+// search - the ways the files module finds candidates: Spotlight on the Mac, a folder walk plus
 // ripgrep on the box. None of them decides what may be shown. They only propose paths, and
 // index.js passes every one through the safety guard before it becomes a result.
 

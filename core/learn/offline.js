@@ -1,5 +1,5 @@
 // @ts-check
-// offline — the lessons' checks when vyred is down, run inside the hook's own process.
+// offline - the lessons' checks when vyred is down, run inside the hook's own process.
 //
 // Stopping a daemon must not switch lessons off, just as it cannot switch off the security floor.
 // So Learning keeps a snapshot of the accepted lessons in the home (lessons.json, mode 0600),

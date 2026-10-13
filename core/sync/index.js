@@ -1,5 +1,5 @@
 // @ts-check
-// sync — a paired device sends its own Claude Code session files to the box (ADR 0008 5a,
+// sync - a paired device sends its own Claude Code session files to the box (ADR 0008 5a,
 // session import). Not link's: link owns pairing and what capability a peer's kind carries
 // (link.macs and link.macs.call never see a "device" kind peer at all); this module owns the
 // upload protocol only, and asks link.peer-of (internal) to turn a connection's own tailnet node
@@ -10,7 +10,7 @@
 // application/octet-stream, never JSON (e2e's review), and land in sync.upload.chunk through
 // registry.call with the raw Buffer in the input. The box, not the device, decides whether a
 // peer's sync switch is on (sync.consent): the device's own claim is never trusted. Turning it
-// off, or unpairing, only stops new uploads — nothing already sent is touched (the user overruled
+// off, or unpairing, only stops new uploads - nothing already sent is touched (the user overruled
 // the original design: what came from a device is the person's, not the device's). Deleting is
 // sync.delete, its own explicit, person-only action.
 
@@ -64,7 +64,7 @@ export default {
       // remove just one import's files without touching what a later, separately-approved plan sent.
       `ALTER TABLE sync_peers ADD COLUMN plan_hash TEXT`,
       `ALTER TABLE sync_files ADD COLUMN plan_hash TEXT`,
-      // plan_included: the project folder names the approved plan lets in, as a JSON array — null
+      // plan_included: the project folder names the approved plan lets in, as a JSON array - null
       // means no restriction (the person never used sync.scan's picker, or approved everything).
       // The picker's exclusions are enforced here, not merely tagged (reviewer's MEDIUM): a file
       // outside this set is refused by sync.upload.plan and sync.upload.start both, whatever a
@@ -108,7 +108,7 @@ export default {
       const full = path.join(root, ...parts);
       if (!insideDir(full, root)) throw Object.assign(new Error("outside the synced root; give a path inside the synced folder"), { code: "denied" });
       // The refusal itself must not be caught by the "does it exist" try (e2e's review: as
-      // written, it was — a symlink at the final segment slipped through, harmless only because
+      // written, it was - a symlink at the final segment slipped through, harmless only because
       // rename() happens not to follow one, which is not a reason to leave the check broken).
       let finalSt = null;
       try { finalSt = fs.lstatSync(full); } catch {}
@@ -203,7 +203,7 @@ export default {
         // call gave (or clears them, giving none): a later approval without them must not leave
         // an earlier plan's tag, restriction or mapping in place for new files to inherit
         // silently (reviewer's LOW, and the same reasoning extended to included and folders).
-        // Turning it off leaves all three alone — it stops new uploads either way, so none of
+        // Turning it off leaves all three alone - it stops new uploads either way, so none of
         // them is anything a new file could be tagged, checked or mapped against.
         const includedJson = Array.isArray(included) ? JSON.stringify([...new Set(included.map(String))]) : null;
         const foldersJson = Array.isArray(folders) && folders.length
@@ -388,7 +388,7 @@ export default {
         let realBytes = 0;
         try { realBytes = fs.statSync(u.tmp).size; } catch { throw Object.assign(new Error("the upload is missing on the box; start it again"), { code: "denied" }); }
         if (realBytes > MAX_FILE) { try { fs.rmSync(u.tmp, { force: true }); } catch {} throw Object.assign(new Error(`a session file is at most ${MAX_FILE} bytes`), { code: "bad_input" }); }
-        // Stream the file once: hash every byte as it goes by (e2e's review — reading the whole
+        // Stream the file once: hash every byte as it goes by (e2e's review - reading the whole
         // file into one string to hash it undid MAX_FILE's own memory bound), and scrub-scan every
         // chunk too (reviewer's MEDIUM: scanning only a bounded prefix left a secret past that
         // point unquarantined and indexed by Recall). `tail` carries the last SCRUB_OVERLAP bytes
@@ -450,15 +450,15 @@ export default {
  * since link.remote cannot carry a Buffer over the wire the box's tools do.
  * @param {any} ctx
  */
-/** Only core/sync itself and memory-iq's import module may trigger a send (e2e's review: "module" alone let any home module read and upload an arbitrary file). The label alone is not enough — a home module can name itself "import" too — so this is checked together with meta.firstParty (reviewer's LOW): the loader stamps that from the calling module's own directory, never from anything a manifest declares. */
+/** Only core/sync itself and memory-iq's import module may trigger a send (e2e's review: "module" alone let any home module read and upload an arbitrary file). The label alone is not enough - a home module can name itself "import" too - so this is checked together with meta.firstParty (reviewer's LOW): the loader stamps that from the calling module's own directory, never from anything a manifest declares. */
 const SEND_CALLERS = new Set(["module:sync", "module:import"]);
 
 /**
  * The person's own Claude Code folder for this device's Vyre home: the only place sync.send may
- * read a file from, and what sync.scan lists. One value, not a list of guesses — core/config's own
+ * read a file from, and what sync.scan lists. One value, not a list of guesses - core/config's own
  * claudeHome(root) rule decides it (VYRE_CLAUDE_HOME first, else the real folder only for the real
  * ~/.vyre, else `<root>/claude`), so a dev world, a demo, a trial or a test home never reaches the
- * person's real folder, whatever env var happens to be set — a NODE_TEST_CONTEXT check alone is
+ * person's real folder, whatever env var happens to be set - a NODE_TEST_CONTEXT check alone is
  * too easy to get wrong (reviewer). claudeHome already picks CLAUDE_CONFIG_DIR over ~/.claude
  * rather than adding it, so there is nothing here to double-count either.
  * @param {string} root

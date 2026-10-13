@@ -1,5 +1,5 @@
 // @ts-check
-// backup — one sealed string that holds a whole vault, and the way back from it.
+// backup - one sealed string that holds a whole vault, and the way back from it.
 //
 // Why this exists: the master key lives in the keychain, a key file or a passphrase, and losing
 // that key loses every item (docs/adr/0001-vault-crypto.md, Consequences). A backup is the way

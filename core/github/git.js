@@ -21,7 +21,7 @@ const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code }
 /**
  * A path segment that is safe both as a single folder name (no `/`, so it can never become more
  * than one path component) and as the tail of a git branch name (no `..` anywhere, no leading
- * `.` or `-`, no trailing `.` — git's own check-ref-format rules, since this becomes `vyre/<id>`).
+ * `.` or `-`, no trailing `.` - git's own check-ref-format rules, since this becomes `vyre/<id>`).
  */
 export function safeSegment(s, what = "name") {
   let clean = String(s || "")
@@ -345,7 +345,7 @@ export async function worktreeAdd({ repoDir, session, defaultBranch, identity = 
  * Whether a session's worktree is safe to remove with no loss: no uncommitted change, no
  * untracked OR ignored file (a plain `git status --porcelain` skips ignored files, but a `.env`,
  * build output, a downloaded dataset or a local database in a session's worktree is exactly what
- * matters — the reviewer's MEDIUM on 58d0dd87), and no commit that isn't already on the default
+ * matters - the reviewer's MEDIUM on 58d0dd87), and no commit that isn't already on the default
  * branch or some remote (the user's binding rule: no auto-delete, ever, of anything that would
  * actually be lost).
  * @param {{ repoDir: string, dest: string, branch: string, defaultBranch: string }} p
@@ -354,11 +354,11 @@ async function worktreeSafety({ repoDir, dest, branch, defaultBranch }) {
   const status = await gitAsync(dest, ["status", "--porcelain", "--ignored"]);
   const dirty = status.ok ? status.stdout.split("\n").map(l => l.trim()).filter(Boolean) : ["(could not read the worktree's status)"];
   // refs/heads/<name>: safeSegment already rules out a leading dash on the session branch, and
-  // this is the belt-and-braces form regardless — a revision argument that cannot be read as an
+  // this is the belt-and-braces form regardless - a revision argument that cannot be read as an
   // option however it was produced (also covers defaultBranch, which comes from GitHub's API,
   // not safeSegment). `--end-of-options` was tried here too and reverted: once given, git treats
   // every later argument as non-option, including `--not` and `--remotes` themselves, so it
-  // broke the very flags this call needs — the refs/heads/ prefix alone already makes the value
+  // broke the very flags this call needs - the refs/heads/ prefix alone already makes the value
   // unable to start with `-`, which is the actual protection; there is nothing left for
   // --end-of-options to add once nothing here can be misread as an option in the first place.
   const rev = await gitAsync(repoDir, ["rev-list", `refs/heads/${branch}`, "--not", `refs/heads/${defaultBranch}`,

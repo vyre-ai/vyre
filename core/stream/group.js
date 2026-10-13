@@ -366,7 +366,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (um && um.data.enc !== undefined) throw fail("bad_input", "a private message cannot be quoted");
     const text = um ? String(um.data.text || "") : mine.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => String(f.data.text || "")).join("");
     const flat = text.replace(/\s+/g, " ").trim();
-    return { message: id, author: String(first.author || ""), text: flat.length > 140 ? `${flat.slice(0, 139)}…` : flat };
+    return { message: id, author: String(first.author || ""), text: flat.length > 140 ? `${flat.slice(0, 139)}\u2026` : flat };
   }
 
   // ---- run steps: the tool calls between two of an assistant's messages, one collapsible block --------------------------------------------------------------------------------------------
@@ -1096,7 +1096,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const upto = markers.get(person, grp);
       const frames = log0.read(0);
       const fresh = frames.filter(f => f.cur > upto);
-      const flat = (/** @type {string} */ t) => { const x = t.replace(/\s+/g, " ").trim(); return x.length > 140 ? `${x.slice(0, 139)}…` : x; };
+      const flat = (/** @type {string} */ t) => { const x = t.replace(/\s+/g, " ").trim(); return x.length > 140 ? `${x.slice(0, 139)}\u2026` : x; };
       /** @type {Map<string, { message: string, author: string, raw: string, cur: number }>} */ const said = new Map();
       for (const f of fresh) {
         if (f.type === "chat.user-message" && f.data && f.data.enc === undefined && f.author !== person) said.set(String(f.data.message), { message: String(f.data.message), author: String(f.author || ""), raw: String(f.data.text || ""), cur: f.cur });
@@ -1199,7 +1199,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const q = says[says.length - 1];
       if (!q) throw fail("not_found", "the question this answered is not in this chat");
       const name = (/** @type {string} */ id) => g.names.get(id) || shortOf(id) || id;
-      const cut = (/** @type {string} */ t, /** @type {number} */ n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+      const cut = (/** @type {string} */ t, /** @type {number} */ n) => (t.length > n ? `${t.slice(0, n - 1)}\u2026` : t);
       const earlier = says.slice(-7, -1).map(f => `${name(String(f.author || "person"))}: ${cut(String(f.data.text).replace(/\s+/g, " ").trim(), 600)}`);
       const hidden = [
         `Context for your second opinion. ${name(authorOf)} was asked this and answered. Give your own answer to the question from scratch; say plainly where you differ from theirs and why. Do not just agree.`,

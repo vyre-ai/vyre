@@ -1,11 +1,11 @@
 // @ts-check
-// access — which folders a named agent may read through files.search/stat/preview/fetch, and
+// access - which folders a named agent may read through files.search/stat/preview/fetch, and
 // which VyreDrive shares files.drive may offer it (Vyre Drive step 5, federation). The user's
 // own surfaces, modules and the person's own sessions see every configured root, unrestricted,
 // exactly as before this existed. THE assistant rule (binding, 2026-09-28): the assistant walks
 // every MAPPED project, same as a projects: "*" agent and NOT checked against projects.access
 // (it is a different privilege tier, not subject to a per-agent revoke), but files are raw
-// content, so it is never all:true either — unlike memory's personal facts, there is nothing
+// content, so it is never all:true either - unlike memory's personal facts, there is nothing
 // "distilled" about a file. Any other named agent sees only its own granted projects' folders,
 // intersected with projects.access, the same per-project door core/memory's reach() uses.
 // Reviewer's MEDIUM 2 (450c34b6): all:true used to cover ANY unnamed caller, tailnet guests and

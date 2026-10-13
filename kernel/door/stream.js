@@ -4,7 +4,7 @@
 // (three raw characters per normalised one covers separators). So with no number in the tail and nothing in the ledger, nothing is held and each chunk
 // passes straight through; a number holds back only from its first digit; a non-empty ledger holds back its longest form. On a hit the caller cuts.
 export const RUN_MAX = 160;
-const RISKY = /\d|[０-９]|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|oh)\b/gi;
+const RISKY = /\d|[\uff10-\uff19]|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|oh)\b/gi;
 
 /**
  * @param {{ ledger: import("../seal/ledger.js").Ledger, detect: (text: string) => Promise<{ found: { class: string }[] }> }} o

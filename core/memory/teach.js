@@ -1,5 +1,5 @@
 // @ts-check
-// teach — what other modules tell Memory, through ctx.memory.teach(kind, fact).
+// teach - what other modules tell Memory, through ctx.memory.teach(kind, fact).
 //
 // A module never writes Memory's tables. It hands the curator a fact; the curator folds it into
 // the graph on its next pass, with provenance {module, kind} where a fact from a transcript has

@@ -7,7 +7,7 @@ import { checkKit } from "./kits.js";
 import { renderBrief } from "./checklist.js";
 import { holds } from "../../lib/expr/conditions.js";
 
-const cut = (/** @type {string} */ s, n = 110) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cut = (/** @type {string} */ s, n = 110) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 
 /**
  * @param {{ kit: any, cat: any, runner: any, approver: any, sample?: { type?: string, data?: Record<string, any> }, record?: { type: string, data: Record<string, any>, id?: string } }} o

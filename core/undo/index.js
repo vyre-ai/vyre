@@ -61,7 +61,7 @@ CREATE INDEX undo_acted_actor ON undo_acted (actor_kind, actor, at);
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const one = (/** @type {unknown} */ s) => String(s ?? "").replace(/\s+/g, " ").trim();
-const cap = (/** @type {string} */ s, n = TEXT_MAX) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cap = (/** @type {string} */ s, n = TEXT_MAX) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const plain = (/** @type {unknown} */ v) => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 
 /** Delete rows older than KEEP_MS. @param {any} db @param {number} [now] @returns {number} rows removed */

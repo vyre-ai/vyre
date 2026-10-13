@@ -1,5 +1,5 @@
 // @ts-check
-// hands-desktop: the module layer over act.js, snapshot.js and client.js — an agent's AT-SPI
+// hands-desktop: the module layer over act.js, snapshot.js and client.js - an agent's AT-SPI
 // hands, wired to a real computer through core/computers (team/archive/work-journals/computers.md, ADR 0003).
 //
 // Everything that decides whether a click is safe to try lives in act.js and consequence.js

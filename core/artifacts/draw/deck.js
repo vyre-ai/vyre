@@ -18,7 +18,7 @@ import { themeCss, colorOf, fontOf, dataImageOf, lengthOf } from "./theme.js";
 /** @typedef {{ html: string, notes: string, bad?: string }} Slide */
 
 const IMG = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/;
-const BIG = /^[+\-–]?[$€£]?\d[\d.,]*\s?(?:%|x|k|m|bn|[A-Za-z]{0,2})$/;
+const BIG = /^[+\-\u2013]?[$\u20ac£]?\d[\d.,]*\s?(?:%|x|k|m|bn|[A-Za-z]{0,2})$/;
 
 
 /** A slide's own look from its @slide object, every value checked. @param {any} sd */

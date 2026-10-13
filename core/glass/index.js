@@ -316,7 +316,7 @@ export default {
         if (!isText(mime) && buf.subarray(0, 8192).includes(0)) return { kind: "binary", mime, size: Number(st.size) || 0 };
         // Cut on a character boundary, not mid-way through one.
         let text = buf.toString("utf8");
-        if (buf.length === MAX_PREVIEW && text.endsWith("�")) text = text.slice(0, -1);
+        if (buf.length === MAX_PREVIEW && text.endsWith("\ufffd")) text = text.slice(0, -1);
         return { kind: "text", text, truncated: Number(st.size) > buf.length };
       });
 

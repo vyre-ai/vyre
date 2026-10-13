@@ -1,5 +1,5 @@
 // @ts-check
-// eval — how well does search find what someone meant? Measured, not argued.
+// eval - how well does search find what someone meant? Measured, not argued.
 //
 // A labelled set is a list of questions, each with the turns that answer it:
 //   { "queries": [{ "q": "...", "answers": [{ "session": "...", "seq": 3 }] }], "nonsense": ["..."] }

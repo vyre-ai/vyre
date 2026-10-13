@@ -275,7 +275,7 @@ export class Pool {
 
   /**
    * A checked-out computer is trusted between calls, and freeze() only ever looks at idle ones,
-   * so nothing had ever asked whether an actively-held container was still there — found on the
+   * so nothing had ever asked whether an actively-held container was still there - found on the
    * box's first real run, by hand, when a container removed out from under vyred mid-checkout
    * left `computers.get` reporting "running" until the next `computers.stop` forced a look.
    * Every `verifyMs`, an already-held checkout is asked once; a container gone releases it, so

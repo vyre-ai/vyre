@@ -1,5 +1,5 @@
 // @ts-check
-// cli-io — the terminal side of the Vault: prompts that never echo, a scrubber for `vyre vault
+// cli-io - the terminal side of the Vault: prompts that never echo, a scrubber for `vyre vault
 // run`, and the small parsers the vault command needs.
 //
 // Why these live here and not in the command file: each one guards a way a value could reach a

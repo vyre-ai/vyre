@@ -1,5 +1,5 @@
 // @ts-check
-// box — the box's half of the link: pairing requests from a Mac, their approval, and the paired
+// box - the box's half of the link: pairing requests from a Mac, their approval, and the paired
 // Macs.
 //
 // Pairing needs the owner present at both ends. The Mac asks, and gets a code that is shown only
@@ -448,7 +448,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (tool === "computer.call" && !(meta && meta.caller === "module:computer")) throw Object.assign(new Error("a Mac is asked to work only by Vyre Computer; use computer.use to work on a computer"), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
-      // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) —
+      // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) -
       // they never appear in a read or a write forwarded this way (e2e, session-import review).
       let macs = /** @type {any[]} */ (db.prepare("SELECT id, name, stable_id FROM link_peers WHERE kind = 'mac' ORDER BY paired_at").all());
       if (only) macs = macs.filter(m => m.id === only || m.name === only);

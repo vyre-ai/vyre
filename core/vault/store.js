@@ -1,5 +1,5 @@
 // @ts-check
-// store — sealed item files on disk, one per item, in vault/items/.
+// store - sealed item files on disk, one per item, in vault/items/.
 //
 // This file knows paths and permissions, not cryptography: it takes what crypto.sealItem made
 // and puts it somewhere only this user can read. Two rules:

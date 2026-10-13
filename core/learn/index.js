@@ -1,5 +1,5 @@
 // @ts-check
-// learn — Vyre learns from corrections and enforces what it learned (docs/SPEC.md section 7.11).
+// learn - Vyre learns from corrections and enforces what it learned (docs/SPEC.md section 7.11).
 //
 // A lesson that only sits in memory is advice. A lesson here with a check is code the hooks run:
 // before a tool runs (harness.rules asks learn.check {stage: "tool"}) and before a turn ends

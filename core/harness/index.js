@@ -1,5 +1,5 @@
 // @ts-check
-// harness — what the Claude Code hooks ask vyred (docs/SPEC.md section 8).
+// harness - what the Claude Code hooks ask vyred (docs/SPEC.md section 8).
 //
 // The hooks in harness/hooks/ are a few lines each: they read the hook's JSON from stdin, call
 // one of these tools, and print what comes back. All the logic is here, where it can be tested
@@ -163,7 +163,7 @@ export default {
         // place they are joined. A plain character cut (it may land mid-word - this is a safety
         // bound against drift, not a rendered UI truncation), ellipsis not an em dash.
         let nudge = [styleText, teamText].filter(Boolean).join("\n\n");
-        if (nudge.length > APPEND_TOTAL_MAX) nudge = nudge.slice(0, APPEND_TOTAL_MAX - 1) + "…";
+        if (nudge.length > APPEND_TOTAL_MAX) nudge = nudge.slice(0, APPEND_TOTAL_MAX - 1) + "\u2026";
         return { text: withWarning([nudge, text, lately, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });

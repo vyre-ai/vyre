@@ -68,7 +68,7 @@ const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp
 const MAX_SNIPPETS = 12, SNIPPET = 160, MAX_WORDS = 1500;
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
-const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const isObject = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 
 /**

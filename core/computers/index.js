@@ -182,7 +182,7 @@ export default {
      *
      * This is a floor, not the whole guard: it stops an ordinary agent claiming to be any
      * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
-     * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
+     * (cli, local, a module, or the assistant) - that needs the caller-identity-matches-claimed-
      * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
      *
      * It also cannot see past a module that relabels the caller: sight.watch calls this tool as

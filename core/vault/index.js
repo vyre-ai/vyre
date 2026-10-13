@@ -1,5 +1,5 @@
 // @ts-check
-// vault — the module: credentials sealed at rest, released one item at a time to a module that
+// vault - the module: credentials sealed at rest, released one item at a time to a module that
 // holds a grant, shared with other people's Vyre by pass (docs/SPEC.md section 7.5).
 //
 // This file is the tool layer. It decides who may call what (ADR 0001, decision 6) and hands the

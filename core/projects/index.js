@@ -66,13 +66,13 @@ const PERSON_ONLY = [...OWNER, "module"];
 /** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
 const CATALOG_READERS = [...OWNER, "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
-// third-party ones installed into the modules folder included — modules skip presence entirely,
+// third-party ones installed into the modules folder included - modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
 // (clear deletes them outright; a wildcard grant then re-applies as if they never happened).
 // Only agents (option (a)'s own sync) and this module itself (projects.create's own wildcard
 // grant) may reach them this way; everyone else keeps the owner-plus-presence door above.
 // Reviewer's MEDIUM on 7021d4e1: projects.create had no callers at all (open to an agent's own
-// MCP, a guest, a hook — anything), so an agent could map any folder into a brand-new project
+// MCP, a guest, a hook - anything), so an agent could map any folder into a brand-new project
 // and, through f8330ccc's own auto-grant, walk straight in with projects.access on it (a
 // never-unmapped folder became a mapped one at the agent's own request). The loader-level
 // callers list below closes that (OWNER, plus module callers only); this narrows further, to the
@@ -97,7 +97,7 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    // projects_access (table itself is step 1 of MIGRATIONS, in projects.js — reviewer's MEDIUM:
+    // projects_access (table itself is step 1 of MIGRATIONS, in projects.js - reviewer's MEDIUM:
     // core/store's migrate() numbers steps by array index, so appending it here instead would
     // collide with whatever step another team adds to this same array next) is which agent may
     // reach a project's data at all: Drive, sync and anything else that serves a project's files
@@ -517,7 +517,7 @@ export default {
     // the ctx.call fan-out (agents.list, projects.list, projects.access.check) belongs in one
     // place, not three. Landed with one fix on cohesion's own proposal (flagged to them first):
     // the assistant is never checked against projects.access at all (a different privilege tier,
-    // not the wildcard agent's own per-project door — THE assistant rule, team-lead, restated
+    // not the wildcard agent's own per-project door - THE assistant rule, team-lead, restated
     // twice), so it skips the projects.access.check loop entirely rather than running through it
     // with every project as its candidate set.
     const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);

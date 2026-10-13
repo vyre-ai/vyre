@@ -85,7 +85,7 @@ function typo(w, v) {
  * @param {string} q
  */
 export function normalize(q) {
-  let t = String(q || "").replace(/[‘’ʼ`´]/g, "'").toLowerCase();
+  let t = String(q || "").replace(/[\u2018\u2019\u02bc`´]/g, "'").toLowerCase();
   t = t.replace(/\b(who|what|where|when|how|it|that)'s\b/g, "$1 is").replace(/\bwhats\b/g, "what is").replace(/\b(?:wat|wht|waht)\b/g, "what")
     .replace(/\bi'm\b/g, "i am").replace(/\bb-day\b/g, "bday").replace(/\bfavorite\b/g, "favourite")
     // The other parent is the spouse: "the kids' mum", "my son's dad". "the mrs", "the missus", married to.

@@ -20,7 +20,7 @@ export function clean(v, max = FIELD_MAX) {
   // Control characters and the Unicode line separators become spaces; newlines and tabs are kept as such.
   s = [...s].map(ch => { const c = ch.codePointAt(0) || 0; return (c < 32 && c !== 10 && c !== 9) || c === 127 || c === 0x2028 || c === 0x2029 ? " " : ch; }).join("");
   s = s.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  return s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
 }
 
 /**

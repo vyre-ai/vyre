@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(ci): the heap after a full GC is back under its 60 MB budget (59.1 to 55.8 MB on Node 22): a source file with one character outside Latin-1 (a dash or ellipsis) is held by V8 at two bytes a character, so 130 daemon-loaded files now use ASCII in comments and unicode escapes in code; and the pairing test count is recorded as 1 (the three offerFrom tests went with the classic pairing code in aa0a8ba1).
 - fix(tests): test/peer-race.test.js keeps its fake chain unreadable for all 12 reads of a call (three reads a look, four looks) now that an unreadable chain is retried; assertions unchanged.
 - security (GHSA-32h6-gq86-772f): fixed in 0.5.0. A call from a device removed from a Space is refused, and facts the kernel refuses never fall back to a module's service chain (commits 9af8d7c8 and 94a65fd9, merged on the stage in c2b4ca3d and c3a33ef0).
 - fix(daemon): an unreadable process chain on a socket call (a /proc read that raced on a busy box) is retried like an empty peer read, same count and backoff, so a busy box no longer refuses its own terminal with "could not tell who is calling"; after the retries the refusal is unchanged (fail closed, no fallback).
