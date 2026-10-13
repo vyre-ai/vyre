@@ -72,7 +72,7 @@ export default function ChatsScreen() {
         : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
         : view.body === "loading" ? <LoadingState rows={4} />
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
-        : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
+        : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
           <View className="gap-s3">
             <TextInput ref={search} value={q} onChangeText={setQ} placeholder="Search chats  /" placeholderTextColor={color.label} accessibilityLabel="Search chats"

@@ -37,7 +37,7 @@ export function AgentsHome() {
   useEffect(load, [load]);
   const persist = (g: Group[], p: Record<string, string>) => { const s = store(); if (s) saveGroups(s, { groups: g, placed: p }); };
 
-  const agents: any[] | null = mock ? sample.assistants.map((a) => ({ name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", status: a.paused ? "stopped" : "idle", thread: "x", model: a.model, instructions: a.role, autonomy: a.autonomy, id: a.id, ...(a.name === "rev" ? { made_by: "other", shares: [{ person: me || "me", level: "use" }] } : {}) })) : live;
+  const agents: any[] | null = mock ? sample.assistants.map((a) => ({ name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", status: a.paused ? "stopped" : "idle", thread: "x", model: a.model, instructions: String(a.role).replace(/^Your assistant/, "Your agent").replace(/^Assistant of/, "Agent of"), autonomy: a.autonomy, id: a.id, ...(a.name === "rev" ? { made_by: "other", shares: [{ person: me || "me", level: "use" }] } : {}) })) : live;
   const rows: Row[] = useMemo(() => (agents ?? []).map((a) => agentRow(a, me)), [agents, me]);
   const titleOf = (id: string) => AGENT_GROUPS.find(([g]) => g === id)?.[1] ?? id;
   const items = rows.map((r) => ({ ...r, group: placed[r.name] ?? titleOf(r.group) }));
@@ -99,16 +99,12 @@ export function AgentsHome() {
           {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={load} /></Card> : null}
           {agents === null && !err ? <LoadingState rows={4} /> : null}
           {agents && !agents.length ? (
-            <Card><EmptyState title="No agents yet" body="Your assistant and any agents you make appear here." action={{ label: "New agent", onPress: () => router.push("/u/settings/assistants/new" as never) }} /></Card>
+            <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here." action={{ label: "New agent", onPress: () => router.push("/u/settings/assistants/new" as never) }} /></Card>
           ) : null}
           {agents && agents.length ? (
             <>
-              <View className="flex-row items-end gap-s3">
-                <View className="min-w-0 flex-1">
-                  <ListHeader title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}} />
-                </View>
-                <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />
-              </View>
+              <ListHeader title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
+                actions={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
               {shown.length ? (
                 <GroupedList groups={groups} items={shown} itemNoun="agents"
                   onChange={({ groups: g, items: it }) => { const p = { ...placed, ...Object.fromEntries(it.map((i) => [i.name, i.group as string])) }; setGroups(g); setPlaced(p); persist(g, p); }}

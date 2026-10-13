@@ -96,7 +96,7 @@ function FromApp({ reload, io }: { reload: () => void; io: Io }) {
           <Button kind="primary" label={busy ? "Importing" : importLabel(v, useFile)} disabled={busy || (v.fresh + (useFile ? v.differ : 0)) === 0} onPress={() => run(step.file, step.preview)} />
           <Button kind="ghost" label="Choose another file" onPress={() => { setProblem(""); setStep({ at: "how", source: step.source }); }} />
         </View>
-        <Text size="caption" tone="label">The Vault asks you to approve this. The passwords go from the file to the Vault; no assistant sees them.</Text>
+        <Text size="caption" tone="label">The Vault asks you to approve this. The passwords go from the file to the Vault; no agent sees them.</Text>
       </View></Card>
     );
   }

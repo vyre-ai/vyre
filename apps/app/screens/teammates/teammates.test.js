@@ -58,12 +58,12 @@ test("assign to: people and agents together, the project's teammates first, serv
   assert.deepEqual(g[0].rows.map((a) => a.id), ["p1", "a1"], "people before agents inside a group");
   assert.deepEqual(g[1].rows.map((a) => a.id), ["p2", "a2"]);
   assert.equal(m.assignGroups(actors, [], ["p1"]).flatMap((x) => x.rows).some((a) => a.id === "p1" || a.id === "s1"), false, "excluded and service rows are left out");
-  assert.deepEqual(m.assignGroups(actors, [], []).map((x) => x.title), ["People and assistants"]);
+  assert.deepEqual(m.assignGroups(actors, [], []).map((x) => x.title), ["People and agents"]);
   assert.deepEqual(m.searchGroups(g, "ALEX").flatMap((x) => x.rows.map((a) => a.id)), ["p2"]);
   assert.deepEqual(m.searchGroups(g, "zzz"), []);
 });
 
-test("teammates: grouped by project for the Assistants page", { skip: !strip }, async () => {
+test("teammates: grouped by project for the Agents page", { skip: !strip }, async () => {
   const m = await import("./model.ts");
   const rows = m.teammatesOf([{ agent: "a", project: "zed", role: "x" }, { agent: "b", project: "", role: "y" }, { agent: "c", project: "dana", role: "z" }, { agent: "d", project: "dana", role: "a" }]);
   const g = m.byProject(rows);
@@ -90,7 +90,7 @@ test("teammates: the source calls the box's own tools with the inputs the Deck s
   const t = (await s.list("P1"))[0];
   const p = await s.pane(t);
   assert.deepEqual({ n: p.notes, c: p.charter, st: p.status, e: p.errors, d: p.duties.map((d) => d.id) }, { n: "n", c: "c", st: { state: "running", position: 0 }, e: 0, d: ["d1"] });
-  assert.deepEqual(await s.fillers(), ["kit"], "the person's own assistant never fills a role");
+  assert.deepEqual(await s.fillers(), ["kit"], "the person's own agent never fills a role");
   await s.add("P1", "design", "  UI  "); assert.deepEqual(b.seen.at(-1), { tool: "team.add", input: { project: "P1", role: "design", brief: "UI" } });
   await s.add("P1", "qa"); assert.deepEqual(b.seen.at(-1).input, { project: "P1", role: "qa" });
   await s.retire("t1"); assert.deepEqual(b.seen.at(-1), { tool: "team.retire", input: { teammate: "t1" } });

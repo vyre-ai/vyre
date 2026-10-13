@@ -20,7 +20,7 @@ export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "el
 
 const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "board", branch: "list", subflow: "flows", join: "check", ask: "face", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
 const STATE: Record<NodeState, { label: string; tone: "plain" | "accent" | "ok" | "err" | "warn" } | null> = {
-  pending: null, running: { label: "Running", tone: "accent" }, waiting: { label: "Waiting on you", tone: "accent" }, done: { label: "Done", tone: "ok" }, failed: { label: "Failed", tone: "err" }, paused: { label: "Paused", tone: "warn" },
+  pending: null, running: { label: "Running", tone: "plain" }, waiting: { label: "Waiting on you", tone: "accent" }, done: { label: "Done", tone: "ok" }, failed: { label: "Failed", tone: "err" }, paused: { label: "Paused", tone: "warn" },
 };
 const px = (v: string | number | undefined, fallback: number) => (typeof v === "string" ? parseFloat(v) || fallback : typeof v === "number" ? v : fallback);
 
@@ -93,7 +93,7 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
           return (
             <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={n.label} accessibilityState={{ selected: selected === n.id }} onPress={() => onSelect?.(n.id)}
               style={{ position: "absolute", left: n.left, top: n.top, width: n.w, height: n.h }}
-              className={cn("flex-row items-start gap-s2 overflow-hidden rounded-card border p-s2", selected === n.id ? "border-accent" : n.state === "failed" ? "border-err" : "border-edge", n.state === "waiting" ? "bg-accent-wash" : "bg-surface-2")}>
+              className={cn("flex-row items-start gap-s2 overflow-hidden rounded-card border p-s2", selected === n.id ? "border-primary" : n.state === "failed" ? "border-err" : "border-edge", n.state === "waiting" ? "bg-accent-wash" : "bg-surface-2")}>
               <View className="h-control-sm w-control-sm flex-none items-center justify-center rounded-row bg-surface-3"><Icon name={ICON[n.kind] ?? "todo"} size={16} tone={n.state === "done" ? "ok" : n.state === "waiting" || n.state === "running" ? "accent" : n.state === "failed" ? "err" : "text-2"} /></View>
               <View className="min-w-0 flex-1 gap-s1">
                 {words ? <Text size="caption" tone="label">{words}</Text> : null}

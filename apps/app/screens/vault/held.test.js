@@ -25,7 +25,7 @@ test("held fields: a row per sealed value a person may reveal, named by record a
   const rows = heldFields(types, byType);
   assert.deepEqual(rows.map((r) => [r.title, r.field, r.label]), [["Jane Doe", "ssn", "SSN"], ["Jane Doe", "dob", "Date of birth"]]);
   assert.equal(rows[0].id, "vyre://s/contact/1/ssn");
-  assert.match(heldLine(rows[0]), /Assistants read "SSN on file, sealed"/);
+  assert.match(heldLine(rows[0]), /Agents read "SSN on file, sealed"/);
   for (const r of rows) assert.ok(!JSON.stringify(r).includes("r1") && !JSON.stringify(r).includes("r2"), "a reference is not carried into the row");
   assert.deepEqual(heldFields([], {}), []);
 });

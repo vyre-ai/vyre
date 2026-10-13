@@ -1,4 +1,5 @@
 import { View } from "react-native";
+import { openEngineer } from "../engineer/openEngineer";
 import { useRouter } from "expo-router";
 import { Button, Card, Divider, EmptyState, IconTile, Row, Switch, Text, allowsMock } from "@vyre/ui";
 import { RealFlows } from "./RealFlows";
@@ -37,7 +38,7 @@ function SampleFlowsScreen() {
       <Card flush>
         <Row dense onPress={() => router.push("/u/kits" as never)} lead={<IconTile name="kits" />} title="Kits" state={`${installed.length} installed`} chevron />
       </Card>
-      <View className="pt-s4"><Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} /></View>
+      <View className="pt-s4"><Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="spark" label="Ask @Engineer to write one" onPress={() => openEngineer(router, { source: "flow" })} /></View>
     </Frame>
   );
 }

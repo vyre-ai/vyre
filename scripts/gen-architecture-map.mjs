@@ -27,6 +27,7 @@ export const LAYOUT = {
   core: "The daemon `vyred`: its plumbing and the core modules, one folder each.",
   "design-refs": "The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs).",
   docs: "This documentation: concepts, how-to pages, the reference, the ADRs.",
+  escrow: "The Worker that keeps each identity's sealed Secret Key for GitHub sign-in; never the recovery code.",
   examples: "Example modules to copy from.",
   harness: "The Claude Code plugin: hooks, the MCP server, skills, commands, the status line.",
   kernel: "The trusted core: identity, grants, the event log, records, tasks, the sealing process. See the next section.",

@@ -33,7 +33,7 @@ export const KIND_ROWS: [string, string, string][] = [
   ["watch", "A watcher found something", "What your watchers were set to look for."],
   ["planner", "Your day", "Things the planner puts in front of you."],
   ["goal", "A goal moved", "Progress and blocks on a goal."],
-  ["proactive", "Suggestions", "Things an assistant noticed on its own."],
+  ["proactive", "Suggestions", "Things an agent noticed on its own."],
   ["lesson", "What Vyre learned", "A lesson was kept. Off until you turn it on."],
 ];
 
