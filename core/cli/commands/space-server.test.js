@@ -91,7 +91,7 @@ test("vyre space shows the name and address, owner, members, Records, vault, ver
   assert.match(r.out, /Version +0\.3\.1/);
   assert.ok(!/Next/.test(r.out));
   const j = JSON.parse((await run(root, ["space", "--json"])).stdout);
-  assert.deepEqual([j.members, j.owned, j.space.address], [4, true, "harlow.vyre.run"]);
+  assert.deepEqual([j.members, j.owned, j.home.address], [4, true, "harlow.vyre.run"]);
 });
 
 test("vyre space on a server nobody owns says the next step is vyre space up, and when Records is still setting up says to check again", async t => {

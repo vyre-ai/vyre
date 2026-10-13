@@ -6,7 +6,7 @@
 //                                     overrides it for one call); with none, tools act in the home's own space and name it in their answer.
 //
 // Built from tools that exist: wink.server.code, wink.server.status, relay.setup.status (the words), spaces.list, spaces.get, vault.list and /v1/health. No new kernel logic.
-// --json shapes: bare {running, version, space: {id, name, address}|null, owned, owner, members, owners, records, vault, acting_in, next}; up {owned: false, code, code_expires, words, qr} or {owned: true, space};
+// --json shapes: bare {running, version, home: {id, name, address}|null, space: the remembered space or null, owned, owner, members, owners, records, vault, next} (vyred down: {running: false, space, next}); up {owned: false, code, code_expires, words, qr} or {owned: true, space};
 // use {space: string|null}.
 
 import { call, request } from "../../daemon/client.js";
@@ -52,7 +52,12 @@ async function up() {
 /** `vyre space`: the details, in plain lines. */
 async function details() {
   const h = await request("GET", "/v1/health");
-  if (h.error) return fail("vyred is not answering, so there is no space to show", { next: "vyre up", exit: EXIT.UNREACHABLE });
+  if (h.error) {
+    // The remembered space is a file, so it can still be said; the rest needs vyred.
+    if (json()) { emit({ running: false, space: readSpace(), next: ["vyre up"] }); return EXIT.UNREACHABLE; }
+    if (readSpace()) out(`  acting in ${readSpace()}`);
+    return fail("vyred is not answering, so there is no space to show", { next: "vyre up", exit: EXIT.UNREACHABLE });
+  }
   const d = h.data || {};
   const [st, list, vault] = await Promise.all([call("wink.server.status", {}), call("spaces.list", {}), call("vault.list", {})]);
   const rows = Array.isArray(list.data) ? list.data : [];
@@ -73,8 +78,8 @@ async function details() {
   if (rs && rs.note) next.push("Records is still setting up; check again in a few minutes: vyre space");
   if (items === null) next.push("The vault did not answer; see: vyre doctor");
   if (!row && owned) next.push("This server lists no space yet; see: vyre doctor");
-  const data = { running: true, version: label(d), space: row ? { id: String(row.id), name: nameOf, address } : null, owned, owner, members: g ? g.members : null, owners: g ? g.owners : null,
-    records: recordsLine, vault: vaultLine, acting_in: readSpace(), next };
+  const data = { running: true, version: label(d), home: row ? { id: String(row.id), name: nameOf, address } : null, space: readSpace(), owned, owner, members: g ? g.members : null, owners: g ? g.owners : null,
+    records: recordsLine, vault: vaultLine, next };
   if (json()) return emit(data, { kind: "card", title: "Space", state: next.length ? "wait" : "ok", fields: [
     { label: "Space", value: nameOf ? `${nameOf}${address ? ` · ${address}` : ""}` : "not set up" }, { label: "Owner", value: owner || "nobody yet" },
     { label: "Members", value: g ? String(g.members) : "unknown" }, { label: "Records", value: recordsLine }, { label: "Vault", value: vaultLine }, { label: "Version", value: label(d) },
