@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { initialsOf, paletteIndex, spaceTile, TILE_PALETTE } from "./space-tile.js";
 
 test("initials: two words give two letters, one word gives its first two, an empty name gives one dot-free fallback", () => {
-  assert.equal(initialsOf("Juniper Studio"), "HL");
+  assert.equal(initialsOf("Juniper Studio"), "JS");
   assert.equal(initialsOf("northwind"), "NO");
   assert.equal(initialsOf("  Juniper   Studio  Co "), "JS");
   assert.equal(initialsOf("Mine"), "MI");
@@ -21,7 +21,7 @@ test("palette: the same id always gets the same tile, in range, and the ids spre
 });
 
 test("a space with a logo shows the logo; a broken or empty logo falls back to the monogram, never a pattern", () => {
-  assert.deepEqual(spaceTile({ id: "a", name: "Juniper Studio", logo: "https://x/y.png" }), { kind: "logo", uri: "https://x/y.png", initials: "HL", palette: paletteIndex("a") });
+  assert.deepEqual(spaceTile({ id: "a", name: "Juniper Studio", logo: "https://x/y.png" }), { kind: "logo", uri: "https://x/y.png", initials: "JS", palette: paletteIndex("a") });
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "https://x/y.png" }, { failed: true }).kind, "monogram");
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "" }).kind, "monogram");
   assert.equal(spaceTile({ id: "a", name: "Juniper Studio", logo: "javascript:alert(1)" }).kind, "monogram");

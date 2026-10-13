@@ -2,7 +2,7 @@
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { ShellLooks, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { ShellStates, ShellSample, SpaceTileSheet, BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -125,10 +125,8 @@ function Sample({ name }: { name: string }) {
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
   }
-  if (name === "shell") return <ShellLooks />;
-  if (name === "shell-quiet") return <ShellSample look="quiet" />;
-  if (name === "shell-studio") return <ShellSample look="studio" />;
-  if (name === "shell-glass") return <ShellSample look="glass" />;
+  if (name === "shell") return <ShellStates />;
+  if (name.startsWith("shell-")) return <ShellSample state={name.slice(6) as "main"} />;
   if (name === "space-tiles") return <SpaceTileSheet />;
   if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
   if (name === "explain-card") return <ExplainCard text="It ran because the stage moved to Engagement. It made Welcome note and handed Send the welcome email to an assistant. It is waiting for a person (step Approve the email)." />;
@@ -194,7 +192,7 @@ export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
-  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows all three looks, ?f=shell-quiet|shell-studio|shell-glass one, ?f=space-tiles the tiles.
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);
