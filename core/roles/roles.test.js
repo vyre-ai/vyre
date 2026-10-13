@@ -44,7 +44,7 @@ test("checks: wider than the base is refused in words, above admin is refused, u
 });
 
 test("a hidden field is omitted on a read and refused on a write; a type set to none is unreachable", async () => {
-  const { assign, o, R, b } = await rig();
+  const { k, assign, o, R, b } = await rig();
   const r = checkRole(role({ data: { lead: "edit" }, hidden_fields: { lead: ["budget"] } }), { types: [LEAD] });
   await assign(BOB, r);
   const lead = await R.create(o, "lead", { name: "Harlow", budget: 5000, city: "Riverton" });
@@ -53,7 +53,8 @@ test("a hidden field is omitted on a read and refused on a write; a type set to 
   assert.equal("budget" in seen.data, false, "omitted on a read");
   await assert.rejects(() => R.update(b, "lead", lead.id, { budget: 1 }, 1), { code: "field_not_allowed" });
   const none = checkRole(role({ label: "Blind", data: { lead: "none" } }), { types: [LEAD] });
-  await assert.rejects(async () => expandRole(none, { space: SPACE, person: BOB, types: [LEAD] }), { message: /no access/ });
+  await assign(ADA, none);
+  assert.equal(await R.get(chainOf(k, ADA, "d-a"), "lead", lead.id).catch(() => null), null, "a type set to none is unreachable");
 });
 
 test("only what they made: a role limited to its own records sees its own and not the owner's", async () => {
@@ -79,7 +80,7 @@ test("an end date: the role's grants stop working when it passes", async () => {
   await assign(BOB, checkRole(role({ label: "Short", ends: Date.now() + 1500 })));
   assert.equal((await R.get(b, "lead", lead.id)).data.name, "Harlow", "before the end");
   await new Promise(r => setTimeout(r, 2200));
-  await assert.rejects(() => R.get(b, "lead", lead.id), "after the end the grants no longer cover it");
+  assert.equal(await R.get(b, "lead", lead.id).catch(() => null), null, "after the end the grants no longer cover it");
 });
 
 test("MAY_SET holds for custom roles: an admin gives a Member-based role, never an admin", async () => {

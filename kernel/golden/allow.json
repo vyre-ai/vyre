@@ -1016,6 +1016,22 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired device, a label"
  },
  {
+  "tool": "roles.catalogue",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists what a role is made of: the built-in roles, the switches and the tools"
+ },
+ {
+  "tool": "roles.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one role in full"
+ },
+ {
+  "tool": "roles.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Space's roles, with how many people hold each when the caller is an owner or admin"
+ },
+ {
+  "tool": "roles.tools",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says which tools a person has at the door through their role"
+ },
+ {
   "tool": "rules.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one standing rule in plain words"
  },

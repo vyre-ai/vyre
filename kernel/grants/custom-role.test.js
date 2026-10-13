@@ -15,7 +15,7 @@ async function rig() {
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const g = k.gateway.grants;
-  const set = (m) => g.setRole(owner, m, { presence: proof("grants.role", m, `vyre://${SPACE}/member/${m.person}`) });
+  const set = async (m) => g.setRole(owner, m, { presence: proof("grants.role", m, `vyre://${SPACE}/member/${m.person}`) });
   const active = async () => (await g.list(owner, { subject: { kind: "actor", actor: bobActor }, status: "active" }));
   const mine = async () => (await g.members.list(owner)).find(m => m.person === BOB);
   return { set, active, mine };

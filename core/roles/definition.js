@@ -115,7 +115,9 @@ export function expandRole(role, who) {
   add(actions.filter(a => !isRecordAction(a) && !isRowAction(a)), all, [], undefined);
   add(actions.filter(isRowAction), all, pred, undefined);
   const hasData = Object.keys(role.data || {}).length > 0;
-  if (!hasData) add(actions.filter(isRecordAction), all, pred, undefined);
+  // a record being made has no maker yet, so "only what they made" cannot judge a create: they may make one anywhere, and it is theirs afterwards
+  const free = (/** @type {string} */ a) => role.where.kind === "mine" && a === "records.create";
+  if (!hasData) { add(actions.filter(a => isRecordAction(a) && free(a)), all, [], undefined); add(actions.filter(a => isRecordAction(a) && !free(a)), all, pred, undefined); }
   else {
     const fieldsOf = new Map((who.types || []).map(t => [String(t.name), (t.fields || []).map((/** @type {any} */ f) => String(f.name))]));
     for (const [t, level] of Object.entries(/** @type {Record<string, string>} */ (role.data))) {
@@ -127,7 +129,9 @@ export function expandRole(role, who) {
         fields = have.filter((/** @type {string} */ f) => !hide.includes(f));
         if (!fields.length) throw refuse(`A role cannot hide every field of ${t}.`);
       }
-      add(levelActions(level, can), `vyre://${who.space}/${t}/*`, pred, fields);
+      const la = levelActions(level, can);
+      add(la.filter(free), `vyre://${who.space}/${t}/*`, [], fields);
+      add(la.filter(a => !free(a)), `vyre://${who.space}/${t}/*`, pred, fields);
     }
   }
   const grants = [...out.values()];

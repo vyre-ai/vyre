@@ -3,6 +3,7 @@
 // Each `can` entry is a plain-words switch over named kernel actions (never a wildcard, never an owner-only action); a role's base decides which of them it may hold
 // (kernel/grants/roles.js ROLE_ACTIONS is the one table: an entry is Member's when every action in it is in the Member bundle, Admin's when it is in the Admin bundle only).
 import { ROLE_ACTIONS } from "../../kernel/grants/roles.js";
+import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
 /** @type {readonly { id: string, label: string, gloss: string, actions: readonly string[] }[]} */
 const CAN_RAW = Object.freeze([
@@ -36,7 +37,7 @@ export const ACCESS_LEVELS = Object.freeze(["none", "read", "edit"]);
 /** The bases a custom role may start from. A custom role starts from Member, so it is a real narrowing (an Admin-based role would still count as an Admin for who may add people); a Guest's reach is set per person when they are added (scope and end date), so it is not a base. */
 export const CUSTOM_BASES = Object.freeze(["member"]);
 /** Never an id for a custom role: the built-in ones and the Guest alias. */
-export const RESERVED_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp", "guest"]);
+export const RESERVED_IDS = Object.freeze([...ROLE_IDS, "guest"]);
 
 /** The tools a role may switch on at the door (core/modules/door-lists.js reads this per role). A Member starts with none of them. */
 export const TOOLS = Object.freeze([
