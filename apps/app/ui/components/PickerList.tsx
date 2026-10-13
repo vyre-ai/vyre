@@ -29,9 +29,11 @@ export const optionId = (id: string, i: number) => `${id}-opt-${i}`;
  * The one picker list: the composer's / @ # lists, the + menu and the Answering list. The box that owns the keyboard keeps the focus (a combobox); this list only draws the rows,
  * marks the active one, and scrolls it into view. Roles: listbox and option, `aria-selected` on the active row. A footer line names the keys. Under 720 the rows are 48 high.
  */
-export function PickerList({ id, label, items, active, onActive, onPick, header, footer, empty = "Nothing matches", maxRows = 6 }: {
+export function PickerList({ id, label, items, active, onActive, onPick, header, crumbs, onCrumb, footer, empty = "Nothing matches", maxRows = 6 }: {
   id: string; label: string; items: readonly PickerItem[]; active: number; onActive?: (i: number) => void; onPick: (i: number) => void;
   header?: string; footer?: string; empty?: string; maxRows?: number;
+  /** A nested list's way down so far ("Tag", "Records", "Clients"): drawn as the header, the last one in full strength; pressing an earlier one goes back to it (`onCrumb(index)`). */
+  crumbs?: readonly string[]; onCrumb?: (i: number) => void;
 }) {
   const { color, phone } = useUiTheme();
   const rowH = phone ? 48 : 40;
@@ -45,7 +47,21 @@ export function PickerList({ id, label, items, active, onActive, onPick, header,
   const web = Platform.OS === "web";
   return (
     <View style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, overflow: "hidden" }}>
-      {header ? <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}><Text size="caption" tone="label" medium>{header}</Text></View> : null}
+      {crumbs && crumbs.length ? (
+        <View accessibilityLabel={`In ${crumbs.join(", ")}`} style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}>
+          {crumbs.map((c, i) => {
+            const last = i === crumbs.length - 1;
+            return (
+              <View key={`${i}-${c}`} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {i ? <Icon name="chev-r" size={12} tone="label" /> : null}
+                <Pressable accessibilityRole="button" accessibilityLabel={last ? c : `Back to ${c}`} disabled={last} onPress={() => onCrumb?.(i)} {...(web ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object) : {})}>
+                  <Text size="caption" tone={last ? "default" : "label"} medium={last}>{c}</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ) : header ? <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}><Text size="caption" tone="label" medium>{header}</Text></View> : null}
       {items.length === 0 ? <View style={{ minHeight: rowH, justifyContent: "center", paddingHorizontal: 12 }}><Text size="caption" tone="label">{empty}</Text></View> : (
         <ScrollView
           ref={view}

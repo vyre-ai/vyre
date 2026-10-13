@@ -29,3 +29,4 @@ web/release/
 .wrangler/
 .wrangler.dev.toml
 stores/twenty/golden/
+apps/app/dist-mock/

@@ -21,3 +21,22 @@ test("a chain device found gone at its hello, and at its next call, is forgotten
 test("the key enrolled for a chain hello is the one the entry key signed", () => {
   assert.match(src, /r\.pk !== "-" && crypto\.createHash\("sha256"\)\.update\(pk\.public_key\)\.digest\("hex"\) === r\.pk/);
 });
+
+// rc1-d's terms for chain-grant, pinned at the source (the behaviour on a real chain is rc2-people's walk): the key on the row must be the one enrolled at admission, grants are rate limited, start-paired reads the chain again
+// and a chain-born session is short.
+const presence = fs.readFileSync(new URL("../presence/module.js", import.meta.url), "utf8");
+
+test("the fact written at admission names the presence key enrolled for it, and chain-grant refuses a different key on the row", () => {
+  assert.match(src, /seq: r\.seq, at: now\(\), \.\.\.\(presenceKey \? \{ presenceKey \} : \{\}\)/);
+  assert.match(presence, /info\.viaChain\.presenceKey !== info\.presenceKey/);
+});
+
+test("chain-grant is rate limited per device and per identity", () => {
+  assert.match(presence, /t - \(chainGrants\.get\(device\) \|\| 0\) < 30_000/);
+  assert.match(presence, /recent\.length >= 20/);
+});
+
+test("start-paired reads the chain again for a chain device and its session is short", () => {
+  assert.match(presence, /relay\.device\.info", \{ id: device \}\)\.catch\(\(\) => null\)\) \|\| \{\}\)\.data;\s+if \(chainInfo && chainInfo\.removed\) throw refuse\(\);/);
+  assert.match(presence, /UPDATE presence_people SET max = MIN\(max, \?\) WHERE id = \?/);
+});

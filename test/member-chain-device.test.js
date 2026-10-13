@@ -40,7 +40,7 @@ test("(a) a member's chain device gets HER person facts and the kernel reads her
   // the refusal is the kernel's rank rule, not the presence stand-in or a malformed call: the SAME call by the owner goes through
   const ownerOnly = { person: AMY, role: "admin" };
   const presence = { presence: proofFor("grants.role", ownerOnly, `vyre://${SPACE}/member/${AMY}`) };
-  await assert.rejects(() => k.gateway.grants.setRole(chain, ownerOnly, presence), (/** @type {any} */ e) => e.code === "not_allowed" && /a member cannot make someone admin/.test(e.message), "an owner-only act is refused to her, by role");
+  await assert.rejects(() => k.gateway.grants.setRole(chain, ownerOnly, presence), (/** @type {any} */ e) => e.code === "not_found" && /no such record/.test(e.message), "an owner-only act is refused to her, by role (the kernel hides what a member cannot act on)");
   await k.gateway.grants.setRole(o, ownerOnly, presence);
   assert.equal(k.grants.roleOf({ kind: "person", id: AMY, space: SPACE }), "admin", "and the owner's call with the same proof stands");
 });
