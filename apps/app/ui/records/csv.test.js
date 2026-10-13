@@ -62,3 +62,42 @@ test("a repeat of a unique value is skipped, not refused, when the person chose 
   assert.deepEqual(await runImport({ ...base, skipRepeats: true }), { created: 0, refused: 0, skipped: 1, failures: [] });
   assert.equal((await runImport(base)).refused, 1);
 });
+
+test("a sheet from read-excel-file becomes the rows a CSV would: dates are ISO days, numbers plain, blank headers and rows handled", async () => {
+  const { parseGrid } = await import("./csv.js");
+  const grid = [["Name", "Joined", "Value", ""], ["Jane Doe", new Date(Date.UTC(2026, 2, 5)), 1200.5, "x"], [null, null, null, null], ["Roe", "2026-01-02", true, ""]];
+  const r = parseGrid(grid);
+  assert.deepEqual(r.headers, ["Name", "Joined", "Value", "Column 4"]);
+  assert.deepEqual(r.rows, [{ Name: "Jane Doe", Joined: "2026-03-05", Value: "1200.5", "Column 4": "x" }, { Name: "Roe", Joined: "2026-01-02", Value: "true", "Column 4": "" }]);
+  assert.deepEqual(parseGrid([]).headers, []);
+});
+
+test("a CSV writer quotes commas, quotes and line breaks and reads back through parseCsv", async () => {
+  const { toCsv } = await import("./csv.js");
+  const out = toCsv([["Name", "Notes"], ["Doe, Jane", 'said "hi"\nthen left'], ["Roe", ""]]);
+  assert.equal(out, 'Name,Notes\r\n"Doe, Jane","said ""hi""\nthen left"\r\nRoe,');
+  assert.deepEqual(parseCsv(out).rows, [{ Name: "Doe, Jane", Notes: 'said "hi"\nthen left' }, { Name: "Roe", Notes: "" }]);
+});
+
+test("exporting a list writes the shown columns by label and the shown rows, with a sealed value as its placeholder and never the secret", async () => {
+  const { tableToCsv } = await import("./csv.js");
+  const content = {
+    columns: [
+      { id: "_title", title: "Contact", role: "title" }, { id: "since", title: "Client since", role: "col" }, { id: "worth", title: "Worth", role: "end" },
+      { id: "ssn", title: "SSN", role: "col" }, { id: "owner", title: "Owner", role: "line" }, { id: "hidden", title: "Carried", role: "sortOnly" }, { id: "when", title: "Phone date", role: "endDate" },
+    ],
+    rows: [
+      { cells: { _title: { k: "title", v: "Doe, Jane" }, since: { k: "date", v: "2026-03-05" }, worth: { k: "money", v: { amount: 1250, currency: "USD" } }, ssn: { k: "sealed", on: true }, owner: { k: "actor", v: "a1", who: { name: "Sam" } }, hidden: { k: "text", v: "zzz" }, when: { k: "date", v: "2020-01-01" } } },
+      { cells: { _title: { k: "title", v: "Roe" }, ssn: { k: "sealed", on: false } } },
+    ],
+  };
+  const out = tableToCsv(content);
+  assert.equal(out, 'Contact,Client since,Worth,SSN,Owner\r\n"Doe, Jane",2026-03-05,1250 USD,"SSN on file, sealed",Sam\r\nRoe,,,,');
+});
+
+test("a cell that would run as a formula in Excel gets a leading quote; plain numbers and ordinary text do not", async () => {
+  const { toCsv } = await import("./csv.js");
+  assert.equal(toCsv([["=1+1", "+cmd", "-cmd", "@SUM(A1)", "\tx", "-5", "+1.5", "a=b", "x"]]), "'=1+1,'+cmd,'-cmd,'@SUM(A1),'\tx,-5,+1.5,a=b,x");
+  assert.equal(toCsv([["=HYPERLINK(\"http://x\",\"y\")"]]), '"\'=HYPERLINK(""http://x"",""y"")"');
+  assert.equal(toCsv([["\r=x"]]), "\"'\r=x\"");
+});
