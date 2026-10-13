@@ -115,6 +115,7 @@ test("an agent's approval never satisfies a human gate: the outward step after i
   assert.equal(done.approved_by.kind, "agent");
   await settle(w);
   const [run] = await w.runner.listRuns({ flow: id });
-  assert.notEqual(run.state, "done", "the outward send is not satisfied by the agent's approval");
-  assert.notEqual(run.steps.send && run.steps.send.status, "done");
+  assert.equal(run.steps.go.status, "done", "the agent's approval finished the internal task");
+  assert.equal(run.state, "waiting", JSON.stringify(run.error || run.steps.send));
+  assert.equal(run.steps.send && run.steps.send.status, "waiting", "the send waits for a person at the Gate");
 });
