@@ -65,7 +65,7 @@ export function AddSheet({ open, scope, busy, problem, onClose, onSave, onImport
   const pickerBody = (
         <View className="gap-s3">
           <Text size="title" strong accessibilityRole="header">What are you adding?</Text>
-          <Field name="Search what to add" value={q} onChangeText={setQ} placeholder="Search, for example Twilio, password or Google" autoFocus={!phone} />
+          <Field name="Search what to add" value={q} onChangeText={setQ} placeholder="Search, for example Twilio or password" autoFocus={!phone} />
           {found.length ? (
             <GroupedList groups={groups.map((g) => ({ name: g.name }))} items={groups.flatMap((g) => g.items)} itemNoun="choices"
               renderItems={(xs) => (
