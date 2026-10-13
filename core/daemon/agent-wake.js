@@ -8,9 +8,10 @@
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
+const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
  * @returns {((e: any) => Promise<void>) & { threadEnded: (thread: string, reason?: string) => Promise<void> }}
  */
 export function createAgentWake(o) {
@@ -42,12 +43,19 @@ export function createAgentWake(o) {
   }
 
   async function onEvent(e) {
+    if (e && ENDS.test(String(e.type)) && typeof o.reclaim === "function" && e.data && e.data.task && typeof e.data.task.id === "string") {
+      // the task is over: the use of it lent to the agent ends with it
+      try { await o.reclaim(e.data.task.id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${e.data.task.id} was not ended (${/** @type {Error} */ (err).message})`); }
+      return;
+    }
     if (!e || !TYPES.test(String(e.type))) return;
     const id = e.data && e.data.task && typeof e.data.task.id === "string" ? e.data.task.id : null;
     if (!id) return;
     try {
       const t = await o.gw.ask.get(o.chain(), id);
       if (!wakes(t, clock())) return;
+      // A named agent holds no standing right on a task, so it may start and hand in this one task and nothing else, for as long as the task lives
+      if (typeof o.lend === "function") await o.lend(t);
       const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : undefined;
       const instructions = [t.form && typeof t.form.instructions === "string" ? t.form.instructions : "", t.note || ""].filter(Boolean).join("\n\n");
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
