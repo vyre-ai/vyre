@@ -23,7 +23,7 @@ const NONCE_MAX = 4096;
 export const chainHelloMessage = (box, h) => Buffer.from(`${CHAIN_HELLO_TAG}\n${box}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`, "utf8");
 
 /**
- * @param {{ boxId: () => Promise<string | null>, roleOf: (identity: string) => string | null | undefined, fetchState: (identity: string, name?: string) => Promise<any>, now?: () => number }} o
+ * @param {{ boxId: () => Promise<string | null>, roleOf: (identity: string) => string | null | undefined | Promise<string | null | undefined>, fetchState: (identity: string, name?: string) => Promise<any>, now?: () => number }} o
  */
 export function createChainAdmit(o) {
   const clock = o.now || Date.now;
@@ -72,7 +72,7 @@ export function createChainAdmit(o) {
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
       const refuse = { ok: false, why: "bad_proof" };
       // members only, by identity id; the same words as a bad signature when there is none
-      const role = o.roleOf(h.identity);
+      const role = await o.roleOf(h.identity);
       if (!role) return refuse;
       const box = await o.boxId().catch(() => null);
       if (!box) return { ok: false, why: "cannot_check" };
