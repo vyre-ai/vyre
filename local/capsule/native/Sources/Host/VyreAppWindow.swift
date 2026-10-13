@@ -32,6 +32,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var agreement: MacAgree?
     /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
     var makeServer: (() -> Void)?
+    /// Which kind of window the kept first-run choice says to open now (FirstRun.opensBoxless); set by the app.
+    var openBoxless: (() -> Bool)?
     /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
     var confirmForget: () -> Bool = {
         let a = NSAlert()
@@ -53,6 +55,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private var priorMenu: NSMenu?
 
     var isOpen: Bool { window?.isVisible ?? false }
+
+    /// "Open Vyre" from the Capsule or an app reopen: the kind the kept choice says, so a server Mac never gets a blank local window and its working one is not closed.
+    func showForChoice() { show(boxless: openBoxless?() ?? false) }
 
     /// Open the window, or bring it forward. Never starts anything else. `boxless` is a server Mac's window (the web build carried in this app, no vyred socket);
     /// a window already open in the other mode is closed and made again.
