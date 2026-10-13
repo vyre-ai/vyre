@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
+import { groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
 
 const v = (o) => ({ id: "x", sp: "juniper", group: "Logins", name: "Gmail", detail: "a@b", secret: "s", usedBy: [], shared: [], lastUsedDays: 1, ...o });
 
@@ -44,4 +44,28 @@ test("sharing: again replaces the level; unshare removes", () => {
   items = share(items, "a", "kit", "edit");
   assert.deepEqual(items[0].shared, [{ who: "kit", level: "edit" }]);
   assert.deepEqual(unshare(items, "a", "kit")[0].shared, []);
+});
+
+test("health: not known yet is not unused; known never used is", () => {
+  assert.equal(healthOf(v({ lastUsedDays: undefined })), "ok");
+  assert.equal(healthOf(v({ lastUsedDays: null })), "unused");
+});
+
+test("a stored item is placed in a group by kind and name", () => {
+  assert.equal(groupOf("login", "Gmail"), "Logins");
+  assert.equal(groupOf("api-key", "Stripe"), "API keys");
+  assert.equal(groupOf("secret", "resend-main"), "Sending services");
+  assert.equal(groupOf("secret", "twilio-auth"), "Phone");
+  assert.equal(groupOf("mcp-connection", "x"), "MCP keys");
+  assert.equal(groupOf("ssh-key", "nas"), "SSH and notes");
+  assert.equal(groupOf("secret", "firm-signing"), "Firm keys");
+  assert.equal(groupOf("ai-signin", "claude"), "API keys");
+});
+
+test("days left and the field to reveal", () => {
+  assert.equal(daysLeftOf(undefined), null);
+  assert.equal(daysLeftOf("2026-10-20", Date.parse("2026-10-13")), 7);
+  assert.equal(daysLeftOf("2026-10-10", Date.parse("2026-10-13")), -3);
+  assert.equal(valueField(["username", "password"]), "password");
+  assert.equal(valueField(["x"]), "x");
 });

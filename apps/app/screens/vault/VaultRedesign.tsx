@@ -1,41 +1,61 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 import { View } from "react-native";
-import { AccessList, Avatar, Banner, Button, Card, Chip, EmptyState, Field, GroupedList, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
+import { AccessList, Avatar, Banner, Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { HEALTH_WORDS, breakage, groupsOf, healthOf, share, summaryOf, unshare, visible, type VItem } from "./redesign.js";
-import { SAMPLE_EVENTS, SAMPLE_ITEMS, SAMPLE_PEOPLE } from "./sample-redesign";
+import { SAMPLE_PEOPLE, type Event } from "./sample-redesign";
+import type { NewItem, Scope, VaultData } from "./redesign-data";
 
-type Scope = "space" | "mine";
 const ICON: Record<string, IconName> = { "Firm keys": "key", "Sending services": "mail", "API keys": "key", Phone: "phone", Logins: "key", "MCP keys": "link", "SSH and notes": "file" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
 
-/** The redesigned Vault in the sample world: Space or Mine, items in groups, one item's detail with the SecretField, where it is used, who has it, health and what happened to it, and the locked card. */
-export default function VaultRedesign() {
+/** The redesigned Vault: Space or Mine, items in groups, one item's detail with the SecretField, where it is used, who has it, health and what happened to it, and the locked card. `data` is the sample world or the real tools. */
+export default function VaultRedesign({ data }: { data: VaultData }) {
   const phone = usePhone();
+  const router = useRouter();
   const [scope, setScope] = useState<Scope>("mine");
   const [q, setQ] = useState("");
-  const [items, setItems] = useState<VItem[]>(SAMPLE_ITEMS);
-  const [sel, setSel] = useState<string | null>(null);
+  const [items, setItems] = useState<VItem[] | null>(null);
   const [locked, setLocked] = useState(false);
+  const [err, setErr] = useState("");
+  const [sel, setSel] = useState<string | null>(null);
   const [del, setDel] = useState<string | null>(null);
-  const [log, setLog] = useState(SAMPLE_EVENTS);
-  const shown = useMemo(() => visible(items, scope, q), [items, scope, q]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [local, setLocal] = useState<Event[]>([]);
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState<NewItem | null>(null);
+
+  const load = useCallback(() => {
+    setErr(""); setItems(null);
+    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
+  }, [data, scope]);
+  useEffect(load, [load]);
+
+  const shown = useMemo(() => (items ? visible(items, scope, q) : []), [items, scope, q]);
   const cur = shown.find((v) => v.id === sel) ?? (phone ? undefined : shown[0]);
-  const sum = summaryOf(visible(items, scope));
-  const audit = (item: VItem) => (what: "reveal" | "copy") => setLog((l) => [{ id: `n${l.length}`, item: item.id, who: "alex", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
+  useEffect(() => {
+    setEvents([]);
+    if (cur) data.events(scope, cur).then(setEvents).catch(() => setEvents([]));
+  }, [cur?.id, scope, data]);
+  const sum = summaryOf(items ? visible(items, scope) : []);
+  const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
+  const fail = (e: unknown, fallback: string) => showToast(String((e as Error)?.message || fallback));
+  const setShare = (fn: (xs: VItem[]) => VItem[]) => setItems((xs) => (xs ? fn(xs) : xs));
 
   if (scope === "mine" && locked) {
     return (
       <Frame title="Vault" sub="Your own vault is locked.">
         <Scoper scope={scope} onScope={setScope} />
         <Card>
-          <View className="items-center gap-s3 py-s6">
-            <IconTile name="lock" />
-            <Text size="title" strong>Your vault is locked</Text>
-            <Text tone="label" className="text-center">Unlock it with your master password. Nothing in it is shown until you do.</Text>
-            <Button kind="primary" label="Unlock" onPress={() => setLocked(false)} />
+          <View className="gap-s3 py-s4">
+            <View className="items-center gap-s2"><IconTile name="lock" /><Text size="title" strong>Your vault is locked</Text>
+              <Text tone="label" className="text-center">Unlock it with your master password. Nothing in it is shown until you do.</Text></View>
+            <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Master password" />
+            <Button kind="primary" label="Unlock" disabled={busy || !pw} onPress={() => { setBusy(true); data.unlock(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not unlock it.")).finally(() => setBusy(false)); }} />
           </View>
         </Card>
       </Frame>
@@ -58,7 +78,7 @@ export default function VaultRedesign() {
     );
   };
 
-  const list = (
+  const list = err ? <ErrorState title="The vault did not answer" reason={err} retry={load} /> : items === null ? <LoadingState /> : (
     <View className="gap-s3">
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (
@@ -78,49 +98,71 @@ export default function VaultRedesign() {
         </View>
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
           <Text size="caption" strong tone="label">The value</Text>
-          <SecretField key={cur.id} label={cur.name} read={() => cur.secret} onAudit={audit(cur)} />
+          <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
         <Sec title="Used by">
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
         </Sec>
         <Sec title="Who has it">
-          <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
-            onChange={(w, l: Level) => setItems((xs) => share(xs, cur.id, w, l))} onRemove={(w) => { setItems((xs) => unshare(xs, cur.id, w)); showToast(`${w} no longer has ${cur.name}.`); }}
-            onAdd={(w, l: Level) => { setItems((xs) => share(xs, cur.id, w, l)); showToast(`${w} can now use ${cur.name}.`); }} />
+          {data.real ? (
+            <View className="gap-s2">
+              {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.name} dense title={u.name} sub="Can use, without seeing it" end={data.revokeModule ? <Button kind="holdText" size="sm" label="Remove" onPress={() => data.revokeModule!(cur, u.name).then(() => { showToast(`${u.name} no longer has ${cur.name}.`); load(); }).catch((e) => fail(e, "That did not work."))} /> : undefined} />)}</Card> : <Text tone="muted">Only you.</Text>}
+              <Text size="caption" tone="label">Sharing with people (Can use, Can edit) comes with the next update.</Text>
+            </View>
+          ) : (
+            <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
+              onChange={(w, l: Level) => setShare((xs) => share(xs, cur.id, w, l))} onRemove={(w) => { setShare((xs) => unshare(xs, cur.id, w)); showToast(`${w} no longer has ${cur.name}.`); }}
+              onAdd={(w, l: Level) => { setShare((xs) => share(xs, cur.id, w, l)); showToast(`${w} can now use ${cur.name}.`); }} />
+          )}
         </Sec>
         <Sec title="Activity">
-          <Card flush>{log.filter((e) => e.item === cur.id).slice(0, 5).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
-            {log.some((e) => e.item === cur.id) ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>
+          <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
+            {local.some((e) => e.item === cur.id) || events.length ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>
         </Sec>
         <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} /></View>
       </View>
     </Card>
   ) : null;
 
-  const gone = items.find((v) => v.id === del);
+  const gone = items?.find((v) => v.id === del);
   const sheet = (
     <Sheet open={!!gone} onClose={() => setDel(null)} title={gone ? `Delete ${gone.name}?` : undefined}>
       {gone ? (
         <View className="gap-s3">
           <Text>{breakage(gone)}</Text>
-          <View className="flex-row gap-s2"><Button kind="danger" label="Delete" onPress={() => { setItems((xs) => xs.filter((v) => v.id !== gone.id)); setSel(null); setDel(null); showToast(`${gone.name} deleted.`); }} /><Button kind="ghost" label="Keep it" onPress={() => setDel(null)} /></View>
+          <View className="flex-row gap-s2"><Button kind="danger" label="Delete" onPress={() => { data.remove(scope, gone).then(() => { setSel(null); setDel(null); showToast(`${gone.name} deleted.`); load(); }).catch((e) => fail(e, "That did not delete.")); }} /><Button kind="ghost" label="Keep it" onPress={() => setDel(null)} /></View>
         </View>
       ) : null}
     </Sheet>
   );
 
-  if (phone && cur && sel) return <Frame title={cur.name} sub={cur.detail} onBack={() => setSel(null)}>{detail}{sheet}</Frame>;
+  const addSheet = (
+    <Sheet open={!!adding} onClose={() => setAdding(null)} title={scope === "mine" ? "Add to your vault" : "Add to the Space vault"}>
+      {adding ? (
+        <View className="gap-s3">
+          <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder="For example Stripe" />
+          <Segmented label="Kind" options={[["api-key", "Key"], ["login", "Login"], ["note", "Note"]]} value={["api-key", "login", "note"].includes(adding.kind) ? adding.kind : "api-key"} onChange={(kind) => setAdding({ ...adding, kind })} />
+          <Field label="Value" kind="password" value={adding.value} onChangeText={(value) => setAdding({ ...adding, value })} />
+          <View className="flex-row gap-s2"><Button kind="primary" label="Add" disabled={busy || !/^[A-Za-z0-9._-]{1,128}$/.test(adding.name) || !adding.value}
+            onPress={() => { setBusy(true); data.add(scope, adding).then(() => { setAdding(null); showToast(`${adding.name} added.`); load(); }).catch((e) => fail(e, "That did not save.")).finally(() => setBusy(false)); }} /><Button kind="ghost" label="Cancel" onPress={() => setAdding(null)} /></View>
+          <Text size="caption" tone="label">A name is letters, digits, dot, dash and underscore.</Text>
+        </View>
+      ) : null}
+    </Sheet>
+  );
+
+  if (phone && cur && sel) return <Frame title={cur.name} sub={cur.detail} onBack={() => setSel(null)}>{detail}{sheet}{addSheet}</Frame>;
 
   return (
-    <Frame title="Vault" sub="Logins, keys and connections." actions={<><Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={() => { setScope("mine"); setLocked(true); }} /><Button kind="primary" size="sm" icon="plus" label="Add" onPress={() => showToast("Add opens one sheet: pick the kind, then fill it.")} /></>}>
+    <Frame title="Vault" sub="Logins, keys and connections." actions={<>{scope === "mine" ? <Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={() => data.lock().then(() => { setLocked(true); }).catch((e) => fail(e, "That did not lock it."))} /> : null}{data.real ? <Button kind="ghost" size="sm" label="More" onPress={() => router.push("/u/vault-more" as never)} /> : null}<Button kind="primary" size="sm" icon="plus" label="Add" onPress={() => setAdding({ name: "", kind: scope === "mine" ? "secret" : "api-key", value: "" })} /></>}>
       <Scoper scope={scope} onScope={setScope} />
       <Footnote icon="shield">Values stay hidden until you reveal one. Assistants use an item without ever seeing it, and every use is logged.</Footnote>
-      {sum.expired + sum.expiring + sum.unused > 0 ? <Banner tone={sum.expired ? "err" : "warn"} icon="shield">{sum.line}</Banner> : <Text tone="label">{sum.line}</Text>}
+      {items && sum.expired + sum.expiring + sum.unused > 0 ? <Banner tone={sum.expired ? "err" : "warn"} icon="shield">{sum.line}</Banner> : <Text tone="label">{sum.line}</Text>}
       <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
         <View className={phone ? "" : "min-w-0 flex-1"}>{list}</View>
         {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
       </View>
-      {sheet}
+      {sheet}{addSheet}
     </Frame>
   );
 }

@@ -17,7 +17,8 @@ export const LEVELS = /** @type {const} */ ({ use: { label: "Can use", help: "Us
 export function healthOf(v) {
   if (v.daysLeft != null && v.daysLeft < 0) return "expired";
   if (v.daysLeft != null && v.daysLeft <= 14) return "expiring";
-  if (v.lastUsedDays == null || v.lastUsedDays > 90) return "unused";
+  // undefined: not known yet (the uses have not loaded), so it is not called unused; null: known never used.
+  if (v.lastUsedDays === null || (v.lastUsedDays !== undefined && v.lastUsedDays > 90)) return "unused";
   return "ok";
 }
 
@@ -51,3 +52,25 @@ export function breakage(v) {
 /** Share or change a level; sharing again replaces the level, never doubles the row. @param {VItem[]} items */
 export const share = (items, id, who, level) => items.map((v) => (v.id === id ? { ...v, shared: [...v.shared.filter((s) => s.who !== who), { who, level }] } : v));
 export const unshare = (items, id, who) => items.map((v) => (v.id === id ? { ...v, shared: v.shared.filter((s) => s.who !== who) } : v));
+
+/** The group a stored item sits in, from its kind and its name. @param {string} kind @param {string} name */
+export function groupOf(kind, name = "") {
+  const n = name.toLowerCase();
+  if (kind === "mcp-connection" || /^mcp[-_.]/.test(n)) return "MCP keys";
+  if (/twilio|sms|phone|voip/.test(n)) return "Phone";
+  if (/resend|smtp|sendgrid|mailgun|postmark|ses[-_.]/.test(n)) return "Sending services";
+  if (/^firm[-_.]|signing/.test(n)) return "Firm keys";
+  if (kind === "ssh-key" || kind === "note" || kind === "env-set") return "SSH and notes";
+  if (kind === "login" || kind === "card" || kind === "identity" || kind === "authenticator" || kind === "mail" || kind === "calendar") return "Logins";
+  return "API keys";
+}
+
+/** Days from `now` to an ISO date or ms time, negative when past; null when there is none. @param {string | number | undefined | null} expires @param {number} now */
+export function daysLeftOf(expires, now = Date.now()) {
+  if (expires === undefined || expires === null || expires === "") return null;
+  const t = typeof expires === "number" ? expires : Date.parse(String(expires));
+  return Number.isFinite(t) ? Math.floor((t - now) / 86_400_000) : null;
+}
+
+/** The field to reveal for an item: the secret-like one first. @param {string[]} fields */
+export const valueField = (fields) => ["secret", "value", "password", "token", "key", "api_key"].find((f) => fields.includes(f)) ?? fields[0] ?? "value";
