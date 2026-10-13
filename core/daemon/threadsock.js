@@ -18,9 +18,9 @@ import { canonical } from "../../lib/tool-names.js";
 import { peerPid, processTable, ancestry } from "./peer.js";
 
 /**
- * The folder for sessions' sockets. On the box, /run/vyre-threads (vyre:vyre-work, 2710): the
- * agent may pass through it and not list it, and a socket in it takes the vyre-work group. A Mac
- * or a test passes its own `dir` (a private folder; the sessions there run as the user anyway).
+ * The folder for sessions' sockets. On the box, /run/vyre-threads (vyre:vyre, 0711, no setgid): anyone may pass through it and nobody but vyred lists, creates or unlinks in it. Each socket is
+ * bound under a restrictive umask, then given the group of the account its session runs on (an account's gid, or the box agent's) at 0660: who can connect rests on that group and mode, so another
+ * account's uid gets EACCES. A Mac or a test passes its own `dir` (a private folder; the sessions there run as the user anyway).
  */
 export const DIR = process.env.VYRE_THREAD_SOCKETS || "/run/vyre-threads";
 
@@ -44,18 +44,23 @@ const send = (res, status, body) => { res.writeHead(status, { "content-type": "a
  * Open one session's socket.
  * @param {{ handler: (policy: any) => (req: any, res: any, caller: string, peer?: any) => Promise<void>,
  *   thread: string, agent?: string|null, pids: () => Promise<{ pids: number[], pgids?: number[], sids?: number[] }>,
- *   kernelToken?: () => string | undefined | Promise<string | undefined>, dir?: string, mode?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
- * @returns {Promise<{ path: string, close: () => Promise<void> }>}
+ *   kernelToken?: () => string | undefined | Promise<string | undefined>, dir?: string, mode?: number, gid?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
+ *   gid: the group that may connect (the box's shared folder only; a private folder is the user's alone).
+ * @returns {Promise<{ path: string, gid: number | null, setGroup: (gid: number) => void, close: () => Promise<void> }>}
  */
 export async function openThreadSocket(o) {
   if (!/^[\w-]{1,64}$/.test(String(o.thread))) throw new Error("thread must be a thread id");
   if (o.agent != null && !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(o.agent))) throw new Error("agent must be an agent name");
   const dir = o.dir || DIR;
-  // The box's shared folder is passed through by a group (the agent runs as another user): 0710 and 0660. A private folder of the person's own user (a Mac, the sandboxed
-  // sessions there) is theirs alone: 0700 and 0600, so nothing else of that user can even list it (reviewer-2 D-5).
+  // The box's shared folder is passed through by anyone and listed by no one but vyred (0711, no setgid); a socket in it is reached by the group it is given (below). A private folder of the person's own
+  // user (a Mac, the sandboxed sessions there) is theirs alone: 0700 and 0600, so nothing else of that user can even list it (reviewer-2 D-5).
   const shared = dir === DIR;
-  fs.mkdirSync(dir, { recursive: true, mode: shared ? 0o710 : 0o700 });
+  fs.mkdirSync(dir, { recursive: true, mode: shared ? 0o711 : 0o700 });
   if (!shared) { try { fs.chmodSync(dir, 0o700); } catch { /* not ours to change */ } }
+  else {
+    // A folder an older start made (vyre-work, setgid, 2710) is brought to what it is now: vyred's own group, no setgid, so no group but vyred's can create or remove anything in it.
+    try { const st = fs.statSync(dir); if ((st.mode & 0o7777) !== 0o711) fs.chmodSync(dir, 0o711); if (process.getgid && st.gid !== process.getgid()) fs.chownSync(dir, -1, process.getgid()); } catch (e) { (o.log || (() => {}))(`threads: ${dir} is not set to 0711 (${/** @type {Error} */ (e).message})`); }
+  }
   const file = path.join(dir, `${crypto.randomBytes(16).toString("base64url")}.sock`);
   const who = o.agent ? `agent:${o.agent}` : `thread:${o.thread}`;
   const route = o.handler({ thread: o.thread, ...(o.agent ? { agent: o.agent } : {}) });
@@ -86,8 +91,23 @@ export async function openThreadSocket(o) {
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
   };
   const server = http.createServer(serve(false));
-  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(file, () => resolve(undefined)); });
-  fs.chmodSync(file, o.mode ?? (shared ? 0o660 : 0o600));
+  // Bound under a restrictive umask (listen on a path binds in this same turn), so the socket is vyred's alone until it is given its group and its mode: no window where it is open to anyone.
+  const was = process.umask(0o177);
+  /** @type {Promise<unknown>} */ let bound;
+  try { bound = new Promise((resolve, reject) => { server.once("error", reject); server.listen(file, () => resolve(undefined)); }); } finally { process.umask(was); }
+  await bound;
+  /** @type {number | null} */ let group = null;
+  /** The group that may connect to this session's socket: chown to it, then open the group's read and write. vyred is a member of every account's group and the box agent's, so the kernel lets it. @param {number} gid */
+  const setGroup = gid => {
+    if (!shared) return;
+    if (!Number.isInteger(gid) || gid < 1) throw new Error("a socket's group is a group number");
+    fs.chmodSync(file, 0o600);
+    fs.chownSync(file, -1, gid);
+    fs.chmodSync(file, o.mode ?? 0o660);
+    group = gid;
+  };
+  if (shared) { if (o.gid == null) { server.close(); try { fs.rmSync(file, { force: true }); } catch {} throw new Error("a session's socket on the box needs the group of the account its session runs on"); } try { setGroup(o.gid); } catch (e) { server.close(); try { fs.rmSync(file, { force: true }); } catch {} throw e; } }
+  else fs.chmodSync(file, o.mode ?? 0o600);
   // A session that runs on a lent computer reaches Vyre through the home (contracts/lent-spawn.md, lent.http): the same route, the same caller binding and kernel credential, on a private socket of vyred's own that no session
   // process can reach; made the first time a lender asks.
   /** @type {null | { dir: string, file: string, server: http.Server }} */ let lentSide = null;
@@ -120,6 +140,8 @@ export async function openThreadSocket(o) {
   DOORS.set(String(o.thread), door);
   return {
     path: file,
+    get gid() { return group; },
+    setGroup,
     close: () => new Promise(r => {
       if (DOORS.get(String(o.thread)) === door) DOORS.delete(String(o.thread));
       const done = () => { server.closeAllConnections(); server.close(() => { try { fs.rmSync(file, { force: true }); } catch {} r(undefined); }); };
