@@ -26,6 +26,8 @@ export type FileViewerProps = {
   kind?: ViewKind;
   /** Open straight into the editor. */
   startEditing?: boolean;
+  /** Open with Show changes on (the gallery's picture of a diff). */
+  startChanges?: boolean;
   readOnly?: boolean;
   onClose?: () => void;
   onOpenInFiles?: () => void;
@@ -66,7 +68,7 @@ export function FileViewer(p: FileViewerProps) {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [said, setSaid] = useState("");
-  const [changes, setChanges] = useState(false);
+  const [changes, setChanges] = useState(!!p.startChanges);
   const [before, setBefore] = useState<string | null>(null);
   const [asking, setAsking] = useState<null | (() => void)>(null);
   const started = useRef(false);

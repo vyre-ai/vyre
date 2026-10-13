@@ -51,6 +51,9 @@ if (process.env.EXPO_PUBLIC_VYRE_MOCK !== "1") {
   config.resolver.blockList = [].concat(config.resolver.blockList ?? [], [/[\\/]app[\\/](gallery|shots-[a-z]+|terminal-demo|keycheck)\.tsx$/]);
 }
 
+// pdf.js has import.meta in a Node-only path, a syntax error in a web bundle: scripts/import-meta-transformer.cjs rewrites it.
+config.transformer.babelTransformerPath = require.resolve("./scripts/import-meta-transformer.cjs");
+
 const upstream = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, name, platform) => {
   if (name === "@vyre/ui") return (upstream ?? context.resolveRequest)(context, path.join(here, "ui/index.ts"), platform);
