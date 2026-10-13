@@ -93,10 +93,6 @@ PLIST
       done
       iconutil -c icns "$iset" -o "$app/Contents/Resources/Vyre.icns"
     else echo "note: no icon made from $master; the app gets the generic icon" >&2; fi
-    # The shared splash piece, when the repo has it (Shell.swift shows the brand mark on the brand background without it).
-    for sp in "$here/Resources/splash.html" "$here/../../../apps/app/splash/mac-splash.html"; do
-      if [ -f "$sp" ]; then cp "$sp" "$app/Contents/Resources/splash.html"; break; fi
-    done
     # One stable identity keeps Accessibility and Input Monitoring grants across updates. The
     # identifier pins the designated requirement; VYRE_SIGN_IDENTITY names a local certificate
     # when there is one, otherwise the signature is ad hoc.

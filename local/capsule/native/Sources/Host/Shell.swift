@@ -18,16 +18,17 @@ public enum Shell {
     public static var brandBackground: NSColor { NSColor(srgbRed: 14.0 / 255, green: 13.0 / 255, blue: 12.0 / 255, alpha: 1) }
 
     public enum Splash: Equatable {
-        /// The shared splash piece (a self-contained HTML file, Contents/Resources/splash.html).
+        /// The shared splash piece (a self-contained HTML file from the web build).
         case page(String)
         /// No piece in the app: the brand mark on the brand background.
         case brandMark
     }
 
+    /// The splash is the shared piece the web build carries (apps/app/public/splash.html, exported to Contents/Resources/app/splash.html); a copy beside it also counts.
     public static func splash(resources: String?) -> Splash {
         guard let r = resources else { return .brandMark }
-        let p = r + "/splash.html"
-        return FileManager.default.fileExists(atPath: p) ? .page(p) : .brandMark
+        for p in [r + "/app/splash.html", r + "/splash.html"] where FileManager.default.fileExists(atPath: p) { return .page(p) }
+        return .brandMark
     }
 
     /// How long to wait before the splash fades: nil until the page has loaded; then whatever is left of a short minimum, so a fast load is not a flicker.

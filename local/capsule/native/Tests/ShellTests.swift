@@ -33,6 +33,9 @@ let shellSuite = Suite("thin shell") { t in
         t.eq(Shell.splash(resources: nil), .brandMark)
         FileManager.default.createFile(atPath: dir + "/splash.html", contents: Data("<html></html>".utf8))
         t.eq(Shell.splash(resources: dir), .page(dir + "/splash.html"))
+        try? FileManager.default.createDirectory(atPath: dir + "/app", withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: dir + "/app/splash.html", contents: Data("<html></html>".utf8))
+        t.eq(Shell.splash(resources: dir), .page(dir + "/app/splash.html"), "the web build's own copy wins")
     }
 
     t.test("the splash fades once, when the page has loaded, and never before the splash has shown for a moment") {
