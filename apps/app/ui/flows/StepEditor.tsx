@@ -199,11 +199,13 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
           {s.mode === "until" ? (
             <>
               <ValueField label="Date to wait for" value={s.field ?? ""} onChange={(field) => set({ field })} placeholder="Insert the date field, such as the appointment" draft={draft} stepId={s.id} options={options} />
-              <View className="flex-row items-end gap-s2">
-                {s.when === "at" ? null : <View className="w-24"><Field label="Amount" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" /></View>}
-                {s.when === "at" ? null : <View className="min-w-0 flex-1"><Select label="Unit" value={s.unit ?? "hours"} options={UNIT_CHOICES} onChange={(unit) => set({ unit })} /></View>}
-                <View className="min-w-0 flex-1"><Select label="When" value={s.when ?? "before"} options={WHEN_CHOICES} onChange={(when) => set({ when })} /></View>
-              </View>
+              {s.when === "at" ? null : (
+                <>
+                  <Field label="Amount" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" />
+                  <Select label="Unit" value={s.unit ?? "hours"} options={UNIT_CHOICES} onChange={(unit) => set({ unit })} />
+                </>
+              )}
+              <Select label="When" value={s.when ?? "before"} options={WHEN_CHOICES} onChange={(when) => set({ when })} />
               <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
             </>
           ) : (
