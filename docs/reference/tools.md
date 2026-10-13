@@ -7552,6 +7552,14 @@ A device its owner paired asks for the challenge of its grant, to sign for prese
 - Input: none
 - Callers: `device`, `relay`, `tailnet`
 
+### `presence.person.chain-grant`
+
+For the relay: the one-use grant that lets a device the person's identity chain admitted open its person session. Only the relay may ask, and only for a device whose row says it is on the chain (read again now) with a presence key bound by the entry signature.
+
+- Input:
+  - `device` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `presence.person.pair-grant`
 
 After the owner confirmed a pairing with a presence proof, the one-use grant that lets that device open its person session. Only the wink module may ask, and only for a device its own record says the owner confirmed.
@@ -10950,7 +10958,7 @@ Sign the transport's device proof (a message that starts with vyre-wink-peer-v2)
 
 ### `spaces.identity.state`
 
-A person's identity list as verified now: the chain's id, seq and head, and each entry's id, kind, key, age and founder flag. Read live each call. For the transport's personOf and a server's chain admission.
+A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.
 
 - Input:
   - `person` string, required

@@ -58,7 +58,9 @@ export function register(ctx, h) {
   const only = (/** @type {any} */ meta, what) => {
     const { caller } = meta;
     h.guard(caller, what);
-    if (!h.modelMay(meta)) throw Object.assign(new Error("only the person changes an agent's files, context and vault list"), { code: "denied" });
+    // Person surfaces only: an agent (a caller labelled with one, or a verified agent behind the call), a model, a guest never reads or edits an agent's configuration through these tools; an agent gets its own
+    // instructions and context when its session starts.
+    if (!h.modelMay(meta) || (meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(String(caller || ""))) throw Object.assign(new Error("only a person changes or reads an agent's files, context, sharing and vault list; an agent gets its own at the start of its session"), { code: "denied" });
   };
   /**
    * What the caller may do with this agent: "edit" (its creator, the owner, an admin, or anyone given Can edit, by name or by role), "use" (given Can use), or "none".

@@ -23,7 +23,7 @@ async function world(/** @type {any} */ t) {
   const ben = await add(BEN, "member", 2);
   const ada = await add(ADA, "admin", 3);
   const as = (/** @type {any} */ who) => (/** @type {string} */ name, /** @type {any} */ input = {}) => d.registry.call(name, input, "deck", who);
-  return { d, project, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "cli") };
+  return { d, project, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}, /** @type {string} */ as = "cli") => d.registry.call(n, i, as) };
 }
 
 test("instructions and context: the owner and an admin write; AGENTS.md and CLAUDE.md stay the same; a member with no seat reads and writes nothing", { timeout: 120_000 }, async t => {
@@ -66,3 +66,15 @@ test("a chat in the project sees its instructions and reference names in its bri
   assert.match(text, /Never send an email without the lawyer's yes\./);
   assert.match(text, /Fee schedule\.md/);
 });
+
+test("an agent, a model or a guest caller is refused on every project instructions and context tool", { timeout: 120_000 }, async t => {
+  const { owner, project } = await world(t);
+  const tools = [["projects.docs.get", {}], ["projects.docs.set", { file: "AGENTS.md", text: "x" }], ["projects.refs.list", {}], ["projects.refs.add", { name: "n", text: "x" }], ["projects.refs.remove", { name: "n" }]];
+  for (const as of ["mcp:agent:kit", "cli:agent:kit", "harness", "tailnet-guest"]) {
+    for (const [name, input] of /** @type {[string, any][]} */ (tools)) {
+      const r = await d_call(owner, name, { project: project.slug, ...input }, as);
+      assert.ok(r.error, `${as} on ${name} ran: ${JSON.stringify(r).slice(0, 120)}`);
+    }
+  }
+});
+const d_call = (/** @type {any} */ owner, /** @type {string} */ n, /** @type {any} */ i, /** @type {string} */ as) => owner(n, i, as);
