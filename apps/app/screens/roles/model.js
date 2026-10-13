@@ -63,6 +63,14 @@ export const WHERE = [
 /** Section 3, per record type. */
 export const ACCESS = [["none", "None"], ["read", "Read"], ["edit", "Edit"]];
 
+/** Why a tool switch is not live: no tool group opens at the door yet (gate-per-role). The editor shows every tool unavailable with its line and never says a tool is on because a switch is set. */
+export const TOOL_NOTES = /** @type {Record<string, string>} */ ({
+  mail: "Comes when each person connects their own account.", calendar: "Comes when each person connects their own account.", computers: "Comes when each person connects their own account.", browser: "Comes when each person connects their own account.",
+  documents: "Comes in a later release.", files: "Comes in a later release.", publish: "Comes in a later release.",
+});
+/** What each tool will do once it opens, repeated on the assign and invite confirmation (rc1-d's wording). */
+export const TOOL_WILL = { documents: "Documents: sends and signs as the Space", publish: "Publish: posts as the Space", files: "Files: the Space's drive and links" };
+
 /** Section 4, Which tools: each on or off for the role. */
 export const TOOLS = [
   ["mail", "Mail", "Read and send mail."],
@@ -113,9 +121,7 @@ export function sees(r, projectNames = {}) {
   const edits = r.data.filter((d) => d.access === "edit").map((d) => d.name);
   const reads = r.data.filter((d) => d.access === "read").map((d) => d.name);
   const data = !r.data.length ? "" : !edits.length && !reads.length ? " No records." : ` ${cap([edits.length ? `edits ${list(edits)}` : "", reads.length ? `reads ${list(reads)}` : ""].filter(Boolean).join(", "))}.`;
-  const on = TOOLS.filter(([k]) => r.tools[k]).map(([, n]) => n.toLowerCase());
-  const tools = on.length === TOOLS.length ? " All tools on." : on.length ? ` ${cap(list(on))} on.` : " No mail, calendar or computers.";
-  return `${where}.${data}${tools}`;
+  return `${where}.${data}`;
 }
 
 /** "a", "a and b", "a, b and c". @param {string[]} xs */
