@@ -47,7 +47,7 @@ export function FilesPane({ id }: { id: string }) {
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Drive" onPress={() => router.push("/u/drive" as never)} /></View>
+      <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Files" onPress={() => router.push("/u/files" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
         <Card flush>{rows.map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row title={String(f.name || (f.path || "").split("/").pop() || "file")} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}</Card>
       )}
