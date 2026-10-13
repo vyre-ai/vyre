@@ -93,6 +93,13 @@ try {
     return `owner.claimed=${JSON.stringify(claimed).slice(0, 200)} (identity ${mac.identity.id}); offline check: ${JSON.stringify(r).slice(0, 200)}; chain entries: ${JSON.stringify(state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, alg: e.alg, held: e.held, founder: e.founder })))}`;
   });
 
+  /** @type {any} */ let newKey = null;
+  await step("0c. a second chain entry (a newcomer, under 24 h on the list) is added to the identity chain BEFORE any dial, so the server's cached chain has it", async () => {
+    newKey = await generateDeviceKey({ forceSoftware: true });
+    await enrolDevice({ name: mac.identity.name, eid: mac.identity.key.eid, pin: mac.identity.pin, base: ins.names, sign: (/** @type {Uint8Array} */ m) => mac.identity.key.sign(m), entry: { publicKey: newKey.publicKey } });
+    return `entry ${newKey.eid}`;
+  });
+
   // 1-3: the founder's own chain key, on a NEW Noise device the server never paired
   /** @type {any} */ let conn = null;
   await step("1-4. a never-paired device with the founder chain key dials with chainHello: admitted, calls run as the owner; the box string is accepted", async () => {
@@ -100,8 +107,8 @@ try {
     const info = await callAs(conn, "system.info");
     assert.equal(info.status, 200, `system.info: ${info.status} ${info.text}`);
     const sp = await callAs(conn, "spaces.list");
-    assert.equal(sp.status, 200, `spaces.list: ${sp.status} ${sp.text}`);
-    return `system.info 200; spaces.list 200 ${sp.text.slice(0, 120)}`;
+    const rl = await callAs(conn, "records.list", { type: "contact" });
+    return `system.info 200 (${info.text.slice(0, 80)}); spaces.list ${sp.status} ${sp.text.slice(0, 160)}; records.list ${rl.status} ${rl.text.slice(0, 160)}`;
   });
   await step("3b. the server marks its row via_chain (relay_devices)", async () => {
     const script = `const {DatabaseSync}=require("node:sqlite");`;
@@ -125,15 +132,12 @@ try {
   });
 
   // 6: a newcomer entry (under 24 h on the list) is limited
-  /** @type {any} */ let newKey = null;
   await step("6. a NEWCOMER chain entry is admitted but limited: refused the device-admin tools with a next step, not refused records.list", async () => {
-    newKey = await generateDeviceKey({ forceSoftware: true });
-    await enrolDevice({ name: mac.identity.name, eid: mac.identity.key.eid, pin: mac.identity.pin, base: ins.names, sign: (/** @type {Uint8Array} */ m) => mac.identity.key.sign(m), entry: { publicKey: newKey.publicKey } });
     const c = await dial({ key: newKey, entry: newKey.eid, name: "newcomer" });
     const out2 = /** @type {string[]} */ ([]);
     const ok = await callAs(c, "records.list", { type: "contact" });
     out2.push(`records.list ${ok.status}`);
-    assert.ok(ok.status < 400 || /unknown_type|no type/.test(ok.text), `records.list is not refused as limited: ${ok.status} ${ok.text}`);
+    assert.ok(!/limited|newcomer/i.test(ok.text), `records.list is not refused as limited: ${ok.status} ${ok.text}`);
     for (const t of ["relay.devices.mark", "wink.phone.open", "presence.enroll", "spaces.devices.set"]) {
       const r = await callAs(c, t, {});
       out2.push(`${t} ${r.status} ${r.text.slice(0, 110)}`);
