@@ -1,5 +1,5 @@
 // @ts-check
-// agents: the configuration page's server half (config.js): the two instruction files, context uploads and links, the Vault list, where it is used. Temp home only.
+// agents: the configuration page's server half (config.js): the instructions file, context uploads and links, the Vault list, where it is used. Temp home only.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,6 +8,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { contextBrief, contextName } from "./config.js";
+import { agentPart } from "../../lib/files/layout.js";
 
 async function boot(/** @type {any} */ t) {
   const root = tempHome(t);
@@ -17,18 +18,37 @@ async function boot(/** @type {any} */ t) {
   return { root, c: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ as = "local") => d.registry.call(tool, input, as) };
 }
 
-test("AGENTS.md is the agent's instructions (a version); CLAUDE.md is kept beside it; both read back", async t => {
+test("AGENTS.md is the agent's only instructions file (a version); CLAUDE.md cannot be written; old notes are appended once under Notes", async t => {
   const { c } = await boot(t);
   await c("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "Draft intake." });
-  assert.deepEqual((await c("agents.docs.get", { agent: "intake" })).data.files, { "AGENTS.md": "Draft intake.", "CLAUDE.md": "" });
+  assert.deepEqual((await c("agents.docs.get", { agent: "intake" })).data.files, { "AGENTS.md": "Draft intake." });
   assert.equal((await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "Draft intake, kindly.\n" })).error, undefined);
-  assert.equal((await c("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "Use plain words.\n" })).error, undefined);
-  assert.deepEqual((await c("agents.docs.get", { agent: "intake" })).data.files, { "AGENTS.md": "Draft intake, kindly.", "CLAUDE.md": "Use plain words.\n" });
+  const refused = await c("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "Use plain words.\n" });
+  assert.equal(refused.error.code, "bad_input");
+  assert.match(refused.error.message, /Instructions live in AGENTS\.md/);
+  assert.deepEqual((await c("agents.docs.get", { agent: "intake" })).data.files, { "AGENTS.md": "Draft intake, kindly." });
   const v = (await c("agents.versions", { agent: "intake" })).data.versions;
   assert.equal(v[0].after.instructions, "Draft intake, kindly.", "the edit is a version, so rollback works");
   assert.equal((await c("agents.docs.set", { agent: "intake", file: "NOTES.md", text: "x" })).error.code, "bad_input");
-  assert.equal((await c("agents.docs.set", { agent: "intake", file: "CLAUDE.md", text: "x".repeat(70_000) })).error.code, "bad_input");
+  assert.equal((await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "x".repeat(70_000) })).error.code, "bad_input");
   assert.equal((await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "no" }, "mcp:agent:intake")).error.code, "denied", "a model never writes its own instructions");
+});
+
+test("notes an older build kept in CLAUDE.md are appended once into AGENTS.md on the next write, and the folder keeps only a pointer", async t => {
+  const { c, root } = await boot(t);
+  await c("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "Draft intake." });
+  const a = /** @type {any} */ ((await c("agents.list", {})).data.agents.find((/** @type {any} */ x) => x.name === "intake"));
+  const kept = path.join(root, agentPart(String(a.uid), "instructions"), "CLAUDE.md");
+  fs.mkdirSync(path.dirname(kept), { recursive: true });
+  fs.writeFileSync(kept, "Use plain words.\n");
+  assert.equal((await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], "Draft intake.\n\n## Notes\n\nUse plain words.\n", "read: nothing is hidden");
+  assert.equal((await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: "Draft intake, kindly." })).error, undefined);
+  const after = (await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"];
+  assert.equal(after, "Draft intake, kindly.\n\n## Notes\n\nUse plain words.\n");
+  assert.equal(fs.existsSync(kept), false, "the separate notes file is retired");
+  await c("agents.docs.set", { agent: "intake", file: "AGENTS.md", text: after });
+  assert.equal((await c("agents.docs.get", { agent: "intake" })).data.files["AGENTS.md"], after, "appended once, never twice");
+  assert.equal((await c("agents.instructions", { agent: "intake" }, "module")).data.text, after, "the prompt reads the same text");
 });
 
 test("context: a file is kept under agents/<id>/context, listed, replaced by name and removed; a path in the name is only a name", async t => {

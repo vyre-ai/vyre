@@ -21,14 +21,13 @@ test("project api: each part calls the one tool for it with the project named; r
   const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
     seen.push({ tool, input });
     if (tool === "projects.docs.set" && input.text === "no") return { error: { code: "denied", message: "you have read-only access to this project (viewer)" } };
-    if (tool === "projects.docs.get") return { data: { files: { "AGENTS.md": "Be exact.", "CLAUDE.md": "Be exact." } } };
+    if (tool === "projects.docs.get") return { data: { files: { "AGENTS.md": "Be exact." } } };
     if (tool === "projects.refs.list") return { data: { items: [{ name: "a.md", kind: "note", size: 3 }] } };
     return { data: {} };
   };
   const a = projectFolderApi(call, "harlow-legal");
   assert.equal(a.id, "project:harlow-legal");
-  assert.equal(a.kept, true);
-  assert.deepEqual(await a.docs(), { "AGENTS.md": "Be exact.", "CLAUDE.md": "Be exact." });
+  assert.deepEqual(await a.docs(), { "AGENTS.md": "Be exact." });
   assert.equal((await a.context()).length, 1);
   await a.saveDoc("AGENTS.md", "yes");
   await a.addNote("Style", "Plain.");
