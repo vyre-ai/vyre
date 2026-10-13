@@ -1,6 +1,6 @@
 ---
 title: Records
-summary: The typed rows a Space keeps (contacts, matters, tasks, anything it defines), with fields, links, sealed values, views and CSV or Excel import and export.
+summary: The typed rows a Space keeps (contacts, projects, tasks, anything it defines), with fields, links, sealed values, views and CSV or Excel import and export.
 audience: builders, agents
 owner: docs
 status: stable
@@ -9,7 +9,7 @@ status: stable
 # Records
 
 ## What it is
-A record is one row of a type a Space defines: a contact, a matter, a task, a note. The type says which fields it has, how they link to other records and how they are shown.
+A record is one row of a type a Space defines: a contact, a project, a task, a note. The type says which fields it has, how they link to other records and how they are shown.
 The kernel keeps the rows and judges every read and write. The `records` module (core/records-tools) is the app's way in, one tool per call.
 
 ## What a person sees

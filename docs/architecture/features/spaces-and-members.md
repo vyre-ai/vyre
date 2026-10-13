@@ -62,7 +62,7 @@ A Space is one kernel with its own people, roles, grants and records. The `space
 
 ## Extend it
 
-In 0.5 a member can read every row of a custom record type, even a row linked to a project the member is not on. Matters, tasks and files follow the project's team. 0.5.1 plans per-record privacy for custom types. A Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. Renaming a project on a team server changes the short name that keys its folder group, so the next session there is refused until a re-key step ships. What sessions read from a member's vault is covered in [Vault](./vault.md).
+In 0.5 a member can read every row of a custom record type, even a row linked to a project the member is not on. Projects, tasks and files follow the project's team. 0.5.1 plans per-record privacy for custom types. A Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. Renaming a project on a team server changes the short name that keys its folder group, so the next session there is refused until a re-key step ships. What sessions read from a member's vault is covered in [Vault](./vault.md).
 
 A rule beyond these is a custom module, and its tools take a reach like any `spaces` tool. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).
 
