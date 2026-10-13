@@ -16,6 +16,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP = new Set(["node_modules", ".git", "testing"]);
 /** "module:tool" pairs that pass a person's own caller or a said row on purpose. */
 const PERSON_PROXY = new Set([
+  // import.sessions.run files the chosen sessions in their projects as the person who chose them (ctx.call relay: true, core/modules RELAY_ALLOWED.import) and takes the picks back as that person if the upload cannot start; its consent to the box's sync is the person's too (sync.consent is a person surface, never a module's).
+  "import:projects.add-threads", "import:projects.remove-threads", "import:sync.consent", "import:link.call",
   // A tolerated refusal: the switchboard asks mentions.search and, when a module is refused it, falls back to vault by name (core/switchboard/said.js).
   "switchboard:mentions.search",
   // The Windows app's own page (local/capsule/native-win/app/ui/link.js) asks the box through the person's signed-in panel; it is the person calling, not a module.
