@@ -1,13 +1,15 @@
 // The composer (design idea 5). Never disabled: while a turn is on, Send says Queue and the message
 // waits above the composer until it is picked up. `@` people and assistants, `#` records (a record
 // with sealed fields carries a chip that says so), `/` commands. Attachments and photos are
-// callbacks (voice capture has no control until it exists: team/BACKLOG.md). A model switcher with the fit score, and a "runs on" chip. On a phone it grows to a
-// sheet with 44 px targets when it is focused or holds text; on a desktop it is the prototype's
-// card with the bar under the input.
+// callbacks (voice capture has no control until it exists: team/BACKLOG.md). One calm input; under it a "+" menu (attach, mention, tag, where it runs, send now or queue), ONE "Answering" control
+// (stacked marks of the AIs that reply; pick one, several or all, and each one's model) and a quiet send. State that differs from the default shows as a chip. Every picker (/ @ # + Answering)
+// is a combobox the box drives: type to filter, Up and Down, Enter or Tab, Esc, Backspace on an empty query (picker-model.js). On a phone it grows to a sheet with 44 px targets when it is
+// focused or holds text; on a desktop it is the prototype's card with the bar under the input.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { Chip, Icon, Text, useUiTheme, type IconName } from "@vyre/ui";
+import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
+import { AiMark, AnsweringControl, Chip, ChipToken, Icon, PickerList, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
+import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
 import { Face } from "./Face";
 import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
@@ -30,6 +32,8 @@ export type ComposerProps = {
   /** The slots in a chat with several assistants or models: each gets its own chip to switch that one's model. Fewer than two: the one model chip. */
   slots?: readonly { id: string; label: string; provider?: string | null }[];
   runsOn?: "mac" | "server";
+  /** Where a chat runs unless the person moved it: the chip shows only when `runsOn` differs. */
+  runsOnDefault?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
@@ -55,16 +59,6 @@ export type ComposerProps = {
 
 const T = 44;
 
-/** A quiet choice under the box (the model, where it runs, send now or queue): words with a small arrow, not a chip, so it reads as a thing you can change and not as a setting that is on. */
-function Quiet({ icon, label, onPress, name, T, active }: { icon?: IconName; label: string; onPress?: () => void; name: string; T: number; active?: boolean }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={onPress} style={{ minHeight: T, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 }}>
-      {icon ? <Icon name={icon} tone={active ? "accent" : "label"} size={14} /> : null}
-      <Text size="caption" tone={active ? "accent" : "label"} numberOfLines={1}>{`${label} \u25BE`}</Text>
-    </Pressable>
-  );
-}
-
 function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress?: () => void; big: boolean }) {
   const s = big ? T : 36;
   return (
@@ -74,23 +68,33 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
   );
 }
 
+const POP_ID = "composer-pop";
+type Pop = null | "plus" | "answering" | "model";
+type Row = PickerItem & { run: () => void };
+
 export function ChatComposer(p: ComposerProps) {
   const { color } = useUiTheme();
   const [text, setText] = useState(() => (p.draftKey ? readDraft(p.draftKey) : ""));
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
-  const [models, setModels] = useState(false);
+  // The menus the person opens (+ and Answering); the / @ # lists open from the words at the caret.
+  const [pop, setPop] = useState<Pop>(null);
+  const [menuQ, setMenuQ] = useState("");
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState<number | null>(null);
   const [slotSel, setSlotSel] = useState<string | undefined>(undefined);
+  // Which AIs answer the next message; empty is the chat's default. One message only: it resets after a send.
+  const [answering, setAnswering] = useState<string[]>([]);
   // While the assistant works, a message either steers it now or waits in the queue for the end of the turn.
   const [mode, setMode] = useState<"steer" | "queue">("steer");
   const lastTyping = useRef(0);
-  const [askAll, setAskAll] = useState(false);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
-  // "Ask all" is for the assistants and models IN this chat (its slots), not every agent the space has to @mention.
-  const assistants = p.slots?.length ?? 0;
+  const slots = p.slots ?? [];
   const input = useRef<TextInput>(null);
-  const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
+  const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);
+  const trig = trigRaw && trigRaw.range.start !== dismissed ? trigRaw : null;
+  useEffect(() => { if (!trigRaw) setDismissed(null); }, [trigRaw]);
   const editId = p.editing?.id;
   useEffect(() => {
     if (!p.editing) return;
@@ -102,15 +106,74 @@ export function ChatComposer(p: ComposerProps) {
   useEffect(() => { if (p.draftKey) writeDraft(p.draftKey, text); }, [p.draftKey, text]);
   const files = p.attachments?.filter((a) => a.state === "ready").length ?? 0;
   const intent = sendIntent({ text, attachments: files, state: p.state });
-  const expanded = !p.phone || focused || text.length > 0 || !!trig || models;
+  const working = busyState(p.state);
+  const expanded = !p.phone || focused || text.length > 0 || !!trig || !!pop;
   const big = p.phone;
+  const ctl = big ? T : 36;
+  const web = Platform.OS === "web";
 
-  const options = useMemo(() => {
+  const allIds = useMemo(() => slots.map((s) => s.id), [slots]);
+  const dflt = slots[0]?.id;
+  const effective = answering.length ? answering : dflt ? [dflt] : [];
+  const ais = effective.map((id) => slots.find((s) => s.id === id)).filter(Boolean) as { id: string; label: string; provider?: string | null }[];
+  const current = (p.models ?? []).find((m) => m.id === p.model);
+  const summary = slots.length > 1 ? answeringSummary(answering, slots, dflt) : current ? current.label : "Model";
+
+  const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
+  const closePop = () => { setPop(null); setMenuQ(""); setActive(0); input.current?.focus(); };
+  const openPop = (k: Exclude<Pop, null>) => { setPop((cur) => (cur === k ? null : k)); setMenuQ(""); setActive(0); input.current?.focus(); };
+  const toggleAi = (id: string) => { const r = toggleAnswering(effective, id, allIds); setAnswering(r.length === 1 && r[0] === dflt ? [] : r); };
+  const askEveryone = () => setAnswering(effective.length === allIds.length ? [] : [...allIds]);
+
+  const menuRows = useMemo((): Row[] => {
+    if (pop === "plus") {
+      const rows: Row[] = [
+        { key: "file", group: "Add", label: "Attach a file", leading: <Icon name="file" size={18} />, hint: "Cmd U", run: () => { closePop(); p.onAttachFile?.(); } },
+        { key: "photo", group: "Add", label: "Attach a photo", leading: <Icon name="eye" size={18} />, run: () => { closePop(); p.onAttachPhoto?.(); } },
+        { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
+        { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
+      ];
+      if (p.runsOn) {
+        rows.push({ key: "mac", group: "Runs on", label: "This Mac", leading: <Icon name="laptop" size={18} />, checked: p.runsOn === "mac", run: () => { if (p.runsOn !== "mac") p.onRunsOn?.(); closePop(); } });
+        rows.push({ key: "server", group: "Runs on", label: "The server", leading: <Icon name="box" size={18} />, checked: p.runsOn === "server", run: () => { if (p.runsOn !== "server") p.onRunsOn?.(); closePop(); } });
+      }
+      if (working) {
+        rows.push({ key: "steer", group: "While it works", label: "Send now, steering the reply", leading: <Icon name="bolt" size={18} />, checked: mode === "steer", hint: "Enter", run: () => { setMode("steer"); closePop(); } });
+        rows.push({ key: "queue", group: "While it works", label: "Queue for the end of the turn", leading: <Icon name="clock" size={18} />, checked: mode === "queue", hint: "Alt Enter", run: () => { setMode("queue"); closePop(); } });
+      }
+      return rows;
+    }
+    if (pop === "answering") {
+      const rows: Row[] = [];
+      if (slots.length > 1) {
+        rows.push({ key: "all", group: "Who answers", label: "Everyone", sub: "Every AI in this chat replies", leading: <Icon name="agents" size={18} />, checked: effective.length === allIds.length, hint: "Alt 0", run: askEveryone });
+        slots.forEach((sl, i) => rows.push({ key: sl.id, group: "Who answers", label: sl.label, sub: sl.id === dflt ? "Answers by default" : undefined, leading: <AiMark ai={sl} size={22} />, checked: effective.includes(sl.id), hint: i < 9 ? `Alt ${i + 1}` : undefined, run: () => toggleAi(sl.id) }));
+      }
+      if (p.models?.length) {
+        (slots.length > 1 ? slots : [{ id: "", label: "This chat", provider: null }]).forEach((sl) => rows.push({ key: `m-${sl.id}`, group: "Model", label: slots.length > 1 ? `Model for ${sl.label}` : "Switch model", sub: slots.length > 1 ? undefined : current?.label, leading: <Icon name="spark" size={18} />, hint: "Right", run: () => { setSlotSel(sl.id || undefined); setPop("model"); setMenuQ(""); setActive(0); } }));
+      }
+      return rows;
+    }
+    if (pop === "model") {
+      return (p.models ?? []).map((m) => ({ key: m.id, label: m.label, checked: m.id === p.model, trailing: m.fit != null ? <Text size="caption" tone="label">{`${m.fit}% match`}</Text> : undefined, run: () => { p.onModel?.(m.id, slotSel); closePop(); } }));
+    }
+    return [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pop, p.runsOn, p.models, p.model, slots, working, mode, answering, slotSel, text, caret]);
+
+  const trigRows = useMemo((): (PickerItem & { pick: string; urn?: string; kind?: string })[] => {
     if (!trig) return [];
-    if (trig.kind === "command") return rankCommands(COMMANDS, trig.range.query).slice(0, 6).map((c) => ({ key: c.name, label: "/" + c.name, sub: c.description, pick: c.name }));
-    if (trig.kind === "person") return rankByName(p.people ?? [], trig.range.query).slice(0, 6).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? (x.doing || "Assistant") : "Person", pick: x.name, avatar: x }));
-    return rankByName(p.records ?? [], trig.range.query).slice(0, 6).map((r) => ({ key: r.urn ?? r.name, label: r.name, sub: r.type, pick: r.name, chip: sealedChip(r), urn: r.urn, kind: r.kind }));
+    const q = trig.range.query;
+    if (trig.kind === "command") return rankCommands(COMMANDS, q).slice(0, 30).map((c) => ({ key: c.name, label: "/" + c.name, sub: c.description, pick: c.name }));
+    if (trig.kind === "person") return rankByName(p.people ?? [], q).slice(0, 30).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? (x.doing || "Assistant") : "Person", pick: x.name, leading: <Face name={x.name} family={x.family} size={24} /> }));
+    return rankByName(p.records ?? [], q).slice(0, 30).map((r) => { const chip = sealedChip(r); return { key: r.urn ?? r.name, label: r.name, sub: r.type, pick: r.name, urn: r.urn, kind: r.kind, trailing: chip ? <Chip tone="sealed" icon="shield">{chip}</Chip> : undefined }; });
   }, [trig, p.people, p.records]);
+
+  const shownMenu = useMemo(() => (pop ? (filterItems(menuRows, menuQ) as Row[]) : []), [pop, menuRows, menuQ]);
+  const rows: PickerItem[] = pop ? shownMenu : trigRows;
+  const query = pop ? menuQ : trig?.range.query ?? "";
+  const open = rows.length > 0 || !!pop;
+  useEffect(() => { setActive(0); }, [trig?.kind, trig?.range.query, menuQ, pop]);
 
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
@@ -120,21 +183,71 @@ export function ChatComposer(p: ComposerProps) {
     setCaret(r.caret);
     input.current?.focus();
   };
+  const pickRow = (i: number) => { if (pop) shownMenu[i]?.run(); else if (trigRows[i]) choose(trigRows[i]); };
+
   const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
     if (!t && !files) return;
-    const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
+    const people = p.people ?? [];
+    // A chosen set of AIs goes by name; Everyone is all the chat's assistants. Anything @mentioned still adds its own.
+    const chosen = answering.length ? slots.filter((s) => answering.includes(s.id)).map((s) => people.find((x) => x.family === "assistant" && x.name.toLowerCase() === s.label.toLowerCase())?.name ?? s.label) : [];
+    const everyone = answering.length > 1 && answering.length === allIds.length;
+    const base = sendTargets({ text: t, askAll: everyone, people });
+    const to = answering.length && !everyone ? [...new Set([...chosen, ...base.to])] : base.to;
+    const target = { to, fanout: to.length > 1 };
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
-    const working = busyState(p.state);
-    if (to.to.length || mentions.length || working) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}), ...(working ? { mode: over ?? mode } : {}) }); else p.onSend(t);
+    if (target.to.length || mentions.length || working) p.onSend(t, { ...target, ...(mentions.length ? { mentions } : {}), ...(working ? { mode: over ?? mode } : {}) }); else p.onSend(t);
     picked.current.clear();
     setText("");
     setCaret(0);
-    setAskAll(false);
-  }, [text, p, askAll, mode, files]);
+    setAnswering([]);
+  }, [text, p, answering, allIds, slots, mode, files, working]);
+
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
-  const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
-  const current = (p.models ?? []).find((m) => m.id === p.model);
+  const names = useMemo(() => [...(p.people ?? []).map((x) => x.name), ...(p.records ?? []).map((r) => r.name)], [p.people, p.records]);
+  const toks = useMemo(() => tokensIn(text, names), [text, names]);
+
+  const onKey = (e: any) => {
+    if (p.phone) return;
+    const ev = e.nativeEvent as KeyboardEvent & { key: string };
+    const stop = () => { e.preventDefault?.(); e.stopPropagation?.(); };
+    const sc = composerShortcut(ev);
+    if (sc === "answering") { stop(); openPop("answering"); return; }
+    if (sc === "attach") { stop(); p.onAttachFile?.(); return; }
+    if (sc && sc.startsWith("ai:") && slots.length > 1) {
+      stop();
+      if (sc === "ai:all") askEveryone(); else { const sl = slots[Number(sc.slice(3))]; if (sl) toggleAi(sl.id); }
+      return;
+    }
+    if (open) {
+      const act = pickerKey(ev, { query, count: rows.length });
+      if (act === "next" || act === "prev") { stop(); setActive((a) => moveActive(a, act === "next" ? 1 : -1, rows.length)); return; }
+      if (act === "pick") { stop(); pickRow(active); return; }
+      if (act === "close") {
+        if (pop) { stop(); if (pop === "model") { setPop("answering"); setActive(0); } else closePop(); return; }
+        if (ev.key === "Escape" && trig) { stop(); setDismissed(trig.range.start); }
+        return; // Backspace on an empty query goes on to delete the trigger character.
+      }
+      if (pop) {
+        if (ev.key === "ArrowRight" && pop === "answering") { const r = shownMenu[active]; if (r?.group === "Model") { stop(); r.run(); } return; }
+        if (ev.key === "ArrowLeft" && pop === "model") { stop(); setPop("answering"); setActive(0); return; }
+        if (ev.key === "Backspace") { stop(); setMenuQ((q) => q.slice(0, -1)); return; }
+        if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) { stop(); setMenuQ((q) => q + ev.key); return; }
+        return;
+      }
+    }
+    if (ev.key === "Backspace" && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+      const el = (e.target ?? null) as HTMLTextAreaElement | null;
+      if (el && el.selectionStart === el.selectionEnd) {
+        const r = deleteTokenBack(text, el.selectionStart ?? caret, names);
+        if (r) { stop(); setText(r.text); setCaret(r.caret); return; }
+      }
+    }
+    if (ev.key === "Enter" && !ev.shiftKey && !rows.length) { stop(); send(ev.altKey ? "queue" : ev.metaKey || ev.ctrlKey ? "steer" : undefined); }
+  };
+
+  const activeId = open && rows.length ? optionId(POP_ID, active) : undefined;
+  const aria = web ? ({ role: "combobox", "aria-haspopup": "listbox", "aria-expanded": open, "aria-controls": open ? POP_ID : undefined, "aria-activedescendant": activeId, "aria-autocomplete": "list" } as object) : {};
   const field = (
       <TextInput
         ref={input}
@@ -145,33 +258,38 @@ export function ChatComposer(p: ComposerProps) {
         onBlur={() => setFocused(false)}
         autoFocus={p.autoFocus}
         multiline
-        placeholder={askAll ? (p.phone ? "Ask everyone" : "Ask every assistant here at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
+        {...aria}
+        placeholder={answering.length > 1 ? (p.phone ? "Ask everyone chosen" : "Ask the AIs you chose at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
-        onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); const ne = e.nativeEvent; send(ne.metaKey || ne.ctrlKey ? "steer" : undefined); } }}
+        onKeyPress={onKey}
         style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : 24, maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: 4, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
       />
   );
-  const chips = (
+
+  const sendBtn = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={intent.queue ? "Queue message" : "Send"}
+      onPress={() => send()}
+      style={{ width: ctl, height: ctl, borderRadius: ctl / 2, backgroundColor: intent.send ? color.primary : "transparent", alignItems: "center", justifyContent: "center" }}
+    >
+      <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
+    </Pressable>
+  );
+
+  // State that differs from the default, as chips that can be taken off: where it runs, queued, a file's problem is its own line.
+  const stateChips = (
     <>
-      {busyState(p.state) ? (
-        <Quiet T={big ? T : 32} icon={mode === "steer" ? "bolt" : "clock"} label={mode === "steer" ? "Send now" : "Queue"}
-          name={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} />
-      ) : null}
-      {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
-        <Quiet key={sl.id} T={big ? T : 32} label={sl.label} name={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} />
-      )) : p.models?.length ? (
-        <Quiet T={big ? T : 32} label={current ? current.label : "Model"} name="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} />
-      ) : null}
-      {assistants > 1 ? (
-        <Quiet T={big ? T : 32} icon="agents" label={assistants === 2 ? "Ask both" : "Ask all"} active={askAll} name="Ask all assistants at once" onPress={() => setAskAll((a) => !a)} />
-      ) : null}
-      {p.runsOn ? (
-        <Quiet T={big ? T : 32} icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "This Mac" : "The server"} name={runsOnLabel(p.runsOn)} onPress={p.onRunsOn} />
-      ) : null}
+      {working && mode === "queue" ? <ChipToken icon="clock" label="Queued for the end of the turn" onRemove={() => setMode("steer")} removeLabel="Send now instead" /> : null}
+      {p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server") ? <ChipToken icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "Runs on this Mac" : "Runs on the server"} onPress={p.onRunsOn} /> : null}
     </>
   );
-  const chipsRow = <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingHorizontal: 4 }}>{chips}</View>;
+  const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
+
+  const footer = pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc";
+  const header = pop === "plus" ? "Add" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
+  const aiMenu = slots.length > 1 || !!p.models?.length;
 
   return (
     <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 20, paddingBottom: p.phone ? 8 : 16, paddingTop: 6 }}>
@@ -184,39 +302,23 @@ export function ChatComposer(p: ComposerProps) {
           </Pressable>
         </View>
       ) : null}
-      {options.length ? (
-        <View accessibilityLabel="Suggestions" style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
-          {options.map((o: any) => (
-            <Pressable key={o.key} accessibilityRole="button" onPress={() => choose(o)} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 8 }}>
-              {o.avatar ? <Face name={o.avatar.name} family={o.avatar.family} size={24} /> : null}
-              <Text strong>{o.label}</Text>
-              <Text size="caption" tone="label" numberOfLines={1} style={{ flex: 1 }}>{o.sub}</Text>
-              {o.chip ? <Chip tone="sealed" icon="shield">{o.chip}</Chip> : null}
-            </Pressable>
-          ))}
+      {open ? (
+        <View style={{ marginBottom: 6 }}>
+          <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
         </View>
       ) : null}
-      {models ? (
-        <View style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
-          {(p.models ?? []).map((m) => (
-            <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id, slotSel); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
-              <Text strong style={{ flex: 1 }}>{m.label}</Text>
-              {m.fit != null ? <Text size="caption" tone="label">{`${m.fit} percent match`}</Text> : null}
-              {m.id === p.model ? <Icon name="check" /> : null}
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
-        {p.attachments?.length ? (
-          <View accessibilityLabel="Files for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {p.attachments.map((a) => (a.thumb ? (
+      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: focused ? color["edge-strong"] : color.edge, borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
+        {p.attachments?.length || toks.length || hasState ? (
+          <View accessibilityLabel="Files and tags for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {p.attachments?.map((a) => (a.thumb ? (
               <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
             ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
                 <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : "file"}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
             )))}
+            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={t.lead === "@" ? "mention" : "hash"} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
+            {stateChips}
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
@@ -224,38 +326,16 @@ export function ChatComposer(p: ComposerProps) {
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
             <Tool big={big} icon="plus" label="Attach" onPress={p.onAttachFile} />
             {field}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-              onPress={() => send()}
-              style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
-            >
-              <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
-            </Pressable>
+            {sendBtn}
           </View>
         ) : field}
-        {expanded && p.phone ? chipsRow : null}
         {expanded ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-          {expanded ? (
-            <>
-              <Tool big={big} icon="file" label="Attach a file" onPress={p.onAttachFile} />
-              <Tool big={big} icon="eye" label="Attach a photo" onPress={p.onAttachPhoto} />
-              <Tool big={big} icon="chat" label="Mention a person or assistant" onPress={() => insert("@")} />
-              <Tool big={big} icon="todo" label="Tag a record" onPress={() => insert("#")} />
-            </>
-          ) : null}
-          <View style={{ flex: 1, minWidth: 8 }} />
-          {!p.phone ? chips : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-            onPress={() => send()}
-            style={{ width: T, height: T, borderRadius: T / 2, backgroundColor: intent.send ? color.primary : color.hover, alignItems: "center", justifyContent: "center" }}
-          >
-            <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
-          </Pressable>
-        </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Tip label="Add, mention, run on" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: attach, mention, tag, where it runs" onPress={() => openPop("plus")} /></Tip>
+            {aiMenu ? <Tip label="Who answers" hint="Cmd /" side="top"><AnsweringControl ais={ais.length ? ais : [{ id: "m", label: summary }]} summary={summary} open={pop === "answering" || pop === "model"} hint="Cmd /" onPress={() => openPop("answering")} /></Tip> : null}
+            <View style={{ flex: 1, minWidth: 8 }} />
+            {sendBtn}
+          </View>
         ) : null}
       </View>
     </View>

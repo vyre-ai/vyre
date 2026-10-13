@@ -30,6 +30,8 @@ import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
+import { ChatComposer } from "../src/chat/ChatComposer";
+import { ChatComposerLegacy } from "../src/chat/legacy/ChatComposerLegacy";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -211,10 +213,36 @@ function FlowKit() {
   );
 }
 
+const CMP_PEOPLE = [
+  { name: "Dana Wine", family: "person" as const }, { name: "Anna Reyes", family: "person" as const },
+  { name: "Claude", family: "assistant" as const, doing: "Drafting the estate letter" }, { name: "Codex", family: "assistant" as const }, { name: "Grok", family: "assistant" as const },
+];
+const CMP_RECORDS = [
+  { name: "Wine estate plan", type: "Matter", sealed: 2, urn: "urn:rec:1", kind: "record" }, { name: "Q3 intake", type: "Project", sealed: 0, urn: "urn:rec:2", kind: "project" },
+  { name: "Trust certificate.pdf", type: "File", sealed: 0, urn: "urn:rec:3", kind: "file" }, { name: "Quarterly review", type: "Tag", sealed: 0, urn: "urn:rec:4", kind: "tag" },
+];
+const CMP_SLOTS = [{ id: "s1", label: "kit on Claude", provider: "claude" }, { id: "s2", label: "kit on Codex", provider: "codex" }, { id: "s3", label: "Grok", provider: "grok" }];
+const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", label: "Sonnet", fit: 88 }, { id: "haiku", label: "Haiku", fit: 71 }];
+
+/** The composer, before and after, side by side: /gallery?f=composer. The "after" is live: try / @ # and Cmd+/ with the keyboard only. */
+function ComposerCompare() {
+  const [model, setModel] = useState("opus");
+  const [where, setWhere] = useState<"mac" | "server">("server");
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, onAttachPhoto: () => {} };
+  return (
+    <View style={{ gap: 24 }}>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">Before</Text><ChatComposerLegacy {...common} phone={false} /></View>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>
+      <View style={{ gap: 6, maxWidth: 390 }}><Text size="caption" tone="label">After, phone width</Text><ChatComposer {...common} phone autoFocus={false} /></View>
+    </View>
+  );
+}
+
 export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
