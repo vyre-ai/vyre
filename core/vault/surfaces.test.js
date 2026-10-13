@@ -241,7 +241,8 @@ test("surfaces: the Deck and the Capsule reveal behind presence; without a proof
   await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
   for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login" })).data.value, pw);
   const cleared = await as("mcp")("vault.clipboard.clear");
-  assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
+  assert.equal(cleared.error.code, "denied", "clearing the clipboard is the person's own act");
+  assert.deepEqual((await as("local")("vault.clipboard.clear")).data, { cleared: true });
 });
 
 test("surfaces: reveal is on in vault.caps, and with vyred's real presence check nothing is shown without a proof", async t => {
