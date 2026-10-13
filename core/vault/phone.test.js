@@ -18,7 +18,7 @@ async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystor
   const d = await start({ root, presence, log: () => {} });
   t.after(() => d.stop());
   if (at) /** @type {any} */ (globalThis).__lastDaemon = d;
-  return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, meta);
+  return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { ...meta, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" } } : meta);
 }
 
 test("the phone adds a login and reads the state; a model, a guest and an agent cannot add", async t => {
