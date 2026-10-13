@@ -77,7 +77,7 @@ test("a new template is made by the owner or an admin, a member only uses it; wh
   const w = await world(t);
   const memberTool = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(ANA), {})).token }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
   const body = { ...TEMPLATE, name: "Estate matter", noun: { one: "Matter", many: "Matters" } };
-  await assert.rejects(memberTool("work.template.define", { body }), /owner or an admin makes a new template/, "a member cannot make one, and the refusal says who can");
+  await assert.rejects(memberTool("work.template.define", { body }), /owner or an admin makes a new template|That is the owner's\. Ask the owner or an admin/, "a member cannot make one, and the refusal says who can (the door says it first, the template tool is the backstop)");
   await w.owner("agents.create", { name: "research", kind: "agent", projects: [] });
   const def = await w.owner("work.template.define", { body });
   const row = (await w.owner("work.template.list", {})).templates.find((/** @type {any} */ x) => x.template === def.template);

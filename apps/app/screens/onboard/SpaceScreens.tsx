@@ -236,7 +236,7 @@ function InviteWhoMock({ ctx, set, go, back }: ScreenProps) {
       primary={{ label: "Make the invite", onPress: () => { setTried(true); if (ctx.inviteName.trim()) go("invite.link"); } }}>
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
       <Field label="Email (optional)" kind="email" value="" onChangeText={() => {}} placeholder="name@firm.com" />
-      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
+      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} levels={ctx.inviteLevels} onLevels={(v) => set({ inviteLevels: v })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
       <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
@@ -468,14 +468,14 @@ function InviteWhoLive({ ctx, set, go, back }: ScreenProps) {
     setTried(true);
     if (!ctx.inviteName.trim()) return;
     setBusy(true); setFailure("");
-    try { keepMadeInvite(await makeInvite(ctx.inviteRole, ctx.inviteProjects, Number(ctx.inviteDays) || 7)); go("invite.link"); } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); }
+    try { keepMadeInvite(await makeInvite(ctx.inviteRole, ctx.inviteProjects, Number(ctx.inviteDays) || 7, ctx.inviteLevels)); go("invite.link"); } catch (e) { setFailure(whyNot(e)); } finally { setBusy(false); }
   };
   return (
     <FlowStep onBack={back} title="Invite people" lead="Vyre makes a link and a short code. You send them privately."
       failure={failure}
       primary={{ label: "Make the invite", loading: busy, disabled: busy, onPress: () => { void next(); } }}>
       <Field label="Name" value={ctx.inviteName} onChangeText={(v) => { set({ inviteName: v }); setTried(false); }} placeholder="Name" error={tried && !ctx.inviteName.trim() ? "Add a name so you can tell invites apart." : undefined} />
-      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
+      <InviteRolePicker actor="owner" role={ctx.inviteRole} onRole={(r) => set({ inviteRole: r })} projects={ctx.inviteProjects} onProjects={(ids) => set({ inviteProjects: ids })} levels={ctx.inviteLevels} onLevels={(v) => set({ inviteLevels: v })} days={ctx.inviteDays} onDays={(d) => set({ inviteDays: d })} />
       <Text size="caption" tone="label">{ctx.inviteRole === "admin" ? "An admin joins only after you confirm four words with them." : "A member sees the projects they are on and what the space's rules allow."}</Text>
     </FlowStep>
   );
