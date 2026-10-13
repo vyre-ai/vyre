@@ -347,7 +347,9 @@ export default {
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
         // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
-        ...(own ? { account: String(own.id), person: forPerson } : {}) };
+        ...(own ? { account: String(own.id), person: forPerson } : {}),
+        // an agent working in a project runs in the PROJECT folder: its own agent folder (instructions, context, notes) is then the one extra folder it may read, never another agent's
+        ...(mine && wd.project ? { read_only: [mine.dir] } : {}) };
       // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
       if (job) return use("threads.launch", { ...input, ...wd, name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...wd, name: a.name });

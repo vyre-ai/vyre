@@ -41,3 +41,22 @@ test("a person's own account run never gets the machine's login file; the owner'
   const owner = await start({}, { env: {} });
   assert.equal(owner.noLoginCopy, undefined);
 });
+
+test("an agent in a project: its own agent folder is the one read-only folder the sandbox gets; anything else is ignored", async () => {
+  const mine = await start({}, { env: {}, read_only: ["/h/Vyre/agents/agt_01a1-b2"] });
+  assert.ok(mine.readOnly.includes("/h/Vyre/agents/agt_01a1-b2"), "its own folder is read-only visible");
+  assert.equal(mine.readOnly.filter(/** @param {string} x */ x => x.includes("/agents/")).length, 1, "and it is the only agent folder");
+  for (const bad of [["/h/Vyre/agents/agt_1/../../etc"], ["/etc"], ["/h/Vyre/agents/other"], ["a/relative"], ["/h/Vyre/agents/agt_1", "/h/Vyre/agents/agt_2"], ["/h/work"], []]) {
+    const c = await start({}, { env: {}, read_only: bad });
+    assert.ok(!(c.readOnly || []).some(/** @param {string} x */ x => x.includes("/agents/") || x === "/etc" || x === "/h/work" || x.startsWith("a/")), `ignored: ${JSON.stringify(bad)}`);
+  }
+});
+
+test("read_only on a launch is honoured only from the agents module", async () => {
+  const { trustedLaunch } = await import("./asker-account.js");
+  const input = { agent: "x", read_only: ["/h/Vyre/agents/agt_1"], for_person: "per_a" };
+  assert.deepEqual(trustedLaunch(input, { firstParty: true, caller: "module:agents" }).read_only, ["/h/Vyre/agents/agt_1"]);
+  assert.equal(trustedLaunch(input, { firstParty: true, caller: "module:team" }).read_only, undefined);
+  assert.equal(trustedLaunch(input, { caller: "cli" }).read_only, undefined);
+  assert.equal(trustedLaunch(input, { firstParty: true, caller: "module:team" }).for_person, "per_a", "for_person still rides from any first-party module");
+});

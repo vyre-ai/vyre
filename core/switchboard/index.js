@@ -1274,7 +1274,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: pickedFirst(() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]), cfg.credentials) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { noLoginCopy: true } : {}), ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/"), projects: o.accountRun.projects || [] } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: pickedFirst(() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]), cfg.credentials) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(readOnlyOf(o, rec) ? { readOnly: readOnlyOf(o, rec) } : {}), ...(o.accountRun && o.accountRun.uid != null ? { noLoginCopy: true } : {}), ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/"), projects: o.accountRun.projects || [] } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
       this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));
@@ -3937,6 +3937,11 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
 }
 
 /** The sandbox runs an absolute program path: a bare `claude` is looked up on PATH the way a shell would, and left as it is when it is not found (the check then says so). @param {string} cmd */
+/** The one extra folder an agent's session may read: its own agent folder (agents/agt_<id>), absolute, no "..", never the working folder itself. Anything else is ignored, never widened. @param {any} o @param {any} rec @returns {string[] | null} */
+export function readOnlyOf(o, rec) {
+  const p = o && Array.isArray(o.read_only) && o.read_only.length === 1 ? String(o.read_only[0]) : "";
+  return p && path.isAbsolute(p) && !p.split(path.sep).includes("..") && /[\\/]agents[\\/]agt_[A-Za-z0-9-]+$/.test(p) && p !== String(rec && rec.cwd) ? [p] : null;
+}
 function absoluteBin(cmd) {
   const c = String(cmd || "");
   if (!c || path.isAbsolute(c) || c.includes("/")) return c;
@@ -4910,7 +4915,7 @@ export default {
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
         // The agent's thinking effort (agents.effort), one of sessions.effort's values.
         effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
-        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
+        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, read_only: { type: "array", maxItems: 1, items: str, description: "The agents module only: the one folder this session may READ besides its own, the agent's own agent folder." }, fallback: { type: "object" }, scope: { type: "object" },
         effort: { type: "string", enum: EFFORTS },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
