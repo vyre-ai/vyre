@@ -1124,7 +1124,7 @@ export class FlowRunner {
     const run = ctx.run, t = run.trigger;
     const inh = run.inherit;                                 // a lane of a parallel step reads what its parent had read when it split
     const trigger = inh ? inh.trigger : t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
-    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), ...(inh ? inh.locals : {}), ...locals };
+    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), tz: (ctx.cat && ctx.cat.tz) || "UTC", ...(inh ? inh.locals : {}), ...locals };
   }
 
   /** @param {any} ctx @param {string} key @param {Partial<import('./store.js').Run['steps'][string]>} patch */

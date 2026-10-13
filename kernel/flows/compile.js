@@ -170,7 +170,7 @@ function compileRaw(flow, cat) {
 
   /** scope names an expression may read at a given point */
   const triggerScope = triggerScopeNames(tr);
-  const baseScope = new Set([...triggerScope, "steps", "run", "now"]);
+  const baseScope = new Set([...triggerScope, "steps", "run", "now", "tz"]);
 
   /** @param {string|undefined} src @param {string} path @param {Set<string>} scope @param {Set<string>} done */
   function checkExprNames(src, path, scope, done) {

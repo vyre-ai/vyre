@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
-import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources, askChoices } from "./logic.js";
+import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources, askChoices, val, dateChoices } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -275,7 +275,6 @@ test("the Appointment reminder starter starts on created or updated, only when t
 });
 
 test("text with tokens becomes one joined expression and reads back as the same text", async () => {
-  const { val } = await import("./logic.js");
   assert.deepEqual(val("Hello {after.client}, call {steps.find1.rows}."), { expr: '"Hello " + text(trigger.after.client) + ", call " + text(steps.find1.rows) + "."' });
   assert.equal(val("no tokens"), "no tokens");
   assert.equal(val('say "hi" {name}\nbye').expr, '"say \\"hi\\" " + text(trigger.name) + "\\nbye"');
@@ -302,4 +301,18 @@ test("a question goes to a person or a role, never an agent", () => {
   assert.ok(askChoices(O).length > 0 && askChoices(O).every(([v]) => !v.startsWith("agent:")));
   assert.match(stepProblem({ id: "ask1", kind: "ask", to: "agent:refunds", title: "Ok?" }, O), /person or a team or role/);
   assert.equal(stepProblem({ id: "ask1", kind: "ask", to: "role:manager", title: "Ok?" }, O), null);
+});
+
+test("a date or time field inside text is written as people read it, and {now} and {today} are helpers", () => {
+  const o = { types: [{ name: "appointment", label: "Appointment", fields: [{ name: "starts_at", label: "Starts", kind: "datetime" }, { name: "due", label: "Due", kind: "date" }, { name: "fee", label: "Fee", kind: "number" }] }], agents: [], templates: [], roles: [], people: [] };
+  const body = "At {after.starts_at}, due {after.due}, fee {after.fee}, sent {today} {now}.";
+  const d = { name: "R", trigger: { kind: "created", type: "appointment" }, steps: [{ id: "sms1", kind: "sms", to: "+15550100", body }, { id: "wait2", kind: "wait", mode: "until", field: "{after.starts_at}", when: "before", amount: 1, unit: "hours" }] };
+  const def = toDefinition(d, o);
+  assert.equal(def.steps[0].input.body.expr, '"At " + datetime(trigger.after.starts_at, tz) + ", due " + date(trigger.after.due) + ", fee " + text(trigger.after.fee) + ", sent " + date(now, tz) + " " + datetime(now, tz) + "."');
+  assert.deepEqual(def.steps[1].until, { expr: "trigger.after.starts_at" }, "a whole value stays the raw time, for a wait");
+  assert.deepEqual(checkFlow(def), []);
+  assert.equal(fromDefinition(def).steps[0].body, body);
+  assert.equal(toDefinition(d).steps[0].input.body.expr.includes("datetime(trigger"), false, "without the object's fields a date is plain text");
+  assert.deepEqual(val("{today}"), { expr: "date(now, tz)" });
+  assert.deepEqual(dateChoices(d, "wait2", o).map(([t]) => t).filter((t) => t === "{now}" || t === "{today}"), [], "a wait cannot wait for the helpers");
 });
