@@ -65,6 +65,7 @@ export async function startDaemonServer(o) {
       ownerSigner, signerFor: (/** @type {string} */ id) => seal.signer(id),
       ownerChain: (/** @type {string} */ space, /** @type {string} */ person) => d.kernel.spaces.hosted(space).kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person, path: "direct" }),
       inviteeChain: (/** @type {string} */ space, /** @type {string} */ person) => d.kernel.spaces.hosted(space).kernel.chains.fromFacts({ kind: "invitee", person, vouched: true }),
+      grantMember: async (/** @type {string} */ space, /** @type {string} */ ownerId, /** @type {string} */ person, /** @type {string} */ role) => { const g = d.kernel.spaces.hosted(space); const chain = g.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: ownerId, path: "direct" }); return g.gateway.grants.members.setRole(chain, { person, role }); },
       memberOf: async (/** @type {string} */ space, /** @type {string} */ ownerChain, /** @type {string} */ person) => d.kernel.spaces.hosted(space).gateway.grants.members.get(ownerChain, person),
     },
     async stop() {

@@ -107,7 +107,7 @@ try {
     await mem.becomeYourself({ name: mres.name, code: mres.code });
     const sp0 = JSON.parse((await srv.operator("spaces.list", {}).then((/** @type {any} */ r) => JSON.stringify(r)).catch(() => "{}")) || "{}");
     const spaces = await mac.callTool("spaces.list"); const space = (spaces.data || spaces)[0].id;
-    const add = await mac.callTool("spaces.members.add", { space, person: mem.identity.id, role: "member" });
+    const add = await srv.team.grantMember(space, mac.identity.id, mem.identity.id, "member").catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) }));
     console.log(`DIAG members.add ${JSON.stringify(add).slice(0, 240)}`);
     const c = await dial({ key: mem.identity.key, entry: mem.identity.key.eid, identity: mem.identity.id, name: "member-laptop" });
     const info = await callAs(c, "system.info");
