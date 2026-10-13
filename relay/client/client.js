@@ -392,7 +392,7 @@ export class Connection {
     this.setState("connecting");
     try {
       const keys = await deviceKey(this.o);
-      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}), ...(this.o.invitee === true ? { invitee: true } : {}), ...(this.o.homeMove === true ? { homeMove: true } : {}) };
+      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}), ...(this.o.invitee === true ? { invitee: true } : {}), ...(this.o.homeMove === true ? { homeMove: true } : {}), ...(this.o.presenceKey && typeof this.o.chainHello === "function" ? { presenceKey: this.o.presenceKey } : {}) };
       // Design B: a device the person's identity chain lists says so in this hello, signed fresh for this dial (relay/client/chainhello.js). `chainHello(devicePub)` gives the object.
       if (typeof this.o.chainHello === "function") /** @type {any} */ (hello).chain = await this.o.chainHello(keys.publicKey ?? keys.pub);
       // the presence key the chain hello bound by its hash: offered with it so the server can enrol it and the device can open its person session (presence.person.chain-grant)
