@@ -632,6 +632,7 @@ export class Curator {
     const domainSessions = d => sessionsOf([d, ...(viaEmail.get(d) || [])]);
 
     // ---- what each thing is
+    collectIfHeavy();
     const kind = new Map(), role = new Map();
     const domainRole = key => this.me.domains.has(key) ? "own" : FREE_MAIL.has(key) ? "mail" : TOOL_WORDS.has(stemOf(key)) ? "tool" : null;
     for (const a of agg.values()) {
@@ -807,6 +808,7 @@ export class Curator {
 
     await yieldAndTidy();
     // ---- edges
+    collectIfHeavy();
     /** @type {Want[]} */
     const want = [];
     const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
@@ -890,6 +892,7 @@ export class Curator {
     }
 
     // ---- short forms, measured
+    collectIfHeavy();
     const cluster = id => {
       const out = [id];
       const d = orgDomain.get(id);
@@ -903,6 +906,7 @@ export class Curator {
     const forms = !recall ? [] : await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess, identity, inScope, common.saidBy);
 
     // ---- who works where, by vote
+    collectIfHeavy();
     // Only outside organisations vote, and a session votes by focus: its share of the org
     // mentions in that session, so a planning session naming every client gives each a
     // fraction while a session about one client gives it a whole vote. Raw counts rewarded
@@ -981,6 +985,7 @@ export class Curator {
     }
 
     // ---- more relations: titles, clients, repos for an org, deadlines, and (when switched on)
+    collectIfHeavy();
     // preferences and decisions. All are this scope's own, from its own turns.
     /** A value at the far end of a relation (a title, a date, a preference): a node of its own. */
     const value = (id, ts = 0) => {
