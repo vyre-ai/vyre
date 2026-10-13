@@ -12,6 +12,7 @@ export const starterBody = (): Body => ({ name: DEFAULT_NAME, stages: [{ name: "
 export const NOUN_SUGGESTIONS = ["Matter", "Client", "Case", "Engagement", "Project"];
 
 /** Common stage sets, one click each. */
+const DEFAULT_DOER = "role:owner";
 export const STAGE_SETS: { id: string; stages: string[] }[] = [
   { id: "intake", stages: ["Intake", "Review", "Signing", "Closing"] },
   { id: "estate", stages: ["Opening", "Administration", "Inventory", "Closing"] },
@@ -19,11 +20,25 @@ export const STAGE_SETS: { id: string; stages: string[] }[] = [
 ];
 export const setLabel = (stages: string[]): string => stages.join(" › ");
 
-/** The stage titles become the set's; the tasks already written stay in the stage at the same place. */
-export function applyStageSet(b: Body, id: string): Body {
+export type KitOutline = { id: string; name: string; stages: number; tasks: number; outline?: { name: string; tasks: string[] }[] };
+/** The Kit whose stage names are this set's, in order (any case), or null. */
+export function kitFor(id: string, lib: KitOutline[]): KitOutline | null {
+  const set = STAGE_SETS.find((s) => s.id === id);
+  if (!set) return null;
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x.trim().toLowerCase() === b[i].trim().toLowerCase());
+  return lib.find((k) => k.outline && same(k.outline.map((o) => o.name), set.stages)) || null;
+}
+
+/** The stage titles become the set's; the tasks already written stay in the stage at the same place; a matching Kit fills the stages that have none with its tasks (titles only, given to the owner until someone chooses). */
+export function applyStageSet(b: Body, id: string, kit: KitOutline | null = null): Body {
   const set = STAGE_SETS.find((s) => s.id === id);
   if (!set) return b;
-  return { ...b, stages: set.stages.map((name, i): Stage => { const { name: _n, ...rest } = b.stages[i] || ({} as Stage); return { ...rest, name }; }) };
+  return { ...b, stages: set.stages.map((name, i): Stage => {
+    const { name: _n, ...rest } = b.stages[i] || ({} as Stage);
+    const have = (rest.tasks || []).length > 0;
+    const from = !have && kit?.outline ? kit.outline[i]?.tasks || [] : [];
+    return { ...rest, name, ...(from.length ? { tasks: from.map((title) => ({ title, doer: DEFAULT_DOER, output: { kind: "note" } })) } : {}) } as Stage;
+  }) };
 }
 
 export type At = { si: number; ti: number };
@@ -60,7 +75,6 @@ export function typeKey(b: Body, at: At, text: string, key: string): KeyResult {
   return stay;
 }
 
-const DEFAULT_DOER = "role:owner";
 const renamed = (b: Body): boolean => b.stages.some((s) => !/^Stage \d+$/.test(s.name) && s.name !== "Done");
 const hasTask = (b: Body): boolean => b.stages.some((s) => (s.tasks || []).some((t) => t.title.trim()));
 

@@ -16,7 +16,7 @@ export function templatesSource(call: Call) {
     define: (body: unknown, template?: string, note?: string, replace?: boolean): Promise<Version> => ask("work.template.define", { body, ...(template ? { template } : {}), ...(note ? { note } : {}), ...(replace ? { replace: true } : {}) }),
     goLive: (template: string, version: number) => ask("work.template.golive", { template, version }),
     test: (template: string, version: number, sample?: Record<string, unknown>) => ask<{ ok: boolean; lines?: string[]; totals?: string; errors?: { path: string; message: string }[] }>("work.template.test", { template, version, ...(sample ? { sample } : {}) }),
-    library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
+    library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number; outline?: { name: string; tasks: string[] }[] }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
     install: (id: string) => ask<Version>("work.template.install", { id }),
     /** The Flows of this Space a template can attach (only the running ones run for a project). */
     flows: async (): Promise<{ id: string; name: string; active: boolean }[]> => {

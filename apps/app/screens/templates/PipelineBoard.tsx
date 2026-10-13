@@ -6,7 +6,8 @@ import type { Body } from "./model";
 import * as E from "./edit";
 import { boardColumns, type Card as TaskCard, type Person } from "./board";
 import { usePhone } from "../places/Page";
-import { applyStageSet, setLabel, STAGE_SETS, type At, type KeyResult } from "./compose";
+import { applyStageSet, kitFor, setLabel, STAGE_SETS, type At, type KeyResult } from "./compose";
+import { templates } from "./templates";
 
 type Who = { id: string; name: string };
 
@@ -99,6 +100,8 @@ function AddLine({ at, focused, onKey }: { at: At; focused: boolean; onKey: (tex
  */
 export function Board({ body, onChange, selected, onOpen, people, agents, editable, compose }: { body: Body; onChange: (b: Body) => void; selected: { si: number; ti: number } | null; onOpen: (si: number, ti: number) => void; people: Who[]; agents: Who[]; editable: boolean; /** A draft being written: stage titles are typed in place, each stage ends in a line to type tasks, an empty first stage offers stage sets. */ compose?: { focus: At | null; onKey: (at: At, text: string, key: string) => KeyResult } }) {
   const phone = usePhone();
+  const [kits, setKits] = useState<Awaited<ReturnType<typeof templates.library>>>([]);
+  useEffect(() => { if (compose) templates.library().then(setKits).catch(() => setKits([])); }, [Boolean(compose)]); // eslint-disable-line react-hooks/exhaustive-deps
   const cols = boardColumns(body, people, agents);
   const none = E.stageModeOf(body) === "none";
   const parse = (w: string): { kind: string; a: number; b: number } | null => { const m = /^(task|stage):(\d+)(?::(\d+))?$/.exec(w); return m ? { kind: m[1], a: Number(m[2]), b: Number(m[3] ?? 0) } : null; };
@@ -130,7 +133,7 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
       {compose && editable && col.index === 0 && !col.tasks.length && body.stages.every((s) => /^Stage \d+$|^Done$/.test(s.name)) ? (
         <View className="gap-s1">
           <Text size="caption" tone="label">Start from the usual stages</Text>
-          <View className="flex-row flex-wrap gap-s1">{STAGE_SETS.map((set) => <Chip key={set.id} onPress={() => onChange(applyStageSet(body, set.id))}>{setLabel(set.stages)}</Chip>)}</View>
+          <View className="flex-row flex-wrap gap-s1">{STAGE_SETS.map((set) => <Chip key={set.id} onPress={() => onChange(applyStageSet(body, set.id, kitFor(set.id, kits)))}>{setLabel(set.stages)}</Chip>)}</View>
         </View>
       ) : null}
       {editable && !compose ? <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a task" onPress={() => { const next = E.addTask(body, col.index); onChange(next); onOpen(col.index, (next.stages[col.index].tasks || []).length - 1); }} /></View> : null}
