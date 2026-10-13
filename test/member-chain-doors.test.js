@@ -34,7 +34,10 @@ test("(b) a member's chain device is refused the vault and the relay's owner act
   const { facts, call } = await rig(t);
   const f = facts(MEMBER);
   assert.equal(f?.person, MEMBER);
-  for (const [tool, input] of /** @type {[string, any][]} */ ([["vault.list", {}], ["relay.devices.rename", { id: "abcdefghijklmnop", name: "x" }], ["relay.devices.remove", { id: "abcdefghijklmnop" }], ["relay.devices.mark", { id: "abcdefghijklmnop" }]])) {
+  // the vault answers a member with its own words before the door gate does; the relay's owner acts get the door's. Either way it is a refusal and no data.
+  const v = await call("vault.list", {}, f);
+  assert.ok(v.error && v.error.code === "denied" && v.data === undefined, `vault.list: refused to her, got ${JSON.stringify(v).slice(0, 160)}`);
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["relay.devices.rename", { id: "abcdefghijklmnop", name: "x" }], ["relay.devices.remove", { id: "abcdefghijklmnop" }], ["relay.devices.mark", { id: "abcdefghijklmnop" }]])) {
     const r = await call(tool, input, f);
     assert.ok(r.error && r.error.code === "denied", `${tool}: refused to her, got ${JSON.stringify(r).slice(0, 160)}`);
     assert.equal(r.error.message, refusal(tool), `${tool}: in the owner's words`);
