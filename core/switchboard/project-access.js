@@ -128,7 +128,7 @@ export async function launchAccess(sb, rec, o, id) {
   if (who && !who.owner && rec.cwd) {
     const dir = path.resolve(rec.cwd), here = (await mappedProjects(sb)).find(p => p.folders.some(f => under(dir, f)));
     const seat = here ? await seatOn(sb, here.slug, who.person) : null;
-    if (here && seat && seat.level === "viewer") throw Object.assign(new Error(`Vyre did not start this session in ${here.slug}: ${VIEWER_WORDS}`), { code: "not_allowed" });
+    if (here && seat && seat.level === "viewer") throw Object.assign(new Error(`Vyre did not start this session in ${here.slug}: ${VIEWER_WORDS} Ask the project lead to change your level, from the Team tab of the project.`), { code: "not_allowed" });
   }
   await ensureFolder(sb, rec.cwd, say);
   if (!account) return o;

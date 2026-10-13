@@ -121,14 +121,17 @@ export function Models({ name }: { name: string }) {
         <Banner>{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
         {rows.length ? (
           <Card flush>
-            <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={68} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
+            <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={92} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
               render={({ e, a }, i) => (
-                <Row
-                  title={a ? a.label : e.account ? "An account that was removed" : e.provider}
-                  sub={i === 0 ? `First. ${kindLine(a)}` : `Used when the one above runs out or fails. ${kindLine(a)}`}
-                  lead={<Chip>{String(i + 1)}</Chip>}
-                  end={<View className="flex-row"><IconButton icon="chevron-up" label="Move up" onPress={() => setPlan(move(plan, i, -1))} /><IconButton icon="chevron-down" label="Move down" onPress={() => setPlan(move(plan, i, 1))} /><IconButton icon="x" label="Take off the plan" onPress={() => setPlan(drop(plan, i))} /></View>}
-                />
+                <View>
+                  <Row
+                    title={a ? a.label : e.account ? "An account that was removed" : e.provider}
+                    sub={kindLine(a)}
+                    lead={<Chip>{String(i + 1)}</Chip>}
+                    end={<View className="flex-row"><IconButton icon="chevron-up" label="Move up" onPress={() => setPlan(move(plan, i, -1))} /><IconButton icon="chevron-down" label="Move down" onPress={() => setPlan(move(plan, i, 1))} /><IconButton icon="x" label="Take off the plan" onPress={() => setPlan(drop(plan, i))} /></View>}
+                  />
+                  <View className="px-s3 pb-s2"><Text size="caption" tone="label">{i === 0 ? "First choice." : "Used when the one above runs out or fails."}</Text></View>
+                </View>
               )} />
           </Card>
         ) : <Card><Text tone="muted">{`No order of its own. In flows, ${name} runs on the Space's default. Add a sign-in to choose.`}</Text></Card>}

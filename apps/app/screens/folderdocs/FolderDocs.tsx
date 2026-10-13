@@ -1,8 +1,8 @@
 // The Instructions and Context editors of a folder: an agent's or a project's. One component over a FolderApi, so every folder reads and writes the same way.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
-import { Button, Card, Divider, ErrorState, Field, FileViewer, IconButton, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
-import type { FileSource } from "../../ui/files/source";
+import { Button, Card, Divider, ErrorState, Field, IconButton, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
+import { PlainDocsEditor } from "./PlainDocs";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { KEPT_NOTE, READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
@@ -18,24 +18,24 @@ function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
 }
 
 /**
- * An agent's or a project's AGENTS.md and CLAUDE.md, shown and edited in the one Markdown viewer and editor Files uses (FileViewer): rendered by default, Edit to change it, Cmd+S, an unsaved-changes
- * guard. This is only the wiring: which file, how it loads and where it saves. With `kept`, CLAUDE.md is the same as AGENTS.md and one file is shown.
+ * An agent's or a project's AGENTS.md and CLAUDE.md. On the shared Markdown viewer and editor (DocsViewer), loaded lazily so the PDF and Office renderers are not part of the page's start; if the viewer
+ * cannot load (or is not in this build), the plain editor (PlainDocs) takes its place. The one switch is USE_VIEWER.
  */
-export function DocsEditor({ api, who, title = "Instructions" }: { api: DocsApi; who: string; title?: string }) {
-  const [file, setFile] = useState<DocFile>("AGENTS.md");
-  const shown: DocFile = api.kept ? "AGENTS.md" : file;
-  const source = useMemo<FileSource>(() => ({
-    load: async () => ({ text: (await api.docs())[shown] ?? "" }),
-    save: api.canEdit === false ? undefined : async (text) => { await api.saveDoc(shown, text); },
-  }), [api.id, shown, api.canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+const USE_VIEWER = true;
+const Viewer = lazy(() => import("./DocsViewer"));
+
+class Fallback extends Component<{ api: DocsApi; who: string; title?: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? <PlainDocsEditor api={this.props.api} who={this.props.who} title={this.props.title} /> : this.props.children; }
+}
+
+export function DocsEditor({ api, who, title }: { api: DocsApi; who: string; title?: string }) {
+  if (!USE_VIEWER) return <PlainDocsEditor api={api} who={who} title={title} />;
   return (
-    <Sec title={title}>
-      {api.kept ? null : <Segmented label="Instruction file" value={file} onChange={setFile} options={[["AGENTS.md", "AGENTS.md"], ["CLAUDE.md", "CLAUDE.md"]] as [DocFile, string][]} />}
-      <Text size="caption" tone="label">{api.kept ? KEPT_NOTE : shown === "AGENTS.md" ? `Who ${who} is and how it works.` : "Extra notes for Claude, kept apart."}</Text>
-      <Card flush>
-        <FileViewer key={`${api.id}:${shown}`} name={shown} kind="markdown" bare readOnly={api.canEdit === false} source={source} onSaved={() => showToast("Saved. It applies from the next chat.")} />
-      </Card>
-    </Sec>
+    <Fallback api={api} who={who} title={title}>
+      <Suspense fallback={<LoadingState rows={4} />}><Viewer api={api} who={who} title={title} /></Suspense>
+    </Fallback>
   );
 }
 

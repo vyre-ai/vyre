@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { View } from "react-native";
-import { AccessList, Avatar, Banner, Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
+import { AccessList, Avatar, Banner, Button, IconButton, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, IconTile, MenuRow, Row, Segmented, Sheet, Text, SecretField, markRef, showToast, type IconName, type Level } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { HEALTH_WORDS, breakage, groupsOf, healthOf, share, summaryOf, unshare, visible, type VItem } from "./redesign.js";
@@ -48,6 +48,8 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const sum = summaryOf(items ? visible(items, scope) : []);
   const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
   const fail = (e: unknown, fallback: string) => showToast(String((e as Error)?.message || fallback));
+  const doLock = () => data.lock().then(() => { setLocked(true); }).catch((e) => fail(e, "That did not lock it."));
+  const startAdd = () => setAdding({ name: "", kind: scope === "mine" ? "secret" : "api-key", value: "" });
   const setShare = (fn: (xs: VItem[]) => VItem[]) => setItems((xs) => (xs ? fn(xs) : xs));
 
   if (scope === "mine" && noAccount) {
@@ -59,7 +61,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
             <View className="items-center gap-s2"><IconTile name="vault" /><Text size="title" strong>Make your own vault</Text>
               <Text tone="label" className="text-center">It holds your AI sign-ins and your own connections. Only you can open it, with a master password you choose. This device keeps the key that goes with it.</Text></View>
             <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Choose a master password (12 or more characters)" />
-            <Button kind="primary" label="Make my vault" disabled={busy || pw.length < 12} onPress={() => { setBusy(true); data.create(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not work.")).finally(() => setBusy(false)); }} />
+            <Button kind="primary" label="Make my vault" disabled={busy} onPress={() => { if (pw.length < 12) { showToast("A master password is at least 12 characters."); return; } setBusy(true); data.create(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not work.")).finally(() => setBusy(false)); }} />
           </View>
         </Card>
       </Frame>
@@ -75,7 +77,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
             <View className="items-center gap-s2"><IconTile name="lock" /><Text size="title" strong>Your vault is locked</Text>
               <Text tone="label" className="text-center">Unlock it with your master password. Nothing in it is shown until you do.</Text></View>
             <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Master password" />
-            <Button kind="primary" label="Unlock" disabled={busy || !pw} onPress={() => { setBusy(true); data.unlock(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not unlock it.")).finally(() => setBusy(false)); }} />
+            <Button kind="primary" label="Unlock" disabled={busy} onPress={() => { if (!pw) { showToast("Type your master password."); return; } setBusy(true); data.unlock(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not unlock it.")).finally(() => setBusy(false)); }} />
           </View>
         </Card>
       </Frame>
@@ -131,12 +133,14 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
                 onChange={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))}
                 onRemove={(w) => data.setAccess!(cur, w, null).then(() => { showToast(`${w} no longer has ${cur.name}.`); return data.access!(cur).then(setAcc); }).catch((e) => fail(e, "That did not work."))}
                 onAdd={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))} empty="Not shared with a person." /> : null}
+              {data.access ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
             </View>
           ) : (
             <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
               onChange={(w, l: Level) => setShare((xs) => share(xs, cur.id, w, l))} onRemove={(w) => { setShare((xs) => unshare(xs, cur.id, w)); showToast(`${w} no longer has ${cur.name}.`); }}
               onAdd={(w, l: Level) => { setShare((xs) => share(xs, cur.id, w, l)); showToast(`${w} can now use ${cur.name}.`); }} />
           )}
+          {!data.real ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
         </Sec>
         <Sec title="Activity">
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
@@ -177,9 +181,9 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   if (phone && cur && sel) return <Frame title={cur.name} sub={cur.detail} onBack={() => setSel(null)}>{detail}{sheet}{addSheet}</Frame>;
 
   return (
-    <Frame title="Vault" sub="Logins, keys and connections." actions={<>{scope === "mine" ? <Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={() => data.lock().then(() => { setLocked(true); }).catch((e) => fail(e, "That did not lock it."))} /> : null}{data.real ? <Button kind="ghost" size="sm" label="More" onPress={() => router.push("/u/vault-more" as never)} /> : null}<Button kind="primary" size="sm" icon="plus" label="Add" onPress={() => setAdding({ name: "", kind: scope === "mine" ? "secret" : "api-key", value: "" })} /></>}>
+    <Frame title="Vault" sub="Logins, keys and connections." actions={<View className="flex-row items-center gap-s2">{scope === "mine" ? (phone ? <IconButton icon="lock" label="Lock" onPress={doLock} /> : <Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={doLock} />) : null}{data.real ? <Button kind="ghost" size="sm" label="More" onPress={() => router.push("/u/vault-more" as never)} /> : null}{phone ? <IconButton icon="plus" label="Add" kind="primary" onPress={startAdd} /> : <Button kind="primary" size="sm" icon="plus" label="Add" onPress={startAdd} />}</View>}>
       <Scoper scope={scope} onScope={setScope} />
-      <Footnote icon="shield">Values stay hidden until you reveal one. Assistants use an item without ever seeing it, and every use is logged.</Footnote>
+      <Footnote icon="shield">Values stay hidden until you reveal one. Agents use an item without ever seeing it, and every use is logged.</Footnote>
       {items && sum.expired + sum.expiring + sum.unused > 0 ? <Banner tone={sum.expired ? "err" : "warn"} icon="shield">{sum.line}</Banner> : <Text tone="label">{sum.line}</Text>}
       <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
         <View className={phone ? "" : "min-w-0 flex-1"}>{list}</View>

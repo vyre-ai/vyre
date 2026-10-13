@@ -95,7 +95,7 @@ export function over(f) {
       if (r.status === 503) { r.body?.cancel?.().catch(() => {}); return { error: { code: "restarting", message: "the box is restarting; trying again in a moment" } }; }
       const raw = await r.text();
       try { return JSON.parse(raw); }
-      catch { return { error: { code: "unreachable", message: `The box answered ${r.status} with no JSON` } }; }
+      catch { const detail = `The box answered ${r.status} with no JSON`; console.warn(detail); return { error: { code: "unreachable", message: "Vyre could not read your server's answer. Try again.", detail } }; }
     } catch (e) {
       return ac.signal.aborted
         ? { error: { code: "timeout", message: `no answer in ${timeoutMs} ms` } }

@@ -503,7 +503,7 @@ export function personSession(o: {
       }
       const b = (await res.json().catch(() => null)) as { data?: { token?: string } & Record<string, unknown>; error?: { code: string; message: string } } | null;
       const t = b?.data?.token;
-      if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `your home answered ${res.status}` };
+      if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? "Your home did not answer as expected. Try again." };
       // The trade goes straight to the box's address, so its token is the direct path's.
       await setToken(t, o.path ? "direct" : undefined);
       if (o.traded && b?.data) await Promise.resolve(o.traded(b.data)).catch(() => {});
@@ -591,7 +591,7 @@ export async function devicePersonStart(o: {
   // The token is `<id>.<secret>`; an answer that splits the two is joined here.
   const token = TOKEN.test(t) ? t : typeof d?.id === "string" && TOKEN.test(`${d.id}.${t}`) ? `${d.id}.${t}` : "";
   if (!token || (d?.kind !== undefined && d.kind !== "bearer")) {
-    return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `your home answered ${res.status}` };
+    return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? "Your home did not answer as expected. Try again." };
   }
   return { ok: true, token, ...(typeof d?.expires === "number" ? { expires: d.expires } : {}) };
 }

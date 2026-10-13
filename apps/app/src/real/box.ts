@@ -55,8 +55,8 @@ const chatIdOfAnswer = (r: unknown): string => { const x = r as { chat?: unknown
 export type ToolOptions = { server?: string };
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
-  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (MOCK && mockAgentTools[name]) return mockAgentTools[name](given) as T; // and the agent page's (mock-agents.ts)
+  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (MOCK && mockDocumentTools[name]) return mockDocumentTools[name](given) as T; // and the record page's Documents bar (mock-documents.ts)
   if (MOCK && mockMcpTools[name]) return mockMcpTools[name](given) as T; // and the AI keys screen's (mock-mcp.ts)
   if (override) return (await override(name, given)) as T;
@@ -193,4 +193,4 @@ async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: 
 }
 
 /** The words to show for a failed call. */
-export const said = (e: unknown): string => (e instanceof Error && !(e instanceof BoxError) && typeof (e as { code?: unknown }).code === "string" ? e.message : e instanceof BoxError ? (e.code === "offline" || /no JSON/i.test(e.message) ? "Cannot reach your server right now." : /anonymous callers/i.test(e.message) ? "This browser is not signed in to your server yet. Pair it first." : e.message) : "Something went wrong.");
+export const said = (e: unknown): string => (e instanceof Error && !(e instanceof BoxError) && typeof (e as { code?: unknown }).code === "string" ? e.message : e instanceof BoxError ? (e.code === "offline" || /could not read your server's answer|no JSON/i.test(e.message) ? "Cannot reach your server right now." : /anonymous callers/i.test(e.message) ? "This browser is not signed in to your server yet. Pair it first." : e.message) : "Something went wrong.");

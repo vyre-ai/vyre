@@ -779,7 +779,7 @@ export class Vault {
 
   /** The Secret Key for the person's own device to carry (escrow or a new device). Only the tool's caller list and presence stand between this and a caller; it is never logged. */
   async exportSecretKey(who = "cli") {
-    if (!this.hasAccount()) throw Object.assign(new Error("this vault has no account password yet"), { code: "no_account" });
+    if (!this.hasAccount()) throw Object.assign(new Error("this vault has no account password yet: set one with vault.account.create"), { code: "no_account" });
     const text = await this.secretKey();
     this.audit("secretkey-export", null, who, true, null);
     return { secretKey: text, acct: parseSecretKey(text).acct };

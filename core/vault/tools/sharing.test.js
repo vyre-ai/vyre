@@ -45,6 +45,7 @@ test("refusals: no such item, not a person, a bad id or level; owner surfaces on
   await assert.rejects(call("vault.access.set", { name: "stripe", kind: "role", subject: "admin", level: "use" }), /person/);
   await assert.rejects(call("vault.access.set", { name: "stripe", kind: "person", subject: "../x y", level: "use" }), /person/);
   await assert.rejects(call("vault.access.set", { name: "stripe", kind: "person", subject: BOB, level: "root" }), /level/);
+  await assert.rejects(call("vault.access.set", { name: "stripe", kind: "person", subject: "per_" + "z".repeat(26), level: "use" }), /not a member/);
   for (const n of ["vault.access.get", "vault.access.set"]) for (const c of ["module", "mcp", "harness", "device", "mobile"]) assert.ok(!reg.get(n).callers.includes(c), `${n} not for ${c}`);
 });
 
@@ -53,4 +54,15 @@ test("sharing is audited without a value", async () => {
   await call("vault.access.set", { name: "stripe", kind: "person", subject: BOB, level: "edit" });
   assert.equal(audit[0][0], "share");
   assert.ok(!JSON.stringify(audit).includes("secret"));
+});
+
+test("a grant for someone who left can still be taken away, and a kernel that cannot list members refuses a new one", async () => {
+  const { call, grants } = rig();
+  await call("vault.access.set", { name: "stripe", kind: "person", subject: BOB, level: "use" });
+  const gone = rig();
+  await gone.call("vault.access.set", { name: "stripe", kind: "person", subject: "per_" + "z".repeat(26), level: null });
+  assert.equal(grants.length, 1);
+  const blind = /** @type {Map<string, any>} */ (new Map());
+  register({ ctx: { kernel: { space: "spc_x", mint: { make: async () => {}, end: async () => {}, list: async () => [] }, chain: async () => { throw new Error("no"); } } }, vault: /** @type {any} */ ({ row: () => ({}), access: { urn: async () => "u" }, audit() {} }), tool: (n, c, d, i, run) => blind.set(n, run) });
+  await assert.rejects(blind.get("vault.access.set")({ name: "stripe", kind: "person", subject: BOB, level: "use" }, {}), /not a member/);
 });

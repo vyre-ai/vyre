@@ -125,6 +125,8 @@ export const MODULES = {
   "core/link": ["identity", "Makes a Mac and a server one system: pairing, tools and events both ways."],
   "core/mail": ["outside", "One capability over every mail account the person connected."],
   "core/mcp": ["outside", "The hub for outside MCP servers; each is a sender at the Gate."],
+  "core/mcpconn": ["work", "A person's named AI keys, local and hosted /mcp, one-tap revoke."],
+  "core/microsoft": ["outside", "Microsoft 365 mail, calendar and OneDrive through the Space's firm app, read-only, as one mailbox at a time."],
   "core/memory": ["memory", "The memory graph and the curator."],
   "core/mentions": ["ui", "The # tag: one picker over everything a person may mention."],
   "core/modulelist": ["system", "The owner's reset of the accepted module list, for a deliberate downgrade."],

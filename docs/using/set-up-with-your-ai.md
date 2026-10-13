@@ -2,7 +2,7 @@
 title: Give your own AI a key
 summary: Make a named key for each of your AIs (Claude Code, Codex, an agent in another tool). It acts as you in Vyre, with the access you have, on this computer or hosted over HTTP. Settings lists the keys and revokes one with a tap.
 audience: users, agents
-owner: import-mcp
+owner: app-design
 status: draft
 ---
 
@@ -35,7 +35,7 @@ Revoke is one tap and needs no yes. The key stops working at once: the next call
 
 ## What a key can do
 
-A key is you, on a key you made. It has exactly the access you have, judged by the same rules as the app, so it can do what you do in the app: make projects, agents, record types, templates and Flows, and file sessions in projects. It cannot do more than you can, and it serves the same tools `vyre mcp` does.
+A key is you, on a key you made. It has exactly the access you have, judged by the same rules as the app, so it can do what you do in the app: make projects, agents, object types, templates and Playbooks, and file sessions in projects. It cannot do more than you can, and it serves the same tools `vyre mcp` does.
 
 It still cannot send, publish or pay for you: those wait for your yes, like any assistant's. What you prove with a face or a key stays yours (pairing, devices, your passkey, the Vault's providers, and making or revoking keys). Each change a key makes is recorded in Activity under its name.
 
@@ -44,7 +44,7 @@ It still cannot send, publish or pay for you: those wait for your yes, like any 
 In a new Claude Code session, run the prompt `/mcp__vyre__setup-vyre`. In Codex, or anywhere prompts are not offered, tell it to call `mcpconn_guide` and follow it. The guide walks your AI through four steps:
 
 1. Look. It lists the sessions on this computer (`import_sessions_list`: folder, size, date, never what was said) and reads your project folders.
-2. Propose. It writes a plan per client: project, instructions, agents, records, templates, flows. You correct it.
+2. Propose. It writes a plan per client: project, instructions, agents, objects, templates, playbooks. You correct it.
 3. Make. It creates what you agreed to, in order, and tells you what is waiting on your yes.
 4. Bring the sessions in. It tells you how many, how big and from where, and calls `import_sessions_run` with the sessions and the project each belongs to; sending them is held as a card for you to approve.
 

@@ -1,6 +1,6 @@
 ---
 title: Access list
-summary: Who has something and at which level, Can use or Can edit; each row changes its level or removes the person, and Add lists the people and assistants not yet on it.
+summary: Who has something and at which level, Can use or Can edit; each row changes its level or removes the person, and Add lists the people and agents not yet on it.
 audience: builders
 owner: app-design
 status: draft
@@ -17,8 +17,8 @@ The one list for sharing: Vault items first, then flows, agents and projects. Tw
 
 ## Anatomy
 
-A dense row per person or assistant: an avatar (32), the name, the level in `--label`, and a menu button at the end holding Can use, Can edit and Remove. Under the rows,
-"Add a person or assistant" opens a menu of the candidates not yet listed, each with both levels. With nobody on it the list says "Only you."
+A dense row per person or agent: an avatar (32), the name, the level in `--label`, and a menu button at the end holding Can use, Can edit and Remove. Under the rows,
+"Add a person or agent" opens a menu of the candidates not yet listed, each with both levels. With nobody on it the list says "Only you."
 
 ## Behaviour
 

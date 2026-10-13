@@ -9,7 +9,7 @@ status: draft
 # Secret field
 
 One row for a secret: the name's value as a mask, with Reveal and Copy at the end. It is the one way the Vault, sending services, firm keys and MCP keys show a value, so
-they all behave the same. For now a reveal is a click (no Touch ID), and an assistant is never given the value.
+they all behave the same. For now a reveal is a click (no Touch ID), and an agent is never given the value.
 
 | Surface | Implementing file | Status |
 |---|---|---|
