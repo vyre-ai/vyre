@@ -262,7 +262,7 @@ export const MEMBER_OUTWARD = Object.freeze({});
 export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
 
 /**
- * The tool groups a role can switch on (core/roles/catalogue.js TOOL_IDS: mail, calendar, documents, files, publish, computers, browser). A group is a list of tool names, and every tool in one is on OWNER_ONLY:
+ * The tool groups a role can switch on (lib/roles/catalogue.js TOOL_IDS: mail, calendar, documents, files, publish, computers, browser). A group is a list of tool names, and every tool in one is on OWNER_ONLY:
  * a Member does not have it, and a custom role that turns the group on gives its holders exactly these tools and nothing else. Only the tools a person USES are in a group; the set-up, admin and
  * approval tools of the same areas (accounts and connections, domains, edge, secrets, limits, a member's computer, the owner's yes on a publish) stay the owner's and an admin's whatever a role says.
  * Left out on purpose until each is scoped to the person: the planner's event tools (agenda, get, update, delete, done, snooze, dismiss, calendar.*), which show any person's events.
