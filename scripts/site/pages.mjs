@@ -12,7 +12,6 @@ export function page404(ctx) {
     ['Point your agent', '/agenthome/', 'Let your AI agent map your business onto Vyre'],
     ['Roadmap', '/direction/', 'Where Vyre is going, with no dates promised'],
     ['Release notes', `${REPO}/releases/latest`, 'What changed in the latest release'],
-    ['Star on GitHub', REPO, 'Free, open source, Apache 2.0'],
   ];
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
