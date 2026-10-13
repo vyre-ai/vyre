@@ -6,7 +6,7 @@ import { ComputersSection } from "./ComputersSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
+import { Avatar, Banner, LogoPicker, SpaceTile, Button, Card, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { useSpaces } from "../shell/state";
@@ -37,6 +37,8 @@ export function SpacesScreen() {
   const ELSEWHERE = MOCK ? loadSetupElsewhere() : (() => { const s = SPACES.find((x) => x.setup && x.setup.device.id !== deviceId); return s?.setup ? { device: s.setup.device.name, space: s.id, spaceName: s.name } : null; })();
   const fail = (m: string | null) => { if (m) showToast(m); return m === null; };
   const setShowing = useSpaces((s) => s.setShowing);
+  const setLook = useSpaces((s) => s.setLook);
+  const kept = useSpaces((s) => (space ? s.looks[space]?.logo : undefined));
   const [sheet, setSheet] = useState<Sheetv>(null);
   const member = (id: string) => members.find((m) => m.id === id);
   const open = (m: Member) => setSheet({ kind: "role", id: m.id, role: m.role, scope: m.scope ?? projectNames[0] ?? "", days: String(m.left && m.left > 30 ? 90 : m.left && m.left > 7 ? 30 : 7) });
@@ -67,7 +69,7 @@ export function SpacesScreen() {
       <View className="flex-row flex-wrap gap-s3">
         {SPACES.map((s) => (
           <Card flush key={s.id} className="min-w-menu flex-1">
-            <Row lead={<Avatar of={spaceRef(s.name)} size={56} />} title={s.name} chevron className="py-s3"
+            <Row lead={<SpaceTile space={{ id: s.id, name: s.name }} size={56} />} title={s.name} chevron className="py-s3"
               sub={<View className="gap-s1"><Text mono size="secondary" tone="label" numberOfLines={1}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${roleLabel(s.role as Role)}, lives on ${s.home}`}</Text></View>}
               onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} />
           </Card>
@@ -75,6 +77,7 @@ export function SpacesScreen() {
       </View>
       {cur && canInvite && !MOCK ? <ComputersSection space={cur.id} spaceName={spaceName} /> : null}
       {cur && canInvite && !MOCK ? <ZoneSection space={cur.id} zone={(cur as { zone?: string | null }).zone ?? null} spaceName={spaceName} onSaved={() => void load()} /> : null}
+      {cur && canInvite ? <Sec title="Logo"><Card><LogoPicker space={{ id: cur.id, name: cur.name, logo: kept }} onChange={(logo) => setLook(cur.id, { logo: logo ?? undefined })} /></Card></Sec> : null}
       <Sec title={`Members of ${spaceName}`}>
         <Card flush>
           {members.map((m, i) => {

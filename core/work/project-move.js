@@ -11,6 +11,7 @@
 import { carryChat, mapChatPath, carriedOf } from "./chat-carry.js";
 import crypto from "node:crypto";
 import { isSealedValue } from "../../lib/sealed.js";
+import { projectDir } from "../../lib/files/layout.js";
 
 const PROJECT = "project";
 const MAX_RECORDS = 2000;
@@ -126,7 +127,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
   if (!target) {
     const slug = await freeSlug(to, root.data.slug || "project");
     const made = await to.records.create(to.chain, PROJECT, { name: root.data.name, slug, status: "active", memory_scope: `project:${slug}`, moved_from: pointer, ...(root.data.repo ? { repo: root.data.repo } : {}) });
-    target = await to.records.update(to.chain, PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
+    target = await to.records.update(to.chain, PROJECT, made.id, { drive_path: projectDir(made.id) }, made.version);
   }
   state.target = target.urn;
   await persist();

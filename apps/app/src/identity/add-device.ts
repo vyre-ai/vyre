@@ -12,12 +12,13 @@ import { shellKeyHeld } from "./mac-key.ts";
 import * as C from "../../../../kernel/identity/chain.js";
 import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
 import { joinFromPhone } from "@vyre/relay-client/browserjoin.js";
+import { signInByName } from "@vyre/relay-client/signin.js";
 import { Platform } from "react-native";
 import { getAgreeKey } from "../crypto/agree-key";
 import { about, presenceKey, relayCrypto, relayKeyStore } from "../api/relay";
 import { afterPaired } from "../real/pairing";
 import { relayUrl } from "../api/relay-url";
-import { addDeviceCore } from "./add-device-core.js";
+import { addDeviceCore, pairRoute } from "./add-device-core.js";
 import { generateDeviceKey } from "./keys.js";
 import { entryAttest, entryEnclave } from "../keys";
 import { loadIdentity, saveIdentity } from "./store.ts";
@@ -30,6 +31,10 @@ export type AddOpts = {
   payload?: string;
   /** The short typed code (WINK-NNPP-PPPP): the relay is this app's own. */
   code?: string;
+  /** Sign in by name: no code. The name is asked on the relay, a device already signed in shows three words and the person approves there (relay/client/signin.js). */
+  byName?: string;
+  /** With byName: the identity id the name resolved to; a join that lands on another identity is refused. */
+  expectIdentity?: string;
   deviceLabel: string;
   onWords?: (words: string) => void;
   onAck?: (ack: string) => void;
@@ -52,7 +57,10 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
     attest: (k) => entryAttest(k.publicKey),
     agree: () => agreePublic(),
     pageHeld: () => shellKeyHeld(),
-    pair: async ({ key: k, onWords, onAck, signal }) => (Platform.OS === "web" && o.payload !== undefined ? joinFromBrowser(o, k, onWords, signal) : pair({
+    pair: async ({ key: k, onWords, onAck, signal }) => pairRoute(o, Platform.OS) === "name" ? signInByName({
+      name: o.byName, relay: relayUrl(), key: k, deviceName: o.deviceLabel, crypto: relayCrypto(), keyStore: relayKeyStore(), about, ...(await presenceKey() ? { presenceKey: await presenceKey() } : {}),
+      ...(o.expectIdentity ? { expectIdentity: o.expectIdentity } : {}), ...(onWords ? { onWords } : {}), ...(signal ? { signal } : {}),
+    }) : (pairRoute(o, Platform.OS) === "browser" ? joinFromBrowser(o, k, onWords, signal) : pair({
       // The key this device signs its paired session with is the presence key reported here, never the identity key (platform-3).
       ...(await presenceKey() ? { presenceKey: await presenceKey() } : {}),
       ...(o.payload !== undefined ? { payload: o.payload } : { code: o.code, relay: relayUrl() }),
