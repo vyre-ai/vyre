@@ -1,4 +1,5 @@
-// Share a Flow with a person or a team or role: "Can use" (run it, see it) or "Can edit". A real build calls flows.access.get and flows.access.set (the Flows module's store, lib/access.js); the sample build keeps the levels in memory.
+// Share a Flow with a person: "Can use" (run it, see it) or "Can edit". A real build calls flows.access.get and flows.access.set (kernel grants on that Flow); the sample build keeps the levels in memory
+// and also offers teams and roles, which the engine does not take yet.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Row, Select, Sheet, Text, allowsMock, showToast } from "@vyre/ui";
@@ -21,24 +22,19 @@ function useRealAccess(id: string, open: boolean) {
     if (!open || allowsMock()) return;
     let live = true;
     (async () => {
-      const [acc, mem, rl] = await Promise.all([callT<{ access?: { kind: string; subject: string; level: string }[] }>("flows.access.get", { id }), callT<any>("spaces.members.list", { space }), callT<any>("roles.list", {})]);
+      const [acc, mem] = await Promise.all([callT<{ access?: { subject: string; level: string }[] }>("flows.access.get", { id }), callT<any>("spaces.members.list", { space })]);
       if (!live) return;
       if (acc.error) { setErr(acc.error.message); return; }
-      setLevels(Object.fromEntries((acc.data?.access ?? []).map((a) => [`${a.kind}:${a.subject}`, a.level])));
-      const roleRows: any[] = Array.isArray(rl.data) ? rl.data : Array.isArray(rl.data?.roles) ? rl.data.roles : [];
+      setLevels(Object.fromEntries((acc.data?.access ?? []).map((a) => [a.subject, a.level])));
       const rows: any[] = Array.isArray(mem.data) ? mem.data : Array.isArray(mem.data?.members) ? mem.data.members : [];
-      setPeople([
-        ...roleRows.map((r) => ({ id: `role:${String(r.id || r.role || r.name)}`, label: `A team or role: ${String(r.label || r.name || r.id)}` })).filter((r) => r.id !== "role:owner"),
-        ...rows.filter((m) => m.role !== "owner").map((m) => ({ id: `person:${String(m.person)}`, label: String(m.name || m.displayName || m.role_label || m.person) })),
-      ]);
+      setPeople(rows.filter((m) => m.role !== "owner").map((m) => ({ id: String(m.person), label: String(m.name || m.displayName || m.role_label || m.person) })));
     })();
     return () => { live = false; };
   }, [id, open, space]);
-  const set = async (key: string, level: string) => {
-    const [kind, ...rest] = key.split(":");
-    const r = await callT("flows.access.set", { id, kind, subject: rest.join(":"), level: level || null });
+  const set = async (person: string, level: string) => {
+    const r = await callT("flows.access.set", { id, kind: "person", subject: person, level: level || null });
     if (r.error) { showToast(r.error.message); return; }
-    setLevels((l) => ({ ...l, [key]: level }));
+    setLevels((l) => ({ ...l, [person]: level }));
   };
   return { people, levels, err, set };
 }
@@ -63,6 +59,7 @@ export function ShareFlow({ id, options }: { id: string; options: FlowOptions | 
             <Row key={w.id} dense title={w.label} end={<View style={{ width: 150 }}><Select value={level(w.id)} options={LEVELS} onChange={(l) => pick(w.id, l)} /></View>} />
           ))}
           {!mock && !real.err && !who.length ? <Text tone="muted">There is nobody else in this space to share it with yet.</Text> : null}
+          {!mock ? <Text size="caption" tone="label">Sharing with a team or role comes later: today a Flow is shared with people.</Text> : null}
           <View className="self-start"><Button kind="primary" label="Done" onPress={() => setOpen(false)} /></View>
         </View>
       </Sheet>
