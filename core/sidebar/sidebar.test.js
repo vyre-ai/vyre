@@ -67,9 +67,9 @@ test("sidebar: hide, show, move, group and remove", async t => {
   await c("sidebar.edit", { op: "show", key: "place:vault" });
   g = (await c("sidebar.get", {})).data;
   assert.ok(!g.entries.find((/** @type {any} */ e) => e.id === "vault").hidden);
-  await c("sidebar.edit", { op: "move", key: "place:kits", index: 0 });
-  assert.equal((await c("sidebar.get", {})).data.entries[0].id, "kits");
-  await c("sidebar.edit", { op: "group", what: "Drive", group: "Work" });
+  await c("sidebar.edit", { op: "move", key: "place:memory", index: 0 });
+  assert.equal((await c("sidebar.get", {})).data.entries[0].id, "memory");
+  await c("sidebar.edit", { op: "group", what: "Files", group: "Work" });
   assert.equal((await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "drive").group, "Work");
   await c("sidebar.edit", { op: "remove", what: "Flows" });
   assert.equal((await c("sidebar.get", {})).data.entries.find((/** @type {any} */ e) => e.id === "flows").hidden, true, "a place is hidden, not deleted");
