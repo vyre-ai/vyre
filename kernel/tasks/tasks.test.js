@@ -34,7 +34,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue", "assistant"];
-  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "records.read", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "records.read", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send", ...((over.agentDecide || []).includes(a) ? ["tasks.decide"] : [])]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -826,7 +826,7 @@ test("who reads a task: only the chain's PERSON counts, never a later hop; an as
 const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, ...over });
 
 test("agent checker: it passes the internal check under its own chain, and the card says an agent approved", async () => {
-  const r = rig();
+  const r = rig({ agentDecide: ["research"] });
   const t = await r.tasks.request(owner(), internal());
   await r.tasks.start(asIntake(), t.id);
   const w = await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
@@ -837,7 +837,7 @@ test("agent checker: it passes the internal check under its own chain, and the c
 });
 
 test("agent checker: it is never its own doer, nor a send's checker, nor a stage's, and a person checker still works", async () => {
-  const r = rig();
+  const r = rig({ agentDecide: ["research"] });
   await assert.rejects(() => r.tasks.request(owner(), internal({ checker: actor("agent", "intake") })), { code: "same_actor" }, "not the doer");
   await assert.rejects(() => r.tasks.request(owner(), draftTask({ checker: actor("agent", "research") })), { code: "not_allowed" }, "not a send");
   await assert.rejects(() => r.tasks.request(owner(), internal({ stage: "Drafting" })), { code: "not_allowed" }, "not a stage hold");
