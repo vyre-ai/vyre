@@ -13,6 +13,7 @@ import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
 import { documentRow } from "./record.js";
+import { expandPaths, LinkError } from "../../lib/link/path.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -20,6 +21,18 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,80}$/;
 const SLUG = (/** @type {string} */ s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "document";
+
+/** What a template reads below one record alias, as paths relative to the record: "contact.spouse.name" gives ["spouse", "name"], and a loop over "contact.children" with a field "name" gives ["children", "name"]. @param {string} alias @param {{ names: string[], loops: string[], loopLeaves?: Record<string, string[]> }} asked */
+function pathsUnder(alias, asked) {
+  /** @type {string[][]} */ const out = [];
+  const under = (/** @type {string} */ full) => (full.startsWith(alias + ".") ? full.slice(alias.length + 1).split(".") : null);
+  for (const n of asked.names) { const p = under(n); if (p && p.length > 1) out.push(p); }
+  for (const l of asked.loops) {
+    const base = under(l);
+    if (base) for (const leaf of (asked.loopLeaves && asked.loopLeaves[l]) || []) out.push([...base, ...leaf.split(".")]);
+  }
+  return out;
+}
 
 /**
  * Register the Documents tools. Exported for the tests, which hand in a ctx with a stand-in kernel.
@@ -76,6 +89,7 @@ export function registerDocuments(ctx) {
       const tver = i.version ?? (await latest(d, tpath));
       if (!tver) throw refuse(`no template named ${tname} (documents.template.list shows them)`, "not_found");
       const tbytes = Buffer.from(await d.gateway.drive.get(d.chain, tpath, { version: tver, maxBytes: MAX_BYTES }));
+      const asked = placeholders(tbytes);
       /** @type {Record<string, any>} */ const values = { ...(i.values && typeof i.values === "object" && !Array.isArray(i.values) ? i.values : {}) };
       // Records named by reference give their fields under their alias, read under the caller's own grants. One the caller may not see is missing, and said so.
       for (const [alias, urn] of Object.entries(i.records && typeof i.records === "object" ? i.records : {})) {
@@ -85,6 +99,12 @@ export function registerDocuments(ctx) {
         const rec = await d.gateway.records.get(d.chain, s[1], s[2]);
         if (!rec) throw refuse(`${alias}: the record is not there, or is not yours to see`, "not_found");
         values[alias] = rec.data || {};
+        // A placeholder that goes through a link ({contact.spouse.name}, or a loop over a many link) reads the linked record, under the caller's own grants (lib/link/path.js). One that cannot be read stops the document.
+        const paths = pathsUnder(alias, asked);
+        if (paths.length) {
+          try { values[alias] = await expandPaths(values[alias], paths, { space: s[0], read: (type, id) => d.gateway.records.get(d.chain, type, id) }, alias); }
+          catch (e) { if (e instanceof LinkError) throw refuse(`the document was not made: ${e.message}`, e.code); throw e; }
+        }
       }
       // The Space's brand profile is there for every template as `brand` ({brand.name}, {brand.legalName}, {brand.address}, {brand.phone}), unless the caller gave a `brand` of their own.
       if (values.brand === undefined) {

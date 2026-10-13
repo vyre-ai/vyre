@@ -6,7 +6,7 @@ import { isRecordTrigger } from "./logic.js";
 
 /** @typedef {import("./logic.js").Draft} Draft */
 /** @typedef {import("./logic.js").Options} Options */
-/** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, note?: string, address?: boolean }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
+/** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, note?: string, address?: boolean, date?: boolean }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
 /** @typedef {{ title: string, items: Item[], object?: string }} Group  `object`: the object's own label, shown before a field in a chip */
 
 export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)\}/gi;
@@ -56,7 +56,7 @@ export function insertList(d, stepId, o, opt = {}) {
   const t = d.trigger;
   const fieldsOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.fields || [];
   const labelOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.label || type;
-  const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}) });
+  const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}), ...(f && (f.type === "date" || f.type === "datetime") ? { date: true } : {}) });
   if (isRecordTrigger(t) && t.type) out.push({ object: labelOf(t.type), title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
   else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, { name: f })) });
   /** @type {Item[]} */ const steps = [];
@@ -141,3 +141,33 @@ export function history(first) {
 
 /** Addresses a To, From, CC or Reply-To box can offer first: every email-type field of the objects in context, by its own label and object. @param {Group[]} groups @returns {Item[]} */
 export const addressPicks = (groups) => groups.flatMap((g) => g.items.filter((i) => i.address).map((i) => ({ ...i, label: `${i.label} (${g.title.replace(/ \(the record that started the Flow\)$/, "")})` })));
+
+/** The date fields in context, for "Insert a date": a field typed date or datetime, or one whose name says so; plus Now, which has no token the engine reads yet. @param {Group[]} groups @returns {Item[]} */
+export function dateRefs(groups) {
+  const like = (/** @type {string} */ t) => /(^|[._])(date|time|start|end|starts|ends|due|[a-z]+_at|[a-z]+_on|[a-z]+_date)$/i.test(t.replace(/\}$/, ""));
+  const found = groups.filter((g) => g.title !== "Helpful values").flatMap((g) => g.items.filter((i) => i.date || like(i.token)).map((i) => ({ ...i, label: g.object ? `${g.object} · ${i.label}` : i.label })));
+  return [...found, { token: "", label: "Now", known: false, note: "Coming next" }];
+}
+
+export const DATE_DIRS = /** @type {[string, string][]} */ ([["before", "before"], ["at", "at"], ["after", "after"]]);
+export const DATE_UNITS = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"], ["weeks", "weeks"]]);
+export const DATE_FORMATS = /** @type {[string, string][]} */ ([["date", "date"], ["time", "time"], ["datetime", "date and time"], ["weekday", "weekday and date"]]);
+
+/**
+ * One inserted date as a spec: { ref (a token or ""), refLabel, dir, amount, unit, format }. `dateWords` reads it back ("Appointment · Start, minus 1 day, as weekday and date") and `dateToken` is what goes into the text.
+ * Until the engine has date functions, the token is the plain field and the offset and format are not applied: `datePending` says so.
+ * @param {{ ref: string, refLabel: string, dir: string, amount: number, unit: string, format: string }} d
+ */
+export function dateWords(d) {
+  const unit = d.amount === 1 ? d.unit.replace(/s$/, "") : d.unit;
+  const shift = d.dir === "at" || !d.amount ? "" : `, ${d.dir === "before" ? "minus" : "plus"} ${d.amount} ${unit}`;
+  return `${d.refLabel}${shift}, as ${(DATE_FORMATS.find((f) => f[0] === d.format) || ["", d.format])[1]}`;
+}
+/** @param {{ ref: string }} d */
+export const dateToken = (d) => d.ref;
+/** What the engine does not do yet for this date, in words, or null. @param {{ ref: string, dir: string, amount: number, format: string }} d @param {{ engineDates?: boolean }} [o] */
+export function datePending(d, o = {}) {
+  if (!d.ref) return "Now has no value the engine reads yet. Coming next.";
+  if (o.engineDates) return null;
+  return `The ${d.dir !== "at" && d.amount ? "offset and " : ""}format are Coming next: this inserts the field as it is.`;
+}
