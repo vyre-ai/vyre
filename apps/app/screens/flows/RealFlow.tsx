@@ -9,13 +9,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
+import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
 import { retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, recordLines, startRefusal } from "./run-model";
-import { approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { listReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
 import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
@@ -29,6 +30,7 @@ export function RealFlow({ id }: { id: string }) {
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
   const [def, setDef] = useState<unknown>(null);
+  const [nver, setNver] = useState<{ versions: number; active: number | null }>({ versions: 0, active: null });
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
@@ -53,7 +55,7 @@ export function RealFlow({ id }: { id: string }) {
         const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
         if (!live) return;
         setHealth(hl);
-        setG(graph); setDef(m.flow ?? null); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        setG(graph); setDef(m.flow ?? null); listReal().then((rows) => { const r = rows.find((x) => x.id === id); if (r) setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); }).catch(() => {}); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
     })();
@@ -128,6 +130,8 @@ export function RealFlow({ id }: { id: string }) {
         </Sec>
       ) : null}
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
+      {def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}
+      <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
       <Sec title="Run history">
         {runs.length ? (
           <Card flush>
@@ -135,7 +139,7 @@ export function RealFlow({ id }: { id: string }) {
               const s = STATE[r.state] ?? { note: r.state, tone: "plain" as const };
               return (
                 <View key={r.id}>{i ? <Divider /> : null}
-                  <Row selected={runId === r.id} onPress={() => setRunId(runId === r.id ? undefined : r.id)} title={`Run of ${when(r.started_at)}`} sub={r.error?.message || undefined} end={<Chip tone={s.tone}>{s.note}</Chip>} />
+                  <Row selected={runId === r.id} onPress={() => setRunId(runId === r.id ? undefined : r.id)} title={`Run of ${when(r.started_at)}`} sub={runId === r.id ? <RunLines run={r.id} /> : r.error?.message || undefined} end={<Chip tone={s.tone}>{s.note}</Chip>} />
                 </View>
               );
             })}

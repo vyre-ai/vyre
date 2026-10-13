@@ -119,3 +119,17 @@ test("an agent's approval never satisfies a human gate: the outward step after i
   assert.equal(run.state, "waiting", JSON.stringify(run.error || run.steps.send));
   assert.equal(run.steps["send?ask"] && run.steps["send?ask"].status, "waiting", "the send waits for a person at the Gate: " + Object.keys(run.steps).join(","));
 });
+
+test("Try it: flows.simulate on a form Flow with sample data says which steps would run and does nothing", async () => {
+  const w = await world();
+  const { createFlows } = await import("./index.js");
+  const t = createFlows({ kernel: w.kernel, chains: { forFlow: x => w.kernel.chainFor(x), forModule: x => w.kernel.moduleChain(x), forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
+  const flow = { format: 1, name: "try", authorship: "builder", trigger: { on: "web", path: "x" }, steps: [
+    { id: "big", kind: "decide", if: "trigger.amount > 500", then: [{ id: "ask", kind: "ask", to: "role:attorney", title: "Approve" }], else: [{ id: "mk", kind: "create", type: "payment", set: { amount: 1 } }] }] };
+  const made = await t.tools["flows.define"]({ hops: [{ actor: ALEX }] }, { flow });
+  const out = await t.tools["flows.simulate"]({ hops: [{ actor: ALEX }] }, { id: made.id, samples: [{ amount: 600 }] });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(out.matched, 1);
+  assert.ok(out.runs[0].ran.includes("big"));
+  assert.equal(w.kernel.tasks.length, 0, "nothing was made");
+});
