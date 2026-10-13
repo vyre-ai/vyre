@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { Avatar, Banner, Button, Chip, Divider, Icon, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
@@ -15,10 +15,11 @@ import type { ProjectRef } from "./useChatProject";
 import { chatTools } from "../../screens/chat-tools/instance";
 import { ForkRows, TasksPage, ContextPage, TranscriptPage, BackPage } from "../../screens/chat-tools/ChatToolsSheet";
 import { ChatFiles } from "../../screens/chat-tools/ChatFiles";
+import { driveSource } from "../../screens/drive/file-source";
 import { EFFORTS, effortLabel, modeLabel, modesOf, taskLive } from "../../screens/chat-tools/model.ts";
 
-export type PanelPage = "root" | "project" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "files";
-const TITLES: Record<PanelPage, string> = { root: "In this chat", project: "Move to a project", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript and recall", back: "Go back", files: "Files" };
+export type PanelPage = "file" | "root" | "project" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "files";
+const TITLES: Record<PanelPage, string> = { file: "File", root: "In this chat", project: "Move to a project", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript and recall", back: "Go back", files: "Files" };
 const fam = (f: string) => (f === "assistant" ? "assistant" : f === "model" ? "model" : "person");
 
 export type ChatPanelProps = {
@@ -35,6 +36,8 @@ export type ChatPanelProps = {
   thread: string; chat: string; projectSlug?: string | null; session?: string | null; cwd?: string | null;
   state?: { mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null };
   queued?: { queued: number; text: string }[]; away?: { machine?: string; name?: string } | null; otherPlace?: "mac" | "server" | null;
+  /** The file open on the "file" page (a Drive path), and how to open it in Files. */
+  file?: string | null; onOpenInFiles?: (path: string) => void;
   onForked?: (thread: string) => void; replyMode?: string | null; shared?: boolean; onOpenFiles?: () => void;
 };
 
@@ -165,12 +168,13 @@ export function ChatPanel(p: ChatPanelProps) {
     transcript: <TranscriptPage thread={p.thread} />,
     back: p.projectSlug && p.session ? <BackPage project={p.projectSlug} session={p.session} /> : null,
     files: <ChatFiles chat={p.chat} />,
+    file: p.file ? <View style={{ height: 640 }}><FileViewer name={p.file} source={driveSource(p.file)} onOpenInFiles={p.onOpenInFiles ? () => p.onOpenInFiles?.(p.file as string) : undefined} /></View> : null,
   };
 
   const head = (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: 48 }}>
       {p.page !== "root" ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={back} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 }}><Icon name="chev-l" size={20} tone="text" /></Pressable> : null}
-      <Text size="title" strong style={{ flex: 1 }} numberOfLines={1}>{TITLES[p.page]}</Text>
+      <Text size="title" strong style={{ flex: 1 }} numberOfLines={1}>{p.page === "file" && p.file ? p.file.split("/").pop() : TITLES[p.page]}</Text>
       {p.page === "root" ? (
         <>
           <Pressable accessibilityRole="button" accessibilityLabel={p.muted ? "Unmute this chat" : "Mute this chat. No alerts; mentions still reach you"} accessibilityState={{ selected: p.muted }} onPress={() => p.onMute(!p.muted)} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: p.muted ? color["accent-wash"] : "transparent" }}><Icon name="bell" size={18} tone={p.muted ? "accent" : "label"} /></Pressable>
@@ -184,10 +188,8 @@ export function ChatPanel(p: ChatPanelProps) {
 
   if (!p.open) return null;
   if (p.phone) return <Sheet open onClose={p.onClose} title={undefined}>{body}</Sheet>;
+  // Beside the thread, not over it: the thread keeps its width minus the panel's, so nothing is cut off.
   return (
-    <View pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 30 }}>
-      <Pressable accessibilityLabel="Close the chat panel" onPress={p.onClose} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
-      <View accessibilityLabel="In this chat" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 340, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.08)" } as object) : {}) }}>{body}</View>
-    </View>
+    <View accessibilityLabel="In this chat" style={{ width: p.page === "file" ? 520 : 340, flexShrink: 0, backgroundColor: color["surface-2"], borderLeftWidth: 1, borderLeftColor: color.edge, paddingHorizontal: 12, paddingVertical: 8, ...(Platform.OS === "web" ? ({ overflowY: "auto" } as object) : {}) }}>{body}</View>
   );
 }

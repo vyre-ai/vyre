@@ -23,7 +23,7 @@ export async function enrolDevice(o) {
     catch { throw refuse("Cannot reach the names directory right now.", "unreachable"); }
     /** @type {any} */ let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
-    if (!res.ok || !json || json.error || !json.data) throw refuse(String((json && json.error && json.error.message) || `The names directory answered ${res.status}.`), String((json && json.error && json.error.code) || "directory"));
+    if (!res.ok || !json || json.error || !json.data) throw refuse(String((json && json.error && json.error.message) || "The names directory did not answer as expected. Try again."), String((json && json.error && json.error.code) || "directory"));
     return json.data;
   };
   // Build on the list the directory holds now (another device may have changed it), refusing a stale or different one.

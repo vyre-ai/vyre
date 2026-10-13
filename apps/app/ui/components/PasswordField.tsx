@@ -6,7 +6,7 @@ import { Button } from "./Button";
 import { Field } from "./Field";
 import { Text } from "./Text";
 
-const FILL = ["bg-edge", "bg-err", "bg-warn", "bg-accent", "bg-ok"] as const;
+const FILL = ["bg-edge", "bg-err", "bg-warn", "bg-primary", "bg-ok"] as const;
 
 /**
  * A password field with Show and Hide, and, with `meter`, a four step strength bar and one line of advice under it ("Use at least 8 characters"). The bar needs a word as well as a colour,

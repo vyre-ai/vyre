@@ -54,6 +54,8 @@ const S = StyleSheet.create({
 export type BlockCtx = {
   /** A wide screen shows diffs side by side. */
   wide: boolean;
+  /** Whether the thread is wide enough (about 560 points) for a side by side diff; with the chat panel open beside it, it is not, and a diff is one column. Defaults to `wide`. */
+  diffSplit?: boolean;
   onOpenTerminal?: (command: string) => void;
   onOpenInDrive?: (path: string) => void;
   /** A file a model made or changed: open it in the file viewer, here. */
@@ -245,7 +247,7 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
       {ctx.onOpenFile && file.op !== "delete" ? <Button size="sm" kind="ghost" label="Open" onPress={() => ctx.onOpenFile?.(file.path)} /> : null}
-      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
+      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
     </View>
   );
 }
@@ -264,7 +266,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
         {block.files.map((f) => (
           <View key={f.path}>
             <FileHead file={f} ctx={ctx} />
-            <DiffLines file={f} wide={ctx.wide} />
+            <DiffLines file={f} wide={ctx.diffSplit ?? ctx.wide} />
           </View>
         ))}
         <RoomNote note={block.note} />
@@ -296,8 +298,8 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
                 </Pressable>
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
-                    <DiffLines file={full} wide={ctx.wide} />
-                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
+                    <DiffLines file={full} wide={ctx.diffSplit ?? ctx.wide} />
+                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
               </View>
@@ -446,7 +448,7 @@ export function ScreenFrames({ block, ctx }: { block: Extract<Block, { block: "s
   return (
     <Shell icon="globe" title={block.label || "Screen"} sub={block.live ? "Live" : "Last frame"} right={block.live ? <Chip tone="accent">live</Chip> : null}>
       <View style={{ aspectRatio: 16 / 10, borderRadius: 8, overflow: "hidden", backgroundColor: color["code-bg"], alignItems: "center", justifyContent: "center" }}>
-        {frame ? <Image accessibilityLabel="What the assistant sees" source={{ uri: frame }} style={S.s27} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
+        {frame ? <Image accessibilityLabel="What the agent sees" source={{ uri: frame }} style={S.s27} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
       </View>
       {block.live && ctx.onTakeOver ? <View style={S.s12}><Button size="sm" kind="primary" icon="hand" label="Take over" onPress={ctx.onTakeOver} /></View> : null}
     </Shell>

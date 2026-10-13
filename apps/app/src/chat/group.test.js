@@ -16,7 +16,7 @@ test("who parses; a bare id is a person", () => {
   assert.deepEqual(parseWho("alex"), { family: "person", id: "alex" });
 });
 
-test("an assistant says who it acts for; people and models say nothing", () => {
+test("an agent says who it acts for; people and models say nothing", () => {
   assert.deepEqual(authorLabel({ author: "assistant:kit", acts_for: "person:chris", viewer: V }), { name: "kit", family: "assistant", sub: "for Chris" });
   assert.equal(authorLabel({ author: "assistant:juno", acts_for: V, viewer: V }).sub, "for you");
   assert.equal(authorLabel({ author: "assistant:kit", viewer: V }).sub, null);
@@ -92,7 +92,7 @@ test("the sealed note is remembered per chat and survives a broken store", () =>
   assert.doesNotThrow(() => markSealedNoteSeen(broken, "c1"));
   assert.equal(sealedNoteSeen(undefined, "c1"), false);
   assert.match(sealedNoteText({ sealed: 2, assistants: 1 }), /2 sealed fields stay hidden/);
-  assert.match(sealedNoteText({ sealed: 0, assistants: 2 }), /^Assistants here/);
+  assert.match(sealedNoteText({ sealed: 0, assistants: 2 }), /^Agents here/);
 });
 
 test("the group folds a conversation: authors, presence, reactions, pins, threads, marker, fan-out, cuts", () => {
@@ -180,7 +180,7 @@ test("an agent: slot id reads as an assistant-family author, like the older assi
   assert.deepEqual(parseWho("model:codex/gpt-5#1"), { family: "model", id: "codex/gpt-5#1" });
 });
 
-test("names learned from elsewhere are shown, a frame that only has an id never overrides them, and an unnamed assistant row takes the chat's one slot", () => {
+test("names learned from elsewhere are shown, a frame that only has an id never overrides them, and an unnamed agent row takes the chat's one slot", () => {
   const g = createGroup({ viewer: "person:per_me" });
   g.apply({ v: 1, cur: 1, type: "session.participant-joined", data: { who: "person:per_me" } });
   g.apply({ v: 1, cur: 2, type: "session.participant-joined", data: { who: "model:claude/default#1" } });

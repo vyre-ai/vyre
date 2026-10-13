@@ -1,6 +1,6 @@
 // @vyre/ui: the one UI package. Tokens in, components out. Nothing outside this folder may import a UI library
 // (react-native-reusables, @rn-primitives, @tanstack/react-table, @dnd-kit): scripts/check-ui-imports.mjs fails the build if one does.
-export { ThemeProvider, useUiTheme, useAppearance, PHONE_MAX } from "./theme";
+export { ThemeProvider, useUiTheme, useTypeStyle, useAppearance, PHONE_MAX } from "./theme";
 export type { SpaceTheme, PersonTheme, Resolved } from "./theme";
 export { cn } from "./lib/cn";
 export { Text } from "./components/Text";
@@ -95,9 +95,9 @@ export type { PinnedEntry } from "./views";
 export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, LAYOUTS, OPS, MINE, layoutsFor, fieldChoices, filterExpr, buildView, slugify, personalEntry, personalViewsOf, withPersonalViews, canShare, pinnedViews, pinList, unpinList, renameView, deleteView, reorderPinned, sharedEntry } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
+export { MenuRow } from "./blocks/RowMenu";
 export { GroupedList } from "./components/GroupedList";
 export type { Group } from "./components/GroupedList";
-export { MenuRow } from "./blocks/RowMenu";
 export { SecretField, SECRET_REVEAL_MS, SECRET_CLIPBOARD_MS } from "./components/SecretField";
 export { AccessList, LEVEL_WORDS } from "./components/AccessList";
 export type { Level } from "./components/AccessList";
@@ -153,6 +153,12 @@ export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
 export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { FlowBuilder } from "./flows/FlowBuilder";
+export { StepCard } from "./flows/StepCard";
+export { ContextBox } from "./flows/ContextBox";
+export { parseTags, tagLabel, tagToken } from "./flows/tags.js";
+export { flowSentence, fromDefinition as flowFromDefinition, toDefinition as flowDefinition, draftProblems as flowProblems, triggerPhrase, stepSummary as flowStepSummary } from "./flows/logic.js";
+export type { Draft as FlowDraft, DraftStep as FlowDraftStep, Options as FlowOptions } from "./flows/logic.js";
 export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";
 export { draftOf, applyDraft } from "./setup/logic.js";
 export { putField, moveField, regroup, parseRule } from "./setup/typeedit.js";

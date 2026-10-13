@@ -173,6 +173,8 @@ export function ChatScreen(p: ChatScreenProps) {
   // Find in this conversation (Cmd-F): the rows that hold the words, one at a time, the current one scrolled to and lit.
   const [findOpen, setFindOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  // The thread's own width (the chat panel beside it takes some): a diff is side by side only when there is room for two columns.
+  const [threadW, setThreadW] = useState(1000);
   const [findQ, setFindQ] = useState("");
   const [findAt, setFindAt] = useState(-1);
   const matches = useMemo(() => (findOpen ? findMatches(rows.filter((r) => r.kind === "user" || r.kind === "text").map((r) => ({ key: r.key, text: String(store.item(r.key)?.text ?? "") })), findQ) : []), [findOpen, findQ, rows, store]);
@@ -221,6 +223,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
+      diffSplit: !phone && threadW >= 560,
       ...(actions
         ? {
             onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
@@ -251,11 +254,11 @@ export function ChatScreen(p: ChatScreenProps) {
         flashTimer.current = setTimeout(() => setFlash(null), 1800);
       },
       onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
-      onOpenFile: (path: string) => setViewing(path),
+      onOpenFile: (path: string) => { if (phone) setViewing(path); else { setViewing(path); setPanel("file"); } },
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -315,22 +318,24 @@ export function ChatScreen(p: ChatScreenProps) {
   ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   const paneOpen = usePreviewPane();
-  const body = (
-    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
-      <FileViewerSheet path={viewing} onClose={() => setViewing(null)} />
-      <ChatPanel
+  const panelEl = (
+    <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
-        project={chatProject}
+        project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1} replyMode={store.group.replyMode()}
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
+  );
+  const body = (
+    <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
 
@@ -421,7 +426,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {highlights.length ? (
-        <View accessibilityLabel="Highlighted for the assistant" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
           {highlights.map((h) => (
             <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <Icon name="chat" tone="label" />
@@ -473,5 +478,7 @@ export function ChatScreen(p: ChatScreenProps) {
     </View>
   );
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
-  return paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
+  // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
+  return phone ? <>{main}{panelEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}</View>;
 }

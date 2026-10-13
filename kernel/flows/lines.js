@@ -28,7 +28,7 @@ const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const BARE = /^[A-Za-z_][A-Za-z0-9_.:\/@-]*$/;
 const KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const WORDS = new Set(["true", "false", "null"]);
-const FLOW_KEYS = ["name", "label", "description", "authorship", "caps", "trigger", "concurrency", "lock", "stuck_after_ms"];
+const FLOW_KEYS = ["name", "label", "description", "authorship", "caps", "trigger", "concurrency", "lock", "stuck_after_ms", "group"];
 
 export class LinesError extends Error {
   /** @param {string} message @param {number} line */

@@ -2564,6 +2564,62 @@
   "vault.me.update": {
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "google.drive.read": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.drive.search": {
+   "module": "google",
+   "reason": "read-only, scoped to the caller's own accounts (a member's is their own Drive from the firm key)"
+  },
+  "google.members.email": {
+   "module": "google",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before any list, set or clear"
+  },
+  "microsoft.mail.search": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped to the caller's own mailbox (a member's attested work email; no mailbox in the input)"
+  },
+  "microsoft.mail.read": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped to the caller's own mailbox (a member's attested work email; no mailbox in the input)"
+  },
+  "microsoft.calendar.list": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped to the caller's own mailbox (a member's attested work email; no mailbox in the input)"
+  },
+  "microsoft.drive.search": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped to the caller's own mailbox (a member's attested work email; no mailbox in the input)"
+  },
+  "microsoft.drive.read": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped to the caller's own mailbox (a member's attested work email; no mailbox in the input)"
+  },
+  "microsoft.accounts": {
+   "module": "microsoft",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before anything is read or changed"
+  },
+  "microsoft.add": {
+   "module": "microsoft",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before anything is read or changed"
+  },
+  "microsoft.remove": {
+   "module": "microsoft",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before anything is read or changed"
+  },
+  "microsoft.members.email": {
+   "module": "microsoft",
+   "reason": "owner only: the handler checks the kernel's chain for the Space owner before anything is read or changed"
+  },
+  "vault.access.get": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
+  },
+  "vault.access.set": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, deck, capsule); the vault's own member gate refuses a member; the grant is made through the vault module's mint handle for a person only; set asks presence"
   }
  }
 }

@@ -124,6 +124,8 @@
       { "name": "vault.device.sync", "effect": "write", "reach": "person" },
       { "name": "vault.account.enroll-touchid", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.status", "reach": "anyone" },
+      { "name": "vault.access.get", "effect": "read", "reach": "anyone" },
+      { "name": "vault.access.set", "effect": "write", "reach": "anyone" },
       { "name": "vault.me.account.create", "effect": "write", "reach": "anyone" },
       { "name": "vault.me.account.unlock", "effect": "write", "reach": "anyone" },
       { "name": "vault.me.account.reset", "effect": "write", "reach": "anyone" },
@@ -292,7 +294,7 @@
       }
     }
   },
-  "needs": { "kernel": { "reach": true, "membership": true } },
+  "needs": { "kernel": { "reach": true, "membership": true, "mints": [{ "prefix": "vault", "actions": ["vault.use", "vault.edit"] }] } },
   "teaches": {
     "tips": [
       {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},

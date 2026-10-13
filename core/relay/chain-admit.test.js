@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createChainAdmit, chainHelloMessage, limitedOf, CHAIN_HELLO_TAG } from "./chain-admit.js";
+import { createChainAdmit, createRateGate, chainHelloMessage, limitedOf, CHAIN_HELLO_TAG } from "./chain-admit.js";
 
 const IDENT = "per_" + "a".repeat(26), OTHER = "per_" + "b".repeat(26), BOX = "BOXKEY".repeat(8), CH = "c".repeat(16);
 const T0 = 1_700_000_000_000, DAY = 86_400_000;
@@ -257,4 +257,15 @@ test("the Vyre name the hello claims reaches the chain lookup, and only after th
   asked.length = 0;
   assert.equal((await mk(null).check({ ...h, nonce: "o".repeat(20), sig }, CH)).why, "bad_proof");
   assert.deepEqual(asked, [], "a stranger's claimed name is never looked up");
+});
+
+test("chain hellos have a ceiling per channel key and box-wide, before any chain is fetched", () => {
+  let now = 0;
+  const gate = createRateGate({ now: () => now, perKey: 3, total: 5, windowMs: 60_000 });
+  assert.deepEqual([1, 2, 3, 4].map(() => gate("a")), [true, true, true, false], "one key: three a minute");
+  assert.equal(gate("b"), true);
+  assert.equal(gate("c"), true, "five in all");
+  assert.equal(gate("d"), false, "the box-wide ceiling");
+  now += 61_000;
+  assert.equal(gate("a"), true, "and the minute passes");
 });

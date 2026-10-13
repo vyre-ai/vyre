@@ -36,16 +36,16 @@ export const safeGithubUrl = (u: unknown): string => (/^https:\/\/github\.com\//
 
 export type Scope = { projects: "*" | string[]; agents: "*" | string[] } | null;
 export type Who = { mode: "me" | "all" | "some"; projects: string[] };
-export const WHO: ["me" | "all" | "some", string][] = [["me", "Just me and the assistant"], ["all", "All projects, every agent"], ["some", "Only these projects"]];
+export const WHO: ["me" | "all" | "some", string][] = [["me", "Just me and the agent"], ["all", "All projects, every agent"], ["some", "Only these projects"]];
 
 /** What a connection carries, in words. An entry with no scope at all (a box from before scopes) is unknown, not the default. */
 export function scopeLine(scope: unknown): string {
   if (scope === undefined) return "Scope not recorded";
-  if (!isObj(scope)) return "Just you and the assistant";
+  if (!isObj(scope)) return "Just you and the agent";
   const agents = scope.agents === "*" ? "every agent" : Array.isArray(scope.agents) && scope.agents.length ? scope.agents.join(", ") : "";
   if (scope.projects === "*") return agents === "every agent" ? "All projects, every agent" : `All projects${agents ? `, ${agents}` : ""}`;
   const p = Array.isArray(scope.projects) ? scope.projects.join(", ") : "";
-  return p ? `${p}${agents && agents !== "every agent" ? `, ${agents}` : ""}` : "Just you and the assistant";
+  return p ? `${p}${agents && agents !== "every agent" ? `, ${agents}` : ""}` : "Just you and the agent";
 }
 /** A who-choice as the scope connectors.connect takes: null is the default (nothing written), undefined is an unfinished choice (some, none picked). */
 export function scopeOf(w: Who | null | undefined): Scope | undefined {
@@ -143,7 +143,7 @@ export function authWords(s: Server): string {
   return `${AUTH_WORDS[s.auth.type] || s.auth.type}, from ${s.auth.item}`;
 }
 const every = (v: "*" | string[], all: string, one: string) => (v === "*" ? all : v.length ? v.join(", ") : `No ${one}`);
-export const serverScopeLine = (s: Server): string => (s.scope.assistant ? "Just you and the assistant" : `${every(s.scope.projects, "Every project", "project")}, ${every(s.scope.agents, "every agent", "agent")}`);
+export const serverScopeLine = (s: Server): string => (s.scope.assistant ? "Just you and the agent" : `${every(s.scope.projects, "Every project", "project")}, ${every(s.scope.agents, "every agent", "agent")}`);
 export const serverHow = (s: Server): string => (s.transport === "stdio" ? [s.command, ...s.args].join(" ") : s.url);
 /** Every vault item a server uses. */
 export const itemsOf = (s: Server): string[] => [...new Set([s.auth.item, ...s.env.map((e) => e.item)].filter(Boolean))];

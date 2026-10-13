@@ -7,9 +7,9 @@ import fs from "node:fs";
 
 const read = (/** @type {string} */ p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("RC1 (screens/shell/rc.ts, the one switch file): the browser claim is on, sites are off", () => {
+test("RC1 (screens/shell/rc.ts, the one switch file): the browser claim is on, sites are on (0.5)", () => {
   const rc = read("../../screens/shell/rc.ts");
-  assert.match(rc, /sites: false/);
+  assert.match(rc, /sites: true/);
   assert.match(rc, /browserClaim: process\.env\.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0"/, "on unless a build sets the flag to 0, read in the one form Expo inlines");
   assert.ok(!fs.existsSync(new URL("./flags.js", import.meta.url)), "no second switch file");
 });

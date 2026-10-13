@@ -1,10 +1,11 @@
 // The Instructions and Context editors of a folder: an agent's or a project's. One component over a FolderApi, so every folder reads and writes the same way.
-import { useCallback, useEffect, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
-import { Button, Card, Divider, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Button, Card, Divider, ErrorState, Field, IconButton, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
+import { PlainDocsEditor } from "./PlainDocs";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
-import { KEPT_NOTE, READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type FolderApi, type Item } from "./model.ts";
+import { KEPT_NOTE, READ_ONLY_NOTE, filesPath, itemLine, type DocFile, type DocsApi, type FolderApi, type Item } from "./model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -16,38 +17,25 @@ function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { data, err, reload };
 }
 
-/** AGENTS.md and CLAUDE.md, edited in place. With `kept`, one text is shown and saved to both. */
-export function DocsEditor({ api, who, title = "Instructions" }: { api: FolderApi; who: string; title?: string }) {
-  const q = useLoad(() => api.docs(), [api.id]);
-  const [file, setFile] = useState<DocFile>("AGENTS.md");
-  const [text, setText] = useState<Record<DocFile, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
-  const [saved, setSaved] = useState<Record<DocFile, string>>({ "AGENTS.md": "", "CLAUDE.md": "" });
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (q.data) { setText(q.data); setSaved(q.data); } }, [q.data]);
-  const edit = api.canEdit !== false;
-  const shown: DocFile = api.kept ? "AGENTS.md" : file;
-  const dirty = text[shown] !== saved[shown];
-  const save = () => {
-    setBusy(true);
-    api.saveDoc(shown, text[shown]).then(() => { const both = api.kept ? { "AGENTS.md": text[shown], "CLAUDE.md": text[shown] } : { ...saved, [shown]: text[shown] }; setSaved(both); setText(both); showToast("Saved. It applies from the next chat."); }).catch((e) => showToast(say(e))).finally(() => setBusy(false));
-  };
-  if (q.err) return <Card flush><ErrorState title="Instructions did not load" reason={q.err} retry={q.reload} /></Card>;
-  if (!q.data) return <LoadingState rows={4} />;
+/**
+ * An agent's or a project's AGENTS.md and CLAUDE.md. On the shared Markdown viewer and editor (DocsViewer), loaded lazily so the PDF and Office renderers are not part of the page's start; if the viewer
+ * cannot load (or is not in this build), the plain editor (PlainDocs) takes its place. The one switch is USE_VIEWER.
+ */
+const USE_VIEWER = true;
+const Viewer = lazy(() => import("./DocsViewer"));
+
+class Fallback extends Component<{ api: DocsApi; who: string; title?: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? <PlainDocsEditor api={this.props.api} who={this.props.who} title={this.props.title} /> : this.props.children; }
+}
+
+export function DocsEditor({ api, who, title }: { api: DocsApi; who: string; title?: string }) {
+  if (!USE_VIEWER) return <PlainDocsEditor api={api} who={who} title={title} />;
   return (
-    <Sec title={title}>
-      {api.kept ? null : <Segmented label="Instruction file" value={file} onChange={setFile} options={[["AGENTS.md", "AGENTS.md"], ["CLAUDE.md", "CLAUDE.md"]] as [DocFile, string][]} />}
-      <Card className="gap-s2">
-        <Text size="caption" tone="label">{api.kept ? KEPT_NOTE : shown === "AGENTS.md" ? `Who ${who} is and how it works.` : "Extra notes for Claude, kept apart."}</Text>
-        {edit ? null : <Text size="caption" tone="label">{READ_ONLY_NOTE}</Text>}
-        <Field name={`${who}'s ${shown}`} value={text[shown]} onChangeText={(v) => edit && setText((t) => ({ ...t, [shown]: v }))} multiline lines={12} placeholder="Write what every chat here should know before it starts." />
-        {edit ? (
-          <View className="flex-row items-center gap-s2">
-            <Button size="sm" label="Save" disabled={busy || !dirty} onPress={save} />
-            {dirty ? <Button size="sm" kind="ghost" label="Revert" onPress={() => setText((t) => ({ ...t, [shown]: saved[shown] }))} /> : <Text size="caption" tone="label">Saved</Text>}
-          </View>
-        ) : null}
-      </Card>
-    </Sec>
+    <Fallback api={api} who={who} title={title}>
+      <Suspense fallback={<LoadingState rows={4} />}><Viewer api={api} who={who} title={title} /></Suspense>
+    </Fallback>
   );
 }
 

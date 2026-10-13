@@ -2,7 +2,7 @@
 title: Record form
 summary: The create form of any Records type, drawn from its fields.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

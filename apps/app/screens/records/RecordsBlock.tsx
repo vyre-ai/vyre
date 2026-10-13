@@ -8,7 +8,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -97,10 +97,23 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
         <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
+        {phone ? (
+          <>
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
+            <Menu trigger={<IconButton icon="more" label="More" />} items={[
+              { label: "New view", onPress: () => setMaking(true) },
+              { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
+              { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
+            ]} />
+          </>
+        ) : (
+          <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
+          </>
+        )}
       </View>
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
       {world.types.length > TABS_MAX

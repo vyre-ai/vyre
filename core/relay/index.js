@@ -14,7 +14,7 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
-import { createChainAdmit } from "./chain-admit.js";
+import { createChainAdmit, createRateGate } from "./chain-admit.js";
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
@@ -219,6 +219,7 @@ export default {
     };
 
     /** The chain-hello check: the owner's identity, or a member of this home's Space at exactly their role. Built on first use. */
+    const chainRate = createRateGate();
     /** @type {ReturnType<typeof createChainAdmit> | null} */ let chainGate = null;
     const chains = () => (chainGate ??= createChainAdmit({
       boxId: async () => { await keys.ready(); return Buffer.from(k().box.pub).toString("base64url"); },
@@ -373,7 +374,7 @@ export default {
         // the chain cannot be read and the hour of grace is over: refused, not removed (the device is fine; it connects again when the chain can be read)
         if (st.state !== "ok") throw new Error("this device could not be checked against your identity list just now; try again in a few minutes");
         // a lapsed session renews by reconnecting: the grant is made again unless the device holds one
-        await ctx.call("presence.person.chain-grant", { device: id }).catch(() => null);
+        await ctx.call("presence.person.chain-grant", { device: id }).catch(e => ctx.log(`relay: no session grant for chain device ${id} at reconnect: ${String(e && e.message || e).slice(0, 120)}`));
       }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
@@ -396,6 +397,8 @@ export default {
      * the hello as presenceKey and enrolled as for any device) and answers as a paired device. @param {Buffer} pub @param {any} hello @param {string} id
      */
     async function admitChain(pub, hello, id) {
+      // a ceiling before any chain is fetched: per channel key and box-wide (the relay hands this box a key, not an address)
+      if (!chainRate(id)) { ctx.log("relay: chain hello refused (rate: too many chain hellos just now)"); throw new Error("too many sign-in attempts just now; wait a minute and try again"); }
       const r = await chains().check({ ...hello.chain, channel: id }, id);
       if (!r.ok) {
         // the reason for this server's log only; the device hears the one set of words

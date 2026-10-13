@@ -62,10 +62,10 @@ export default function ProjectScreen() {
   const stages = data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null;
   const rail = (r: RailId) => {
     if (r === "stages") return stages;
-    if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No instructions here" body="This project has no id the Drive can keep a folder under." />;
-    if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No context here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No instructions here" body="This project has no id Files can keep a folder under." />;
+    if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No context here" body="This project has no id Files can keep a folder under." />;
     if (r === "access") return slug ? <ProjectAccess slug={slug} /> : null;
-    if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id the Drive can keep files under." />;
+    if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id Files can keep files under." />;
     return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;

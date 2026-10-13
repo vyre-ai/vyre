@@ -33,8 +33,8 @@ export const siteLine = (s: Site): string =>
 export const siteRows = (list: Site[]) => list.map((s) => ({ id: s.name, title: s.name, subtitle: siteLine(s), icon: "sites", accessory: s.status.label, tone: s.status.tone }));
 
 function statusOf(live: Dep | null, cur: Dep): Site["status"] {
-  if (cur.stage === "Approved") return { label: "Waiting on you", tone: "accent" };
-  if (cur.stage === "Preview") return { label: "In preview", tone: "plain" };
+  if (cur.stage === "Approved") return { label: "Needs you", tone: "accent" };
+  if (cur.stage === "Preview") return { label: "Preview", tone: "plain" };
   if (cur.stage === "Draft") return { label: "Draft", tone: "plain" };
   if (live) return { label: "Live", tone: "ok" };
   return { label: "Retired", tone: "plain" };
@@ -72,7 +72,7 @@ export type Draft = { name: string; kind: "repo" | "drive"; ref: string; image: 
 export const BLANK: Draft = { name: "", kind: "repo", ref: "", image: "static", command: "" };
 export const SOURCES: { kind: Draft["kind"]; title: string; body: string; hint: string }[] = [
   { kind: "repo", title: "From a repo", body: "Builds the folder you point at.", hint: "github.com/owner/repo, or a path in a project" },
-  { kind: "drive", title: "From a Drive folder", body: "Publishes the pages in a folder.", hint: "A Drive folder path" },
+  { kind: "drive", title: "From a Files folder", body: "Publishes the pages in a folder.", hint: "A Files folder path" },
 ];
 
 /** The input publish.create takes, or the first thing wrong with the draft in words. */
@@ -92,7 +92,7 @@ const REFUSALS: Record<string, string> = {
   forbidden: "You may not do that in this space.",
   needs_approval: "A person has to decide that first.",
   approval_mismatch: "What would change is different from what you saw. Ask again.",
-  model_cannot_approve: "A person decides this, not an assistant.",
+  model_cannot_approve: "A person decides this, not an agent.",
   already_decided: "That request was already decided.",
   presence_required: "That needs you. Approve on this device, then try again.",
   no_previous: "There is no earlier version to go back to.",
@@ -103,3 +103,13 @@ export const publishRefusal = (code: string | undefined, message: string): strin
 export const domainLine = (d: Domain): string => (d.status === "verified" || d.status === "active" ? "Connected" : d.status === "pending" ? "Waiting for the DNS record" : d.status);
 /** The DNS record to add, from the challenge the box returned (its own words, shown as they came). */
 export const challengeText = (c: unknown): string => (typeof c === "string" ? c : c && typeof c === "object" ? Object.entries(c as Record<string, unknown>).map(([k, v]) => `${k}: ${String(v)}`).join("\n") : "");
+
+export type JobRun = { at: number; ok: boolean; code?: number; seconds?: number; message?: string; output?: string };
+
+/** One run of a job as a line: "Ran in 3 s", "Failed (exit 1): the message", with how long ago. */
+export function jobLine(r: JobRun, now = Date.now()): string {
+  const secs = r.seconds != null ? `${Math.round(r.seconds)} s` : "";
+  const ago = (() => { const m = Math.max(0, Math.round((now - r.at) / 60000)); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; })();
+  const what = r.ok ? `Ran${secs ? ` in ${secs}` : ""}` : `Failed${r.code != null ? ` (exit ${r.code})` : ""}${r.message ? `: ${r.message}` : ""}`;
+  return `${what}, ${ago}`;
+}

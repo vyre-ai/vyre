@@ -2,7 +2,7 @@
 title: Type starter
 summary: Add a type: pick a starting point (blank or from a Kit), see the fields it brings, name it.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

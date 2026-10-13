@@ -12,6 +12,9 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["mcp.mine.list", "lists the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
+  ["mcp.mine.add", "adds an MCP server and its token to the person's own vault: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
+  ["mcp.mine.remove", "removes one of the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],
   ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
   ["spaces.storage.put", "writes the person's own per-member storage: the person's own act until an assistant's write is decided (lead, 0.2.9)"],
   ["spaces.storage.put-if", "writes the person's own per-member storage if unchanged: the person's own act (lead, 0.2.9)"],
@@ -191,6 +194,8 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.bridge", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
+  ["flows.access.get", "who a Flow is shared with is the person's to see: sharing gives others the right to run or change it"],
+  ["flows.access.set", "sharing a Flow gives others the right to run or change it, and an assistant must not widen who can"],
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
   ["work.template.golive", "puts a template version live: the template's owner or an admin in their own name; an assistant proposes it (flows.propose what: template) and the owner approves on a card"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],

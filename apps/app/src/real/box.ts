@@ -20,6 +20,7 @@ import { useSpaces } from "../../screens/shell/state";
 import { mockTools } from "./mock-templates";
 import { mockAgentTools } from "./mock-agents";
 import { mockDocumentTools } from "./mock-documents";
+import { mockMcpTools } from "./mock-mcp";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -42,6 +43,8 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
  * shot with real shapes and no box behind it. Never set in the app itself; only the /gallery route sets it.
  */
 let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
+/** True while a stand-in box is set (the gallery's and the tests'): screens that call through the app's own connection use `tool` instead so the stand-in answers. */
+export const hasBoxOverride = (): boolean => override !== null;
 export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
 
 /**
@@ -54,9 +57,10 @@ const chatIdOfAnswer = (r: unknown): string => { const x = r as { chat?: unknown
 export type ToolOptions = { server?: string };
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
-  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (MOCK && mockAgentTools[name]) return mockAgentTools[name](given) as T; // and the agent page's (mock-agents.ts)
+  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (MOCK && mockDocumentTools[name]) return mockDocumentTools[name](given) as T; // and the record page's Documents bar (mock-documents.ts)
+  if (MOCK && mockMcpTools[name]) return mockMcpTools[name](given) as T; // and the AI keys screen's (mock-mcp.ts)
   if (override) return (await override(name, given)) as T;
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
@@ -191,4 +195,4 @@ async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: 
 }
 
 /** The words to show for a failed call. */
-export const said = (e: unknown): string => (e instanceof Error && !(e instanceof BoxError) && typeof (e as { code?: unknown }).code === "string" ? e.message : e instanceof BoxError ? (e.code === "offline" || /no JSON/i.test(e.message) ? "Cannot reach your server right now." : /anonymous callers/i.test(e.message) ? "This browser is not signed in to your server yet. Pair it first." : e.message) : "Something went wrong.");
+export const said = (e: unknown): string => (e instanceof Error && !(e instanceof BoxError) && typeof (e as { code?: unknown }).code === "string" ? e.message : e instanceof BoxError ? (e.code === "offline" || /could not read your server's answer|no JSON/i.test(e.message) ? "Cannot reach your server right now." : /anonymous callers/i.test(e.message) ? "This browser is not signed in to your server yet. Pair it first." : e.message) : "Something went wrong.");

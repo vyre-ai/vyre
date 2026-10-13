@@ -2,7 +2,7 @@
 title: Field editor
 summary: One pane to define a field of a Records type: name and kind, options, a relation, rules, conditions and who sees it. Includes the choices editor, relation editor, rule builder and visibility matrix.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

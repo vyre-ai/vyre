@@ -1,6 +1,7 @@
 import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
+import WorkEmail from "./WorkEmail";
 import { ComputersSection } from "./ComputersSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
@@ -125,6 +126,7 @@ export function SpacesScreen() {
                 <Segmented label="Ends" value={sheet.days} onChange={(v) => setSheet({ ...sheet, days: v })} options={TEMP_ENDS as [string, string][]} />
               </View>
             ) : null}
+            {MY_ROLE === "owner" && !MOCK && sheet.id !== ME && sheet.role !== "temp" ? <WorkEmail person={sheet.id} /> : null}
             <View className="flex-row flex-wrap gap-s2">
               <Button kind="primary" label="Save" disabled={(sheet.role === "temp" && !sheet.scope) || (sheet.role === member(sheet.id)?.role && sheet.role !== "temp")} onPress={() => { const m = member(sheet.id)!; const to = sheet.role; setSheet(null); void setRole(m.id, to, { scope: sheet.scope, days: Number(sheet.days) }).then((e) => { if (fail(e)) { haptic.approve(); showToast(`${m.name} is now ${roleLabel(to)}.`); } }); }} />
               <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />

@@ -2,7 +2,7 @@
 title: Model map
 summary: Every record type of a space with its counts and the types it links to, on one screen.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

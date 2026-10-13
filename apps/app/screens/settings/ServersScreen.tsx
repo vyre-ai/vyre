@@ -17,6 +17,9 @@ export default function ServersScreen() {
   // What the person's other devices found (the list in the personal vault). Read when this screen opens and not again; it is gone when the screen is.
   const [found, setFound] = useState<{ found: any[]; confirm: any[]; failed: any[] }>({ found: [], confirm: [], failed: [] });
   const [connecting, setConnecting] = useState(false);
+  const [fromList, setFromList] = useState<string[]>([]);
+  const refreshFromList = useCallback(() => { void import("../../src/real/space-list-app").then((m) => m.fromListBoxes()).then(setFromList).catch(() => {}); }, []);
+  useEffect(refreshFromList, [refreshFromList, rows]);
   const load = useCallback(async () => {
     if (peerWanted()) {
       const { listAllSpaces, offlineServers } = await import("../../src/real/space-servers");
@@ -46,7 +49,7 @@ export default function ServersScreen() {
   return (
     <Page title="Servers" sub={serversLine(rows?.length ?? 0)} back="/u/settings">
       {rows && rows.length ? (
-        <Card flush>{rows.map((r) => <Row key={r.key} title={r.name} sub={r.sub} end={r.active && rows.length > 1 ? <Chip>Main</Chip> : undefined} />)}</Card>
+        <Card flush>{rows.map((r) => <Row key={r.key} title={r.name} sub={fromList.includes(r.key) ? `Connected to ${r.name} from your list. ${r.sub}` : r.sub} end={fromList.includes(r.key) ? <Button label="Remove" onPress={() => void import("../../src/real/space-list-app").then((m) => m.removeFromList(r.key)).then(() => { refreshFromList(); void load(); })} /> : r.active && rows.length > 1 ? <Chip>Main</Chip> : undefined} />)}</Card>
       ) : rows ? (
         <Card><EmptyState title="No server yet" body={serversLine(0)} /></Card>
       ) : null}

@@ -147,3 +147,10 @@ test("one person's wrong guesses do not throttle another", async t => {
   await assert.rejects(people.unlock(BOB, { password: PW, secretKey: a.secretKey }), /wait|try again|too many|seconds/i, "Bob is throttled");
   assert.equal((await people.unlock(EVE, { password: PW, secretKey: b.secretKey })).unlocked, true, "Eve is not");
 });
+
+test("status names the account so a device can find its Secret Key, and shows no account before one is made", async t => {
+  const { people } = rig(t);
+  assert.deepEqual(people.status(BOB), { account: false, unlocked: false });
+  const made = await people.create(BOB, { password: PW });
+  assert.deepEqual(people.status(BOB), { account: true, unlocked: true, acct: made.acct });
+});

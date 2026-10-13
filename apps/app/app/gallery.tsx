@@ -9,6 +9,7 @@ import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
 import fx from "../screens/vault/real-box.fixture.json";
 import { setBoxOverride } from "../src/real/box";
+import { RealSite, RealSites } from "../screens/sites/RealSites";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
@@ -272,12 +273,13 @@ function ComposerCompare() {
 
 /** The one chat panel, open on a page: /gallery?f=composer shows it beside the composer; ?f=chat-panel&page=project|effort|... one page. */
 function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
+  const { color } = useUiTheme();
   const [page, setPage] = useState<PanelPage>(first);
   const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
   const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
   const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];
   return (
-    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#8883", borderRadius: 12, width: phone ? 390 : undefined }}>
+    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: color.edge, borderRadius: 12, width: phone ? 390 : undefined }}>
       <ChatPanel open phone={false} page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
         muted={false} pinned={false} onMute={() => {}} onPin={() => {}} onMove={() => {}} onLinkRecord={() => {}}
         project={{ current: cur, projects, move: async (to) => { setCur(projects.find((x) => x.slug === to) ?? null); return null; } }}
@@ -287,10 +289,24 @@ function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: P
 }
 
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string }>();
+  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
+  if (q.f === "sites-real" || q.f === "sites-real-site") {
+    // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.
+    const dep = (id: string, name: string, version: number, stage: string, url: string | null, domains: { host: string; status: string }[] = []) => ({ id, name, version, stage, url, domains });
+    const deps = [dep("d1", "client-intake", 3, "Preview", "https://preview-3.client-intake.example.vyre.run"), dep("d2", "client-intake", 2, "Production", "https://client-intake.example.vyre.run", [{ host: "intake.firm.example", status: "verified" }]), dep("d3", "fee-calculator", 1, "Approved", "https://preview-1.fee-calculator.example.vyre.run"), dep("d4", "menu-site", 4, "Production", null, [{ host: "menu.example.com", status: "waiting" }])];
+    setBoxOverride(async (tool) => {
+      if (tool === "publish.list") return { deployments: deps };
+      if (tool === "publish.status") return { ...deps[0], previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: null, published_at: null, sealed_check: "no sealed values found" };
+      if (tool === "publish.job.attention") return { jobs: [{ deployment: "d4", name: "menu-site", at: Date.now() - 600000, message: "the nightly sync exited 1" }] };
+      if (tool === "publish.job.runs") return { runs: [{ at: Date.now() - 3600000, ok: true, seconds: 4 }, { at: Date.now() - 90000000, ok: false, code: 1, message: "the nightly sync exited 1" }] };
+      if (tool === "vault.list") return { items: [{ name: "Stripe", kind: "api", fields: ["key"] }] };
+      return {};
+    });
+    return <ThemeProvider><Page><View nativeID="fixture">{q.f === "sites-real" ? <RealSites /> : <RealSite />}</View></Page></ThemeProvider>;
+  }
   if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.

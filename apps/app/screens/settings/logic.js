@@ -19,7 +19,7 @@ export const BUDGET_STEPS = [25, 50, 100, 200, 500];
 /** What the person is told when a budget runs out. Nothing else is cut off: the assistant asks first. */
 export function overLine(/** @type {{ name: string, budget: number, used: number }} */ a) {
   const s = usedShare(a.used, a.budget);
-  if (s > 1) return `${a.name} is over its budget. Assistants on it stop and ask you.`;
+  if (s > 1) return `${a.name} is over its budget. Agents on it stop and ask you.`;
   if (s > 0.9) return `${a.name} is close to its budget.`;
   return "";
 }
@@ -42,8 +42,8 @@ export const NOTIFY_ROWS = [
 
 export const PRIVACY_ROWS = [
   ["seal", "Seal new SSN and account fields", "Fields of the sealed kind start sealed. Any field can still be sealed by hand."],
-  ["ask", "Ask before an assistant opens a sealed file", "You approve with Face ID each time."],
-  ["mem", "Memory learns from what assistants read", "Sealed values are never read, so they are never remembered."],
+  ["ask", "Ask before an agent opens a sealed file", "You approve with Face ID each time."],
+  ["mem", "Memory learns from what agents read", "Sealed values are never read, so they are never remembered."],
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
@@ -70,18 +70,18 @@ function all(/** @type {string} */ space) {
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "spark"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
-      ["Your AI keys", "Name a key for each AI that acts as you", "/u/settings/mcp", "terminal"],
+      ["Your AI keys", "Name a key for each AI that acts as you", "/u/settings/mcp", "key"],
       ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "agents"],
       ["Spending limits", "A daily cap per provider", "/u/settings/spend", "budget"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
-      ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
-      ["What my assistant may do", "Turn tools and areas off", "/u/settings/assistant-access", "filter"],
+      ["What my agents can see", "Per space", "/u/settings/seeing", "eye"],
+      ["What my agent may do", "Turn tools and areas off", "/u/settings/assistant-access", "filter"],
     ] },
     { title: "Devices", rows: [
       ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
       ["Servers", "Your servers and the Space on each", "/u/settings/servers", "server"],
       ["Backups", "Which Spaces are backed up", "/u/settings/backups", "storage"],
-      ["Access", "People, assistants, Kits and Flows", "/u/access", "access"],
+      ["Access", "People, agents, Kits and Flows", "/u/access", "access"],
     ] },
     { title: space, rows: [
       ["Customize", "Types, fields, stages", "/u/settings/customize", "records"],
@@ -97,7 +97,7 @@ function all(/** @type {string} */ space) {
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
       ["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"],
-      ["Assistants", "Your assistants and agents", "/u/settings/assistants", "assistants"],
+      ["Assistants", "Your agents and agents", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
       ["All settings", "Every setting, in one place", "/u/settings/all", "settings"],

@@ -4,7 +4,7 @@
 // locked, or a list that could not be read, changes nothing; a leave made then is kept on this device and written at the next open. Each device keeps two small counters, never the list: the highest seq it has
 // seen (a lower one is a rollback) and the removals not yet written. Connecting a listed server uses its pinned box key through `pairByChain` (the server's admission of a chain device, lane 2) and no typed code.
 // Pure: every outside thing (the vault's tools, the pairing, the counters) comes in as a port.
-import { ITEM, entriesFromDevice, mergeLists, notOlder, pruneTombstones, toPair, unpinned, withAdded, withRemoved, isPinned } from "./space-list.js";
+import { FIELD, ITEM, entriesFromDevice, mergeLists, notOlder, pruneTombstones, toPair, unpinned, withAdded, withRemoved, isPinned } from "./space-list.js";
 import { readList, writeList } from "./space-list-vault.js";
 
 /** @typedef {import("./space-list.js").Entry} Entry */
@@ -16,6 +16,19 @@ import { readList, writeList } from "./space-list-vault.js";
 export const onlyTheList = (tool) => (/** @type {string} */ name, /** @type {Record<string, unknown> | undefined} */ input) => {
   if (!/^vault\./.test(name) || !input || input.name !== ITEM) return Promise.reject(Object.assign(new Error("That is not the list of your servers."), { code: "not_the_list" }));
   return tool(name, input);
+};
+
+/** The same four vault calls the list port makes, answered by a member's personal store (vault.me.store.*, key vyre-space-list, the JSON as the value). The owner keeps the vault note; a member has no vault note, only this store. A locked store refuses with code locked, as the vault does. @param {(name: string, input?: Record<string, unknown>) => Promise<any>} tool */
+export const memberTool = (tool) => async (/** @type {string} */ name, /** @type {Record<string, any> | undefined} */ input) => {
+  if (!input || input.name !== ITEM) throw Object.assign(new Error("That is not the list of your servers."), { code: "not_the_list" });
+  const KEY = ITEM;
+  if (name === "vault.item" || name === "vault.reveal") {
+    const v = await tool("vault.me.store.get", { key: KEY });
+    if (v === null || v === undefined) throw Object.assign(new Error("No list yet."), { code: "not_found" });
+    return name === "vault.item" ? { name: ITEM, kind: "note" } : { value: String(v) };
+  }
+  if (name === "vault.put" || name === "vault.update") return tool("vault.me.store.put", { key: KEY, value: input.fields?.[FIELD] });
+  throw Object.assign(new Error("That is not the list of your servers."), { code: "not_the_list" });
 };
 
 /**

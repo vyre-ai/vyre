@@ -2,7 +2,7 @@
 title: Status pill
 summary: The one neutral pill for where something is in its stages ("Stage 2 of 5"), and the one violet variant that says it needs you.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 

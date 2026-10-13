@@ -23,7 +23,7 @@ export function SpendScreen() {
       <Banner>{`Today, ${data?.day || "UTC"} (UTC). At a provider's daily cap its work pauses with one line saying how to raise it; nothing asks first.`}</Banner>
       {err ? <Card flush><ErrorState title="Spend did not load" reason={err} retry={load} /></Card> : null}
       {!data && !err ? <LoadingState rows={3} /> : null}
-      {data && !data.rows.length ? <Card><EmptyState title="Nothing spent today" body="Spend per provider shows here once an assistant has worked." /></Card> : null}
+      {data && !data.rows.length ? <Card><EmptyState title="Nothing spent today" body="Spend per provider shows here once an agent has worked." /></Card> : null}
       {data && data.rows.length ? (
         <Card flush>
           {data.rows.map((p, i) => (
