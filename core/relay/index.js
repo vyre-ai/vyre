@@ -1367,6 +1367,7 @@ export default {
       input: obj({ id: str }, ["id"]),
       run: async input => {
         const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired, via_chain FROM relay_devices WHERE id = ?").get(String(input.id)));
+        let via = null; try { via = row && row.via_chain && row.removed_at == null ? JSON.parse(row.via_chain) : null; } catch { via = null; }
         // a chain device is judged against the CURRENT chain at each call (read again at most every 5 minutes): off the list it is removed here; with the chain unreadable past the grace it is refused without being removed;
         // `limited` is recomputed from the entry now, never read from what was true when it was admitted
         let now_ = null;
