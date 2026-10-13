@@ -33,12 +33,9 @@ export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; 
   }, [refId, n, name]);
   const { menu, sheets } = useChatMenu(rows ?? [], () => setN((x) => x + 1));
   const [now] = useState(Date.now());
-  const [open, setOpen] = useState<string | null>(null);
-  const source = useMemo(() => (open ? driveSource(open) : null), [open]);
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
-      {open && source ? <DocOverlay open onClose={() => setOpen(null)} title={open.split("/").pop() || "File"} name={open.split("/").pop() || open} source={source} spacing={30_000} onOpenInFiles={() => { setOpen(null); router.push("/u/files" as never); }} /> : null}
       <View className="flex-row"><Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => router.push(`/u/chats/new?project=${encodeURIComponent(slug || refId)}` as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No chats yet" body="Start one here and it belongs to this project." /> : <ChatsList rows={rows} now={now} places={null} menu={menu} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />}
       {sheets}
@@ -53,9 +50,12 @@ export function FilesPane({ id }: { id: string }) {
   const [rows, setRows] = useState<{ path?: string; name?: string }[] | null>(null);
   // The Files screen's own door (files.drive.space.list); files.list is not a tool any module registers.
   useEffect(() => { void spaceList(undefined, `Projects/${id}/files`).then((r) => setRows(r.entries.filter((e) => e.path && (allowsMock() || String(e.path).startsWith(`Projects/${id}/files/`))))).catch(() => setRows([])); }, [id]);
+  const [open, setOpen] = useState<string | null>(null);
+  const source = useMemo(() => (open ? driveSource(open) : null), [open]);
   if (rows === null) return <LoadingState rows={3} />;
   return (
     <View className="gap-s3">
+      {open && source ? <DocOverlay open onClose={() => setOpen(null)} title={open.split("/").pop() || "File"} name={open.split("/").pop() || open} source={source} spacing={30_000} onOpenInFiles={() => { setOpen(null); router.push("/u/files" as never); }} /> : null}
       <View className="flex-row"><Button kind="ghost" size="sm" label="Open in Files" onPress={() => router.push("/u/files" as never)} /></View>
       {rows.length === 0 ? <EmptyState title="No files yet" body="Files kept here are encrypted and open only to this project's members and the agents working on it." /> : (
         <Card flush>{rows.slice(0, 5).map((f, i) => (<View key={f.path || i}>{i ? <Divider /> : null}<Row dense title={String(f.name || (f.path || "").split("/").pop() || "file")} onPress={f.path ? () => setOpen(String(f.path)) : undefined} end={fileTag ? <SpaceTag text={fileTag} /> : undefined} /></View>))}{rows.length > 5 ? <><Divider /><Row dense title={`${rows.length - 5} more in Files`} chevron onPress={() => router.push("/u/files" as never)} /></> : null}</Card>
