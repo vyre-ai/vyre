@@ -75,6 +75,11 @@ export default {
     // A team member's calls see only their own mailbox from the firm key; the owner and the home's own modules see every account (member-scope.js). The scope is resolved once per call.
     const scoped = new AsyncLocalStorage();
     const emails_ = memberEmails(ctx.store.db);
+    /** Who attested an email, for the audit trail: the person on the call's chain, else the call's own label (the owner's local socket). */
+    const attester = async meta => {
+      try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null; const h = c && Array.isArray(c.hops) ? c.hops.find(x => x.actor && x.actor.kind === "person") : null; if (h) return String(h.actor.id); } catch {}
+      return String((meta && meta.caller) || "owner");
+    };
     const memberOf = id => emails_.get(id);
     // The owner's own list leaves the firm key out: it is a key to act as members, not a mailbox to read by default.
     const visible = () => { const s = scoped.getStore(); return s ? s : accounts.all().filter(a => !a.firm); };
@@ -118,7 +123,7 @@ export default {
     });
 
     ctx.tool("google.members.email", {
-      description: "The work email the firm key may act as for a team member: { person, email } sets or edits it, { person } alone clears it, no input lists them. Owner and admins only; a member never sets their own.",
+      description: "The work email the firm key may act as for a team member: { person, email } sets or edits it, { person } alone clears it, no input lists them. Owner only; a member (or an admin) never sets one.",
       input: obj({ person: str, email: str }),
       callers: PEOPLE,
       run: safe(async ({ person, email }, meta) => {
@@ -130,7 +135,7 @@ export default {
         if (!EMAIL.test(String(email))) throw fail("email must be an address");
         const why = emailProblem({ email: String(email), person, firmKeys: accounts.all(), taken: e => emails_.holder(e) });
         if (why) throw fail(why);
-        emails_.set(person, email, null, now());
+        emails_.set(person, email, await attester(meta), now());
         return { person, email: String(email).toLowerCase() };
       }),
     });

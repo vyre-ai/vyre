@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(members): mcp.mine.* are on the Member list (the vault's own person check judges her; a Guest is refused; test calls them as a member and a guest), the store backend names its vault tools literally, google.members.email says owner only and records who attested each address (by).
 - feat(app): Spaces and members: the owner sets or clears a member's work email (the address the firm Google key acts as for them) in the member's sheet. Owner only, as the box enforces.
 - feat(app): Settings, Connections, MCP shows "Your accounts" under the hub's servers: a member lists, adds (name, https address, optional token) and removes the MCP servers kept in their own vault (mcp.mine.*), and a locked vault says to unlock it.
 - feat(google): google.drive.search and google.drive.read (read-only, drive.readonly), scoped to the caller's own accounts exactly as mail and calendar are, so a member reads their own Drive from the firm key.

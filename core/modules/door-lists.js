@@ -15,6 +15,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
   "agents.vault.assign", "agents.vault.list", "agents.vault.unassign",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
+  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
