@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): a Records list has one filter control, the header's "+ Filter"; the table block's own per-column filter icon is gone from record lists (its sort stays).
 - feat(app): every Records list has one header: the title (a named view keeps its menu), "2 of 6 leads", a search ("/" focuses it, Escape clears it, every word must be found in any readable field and a sealed value reads as nothing), "+ Filter" built from the type's own fields in the type's groups (Created too) with that kind's own operators and values picked from choices, people and links, filters as chips a press removes, date presets (today, this week, this month, last 7 days), and "Save as view" that opens New view with the filters filled in (filters a saved view cannot hold yet are said so and left out). Filtering runs on the rows the page already loaded; nothing new on the server.
 - feat(app): Customize no longer looks frozen while Records sets a type up (a type on Twenty takes about a minute): Add a type and Save show "Setting up <type> in Records..." with the button on a spinner and disabled, you can leave the page and it finishes on its own, writes go one after another, and a refusal puts the type back and says why.
 - feat(app): the record page shows facts and Email and Call under the name, and the records linked to it grouped by type (Leads, Appointments) instead of one flat list; both read from the data the page already had.
