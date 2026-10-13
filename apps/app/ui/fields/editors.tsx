@@ -44,7 +44,7 @@ export function BooleanEdit({ p, emit }: EditProps) {
     <View className="flex-row gap-s2">
       {[[true, "Yes"], [false, "No"]].map(([v, l]) => (
         <Pressable key={String(l)} accessibilityRole="radio" accessibilityState={{ selected: on === v }} onPress={() => { setOn(v as boolean); emit(v); }}>
-          <Chip tone={on === v ? "accent" : "plain"}>{l as string}</Chip>
+          <Chip tone={on === v ? "selected" : "plain"}>{l as string}</Chip>
         </Pressable>
       ))}
     </View>
@@ -76,7 +76,7 @@ export function MultiChoiceEdit({ p, emit }: EditProps) {
   return (
     <View accessibilityRole="menu" className="flex-row flex-wrap gap-s1">
       {(p.definition.options || []).map((o) => (
-        <Pressable key={o} accessibilityRole="checkbox" accessibilityState={{ checked: on.includes(o) }} onPress={() => flip(o)}><Chip tone={on.includes(o) ? "accent" : "plain"}>{o}</Chip></Pressable>
+        <Pressable key={o} accessibilityRole="checkbox" accessibilityState={{ checked: on.includes(o) }} onPress={() => flip(o)}><Chip tone={on.includes(o) ? "selected" : "plain"}>{o}</Chip></Pressable>
       ))}
     </View>
   );
@@ -175,7 +175,7 @@ export function RatingEdit({ p, emit }: EditProps) {
       {[1, 2, 3, 4, 5].map((i) => (
         <Pressable key={i} accessibilityRole="radio" accessibilityLabel={`${i} of 5`} accessibilityState={{ selected: i <= n }} hitSlop={4}
           onPress={() => { const next = n === i ? 0 : i; setN(next); emit(next || null); }} className="h-control-sm w-control-sm items-center justify-center">
-          <Text size="title" tone={i <= n ? "accent" : "faint"}>{"★"}</Text>
+          <Text size="title" tone={i <= n ? "default" : "faint"}>{"★"}</Text>
         </Pressable>
       ))}
     </View>
