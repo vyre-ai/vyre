@@ -122,3 +122,15 @@ test("needs: ages read short", { skip: !strip }, async () => {
   assert.equal(age(0, 3 * 3_600_000), "3h");
   assert.equal(age(0, 72 * 3_600_000), "3d");
 });
+
+test("a question with answers carries them as choices; one with several questions or none is answered in the chat", { skip: !strip }, async () => {
+  const { fromAsk, chooseCall } = await load();
+  const ask = (/** @type {any} */ a) => /** @type {any} */ (fromAsk(a));
+  const one = ask({ id: "a1", kind: "question", thread: "t1", questions: [{ question: "Which year?", options: [{ label: "2025" }, { label: "2026" }] }] });
+  assert.equal(one.question, "Which year?");
+  assert.deepEqual(one.options, ["2025", "2026"]);
+  assert.deepEqual(chooseCall(one, "2026"), { tool: "threads.answer", input: { ask: "a1", decision: "allow", answers: { "Which year?": "2026" } } });
+  assert.deepEqual(ask({ id: "a2", kind: "question", questions: [{ question: "A?", options: ["x"] }, { question: "B?", options: ["y"] }] }).options, []);
+  assert.deepEqual(ask({ id: "a3", kind: "question", questions: [{ question: "Many?", options: ["x", "y"], multiSelect: true }] }).options, []);
+  assert.equal(ask({ id: "a4", kind: "permission", tool: "Bash" }).options, undefined);
+});

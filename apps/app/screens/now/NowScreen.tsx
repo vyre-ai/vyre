@@ -16,6 +16,7 @@ import { CreateAssistantCard } from "../assistants/CreateAssistantCard";
 import { createCardSource } from "../assistants/create-card-source";
 import { CREATE_ASSISTANT, shouldShow, type AgentRow } from "../assistants/create-card-model";
 import { callT } from "../../src/real/call-tool";
+import { loadSnoozed } from "../../src/state/snooze";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { GetStarted } from "./GetStarted";
 import { RecordsSetup } from "./RecordsSetup";
@@ -41,6 +42,7 @@ export default function NowScreen() {
   const mine = members.spaces.find((x) => x.id === showing)?.role;
   const canEdit = !real || !mine || mine === "owner" || mine === "admin";
   useEffect(() => { if (real) void members.load(); }, [real]);
+  useEffect(() => { void loadSnoozed(); }, []);
   // a new box with a phone to add and an assistant to make shows one "Get started" card, not an amber banner over a full-width card
   const setup = useSetupBanner();
   const gap = useGap() ?? setup;
@@ -64,7 +66,7 @@ export default function NowScreen() {
       {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />
-        : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input) => void run(t, id, input)} onOpen={(t) => void run(t, "open")} />}
+        : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}
