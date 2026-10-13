@@ -5,12 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { boot } from "../team/team-fixture.js";
+import * as config from "../config/index.js";
+import { open as openStore } from "../store/index.js";
 
 const BEN = "per_" + "c".repeat(26);
 const ADA = "per_" + "d".repeat(26);
 
 async function world(/** @type {any} */ t) {
-  const { tool, d, project } = await boot(t);
+  const { tool, d, project, launches, root } = await boot(t);
   const OWNER = d.kernel.id.owner;
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   /** @param {string} p @param {string} role @param {number} n */
@@ -22,7 +24,7 @@ async function world(/** @type {any} */ t) {
   const ben = await add(BEN, "member", 2);
   const ada = await add(ADA, "admin", 3);
   const as = (/** @type {any} */ who) => (/** @type {string} */ name, /** @type {any} */ input = {}) => d.registry.call(name, input, "deck", who);
-  return { tool, d, project, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "cli") };
+  return { tool, d, project, launches, root, ben: as(ben), ada: as(ada), owner: (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "cli") };
 }
 
 test("a member makes an agent and owns it; a member with no access sees nothing of another's agent", { timeout: 120_000 }, async t => {
@@ -87,4 +89,26 @@ test("a member's agent never exceeds her: not every project, not a project she i
   assert.equal((await ben("agents.create", { name: "mine", kind: "agent", projects: [] })).error, undefined, "a plain agent is hers");
   assert.equal((await ben("agents.update", { name: "mine", computer: true })).error.code, "denied", "and she cannot raise it later");
   assert.equal((await ada("agents.create", { name: "adas", kind: "agent", projects: [project.slug], computer: true })).error, undefined, "an admin may");
+});
+
+test("in a chat an agent runs on the chatter's own AI sign-in, never on the agent's; a person it is not shared with cannot talk to it", { timeout: 180_000 }, async t => {
+  const { ben, owner, launches, root } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "words" });
+  const refused = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.equal(refused.error && refused.error.code, "denied", "not shared: no talk");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" });
+  const none = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.match(String(none.error && none.error.message), /no AI sign-in picked/, "no sign-in of her own: the owner's is never used for her: " + JSON.stringify(none.error));
+  const added = await ben("sessions.accounts.add", { provider: "claude", label: "Ben's Claude", kind: "login" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  const r = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.ok, true, JSON.stringify(r.data));
+  const db = openStore(config.paths(root).db);
+  /** @type {any} */ let run;
+  try { run = db.prepare("SELECT account, agent FROM threads_runs WHERE id = ?").get(r.data.thread); } finally { db.close(); }
+  assert.equal(run.agent, "intake");
+  assert.equal(run.account, added.data.id, "the turn runs on her account");
+  const ran = launches();
+  assert.equal(ran.length, 1, "one launch");
 });

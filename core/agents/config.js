@@ -5,12 +5,13 @@
 // Model sign-ins are not here at all: the order an agent tries them in is sessions.routes (scope agent:<name>), and the credentials sit in the Vault.
 import fs from "node:fs";
 import path from "node:path";
+import { Access, accessMigration } from "../../lib/access.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
    CREATE TABLE agents_vault_items (agent TEXT NOT NULL, item TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, item))`,
   // Who else may use or edit an agent, besides its creator, the owner and the admins: a person or a role, at one of two levels. Who added each folder link is kept, because a link is judged against the person adding it.
-  `CREATE TABLE agents_access (agent TEXT NOT NULL, kind TEXT NOT NULL, subject TEXT NOT NULL, level TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, kind, subject));
+  `${accessMigration("agents_access")};
    ALTER TABLE agents_context_links ADD COLUMN by TEXT`,
 ];
 
@@ -45,6 +46,7 @@ export function contextBrief(c) {
  */
 export function register(ctx, h) {
   const { db } = h;
+  const shared = new Access(db, "agents_access");
   const home = (/** @type {any} */ a) => path.join(h.root, "agents", String(a.uid));
   const ctxDir = (/** @type {any} */ a) => path.join(home(a), "context");
   const only = (/** @type {any} */ meta, what) => {
@@ -60,10 +62,7 @@ export function register(ctx, h) {
     if (await h.mayChange(meta, a)) return "edit";
     const me = await h.chainPerson(meta);
     if (!me) return "none";
-    const role = await h.roleOf(me).catch(() => null);
-    const rows = /** @type {any[]} */ (db.prepare("SELECT kind, subject, level FROM agents_access WHERE agent = ?").all(a.name));
-    const mine = rows.filter(r => (r.kind === "person" && r.subject === me) || (role && r.kind === "role" && r.subject === role));
-    return mine.some(r => r.level === "edit") ? "edit" : mine.length ? "use" : "none";
+    return shared.level(a.name, { person: me, role: await h.roleOf(me).catch(() => null) });
   };
   const readOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "read another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("reads its files (Can edit)"); };
   const writeOk = async (/** @type {any} */ meta, /** @type {any} */ a) => { only(meta, "change another agent's files"); if ((await levelOf(meta, a)) !== "edit") throw h.notYours("changes its files (Can edit)"); };
@@ -199,7 +198,7 @@ export function register(ctx, h) {
     run: async ({ agent }, meta) => {
       const a = h.must(agent);
       await writeOk(meta, a);
-      const access = /** @type {any[]} */ (db.prepare("SELECT kind, subject, level, by, at FROM agents_access WHERE agent = ? ORDER BY at").all(a.name)).map(r => ({ kind: String(r.kind), subject: String(r.subject), level: String(r.level), by: r.by == null ? null : String(r.by) }));
+      const access = shared.list(a.name);
       const sp = ctx.kernel && ctx.kernel.space ? await ctx.call("spaces.members.list", { space: ctx.kernel.space }).catch(() => null) : null;
       const people = sp && !sp.error && sp.data && Array.isArray(sp.data.members) ? sp.data.members.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.person), role: String(m.role || "") })) : [];
       const rl = await ctx.call("roles.list", {}).catch(() => null);
@@ -214,11 +213,8 @@ export function register(ctx, h) {
     run: async ({ agent, kind, subject, level }, meta) => {
       const a = h.must(agent);
       await shareOk(meta, a);
-      if (!["person", "role"].includes(kind) || typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name a person or a role");
-      if (level === null || level === undefined) { db.prepare("DELETE FROM agents_access WHERE agent = ? AND kind = ? AND subject = ?").run(a.name, kind, subject); return { ok: true }; }
-      if (!["use", "edit"].includes(level)) throw bad("level is use or edit");
-      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
-      db.prepare("INSERT INTO agents_access (agent, kind, subject, level, by, at) VALUES (?,?,?,?,?,?) ON CONFLICT(agent, kind, subject) DO UPDATE SET level = excluded.level, by = excluded.by, at = excluded.at").run(a.name, kind, subject, level, await h.personOf(meta), Date.now());
+      if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
+      shared.set(a.name, { kind, subject, level: level ?? null }, await h.personOf(meta));
       return { ok: true };
     },
   });
@@ -244,5 +240,5 @@ export function register(ctx, h) {
       return { chats, flows };
     },
   });
-  return { brief };
+  return { brief, levelOf };
 }
