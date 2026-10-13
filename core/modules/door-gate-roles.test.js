@@ -15,6 +15,7 @@ process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; proc
 const MEMBER = "per_" + "bcdefghijklmnopqrstuvwxyza";
 const MEMBER2 = "per_" + "defghijklmnopqrstuvwxyzabc";
 const GUEST = "per_" + "efghijklmnopqrstuvwxyzabcd";
+const MEMBER3 = "per_" + "fghijklmnopqrstuvwxyzabcde";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
 /** A team server: the owner, two members and a guest, each with a model session token. @param {any} t */
@@ -27,9 +28,10 @@ async function rig(t) {
   const set = (/** @type {any} */ m) => d.kernel.gateway.grants.setRole(chain(OWNER), m, { presence: proof() });
   await set({ person: MEMBER, role: "member" });
   await set({ person: MEMBER2, role: "member" });
+  await set({ person: MEMBER3, role: "member" });
   await set({ person: GUEST, role: "temp", scope: [`vyre://${d.kernel.id.space}/project/p1`], expires: Date.now() + 86_400_000 });
   const tok = async (/** @type {string} */ p) => (await d.kernel.surfaces.open(chain(p), { agent: "assistant" })).token;
-  const tokens = { owner: await tok(OWNER), member: await tok(MEMBER), member2: await tok(MEMBER2), guest: await tok(GUEST) };
+  const tokens = { owner: await tok(OWNER), member: await tok(MEMBER), member2: await tok(MEMBER2), member3: await tok(MEMBER3), guest: await tok(GUEST) };
   /** @type {(who: keyof typeof tokens, tool: string, input?: any) => Promise<any>} */
   const as = (who, tool, input = {}) => d.registry.call(tool, input, "mcp:agent:assistant", { thread: "t1", agent: "assistant", agentKind: "assistant", token: tokens[who] });
   const owner = async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await call(tool, input, { root, caller: "cli" }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
@@ -113,4 +115,30 @@ test("the roles tools: a Member reads roles.list, get, catalogue and tools (her 
   assert.ok(!gated(await as("guest", "roles.tools"), "roles.tools"), "a Guest asks what she can do");
   for (const tool of ["roles.list", "roles.get", "roles.catalogue"]) assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
   for (const tool of ["roles.create", "roles.assign"]) assert.ok(met(await as("guest", tool, {}), refusal(tool)), `${tool}: a Guest is refused`);
+});
+
+test("work.project.level is on a Member's list and the handler judges: a Lead on the project sets a level, a Contributor is refused in words, a Member who is not on it is refused", { timeout: 300_000 }, async t => {
+  const { d, tokens, owner } = await rig(t);
+  /** @type {(who: keyof typeof tokens, tool: string, input?: any) => Promise<any>} */
+  const as = (who, tool, input = {}) => d.registry.call(tool, input, "deck", { thread: "t1", token: tokens[who] });
+  assert.ok(MEMBER_MAY.has("work.project.level") && !OWNER_ONLY.has("work.project.level"));
+  const p = await owner("work.project.create", { name: "Harlow Estate" });
+  const project = String((p && (p.slug || p.id)) || "harlow-estate");
+  await owner("work.project.level", { project, person: MEMBER, level: "lead" });
+  await owner("work.project.level", { project, person: MEMBER2, level: "contributor" });
+  const lead = await as("member", "work.project.level", { project, person: MEMBER3, level: "viewer" });
+  assert.ok(!lead.error && lead.data && lead.data.level === "viewer", `a Lead on the project sets a level: ${JSON.stringify(lead).slice(0, 200)}`);
+  for (const who of /** @type {const} */ (["member2"])) {
+    const r = await as(who, "work.project.level", { project, person: MEMBER3, level: "lead" });
+    assert.ok(r.error && !gated(r, "work.project.level"), `a Contributor is turned away by the handler, not the gate: ${JSON.stringify(r).slice(0, 200)}`);
+    assert.ok(String(r.error.message).length > 20, "and in words");
+  }
+  const stranger = await as("guest", "work.project.level", { project, person: MEMBER3, level: "lead" });
+  assert.ok(met(stranger, guestRefusal()), "a Guest is turned away at the door");
+  // a Member who is not on the project: MEMBER3 was seated as viewer above, so use a fresh project she is not on
+  await owner("work.project.create", { name: "Other Matter" });
+  const off = await as("member3", "work.project.level", { project: "other-matter", person: MEMBER3, level: "lead" });
+  assert.ok(off.error && !gated(off, "work.project.level"), `a Member who is not on the project is refused by the handler: ${JSON.stringify(off).slice(0, 200)}`);
+  const seat = await owner("work.project.members", { project });
+  assert.ok(!seat.members.some((/** @type {any} */ m) => m.agent === MEMBER3 && m.level === "lead"), "nobody was made a lead by the refused calls");
 });

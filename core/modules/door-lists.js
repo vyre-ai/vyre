@@ -46,7 +46,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.wait", "wink.server.adopt", "wink.server.pair.answer",
   "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
-  "work.know.suggestions", "work.link.suggest", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
+  "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
 ]));
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
@@ -216,7 +216,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "wink.storage.bridge.accept", "wink.storage.bridge.drive", "wink.storage.card", "wink.storage.discover", "wink.storage.offers", "wink.storage.pair", "wink.storage.pick",
   "wink.storage.remove", "wink.storage.status",
   "work.call", "work.chat.history-import", "work.chat.keys.begin", "work.chat.keys.finish", "work.chat.keys.lock", "work.chat.keys.status", "work.chat.upgrade-move",
-  "work.know.accept", "work.project.create", "work.project.level", "work.project.members", "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename",
+  "work.know.accept", "work.project.create", "work.project.members", "work.project.move", "work.project.move-plan", "work.project.ref", "work.project.rename",
   "work.team.add", "work.template.define", "work.template.from-project", "work.template.get", "work.template.golive", "work.template.install", "work.template.list",
   "work.template.test", "work.tools",
 ]));
