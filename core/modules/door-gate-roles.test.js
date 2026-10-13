@@ -103,3 +103,14 @@ test("the groups: every tool is registered, owner-only, in one group, and no gro
     assert.ok(!tool.startsWith("vault.") && !tool.startsWith("settings.") && !tool.startsWith("spend."), `${tool} is not a vault, settings or spend tool`);
   }
 });
+
+test("the roles tools: a Member reads roles.list, get, catalogue and tools (her own), a Guest only roles.tools; writes stay the owner's and an admin's", { timeout: 200_000 }, async t => {
+  const { as } = await rig(t);
+  for (const tool of ["roles.list", "roles.get", "roles.catalogue", "roles.tools"]) assert.ok(MEMBER_MAY.has(tool) && !OWNER_ONLY.has(tool), `${tool} is on a Member's list alone`);
+  for (const tool of ["roles.list", "roles.get", "roles.catalogue", "roles.tools"]) assert.ok(!gated(await as("member", tool, { id: "member" }), tool), `${tool}: a Member is not turned away by the gate`);
+  for (const tool of ["roles.create", "roles.update", "roles.remove", "roles.assign"]) assert.ok(met(await as("member", tool, {}), refusal(tool)), `${tool}: a Member is refused`);
+  assert.ok(GUEST_MAY.has("roles.tools") && !GUEST_MAY.has("roles.list"), "a Guest has roles.tools only");
+  assert.ok(!gated(await as("guest", "roles.tools"), "roles.tools"), "a Guest asks what she can do");
+  for (const tool of ["roles.list", "roles.get", "roles.catalogue"]) assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
+  for (const tool of ["roles.create", "roles.assign"]) assert.ok(met(await as("guest", tool, {}), refusal(tool)), `${tool}: a Guest is refused`);
+});
