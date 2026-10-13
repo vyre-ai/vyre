@@ -8,6 +8,7 @@
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
+const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthori[sz]ed|api key/i;
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided)$/;
 
 /**
@@ -38,7 +39,10 @@ export function createAgentWake(o) {
       if (!w || !w.task) return;
       const t = await o.gw.ask.get(o.chain(), w.task);
       if (!t || !["ready", "working"].includes(t.state)) return;
-      await stick(t, reason || "");
+      // the stop reason is often bare; what the thread itself said last (an expired sign-in says so there) is the better words
+      let said = reason || "";
+      if (!AUTH.test(said)) { try { const g = await o.callModule("threads.get", { thread, limit: 1 }, o.space); const th = g && (g.thread || g.data && g.data.thread); const line = th && (th.last_line || th.stopped_reason); if (line) said = `${said} ${String(line)}`.trim(); } catch { /* the thread could not be read: the reason given stands */ } }
+      await stick(t, said);
     } catch (err) { log(`agent wake ${o.space}: thread ${thread} ended and its task was not checked (${/** @type {Error} */ (err).message})`); }
   }
 
@@ -75,8 +79,8 @@ export function createAgentWake(o) {
 /** The words a person reads when an agent's job failed: what happened, cut short and free of anything that looks like a secret, and the next step. @param {string} agent @param {string} why */
 export function sayWhy(agent, why) {
   const clean = String(why || "").replace(/[A-Za-z0-9_\-.]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
-  const auth = /oauth|expired|sign.?in|log.?in|auth|credential|401|unauthori[sz]ed|api key/i.test(clean);
-  if (auth) return { reason: `${agent} could not run: its AI account is not signed in or has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
+  const auth = AUTH.test(clean);
+  if (auth) return { reason: `${agent}'s AI sign-in has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };
   return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };
 }
 
