@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): a diff in the chat is one column when the thread is narrower than about 560 points (the chat panel open beside it), side by side otherwise (`BlockCtx.diffSplit`, measured from the thread's own width).
 - fix(app): a file opened from a chat shows in the chat panel (a "file" page, Back to the panel) on a wide screen and in a sheet on a phone; the sheet no longer scrolls twice (Sheet takes `scroll={false}`), shows the file's folder under its name, and the viewer's Open in Files goes to /u/files.
 - fix(app): the Projects list's task bar is ink, not violet (Meter was not used: it is a budget bar that turns warm past 90 percent, wrong for progress).
 - fix(app): ui-audit round 2. The chat panel sits beside the thread on a wide screen and pushes it over (nothing is cut off); the streaming caret is the text colour, not violet; the message action icons carry a title (name and key) as well as the tooltip.
