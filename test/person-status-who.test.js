@@ -16,7 +16,7 @@ test("status names the owner for the owner's session and the member for hers, an
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
   await d.kernel.gateway.grants.setRole(chain(OWNER), { person: MEMBER, role: "member" }, { presence: { op: "stand-in", fields: {}, n: Math.random() } });
-  const status = (/** @type {any} */ person, /** @type {any} */ facts) => d.registry.call("presence.person.status", {}, "module:vyred", { person, ...(facts ? { kernelFacts: facts } : {}) });
+  const status = (/** @type {any} */ person, /** @type {any} */ facts) => d.registry.call("presence.person.status", {}, "deck", { person, ...(facts ? { kernelFacts: facts } : {}) });
   const session = { id: "sess1", kind: "bearer" };
   const mine = await status(session, { kind: "device", device_key_id: "dabc", person: MEMBER, path: "relay" });
   assert.equal(mine.error, undefined, JSON.stringify(mine.error));

@@ -11,6 +11,7 @@
 //   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
 //   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
 import crypto from "node:crypto";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
 import { linkedDir } from "../../lib/files/layout.js";
 import { assertProvider } from "./linked-provider.js";
@@ -21,7 +22,7 @@ import { registerLinkedIO } from "./linked-read.js";
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = [...PERSON_SURFACES, "device"];
 /** A model working a team chat's turn may read what the asking member can read; writing stays the person's. */
 const READ_CALLERS = [...CALLERS, "mcp"];
 export const LINK_NAME = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;

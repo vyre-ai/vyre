@@ -3,10 +3,12 @@
 // Not for the owner, whose vault is the vault.* tools; not for a model, which sees names and kinds at most in a session (the values go to the person's surfaces and to the module that holds the sign-in).
 // The member gate lets these names through (MEMBER_ALLOWED) because each one resolves its person here and refuses anything but exactly one person who is not the owner.
 
+import { refuseNonPerson } from "../../../lib/person-body.js";
+import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
-const PERSON_SURFACES = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];
+const PERSON_SURFACES = [...THE_SURFACES, "device", "web"];
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const fields = { type: "object", additionalProperties: { type: "string" } };
@@ -67,6 +69,7 @@ export function register({ ctx, people, tool }) {
   // Only the named modules that keep a member's entries here (mcp: the MCP servers she brought): another module, even one holding her inherited token, is refused. The space list is the app's own call, not a module's.
   const STORE_MODULES = new Set(["module:mcp"]);
   const storeOnly = (/** @type {(id: string, i: any) => any} */ fn) => async (/** @type {any} */ input, /** @type {any} */ meta) => {
+    refuseNonPerson(meta, "uses a member's own store");
     const caller = String((meta && meta.caller) || "");
     if (caller.startsWith("module:") && !STORE_MODULES.has(caller)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
     return mine(fn)(input, meta);

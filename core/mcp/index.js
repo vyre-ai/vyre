@@ -18,6 +18,8 @@
 // item held before a restart can still be approved once this module has started again. A removed
 // server's sender stays offered until vyred restarts; release refuses it.
 
+import { refuseNonPerson } from "../../lib/person-body.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
@@ -114,12 +116,12 @@ export default {
       description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } (none means you and the assistant only; a named agent needs a scope that names it, or a #tag on its thread) and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseProcess(input, meta); return hub.add(input); },
+      run: (input, meta) => { refuseNonPerson(meta, "adds an MCP server"); refuseProcess(input, meta); return hub.add(input); },
     });
 
     // A team member's own servers ("Your accounts"): kept in THEIR personal vault, for the person the kernel names for the call, never one the input names. A member's call arrives here with its token
     // (a module hop inherits the turn), so vault.me.store.* resolves the same person; the owner has no personal vault and uses mcp.add.
-    const MINE = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
+    const MINE = [...PERSON_SURFACES, "device", "web"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
     const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input, { relay: true })));
     ctx.tool("mcp.mine.list", {
       effect: "read",
@@ -147,7 +149,7 @@ export default {
       description: "Change an MCP server: any field of mcp.add. A new command, url or credential stops the running server and drops its cached tools.",
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseProcess(input, meta, (hub.row(input.name) || {}).transport); return hub.update(input); },
+      run: (input, meta) => { refuseNonPerson(meta, "changes an MCP server"); refuseProcess(input, meta, (hub.row(input.name) || {}).transport); return hub.update(input); },
     });
 
     ctx.tool("mcp.remove", {
@@ -155,7 +157,7 @@ export default {
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: input => hub.remove(input),
+      run: (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove(input); },
     });
 
     ctx.tool("mcp.test", {
@@ -163,7 +165,7 @@ export default {
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: input => hub.test(input.name),
+      run: (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(input.name); },
     });
 
     ctx.tool("mcp.restart", {

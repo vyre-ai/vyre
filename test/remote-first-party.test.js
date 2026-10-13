@@ -29,6 +29,9 @@ for (const config of [{ role: "local" }, { role: "box" }]) {
       for (const [tool, input] of CARRIERS) {
         if (!d.registry.tools.has(tool)) continue;
         const r = await d.registry.call(tool, input, caller);
+        // a caller that claims first-party, or a relaying first-party module, in the call's own meta is not believed: the registry sets both flags from the loader's rule alone
+        const forged = await d.registry.call(tool, input, caller, { firstParty: true, relayedByFirstParty: true });
+        if (!(forged.error && (REFUSED.has(forged.error.code) || forged.error.code === "no_such_tool"))) open.push(`${caller} ${tool} forged: ${forged.error ? forged.error.code : "OK"}`);
         if (!(r.error && (REFUSED.has(r.error.code) || r.error.code === "no_such_tool"))) open.push(`${caller} ${tool}: ${r.error ? r.error.code : "OK"}`);
       }
     }
