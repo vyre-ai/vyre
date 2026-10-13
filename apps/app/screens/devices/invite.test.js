@@ -12,9 +12,9 @@ test("an owner invites as admin, member or guest (temp); an admin below admin; a
   assert.deepEqual(invitable("member"), []);
 });
 
-test("an invite carries the chosen projects, and none when none are chosen", () => {
-  assert.deepEqual(createInput({ space: "s", role: "paralegal", anyone: true, projects: ["p1", "p2"], levels: { p2: "viewer", p1: "odd" } }), { space: "s", role: "paralegal", scope: ["p1", "p2"], seats: { p1: "contributor", p2: "viewer" } });
-  assert.deepEqual(createInput({ space: "s", role: "member", anyone: true, projects: [] }), { space: "s", role: "member" });
+test("only a Guest invite carries projects (as scope); seats wait for the box", () => {
+  assert.deepEqual(createInput({ space: "s", role: "temp", anyone: true, projects: ["p1", "p2"], days: 7, now: 0 }), { space: "s", role: "temp", expires: 7 * 86_400_000, scope: ["p1", "p2"] });
+  assert.deepEqual(createInput({ space: "s", role: "member", anyone: true, projects: ["p1"] }), { space: "s", role: "member" });
 });
 
 test("the create input carries the name only when given, and a temp invite an end date", () => {

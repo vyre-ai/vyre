@@ -26,7 +26,6 @@ export function RealInvite() {
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [projects, setProjects] = useState<string[]>([]);
-  const [levels, setLevels] = useState<Record<string, string>>({});
   const [to, setTo] = useState("");
   const [anyone, setAnyone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,7 +52,7 @@ export function RealInvite() {
     setBusy(true);
     // This app keeps the name and the server holds none: the invite is made by this app, answering the home's yes with the name's key (src/real/team-invite.js).
     void (async () => {
-      const input = createInput({ space: card.id, role, to, anyone, days: Number(days), projects, levels });
+      const input = createInput({ space: card.id, role, to, anyone, days: Number(days), projects });
       return (await invitesHere()) ? (await import("../../src/real/team-join")).makeTeamInvite({ space: card.id, name: card.name, role: input.role, ...(input.to ? { to: input.to } : {}), ...(input.expires ? { expires: input.expires } : {}) }) : tool("spaces.invites.create", input);
     })().then((r) => { setMade(madeNote(r)); refresh(); }).catch((e) => {
       setProblem(why(e));
@@ -93,7 +92,7 @@ export function RealInvite() {
         </View>
       ) : (
         <Card className="max-w-read gap-s3">
-          <InviteRolePicker actor={card.role} role={role} onRole={setRole} projects={projects} onProjects={setProjects} levels={levels} onLevels={setLevels} days={days} onDays={setDays} />
+          <InviteRolePicker actor={card.role} role={role} onRole={setRole} projects={projects} onProjects={setProjects} days={days} onDays={setDays} />
           <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
           {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
