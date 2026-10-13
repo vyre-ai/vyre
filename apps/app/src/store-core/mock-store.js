@@ -566,7 +566,7 @@ export function createMockStore(opts = {}) {
   seed();
   if (opts.crm && world !== "empty") {
     const day = new Date(clock()); day.setHours(0, 0, 0, 0);
-    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => new Date(day.getTime() + d * 86_400_000 + h * 3_600_000).toISOString().slice(0, 16));
+    seedCrm(put, SPACE.juniper, aliasUrn, (d, h) => { const t = new Date(day.getFullYear(), day.getMonth(), day.getDate() + d, h), p2 = (/** @type {number} */ n) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}T${p2(t.getHours())}:00`; });
   }
   seeding = false;
   void MATTER_STAGES; void parseUrn;
