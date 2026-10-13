@@ -111,6 +111,9 @@ test("field groups: a type names its sections in order, a field says which one i
   await bad([{ name: "Money", collapsed: "yes" }], undefined, "collapsed is true or false");
   await bad(Array.from({ length: 21 }, (_, i) => ({ name: `G${i}` })), undefined, "more than 20 groups");
   await bad([{ name: "M".repeat(61) }], undefined, "a name over 60 characters");
+  await bad([{ name: "Money", colour: "red" }], undefined, "an unknown key on a group");
+  await bad([{ name: "Mo\nney" }], undefined, "a line break in a name");
+  await bad([{ name: "Mo\u0007ney" }], undefined, "a control character in a name");
   await R.define(o, { add_types: [t([{ name: "Basics" }, { name: "Money", collapsed: true }], "Basics")] });
   const def = (await k.store.types()).find(d => d.name === "asset");
   assert.deepEqual(def.groups, [{ name: "Basics" }, { name: "Money", collapsed: true }]);
@@ -118,4 +121,8 @@ test("field groups: a type names its sections in order, a field says which one i
   // a rename is one change_types; the data is untouched
   await R.define(o, { change_types: [{ ...t([{ name: "Basics" }, { name: "Value" }], "Basics"), fields: [{ name: "name", kind: "text", label: "Name", group: "Basics" }, { name: "value", kind: "number", label: "Value", group: "Value" }] }] });
   assert.equal((await k.store.types()).find(d => d.name === "asset").fields[1].group, "Value");
+  // removing a group a field still names is refused: no silent orphaning, the same call must move or ungroup the field
+  await assert.rejects(() => R.define(o, { change_types: [{ ...t([{ name: "Basics" }], "Basics"), fields: [{ name: "name", kind: "text", label: "Name", group: "Basics" }, { name: "value", kind: "number", label: "Value", group: "Value" }] }] }), { code: "bad_input" });
+  await R.define(o, { change_types: [{ ...t([{ name: "Basics" }], "Basics"), fields: [{ name: "name", kind: "text", label: "Name", group: "Basics" }, { name: "value", kind: "number", label: "Value" }] }] });
+  assert.equal("group" in (await k.store.types()).find(d => d.name === "asset").fields[1], false, "ungrouped in the same call");
 });
