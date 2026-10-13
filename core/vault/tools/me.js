@@ -3,10 +3,11 @@
 // Not for the owner, whose vault is the vault.* tools; not for a model, which sees names and kinds at most in a session (the values go to the person's surfaces and to the module that holds the sign-in).
 // The member gate lets these names through (MEMBER_ALLOWED) because each one resolves its person here and refuses anything but exactly one person who is not the owner.
 
+import { PERSON_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
-const PERSON_SURFACES = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];
+const PERSON_SURFACES = [...PERSON_SURFACES, "device", "web"];
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 const fields = { type: "object", additionalProperties: { type: "string" } };

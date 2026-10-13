@@ -18,6 +18,7 @@
 // item held before a restart can still be approved once this module has started again. A removed
 // server's sender stays offered until vyred restarts; release refuses it.
 
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
@@ -119,7 +120,7 @@ export default {
 
     // A team member's own servers ("Your accounts"): kept in THEIR personal vault, for the person the kernel names for the call, never one the input names. A member's call arrives here with its token
     // (a module hop inherits the turn), so vault.me.store.* resolves the same person; the owner has no personal vault and uses mcp.add.
-    const MINE = ["cli", "local", "device", "web", "mobile", "deck", "capsule"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
+    const MINE = [...PERSON_SURFACES, "device", "web"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
     const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input, { relay: true })));
     ctx.tool("mcp.mine.list", {
       effect: "read",
