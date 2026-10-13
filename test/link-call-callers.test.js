@@ -19,4 +19,9 @@ test("HD-3: link.call is refused for every model and agent caller before anythin
   }
   // the person's own surface gets as far as the pairing check (this Mac has no box)
   assert.equal((await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "cli")).error.code, "no_link");
+  // a bare "mobile" is a label any caller can send, not a person (the one list, lib/person-surfaces.js): refused; the phone arrives as its paired device, which gets as far as the pairing check
+  const mobile = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "mobile");
+  assert.ok(mobile.error && mobile.error.code !== "no_link" && mobile.error.code !== "unpaired", `mobile: refused for what it is, got ${mobile.error ? mobile.error.code : "OK"}`);
+  const paired = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "device:abcdefghijklmnop");
+  assert.equal(paired.error && paired.error.code, "no_link", `a paired device is a caller of link.call: ${JSON.stringify(paired).slice(0, 200)}`);
 });
