@@ -1,0 +1,1 @@
+export function chainHello(o: { sha256: (b: Uint8Array) => Promise<Uint8Array>; devicePub: Uint8Array; box: string; identity: string; entry: string; now?: number; sign: (m: Uint8Array) => Promise<Uint8Array> | Uint8Array; name?: string }): Promise<{ identity: string; entry: string; ts: number; nonce: string; channel: string; sig: string; name?: string }>;

@@ -12,7 +12,20 @@ const PENDING = "vyre.space-list.pending";
 /** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. Until it lands, a server answers `server_not_ready`. */
 type ChainPairer = (e: { relay: string; route: string; box: string; name: string }) => Promise<Pairing>;
 let connecting = 0;
-let chainPairer: ChainPairer = async () => { throw Object.assign(new Error("That server does not admit this device yet. Pair it with a code from that server."), { code: "server_not_ready" }); };
+let chainPairer: ChainPairer = async (e) => {
+  const { loadIdentity } = await import("../identity/store");
+  const mine = await loadIdentity().catch(() => null);
+  const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+  const client = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
+  const { chainHello } = (await import("@vyre/relay-client/chainhello.js")) as unknown as { chainHello: (o: unknown) => Promise<unknown> };
+  const { chainPair } = await import("./chain-pair.js");
+  const crypto = relayCrypto() as unknown as { sha256: (b: Uint8Array) => Promise<Uint8Array> };
+  const p = await chainPair({ id: e.box, ...e }, {
+    who: mine ? { id: mine.id, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) } : null,
+    crypto, keyStore: relayKeyStore(), about, name: deviceName(), connect: client.connect, chainHello,
+  });
+  return p as unknown as Pairing;
+};
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }
 
 /** The tool the vault calls go through. The personal vault is the person's own, not a Space's: it goes to the main server by name, never routed by the Space showing. */
