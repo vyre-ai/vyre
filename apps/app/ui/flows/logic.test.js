@@ -257,3 +257,18 @@ test("a wait can go until a date: before, after or at, and it comes back the sam
   assert.ok(draftProblems({ ...mk("before", 1, "days"), steps: [{ id: "w", kind: "wait", mode: "until", field: "", when: "before", amount: 1, unit: "days" }] }, O).length > 0);
   assert.equal(newStep("wait", REMINDER_DRAFT, O).mode, "for");
 });
+
+test("A record is created or updated: stored as two events with the field filter and what a second change does, and read back the same", () => {
+  const d = { name: "Remind", trigger: { kind: "changed", type: "appointment", field: "starts_at", again: "replace" }, steps: [{ id: "w", kind: "wait", amount: 1, unit: "hours" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.trigger, { on: "event", event: ["appointment.created", "appointment.updated"], field: "starts_at", when_record_changes: "replace" });
+  assert.deepEqual(checkFlow(def).filter((p) => /trigger/.test(p.path || "")), []);
+  assert.deepEqual(fromDefinition(def).trigger, d.trigger);
+  assert.equal(flowSentence(d, O).split(",")[0], "When a record in the Appointment object is created or updated");
+  assert.deepEqual(fromDefinition({ ...def, trigger: { ...def.trigger, when_record_changes: "keep" } }).trigger.again, "keep");
+});
+
+test("the Appointment reminder starter starts on created or updated, only when the time changes, and starts over", () => {
+  assert.deepEqual(REMINDER_DRAFT.trigger, { kind: "changed", type: "appointment", field: "starts_at", again: "replace" });
+  assert.equal(toDefinition(REMINDER_DRAFT).trigger.when_record_changes, "replace");
+});

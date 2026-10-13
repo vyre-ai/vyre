@@ -38,11 +38,12 @@ test("an agent with no project runs in its own folder: AGENTS.md and CLAUDE.md a
   const dir = run.cwd;
   assert.ok(dir.endsWith(path.join("agents", String(made.data.uid))), `the agent runs in agents/<id>: ${dir}`);
   assert.equal(fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8"), "Draft intake replies; never send.\n");
-  assert.match(fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /^@AGENTS\.md/, "Claude Code reads CLAUDE.md natively and it imports AGENTS.md");
+  assert.equal(fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), "@AGENTS.md\n", "Claude Code reads CLAUDE.md natively and it is only a pointer at AGENTS.md");
   const text = appended(run);
   assert.match(text, /Vyre orientation/);
   assert.ok(text.includes(`${dir}/AGENTS.md`), "its instructions by path");
-  assert.ok(!/Draft intake replies/.test(text.split("Vyre orientation")[1] || ""), "the orientation carries paths, not the file's words");
+  assert.ok(!/Draft intake replies/.test((text.split("Vyre orientation")[1] || "").split("Instructions for")[0]), "the orientation carries paths, not the file's words");
+  assert.match(text, /Instructions for you, the agent "intake" \(its AGENTS\.md\):\n\nDraft intake replies; never send\./, "the system prompt itself carries the agent's AGENTS.md, for every provider");
   assert.ok(!/project "/.test(text.split("Vyre orientation")[1] || ""), "no project lines for an agent with no project");
 });
 
@@ -69,4 +70,6 @@ test("an agent working in a project runs in the project's folder and is told bot
   assert.equal(seen[0].read_only.length, 1, "exactly one read-only folder");
   assert.ok(seen[0].read_only[0].endsWith(`/agents/${own[1]}`), "and it is its own agent folder: " + seen[0].read_only[0]);
   assert.match(text, /your own instructions for how you work, then the project's instructions for the work itself/);
+  assert.match(text, /Instructions for you, the agent "intake" \(its AGENTS\.md\):\n\nDraft replies\./, "the prompt carries the agent's AGENTS.md");
+  assert.match(text, /Instructions for the project "[^"]+" \(its AGENTS\.md\):\n\nAlways cite the file number\./, "and the project's");
 });

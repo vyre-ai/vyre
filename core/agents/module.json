@@ -53,6 +53,12 @@
         "reach": "modules"
       },
       {
+        "name": "agents.wake",
+        "summary": "wake an agent for a task it was given (the Flows host only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "agents.threads",
         "reach": "anyone",
         "effect": "read"
@@ -127,6 +133,12 @@
       {
         "name": "agents.maker",
         "summary": "who made an agent (the kernel's check of an agent approver)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "agents.instructions",
+        "summary": "an agent's instructions text, for a session's system prompt",
         "reach": "modules",
         "effect": "read"
       },

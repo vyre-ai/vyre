@@ -4,7 +4,7 @@ export type Value = string | number | boolean | null | ExprValue | readonly Valu
 export function expr(source: string): ExprValue;
 
 export type Trigger =
-  | { on: 'event'; event: string; where?: string }
+  | { on: 'event'; event: string | string[]; where?: string; field?: string; when_record_changes?: 'replace' | 'keep' }
   | { on: 'time'; cron?: string; every_ms?: number; at?: number }
   | { on: 'web'; path: string }
   | { on: 'manual'; input?: Value }

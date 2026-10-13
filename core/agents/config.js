@@ -1,12 +1,12 @@
 // @ts-check
-// agents: the configuration page's server half. An agent's two instruction files, the context it keeps (uploaded files, folders of its projects), the Vault items its person has put at its disposal, and where it is used.
+// agents: the configuration page's server half. An agent's instructions (AGENTS.md; CLAUDE.md is only a pointer at it), the context it keeps (uploaded files, folders of its projects), the Vault items its person has put at its disposal, and where it is used.
 //
 // Nothing here holds a secret. A Vault assignment is a NAME on a list the agent is told about; using the item is still the vault's own rule (vault.agent.grant / vault.agent.fill, the person's yes).
 // Model sign-ins are not here at all: the order an agent tries them in is sessions.routes (scope agent:<name>), and the credentials sit in the Vault.
 import fs from "node:fs";
 import path from "node:path";
 import { agentDir, agentPart } from "../../lib/files/layout.js";
-import { writeDocs, writeRootFile, MIRROR_FILES } from "../../lib/folder-docs.js";
+import { writeDocs, writeRootFile, MIRROR_FILES, POINTER, withNotes } from "../../lib/folder-docs.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
@@ -86,6 +86,8 @@ export function register(ctx, h) {
   const oldClaudeFile = (/** @type {any} */ a) => path.join(home(a), "CLAUDE.md");   // where an earlier build kept it: still read, never written
   const ensureParts = (/** @type {any} */ a) => { for (const part of ["instructions", "context", "memory"]) fs.mkdirSync(path.join(h.root, agentPart(String(a.uid), part)), { recursive: true, mode: 0o700 }); };
   const readClaude = (/** @type {any} */ a) => { for (const f of [claudeFile(a), oldClaudeFile(a)]) { try { return fs.readFileSync(f, "utf8"); } catch { /* the next place */ } } return ""; };
+  /** The agent's instructions as a person and a session read them: AGENTS.md, with notes an older CLAUDE.md kept apart appended once under "Notes" (they are folded into the stored words on the next write). */
+  const viewOf = (/** @type {any} */ a) => withNotes(String(a.instructions || ""), readClaude(a));
   const listFiles = (/** @type {any} */ a) => {
     try { return fs.readdirSync(ctxDir(a), { withFileTypes: true }).filter(e => e.isFile()).map(e => { const s = fs.statSync(path.join(ctxDir(a), e.name)); return { name: e.name, size: s.size, at: Math.round(s.mtimeMs) }; }).sort((x, y) => x.name.localeCompare(y.name)); }
     catch { return []; }
@@ -96,15 +98,17 @@ export function register(ctx, h) {
   /** What a launch adds to an agent's brief. */
   const brief = (/** @type {any} */ a) => contextBrief({ links: links(a), items: items(a) });
   /**
-   * The agent's folder as a session reads it: AGENTS.md (its instructions) and CLAUDE.md (an import of AGENTS.md, then the notes for Claude) at its root, so Claude Code and Codex read them natively when the
-   * session runs there, and the folders the orientation names. Written fresh at every launch from the stored truth; never from the session. @param {any} a
+   * The agent's folder as a session reads it: AGENTS.md (its instructions) at its root, CLAUDE.md as exactly a pointer at it, so Claude Code and Codex read it natively when the session runs there, and the folders
+   * the orientation names. Written fresh at every launch from the stored truth; never from the session. Notes an older build kept in CLAUDE.md are moved beside the stored words first, so the pointer loses nothing. @param {any} a
    * @returns {{ dir: string, instructions: boolean, context: boolean }}
    */
   const materialize = a => {
     ensureParts(a);
-    const words = String(a.instructions || "").trim(), notes = readClaude(a).trim();
+    const kept = claudeFile(a);
+    if (!fs.existsSync(kept)) { const old = readClaude(a); if (old.trim()) { try { fs.writeFileSync(kept, old, { mode: 0o600, flag: "wx" }); } catch { /* written by a racing launch */ } } }
+    const words = viewOf(a).trim();
     writeDocs(home(a), "AGENTS.md", words ? words + "\n" : "");
-    writeDocs(home(a), "CLAUDE.md", words || notes ? `@AGENTS.md\n${notes ? "\n" + notes + "\n" : ""}` : "");
+    writeDocs(home(a), "CLAUDE.md", words ? POINTER : "");
     // the same words under the other tools' names (Grok reads GROK.md)
     for (const m of MIRROR_FILES) writeRootFile(home(a), m, words ? words + "\n" : "");
     return { dir: home(a), instructions: Boolean(words), context: listFiles(a).length > 0 };
@@ -117,27 +121,34 @@ export function register(ctx, h) {
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
     run: async ({ agent }) => { const a = h.must(agent); return { made_by: a.owner ? String(a.owner) : null }; },
   });
+  ctx.tool("agents.instructions", {
+    description: "An agent's instructions text (its AGENTS.md), for a session's system prompt.", internal: true, callers: ["module"],
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }) => { const a = h.must(agent); return { name: a.name, text: viewOf(a) }; },
+  });
   ctx.tool("agents.docs.get", {
-    description: "An agent's two instruction files: AGENTS.md (its instructions) and CLAUDE.md (extra notes for Claude).",
+    description: "An agent's instructions: AGENTS.md. (CLAUDE.md beside it is only a pointer at it.)",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
     run: async ({ agent }, meta) => { const a = h.must(agent); await readOk(meta, a);
       // who made it and who last changed its words: a less-privileged author's words run with a more privileged asker's authority, so the page says so
       const last = /** @type {any} */ (db.prepare("SELECT by FROM agents_versions WHERE agent = ? ORDER BY n DESC LIMIT 1").get(a.name));
       const made = a.owner ? { id: String(a.owner), staff: h.staffOf ? await h.staffOf(String(a.owner)).catch(() => false) : false } : null;
-      return { files: { "AGENTS.md": a.instructions || "", "CLAUDE.md": readClaude(a) }, made_by: made, edited_by: last && last.by ? String(last.by) : null };
+      return { files: { "AGENTS.md": viewOf(a) }, made_by: made, edited_by: last && last.by ? String(last.by) : null };
     },
   });
   ctx.tool("agents.docs.set", {
-    description: "Write one of an agent's instruction files. AGENTS.md is its instructions (a new version); CLAUDE.md is kept beside it. Applies from the next turn.",
-    input: { type: "object", required: ["agent", "file", "text"], properties: { agent: { type: "string" }, file: { type: "string", enum: [...DOC_FILES] }, text: { type: "string" } } },
+    description: "Write an agent's instructions (file AGENTS.md; a new version). CLAUDE.md is only a pointer at it and cannot be written. Applies from the next turn.",
+    input: { type: "object", required: ["agent", "file", "text"], properties: { agent: { type: "string" }, file: { type: "string" }, text: { type: "string" } } },
     run: async ({ agent, file, text }, meta) => {
       const a = h.must(agent);
       await writeOk(meta, a);
-      if (!DOC_FILES.includes(file)) throw bad(`file is ${DOC_FILES.join(" or ")}`);
+      if (file !== "AGENTS.md") throw bad("Instructions live in AGENTS.md. Write them there; CLAUDE.md only points at it.");
       if (typeof text !== "string" || text.length > DOC_MAX) throw bad(`the text is up to ${DOC_MAX / 1024} KB`);
-      if (a.builtin && file === "CLAUDE.md") throw Object.assign(new Error(`${a.name} is built in: only its instructions change`), { code: "denied" });
-      if (file === "AGENTS.md") h.setWords(a, text, await h.personOf(meta));
-      else { ensureParts(a); const f = claudeFile(a); fs.writeFileSync(f + ".tmp", text, { mode: 0o600 }); fs.renameSync(f + ".tmp", f); }
+      // notes an older CLAUDE.md kept apart go into AGENTS.md once, under "Notes", and the separate file is retired
+      const full = withNotes(text, readClaude(a));
+      if (full.length > DOC_MAX) throw bad(`the text and the old notes together are over ${DOC_MAX / 1024} KB: shorten them`);
+      h.setWords(a, full, await h.personOf(meta));
+      try { fs.rmSync(claudeFile(a), { force: true }); } catch { /* nothing kept apart */ }
       return { ok: true, file };
     },
   });

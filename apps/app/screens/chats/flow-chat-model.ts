@@ -39,7 +39,7 @@ export function dividerOf(m: Marker, state: WakeState, at: number, zone?: string
 
 /** What the thread screen says above a wake: where it came from, whose access it runs with, and the run to open. */
 export function wakeHeader(m: Marker): { where: string; access: string | null; openRun: string } {
-  return { where: `Flow ${m.flowName || m.flow}, ${runLabel(m).toLowerCase()}, step ${m.stepName || m.step}`, access: m.approver ? `Runs with ${m.approver}'s access` : null, openRun: `/u/flows/${encodeURIComponent(m.flow)}` };
+  return { where: `Flow ${m.flowName || m.flow}, ${runLabel(m).toLowerCase()}, step ${m.stepName || m.step}`, access: m.approver ? `Runs with ${m.approver}'s access` : null, openRun: `/u/flows/${encodeURIComponent(m.flow)}/runs/${encodeURIComponent(m.run)}` };
 }
 
 /** Flow chats from threads.list rows: wakes grouped by Flow, oldest to newest, older runs collapsed (the newest wake and any waiting on you stay open). */

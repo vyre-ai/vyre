@@ -5,7 +5,7 @@
 
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, fields?: Named[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string, raw?: any }} Trigger */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string, field?: string, again?: string, raw?: any }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
@@ -17,6 +17,7 @@ import { findStep, flat } from "./tree.js";
 
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
+  { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
   { id: "stage", icon: "board", label: "A record enters a stage", hint: "For example a matter enters Drafting" },
   { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
   { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
@@ -86,6 +87,7 @@ export function triggerPhrase(t, o) {
   const type = named(o.types, t.type);
   switch (t.kind) {
     case "created": return type ? `a record is created in the ${type} object` : "a record is created";
+    case "changed": return `${type ? `a record in the ${type} object` : "a record"} is created or updated${t.field ? `, and its ${fieldLabel(o, t)} changes` : ""}`;
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
@@ -195,7 +197,7 @@ export function draftProblems(d, o) {
   const out = [];
   if (!d.name.trim()) out.push("Give the Flow a name.");
   const t = d.trigger;
-  if ((t.kind === "created" || t.kind === "stage") && !t.type) out.push("Choose the object that starts it.");
+  if (isRecordTrigger(t) && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "stage" && !(t.stage || "").trim()) out.push("Name the stage that starts it.");
   if (t.kind === "schedule" && !t.every) out.push("Choose how often it runs.");
   if (!d.steps.length) out.push("Add a first step.");
@@ -212,7 +214,9 @@ export const val = (t) => { const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? ""
 const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
-export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "stage";
+export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
+/** The label of the field a "changed" trigger watches. @param {Options} o @param {Trigger} t */
+export const fieldLabel = (o, t) => (((o.types.find((x) => x.name === t.type) || {}).fields || []).find((f) => f.name === t.field) || { label: t.field }).label;
 
 const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "flow";
 
@@ -220,6 +224,7 @@ const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g,
 export function triggerDefinition(t) {
   switch (t.kind) {
     case "created": return { on: "event", event: `${t.type}.created` };
+    case "changed": return { on: "event", event: [`${t.type}.created`, `${t.type}.updated`], ...(t.field ? { field: t.field } : {}), when_record_changes: t.again === "keep" ? "keep" : "replace" };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
     case "signup": return { on: "web", path: "signup" };
     case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
@@ -276,7 +281,7 @@ const UNITS = /** @type {Record<string, number>} */ ({ minutes: 60_000, hours: 3
 function tokenWords(f, d, o, none = "a date") {
   const m = /^\{(?:after\.)?([a-z0-9_]+)\}$/i.exec(String(f || "").trim());
   if (!m) return none;
-  const ty = d && (d.trigger.kind === "created" || d.trigger.kind === "stage") ? o.types.find((x) => x.name === d.trigger.type) : undefined;
+  const ty = d && isRecordTrigger(d.trigger) ? o.types.find((x) => x.name === d.trigger.type) : undefined;
   return `{${ty?.fields?.find((x) => x.name === m[1])?.label || m[1]}}`;
 }
 /** What a Wait until can wait for: the values before this step, each named plainly, as [token, label]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
@@ -308,7 +313,7 @@ export function newStep(kind, d, o) {
   const lastMade = [...all].reverse().find((s) => s.kind === "create");
   const link = lastMade ? lastMade.id : isRecordTrigger(d.trigger) ? "trigger" : "";
   switch (kind) {
-    case "create": return { id, kind, type: d.trigger.kind === "created" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
+    case "create": return { id, kind, type: d.trigger.kind === "created" || d.trigger.kind === "changed" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
     case "project": return { id, kind, template: o.templates[0]?.id || "", name: "", link };
     case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link };
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
@@ -373,6 +378,10 @@ function triggerFrom(t) {
   if (!t || typeof t !== "object") return raw;
   if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };
   if (t.on === "stage" && keys(t, ["on", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
+  if (t.on === "event" && Array.isArray(t.event) && t.event.length === 2 && keys(t, ["on", "event", "field", "when_record_changes"])) {
+    const [a, b] = t.event, m = /^([a-z][a-z0-9_]*)\.created$/.exec(a || "");
+    return m && b === `${m[1]}.updated` ? { kind: "changed", type: m[1], ...(t.field ? { field: t.field } : {}), again: t.when_record_changes === "keep" ? "keep" : "replace" } : raw;
+  }
   if (t.on === "event" && keys(t, ["on", "event"])) {
     const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || "");
     return m ? { kind: "created", type: m[1] } : raw;
@@ -481,7 +490,7 @@ export const OPERATORS = /** @type {[string, string][]} */ ([["==", "is"], ["!="
 export function fieldExpr(c, t) {
   const f = String(c.field || "").trim().replace(/[^A-Za-z0-9_.]/g, "_");
   if (!f) return "";
-  if (!c.source || c.source === "trigger") return t.kind === "created" || t.kind === "stage" ? `trigger.after.${f}` : `trigger.${f}`;
+  if (!c.source || c.source === "trigger") return isRecordTrigger(t) ? `trigger.after.${f}` : `trigger.${f}`;
   return `steps.${c.source}.${f}`;
 }
 
@@ -509,7 +518,7 @@ void fieldExpr;
 export function valueSources(d, stepId, o) {
   /** @type {[string, string][]} */ const out = [];
   const t = d.trigger;
-  if (t.kind === "created" || t.kind === "stage") for (const f of o.types.find((x) => x.name === t.type)?.fields || []) out.push([`{after.${f.name}}`, `${f.label} of the record that started it`]);
+  if (isRecordTrigger(t)) for (const f of o.types.find((x) => x.name === t.type)?.fields || []) out.push([`{after.${f.name}}`, `${f.label} of the record that started it`]);
   else if (t.kind === "form" || t.kind === "signup") for (const f of ["name", "email", "phone", "message"]) out.push([`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)} from the form`]);
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;

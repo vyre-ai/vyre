@@ -44,7 +44,7 @@ test("a timeline groups newest-first entries under one heading per day, and an e
   assert.deepEqual(groupByDay([], "UTC"), []);
   assert.deepEqual(entryAction({ type: "chat", id: "x", chat: "chat_1" }), { route: "/u/chats/chat_1" });
   assert.deepEqual(entryAction({ type: "email", id: "rec-9" }), { route: "/u/record/rec-9" });
-  assert.deepEqual(entryAction({ type: "flow-run", id: "rec", run: "run_7", flow: "welcome" }), { route: "/u/flows/welcome?run=run_7" }, "a Flow run opens its run");
+  assert.deepEqual(entryAction({ type: "flow-run", id: "rec", run: "run_7", flow: "welcome" }), { route: "/u/flows/welcome/runs/run_7" }, "a Flow run opens its run");
   assert.equal(entryAction({ type: "flow-run", id: "rec" }), null, "an older box that names no run has nothing to open");
   for (const type of ["stage", "project-start", "file-share"]) assert.equal(entryAction({ type, id: "x" }), null, type);
 });

@@ -78,19 +78,19 @@ test("used: chats and flows become rows; none says so in words", { skip: !strip 
   assert.match(m.NOT_USED("intake"), /intake/);
 });
 
-test("docs: the two files are named as the person knows them", { skip: !strip }, async () => {
+test("docs: the one file is named as the person knows it", { skip: !strip }, async () => {
   const m = await import("./config-model.ts");
-  assert.deepEqual(m.DOCS.map((d) => d[0]), ["AGENTS.md", "CLAUDE.md"]);
-  assert.equal(m.docInput("rex", "CLAUDE.md", "  hi \n").file, "CLAUDE.md");
-  assert.equal(m.docInput("rex", "CLAUDE.md", "  hi \n").text, "hi\n");
+  assert.deepEqual(m.DOCS.map((d) => d[0]), ["AGENTS.md"]);
+  assert.equal(m.docInput("rex", "AGENTS.md", "  hi \n").file, "AGENTS.md");
+  assert.equal(m.docInput("rex", "AGENTS.md", "  hi \n").text, "hi\n");
 });
 
 test("source: each part calls the one tool for it, and the plan saves as entries", { skip: !strip }, async () => {
   const { configSource } = await import("./config-source.ts");
   const b = box({ "sessions.routes.get": { data: { entries: [{ provider: "claude", account: "acc_1" }] } }, "sessions.accounts.list": { data: accounts } });
   const s = configSource(b.call);
-  const dd = await s.docs("rex"); assert.deepEqual(dd.files, { "AGENTS.md": "", "CLAUDE.md": "" });
-  await s.saveDoc("rex", "CLAUDE.md", "hi");
+  const dd = await s.docs("rex"); assert.deepEqual(dd.files, { "AGENTS.md": "" });
+  await s.saveDoc("rex", "AGENTS.md", "hi");
   await s.context("rex");
   await s.addContext("rex", "brief.pdf", "QUJD");
   await s.removeContext("rex", "brief.pdf");
@@ -155,12 +155,12 @@ test("authorship and work: who made it is said, and a non-admin author is marked
   assert.match(m.NO_WORK("rex"), /rex/);
 });
 
-test("agent docs api: the shared instructions editor loads and saves an agent's two files through the docs tools", { skip: !strip }, async () => {
+test("agent docs api: the shared instructions editor loads and saves an agent's instructions through the docs tools", { skip: !strip }, async () => {
   const { agentDocsApi } = await import("./config-source.ts");
-  const b = box({ "agents.docs.get": { data: { files: { "AGENTS.md": "Be kind.", "CLAUDE.md": "Plain words." }, made_by: null, edited_by: null } } });
+  const b = box({ "agents.docs.get": { data: { files: { "AGENTS.md": "Be kind." }, made_by: null, edited_by: null } } });
   const a = agentDocsApi(b.call, "rex");
   assert.equal(a.id, "agent:rex");
-  assert.deepEqual(await a.docs(), { "AGENTS.md": "Be kind.", "CLAUDE.md": "Plain words." });
-  await a.saveDoc("CLAUDE.md", "Shorter.");
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input.file ?? null]), [["agents.docs.get", null], ["agents.docs.set", "CLAUDE.md"]]);
+  assert.deepEqual(await a.docs(), { "AGENTS.md": "Be kind." });
+  await a.saveDoc("AGENTS.md", "Shorter.");
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input.file ?? null]), [["agents.docs.get", null], ["agents.docs.set", "AGENTS.md"]]);
 });

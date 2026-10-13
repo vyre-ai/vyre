@@ -105,7 +105,7 @@ export default {
       if (item.paused) return;
       const text = item.body || item.title;
       const agent = AGENT_SOURCE.exec(item.source || "")?.[1] || null;
-      let ok = true, note = "";
+      let ok = true, note = "", thread = null;
       try {
         // MEDIUM (reviewer, 2026-09-28): re-check scope right before it fires, not only at add or
         // edit time - an agent's projects.access can shrink (or the agent be deleted) any time
@@ -123,10 +123,11 @@ export default {
             ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}) })
             : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true });
         if (r.error) { ok = false; note = r.error.message; }
+        else if (r.data && typeof r.data.thread === "string") thread = r.data.thread;   // the job's thread, so the run says where the work is
       } catch (e) { ok = false; note = /** @type {Error} */ (e).message; }
       const last_result = (ok ? "ok" : `error: ${note}`).slice(0, 300);
       st.patch(item.id, { run_count: (item.run_count || 0) + 1, last_result });
-      emit("planner.task-run", { item: item.id, ok, result: last_result }, item);
+      emit("planner.task-run", { item: item.id, ok, result: last_result, ...(thread ? { thread } : {}) }, item);
     };
 
     const scheduler = new Scheduler({ st, settings, now, setTimer: seam.setTimer, clearTimer: seam.clearTimer, log: ctx.log,
