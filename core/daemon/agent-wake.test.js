@@ -105,7 +105,7 @@ test("a job thread that ends with its task still open marks it stuck; one that h
   const gw = { ask: { get: async () => task({ state }), edit: async () => {}, stuck: async (_c, id, info) => { stuck.push({ id, info }); } } };
   const mk = () => createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {}, callModule: async tool => (tool === "agents.woken" ? woken : {}) });
   const w = mk();
-  await w.threadEnded("th1", "exited without starting: no credentials");
+  await w.threadEnded("th1", "exited without starting: out of memory");
   assert.equal(stuck.length, 1);
   assert.match(stuck[0].info.reason, /juno stopped before it finished this task/);
   state = states.done;
