@@ -97,3 +97,16 @@ export function filterRows(rows: Row[], query: string, status: string): Row[] {
   const q = query.trim().toLowerCase();
   return rows.filter((r) => (status === "live" ? r.live !== null : status === "draft" ? r.live === null : true) && (!q || r.name.toLowerCase().includes(q) || (r.noun ? `${r.noun.one} ${r.noun.many}`.toLowerCase().includes(q) : false)));
 }
+
+/** The seats a new project is given after it starts: its lead, then the others as contributors, each person once. */
+export function seatCalls(project: string, { lead, team = [] }: { lead?: string; team?: string[] }): { project: string; person: string; level: "lead" | "contributor" }[] {
+  const out: { project: string; person: string; level: "lead" | "contributor" }[] = [];
+  if (lead) out.push({ project, person: lead, level: "lead" });
+  for (const p of team) if (p && !out.some((x) => x.person === p)) out.push({ project, person: p, level: "contributor" });
+  return out;
+}
+
+/** The Projects list's rows that came from one playbook; with none named, all of them. */
+export function ofPlaybook<T extends { row?: { data?: Record<string, unknown> } }>(items: T[], playbook: string): T[] {
+  return playbook ? items.filter((i) => String(i.row?.data?.template ?? "") === playbook) : items;
+}
