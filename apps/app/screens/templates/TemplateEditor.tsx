@@ -5,6 +5,7 @@ import { Sec } from "../places/Frame";
 import type { Body } from "./model";
 import * as E from "./edit";
 import { templates } from "./templates";
+import { useMembers } from "../spaces/state";
 
 /**
  * The template studio's visual editor: the name, the page projects open on, the roles, and the stages with their tasks, each a field or a choice, no JSON. Every change goes through edit.ts (pure, tested);
@@ -15,9 +16,13 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
   const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
   useEffect(() => { templates.flows().then(setFlows).catch(() => setFlows([])); }, []);
   const [pick, setPick] = useState("");
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => { templates.agents().then(setAgents).catch(() => setAgents([])); }, []);
+  const { members } = useMembers();
+  const people = members.map((m) => ({ id: m.id, name: m.name }));
   const todo = E.missing(body);
   const open = (body as Body & { opens_on?: string }).opens_on || "";
-  const doers = E.doerChoices(body), owners = E.ownerChoices(body);
+  const doers = E.assigneeChoices(body, people, agents), owners = E.ownerChoices(body);
   return (
     <View className="gap-s4">
       <Sec title="The template">
@@ -53,13 +58,16 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
             <Field name="Name" value={s.name} onChangeText={(v: string) => onChange(E.renameStage(body, si, v))} />
             <Select label="Who may move a project on early" value={s.owner || ""} options={owners} onChange={(v: string) => onChange(E.setStageOwner(body, si, v))} />
             <Field name="It moves on when (optional)" value={s.moves_on_when || ""} onChangeText={(v: string) => onChange(E.setMovesOn(body, si, v))} placeholder="the tasks are done" />
+            <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an assistant when a project enters it."}</Text>
             {(s.tasks || []).map((t, ti) => (
               <View key={ti} className="gap-s2 rounded-field border border-edge p-s3">
                 <Field name={`Task ${ti + 1}`} value={t.title} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { title: v }))} placeholder="Gather documents" />
-                <Select label="Who does it" value={t.doer} options={doers} onChange={(v: string) => onChange(E.setTask(body, si, ti, { doer: v }))} />
-                <Select label="Checked by" value={t.checker || ""} options={[["", "No one"], ...doers]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { checker: v }))} />
+                <Field name="Details (optional)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
+                <Select label="Assigned to" value={t.doer} options={doers.some(([v]) => v === t.doer) ? doers : [...doers, [t.doer, E.assigneeWords(t.doer, people, agents)]]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { doer: v }))} />
+                <Field name="Due after (days, optional)" value={E.dueDays(t)} onChangeText={(v: string) => onChange(E.setDueDays(body, si, ti, v))} placeholder="3" />
+                {E.kindOfDoer(t.doer) === "agent" ? <Field name="Needs a person's yes before it (optional)" value={E.approvalOf(t)} onChangeText={(v: string) => onChange(E.setApproval(body, si, ti, v))} placeholder="sending anything to the client" /> : null}
+                <Select label="Checked by" value={t.checker || ""} options={[["", "No one"], ...doers.filter(([v]) => v.startsWith("role:") || v.startsWith("person:"))]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { checker: v }))} />
                 <Select label="It ends with" value={t.output.kind} options={E.OUTPUTS} onChange={(v: string) => onChange(E.setTask(body, si, ti, { output_kind: v }))} />
-                <Field name="What to do (the brief)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
                 <View className="flex-row items-center gap-s3"><Switch on={t.required !== false} onChange={(v: boolean) => onChange(E.setTask(body, si, ti, { required: v ? undefined : false }))} label="The stage waits for this task" /><Text>The stage waits for this task</Text></View>
                 <View className="flex-row gap-s2">
                   <Button kind="ghost" size="sm" label="Up" disabled={ti === 0} onPress={() => onChange(E.moveTask(body, si, ti, -1))} />
