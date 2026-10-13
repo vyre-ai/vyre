@@ -176,7 +176,7 @@ export function stepProblem(s, o) {
     case "upsert": return !s.type ? "Choose an object." : !(s.matchFields || []).some((/** @type {any} */ f) => (f.field || "").trim()) ? "Say which field finds an existing record." : null;
     case "stage": return !s.type ? "Choose an object." : !s.record ? "Choose which record." : !(s.to || "").trim() ? "Name the stage." : null;
     case "wait":
-      if (s.mode === "until") return !val(s.field || "").expr ? "Pick the date to wait for." : s.when !== "at" && !(Number(s.amount) > 0) ? "Say how long before or after." : null;
+      if (s.mode === "until") return !/^\{[a-z0-9_.]+\}$/i.test((s.field || "").trim()) ? "Pick the date to wait for." : s.when !== "at" && !(Number(s.amount) > 0) ? "Say how long before or after." : null;
       return Number(s.amount) > 0 ? null : "Say how long to wait.";
     case "formula": return (s.formula || "").trim() ? null : "Write the formula.";
     case "web": return !s.connector ? "Choose the connection (an owner adds one in the Vault)." : (s.path || "").trim().startsWith("/") ? null : "Start the path with /.";
