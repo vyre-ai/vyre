@@ -65,6 +65,42 @@ test("(e) a non-member and a member removed since both get bad_proof, the same a
   assert.equal((await never.admit.check(never.hello(), CH)).why, "bad_proof");
 });
 
+test("the server's log can tell which check refused, while the client hears one word", async () => {
+  const stranger = rig({ role: null });
+  const a = await stranger.admit.check(stranger.hello(), CH);
+  assert.equal(a.why, "bad_proof");
+  assert.match(a.detail, /^no_role/);
+  const wrongEntry = rig();
+  assert.match((await wrongEntry.admit.check(wrongEntry.hello({ entry: EID("z") }), CH)).detail, /^no_entry/);
+  const thief = rig();
+  assert.match((await thief.admit.check({ ...thief.hello(), sig: "x".repeat(86) }, CH)).detail, /^bad_signature/);
+});
+
+test("a brand-new entry the cached chain lacks makes the server read the chain again at once, at most every 10 seconds per identity", async () => {
+  const a = rig();
+  assert.equal((await a.admit.check(a.hello(), CH)).ok, true);
+  assert.equal(a.r.fetches, 1);
+  // the person adds a new device after the server cached the chain; its first hello arrives 11 seconds later
+  const fresh = key();
+  a.r.state = { ...a.r.state, seq: 6, head: "h6", entries: [...a.r.state.entries, { eid: EID("n"), kind: "device", pub: fresh.pub, since: T0 - 5 * DAY, addedBy: EID("o"), founder: false }] };
+  a.r.clock += 11_000;
+  const hn = { identity: IDENT, entry: EID("n"), ts: a.r.clock, nonce: "n".repeat(20), channel: CH };
+  const ok = await a.admit.check({ ...hn, sig: fresh.sign(chainHelloMessage(BOX, hn)) }, CH);
+  assert.equal(ok.ok, true, "admitted without waiting 5 minutes");
+  assert.equal(a.r.fetches, 2);
+});
+
+test("an entry the chain really lacks is looked up once per 10 seconds, not once per hello", async () => {
+  const a = rig();
+  assert.equal((await a.admit.check(a.hello(), CH)).ok, true);
+  a.r.clock += 11_000;
+  for (let n = 0; n < 5; n++) assert.equal((await a.admit.check(a.hello({ entry: EID("z") }), CH)).why, "bad_proof");
+  assert.equal(a.r.fetches, 2, "one refresh for the first unknown entry, none for the next four");
+  a.r.clock += 11_000;
+  assert.equal((await a.admit.check(a.hello({ entry: EID("z") }), CH)).why, "bad_proof");
+  assert.equal(a.r.fetches, 3, "and again after ten more seconds");
+});
+
 test("a hello replayed at another server, on another channel, or after the window is refused", async () => {
   const a = rig();
   const h = a.hello();
@@ -207,4 +243,18 @@ test("a malformed hello is refused before anything is fetched", async () => {
     assert.equal((await a.admit.check(/** @type {any} */ (bad), CH)).why, "bad_input");
   }
   assert.equal(a.r.fetches, 0);
+});
+
+test("the Vyre name the hello claims reaches the chain lookup, and only after the identity has a role here", async () => {
+  /** @type {Array<[string, string | undefined]>} */ const asked = [];
+  const k = key();
+  const entry = { eid: EID("d"), kind: "device", pub: k.pub, since: T0 - 3 * DAY, founder: false };
+  const mk = (/** @type {string | null} */ role) => createChainAdmit({ boxId: async () => BOX, now: () => T0, roleOf: async () => role, fetchState: async (id, name) => { asked.push([id, name]); return { id, seq: 1, head: "h", entries: [entry] }; } });
+  const h = { identity: IDENT, entry: EID("d"), ts: T0, nonce: "m".repeat(20), channel: CH, name: "paralegal" };
+  const sig = k.sign(chainHelloMessage(BOX, h));
+  assert.equal((await mk("member").check({ ...h, sig }, CH)).ok, true);
+  assert.deepEqual(asked, [[IDENT, "paralegal"]]);
+  asked.length = 0;
+  assert.equal((await mk(null).check({ ...h, nonce: "o".repeat(20), sig }, CH)).why, "bad_proof");
+  assert.deepEqual(asked, [], "a stranger's claimed name is never looked up");
 });

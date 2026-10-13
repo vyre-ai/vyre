@@ -7,7 +7,7 @@ const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !
 
 /** The fields a create form asks for: hidden ones left out, required ones first, the rest in the type's order. @param {F[]} fields */
 export function formOrder(fields) {
-  const shown = fields.filter((f) => !f.hidden);
+  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by);
   return [...shown.filter((f) => f.required), ...shown.filter((f) => !f.required)];
 }
 
@@ -69,4 +69,42 @@ export function importIssues(rows, mapping, fields) {
 export function importSummary(total, issues, mapping) {
   const flagged = new Set(issues.map((i) => i.row)).size;
   return { total, ready: total - flagged, flagged, unmapped: Object.values(mapping).filter((v) => !v).length };
+}
+
+/** What a create sends: plain values to the record, sealed values (kind sealed, or a field with a seal) held back to be put one by one after it exists. Empty values are left out; text is trimmed. @param {(F & { seal?: unknown })[]} fields @param {Record<string, any>} values */
+export function createPayload(fields, values) {
+  /** @type {Record<string, any>} */ const plain = {}, /** @type {Record<string, any>} */ sealed = {};
+  for (const f of formOrder(fields)) {
+    let v = values[f.name];
+    if (blank(v)) continue;
+    if (typeof v === "string") v = v.trim();
+    if (f.kind === "sealed" || /** @type {any} */ (f).seal) sealed[f.name] = v; else plain[f.name] = v;
+  }
+  return { plain, sealed };
+}
+
+/** The related records of a page by type, in the order each type first appears. @param {{ urn: string, title: string, type: string }[]} related @param {Record<string, { label: string, plural: string }>} types */
+export function groupRelated(related, types) {
+  /** @type {{ type: string, label: string, plural: string, rows: { urn: string, title: string, type: string }[] }[]} */ const out = [];
+  for (const r of related) {
+    let g = out.find((x) => x.type === r.type);
+    if (!g) { const t = types[r.type]; g = { type: r.type, label: t?.label ?? r.type, plural: t?.plural ?? `${r.type}s`, rows: [] }; out.push(g); }
+    g.rows.push(r);
+  }
+  return out;
+}
+
+/** Up to three facts for under a record's name, from its plain filled fields (never the first text field, which is the name, a stage, a sealed or hidden one). @param {{ fields: any[] }} def @param {{ data?: Record<string, any> }} rec @returns {[string, string][]} */
+export function factsOf(def, rec) {
+  const first = def.fields.find((f) => f.kind === "text");
+  /** @type {[string, string][]} */ const out = [];
+  for (const f of def.fields) {
+    if (out.length === 3) break;
+    if (f === first || f.hidden || f.seal || !["text", "choice", "number", "money", "date"].includes(f.kind)) continue;
+    const v = rec.data?.[f.name];
+    if (blank(v)) continue;
+    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : String(v);
+    out.push([f.label, s]);
+  }
+  return out;
 }

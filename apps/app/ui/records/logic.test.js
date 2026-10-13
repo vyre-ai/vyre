@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary } from "./logic.js";
+import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf } from "./logic.js";
 
 const FIELDS = [
   { name: "notes", label: "Notes", kind: "rich_text" },
@@ -53,4 +53,29 @@ test("the import preview finds the rows that would be refused", () => {
 test("the summary counts clean rows, rows with a problem, and unmapped columns", () => {
   const s = importSummary(5, [{ row: 2 }, { row: 2 }, { row: 4 }], { A: "x", B: "", C: "" });
   assert.deepEqual(s, { total: 5, ready: 3, flagged: 2, unmapped: 2 });
+});
+
+test("the create form leaves out what a person never types: the stage, a computed field, one a service owns", () => {
+  const fs = [...FIELDS, { name: "stage", label: "Stage", kind: "stage" }, { name: "total", label: "Total", kind: "number", computed: { expr: "1" } }, { name: "state", label: "State", kind: "text", owned_by: "kernel" }];
+  assert.deepEqual(formOrder(fs).map((f) => f.name), ["title", "kind", "ssn", "notes", "value"]);
+});
+
+test("a create splits what is plain from what is sealed, and drops what is empty", () => {
+  const fs = [...FIELDS.filter((f) => f.name !== "old"), { name: "acct", label: "Account", kind: "text", seal: { level: "ai", class: "free" } }];
+  const p = createPayload(fs, { title: " A ", kind: "Home", value: "", notes: null, ssn: "123-45-6789", acct: "9921" });
+  assert.deepEqual(p.plain, { title: "A", kind: "Home" });
+  assert.deepEqual(p.sealed, { ssn: "123-45-6789", acct: "9921" });
+});
+
+test("related records are grouped by type, in the order they first appear", () => {
+  const rel = [{ urn: "u1", title: "Doe trust", type: "project" }, { urn: "u2", title: "Home", type: "asset" }, { urn: "u3", title: "Savings", type: "asset" }];
+  const g = groupRelated(rel, { project: { label: "Project", plural: "Projects" }, asset: { label: "Asset", plural: "Assets" } });
+  assert.deepEqual(g.map((x) => [x.type, x.plural, x.rows.map((r) => r.title)]), [["project", "Projects", ["Doe trust"]], ["asset", "Assets", ["Home", "Savings"]]]);
+});
+
+test("the facts under a record's name: up to three filled plain fields, never the title, a stage, a sealed or hidden one", () => {
+  const def = { fields: [{ name: "title", label: "Title", kind: "text" }, { name: "stage", label: "Stage", kind: "stage" }, { name: "plan", label: "Plan", kind: "choice" }, { name: "ssn", label: "SSN", kind: "sealed" }, { name: "fee", label: "Fee", kind: "money" }, { name: "h", label: "H", kind: "text", hidden: true }, { name: "opened", label: "Opened", kind: "date" }, { name: "n", label: "N", kind: "number" }, { name: "e", label: "E", kind: "text" }] };
+  const rec = { data: { title: "T", stage: "Intake", plan: "Trust", ssn: { sealed: "x" }, fee: { amount: 1200, currency: "USD" }, h: "no", opened: "2026-10-01", n: 4, e: "" } };
+  assert.deepEqual(factsOf(def, rec).map((f) => f[0]), ["Plan", "Fee", "Opened"]);
+  assert.equal(factsOf(def, rec)[1][1], "$1,200");
 });

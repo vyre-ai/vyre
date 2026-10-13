@@ -1,14 +1,15 @@
 // @ts-check
 // The pure half of the setup screens (Records: a type, its fields, choices, relations, who sees a field). A draft is what a person is editing; toDefinition is the kernel's FieldDefinition it becomes.
 
-/** @typedef {{ name?: string, label: string, kind: string, description: string, required: boolean, unique: boolean, hidden: boolean, sealed: boolean, options: string[], to: string | null, many: boolean, inverse: string, hidden_from: string[], visible_if: string, required_if: string, group: string }} Draft */
+/** @typedef {{ name?: string, label: string, kind: string, description: string, required: boolean, unique: boolean, hidden: boolean, sealed: boolean, seal: Seal, options: string[], to: string | null, many: boolean, inverse: string, hidden_from: string[], visible_if: string, required_if: string, group: string }} Draft */
+/** @typedef {{ level: "ai" | "human", class: string, reveal_roles: string[], hint_allowed: boolean }} Seal */
 /** @typedef {{ name: string, label: string, plural: string }} TypeRef */
 
 export const UNIQUE_KINDS = ["text", "number", "url", "choice", "date", "datetime"];
 export const CHOICE_KINDS = ["choice", "multi_choice", "stage"];
 
 /** @param {string} kind @returns {Draft} */
-export const newDraft = (kind = "text") => ({ label: "", kind, description: "", required: false, unique: false, hidden: false, sealed: false, options: [], to: null, many: false, inverse: "", hidden_from: [], visible_if: "", required_if: "", group: "" });
+export const newDraft = (kind = "text") => ({ label: "", kind, description: "", required: false, unique: false, hidden: false, sealed: false, seal: { level: "ai", class: "free", reveal_roles: [], hint_allowed: false }, options: [], to: null, many: false, inverse: "", hidden_from: [], visible_if: "", required_if: "", group: "" });
 
 /** The stored name from a label: lower case, words joined by underscores. @param {string} label */
 export const nameOf = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "field";
@@ -30,6 +31,7 @@ export function checkField(d, siblings, types) {
   }
   if (d.kind === "link" && !types.some((t) => t.name === d.to)) errors.to = "Pick the type this field links to.";
   if (d.unique && !canBeUnique(d.kind)) errors.unique = "This kind of field cannot be unique.";
+  if (d.sealed && d.seal.level === "human" && !d.seal.reveal_roles.length) errors.seal = "Pick who may reveal it.";
   if (d.required && d.hidden) errors.hidden = "A required field cannot be hidden.";
   if (d.required && d.required_if) errors.required_if = "Use either required or required when, not both.";
   return { ok: Object.keys(errors).length === 0, errors };
@@ -117,7 +119,7 @@ export const ruleWords = (r, fieldLabel) => (r.op === "filled" ? `${fieldLabel} 
 export function draftOf(def) {
   return {
     ...newDraft(def.kind === "sealed" ? "text" : def.kind), name: def.name, label: def.label ?? "", description: def.description ?? "", required: !!def.required, unique: !!def.unique, hidden: !!def.hidden,
-    sealed: def.kind === "sealed" || !!def.seal, options: [...(def.options ?? [])], to: def.to ?? null, many: !!def.many, inverse: def.inverse?.label ?? "", hidden_from: [...(def.hidden_from ?? [])],
+    sealed: def.kind === "sealed" || !!def.seal, seal: { level: def.seal?.level ?? "ai", class: def.seal?.class ?? "free", reveal_roles: [...(def.seal?.reveal_roles ?? [])], hint_allowed: !!def.seal?.hint_allowed }, options: [...(def.options ?? [])], to: def.to ?? null, many: !!def.many, inverse: def.inverse?.label ?? "", hidden_from: [...(def.hidden_from ?? [])],
     visible_if: def.visible_if ?? "", required_if: def.required_if ?? "", group: def.group ?? "",
   };
 }
@@ -131,7 +133,7 @@ export function applyDraft(original, d) {
   const own = original?.kind === "sealed";
   const def = toDefinition({ ...d, sealed: false, kind: own ? "sealed" : d.kind });
   const out = { ...base, ...def, kind: own ? "sealed" : def.kind };
-  if (own) { out.seal = original.seal; delete out.options; }
-  else if (d.sealed) out.seal = original?.seal ?? { level: "ai", class: "free" };
+  if (own) delete out.options;
+  if (own || d.sealed) out.seal = { level: d.seal.level, class: d.seal.class, ...(d.seal.level === "human" && d.seal.reveal_roles.length ? { reveal_roles: [...d.seal.reveal_roles] } : {}), ...(d.seal.hint_allowed ? { hint_allowed: true } : {}) };
   return out;
 }

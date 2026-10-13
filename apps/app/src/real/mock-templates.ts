@@ -8,16 +8,16 @@ const MATTER = {
   name: "Estate plan", noun: { one: "Matter", many: "Matters" }, description: "From the first call to the signed documents.", tags: ["estate"],
   roles: [{ role: "attorney", lead: true }, { role: "paralegal" }],
   stages: [
-    { name: "Opening", owner: "role:attorney", tasks: [
-      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY }),
-      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY }),
-      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY }),
+    { name: "Opening", owner: "role:attorney", groups: [{ name: "Documents" }, { name: "Client calls" }], tasks: [
+      task("Run the conflict check", "role:paralegal", { due_offset_ms: 1 * DAY, group: "Documents" }),
+      task("Sign the engagement letter", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 3 * DAY, group: "Documents", checker: "role:paralegal", followers: ["person:alex"], notes: { approver: "Check the signature page and the date.", followers: "For your information; no action needed." } }),
+      task("Write the welcome email to the family", "teammate:research", { needs_yes: ["sending anything to the family"], due_offset_ms: 2 * DAY, group: "Client calls", required: false }),
     ] },
-    { name: "Initial Administration", tasks: [
+    { name: "Initial Administration", done_when: "all", tasks: [
       task("Gather the family's documents", "role:paralegal", { due_offset_ms: 7 * DAY }),
       task("Open the estate file", "lead", { due_offset_ms: 2 * DAY }),
     ] },
-    { name: "Inventory", tasks: [
+    { name: "Inventory", done_when: "sign_off", sign_off: "role:attorney", tasks: [
       task("List assets and debts", "teammate:research", { due_offset_ms: 14 * DAY }),
       task("Review the inventory", "role:attorney", { output: { kind: "decision" }, due_offset_ms: 5 * DAY }),
     ] },
@@ -26,7 +26,7 @@ const MATTER = {
   ],
 };
 const CAMPAIGN = {
-  name: "Ad campaign", noun: { one: "Campaign", many: "Campaigns" }, description: "A paid campaign from brief to report.", tags: ["marketing"],
+  name: "Ad campaign", stage_mode: "any", noun: { one: "Campaign", many: "Campaigns" }, description: "A paid campaign from brief to report.", tags: ["marketing"],
   roles: [{ role: "strategist", lead: true }, { role: "designer" }],
   stages: [
     { name: "Brief", tasks: [task("Write the brief", "role:strategist")] },
@@ -35,12 +35,23 @@ const CAMPAIGN = {
     { name: "Report" },
   ],
 };
+const ATP = {
+  name: "ATP (AI Transformation Partnership)", noun: { one: "ATP client", many: "ATP clients" }, description: "A client's first ninety days of AI work with us.", tags: ["atp"],
+  roles: [{ role: "consultant" }, { role: "intake" }],
+  stages: [
+    { name: "Intake", done_when: "all", tasks: [task("Book the kickoff call", "role:intake", { due_offset_ms: 1 * DAY }), task("Collect the client's tools and logins", "person:alex", { due_offset_ms: 3 * DAY }), task("Research the client's firm and market", "teammate:research", { due_offset_ms: 2 * DAY })] },
+    { name: "Audit", done_when: "sign_off", sign_off: "person:alex", tasks: [task("Map how the firm works today", "role:consultant", { due_offset_ms: 7 * DAY }), task("Agree the first three automations", "lead", { output: { kind: "decision" }, due_offset_ms: 10 * DAY })] },
+    { name: "Build", tasks: [task("Build the first automation", "teammate:research", { needs_yes: ["turning anything on for the client"], due_offset_ms: 21 * DAY }), task("Review it with the client", "lead", { due_offset_ms: 25 * DAY, required: false })] },
+    { name: "Handover", tasks: [task("Train the client's team", "role:consultant", { due_offset_ms: 5 * DAY })] },
+  ],
+};
 const DRAFT = { name: "Client onboarding", description: "What happens in a new client's first week.", stages: [{ name: "Welcome", tasks: [task("Send the welcome email", "role:owner")] }, { name: "Done" }] };
 
 const db: V[] = [
   { template: "tpl_estate-plan", version: 2, name: "Estate plan", state: "live", owner: "per_you", tags: ["estate"], body: MATTER },
   { template: "tpl_estate-plan", version: 1, name: "Estate plan", state: "retired", owner: "per_you", tags: ["estate"], body: { ...MATTER, noun: undefined } },
   { template: "tpl_ad-campaign", version: 1, name: "Ad campaign", state: "live", owner: "per_you", tags: ["marketing"], body: CAMPAIGN },
+  { template: "tpl_atp", version: 1, name: ATP.name, state: "live", owner: "per_you", tags: ["atp"], body: ATP },
   { template: "tpl_client-onboarding", version: 1, name: "Client onboarding", state: "draft", owner: "per_you", tags: [], body: DRAFT },
 ];
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50);

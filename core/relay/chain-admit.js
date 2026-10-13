@@ -17,6 +17,8 @@ export const CHAIN_HELLO_TAG = "vyre-chain-hello-v1";
 export const WINDOW_MS = 120_000;
 export const REFRESH_MS = 300_000;
 export const GRACE_MS = 3_600_000;
+/** An entry the cached chain does not list makes the chain be read again, but not more often than this per identity: a new device just added works at once, and a stranger naming entries cannot make the server hammer the directory. */
+export const UNKNOWN_ENTRY_REFRESH_MS = 10_000;
 const NONCE_MAX = 4096;
 
 /**
@@ -46,14 +48,14 @@ export function createChainAdmit(o) {
   const nonces = new Map();
 
   /** The chain for an identity: from the cache while it is fresh, else fetched, checked against the highest seen, and kept. Answers { state, stale } or { why }. @param {string} identity @param {boolean} known this device was admitted before @param {string} [name] the Vyre name the hello claims, for an identity this server has never seen */
-  async function chainOf(identity, known, name) {
+  async function chainOf(identity, known, name, force = false) {
     const t = clock(), have = cache.get(identity);
-    if (have && t - have.at <= REFRESH_MS) return { state: have.state, stale: false };
+    if (have && t - have.at <= REFRESH_MS && !(force && t - have.at >= UNKNOWN_ENTRY_REFRESH_MS)) return { state: have.state, stale: false, fetched: false };
     /** @type {any} */ let state = null;
     try { state = await o.fetchState(identity, name); } catch { state = null; }
     if (!state || !Array.isArray(state.entries)) {
       // cannot be checked: a device already admitted keeps working for the grace from the last good fetch; a new one is refused
-      if (have && known && t - have.at <= GRACE_MS) return { state: have.state, stale: true };
+      if (have && known && t - have.at <= GRACE_MS) return { state: have.state, stale: true, fetched: false };
       return { why: "cannot_check" };
     }
     const top = highest.get(identity);
@@ -63,7 +65,7 @@ export function createChainAdmit(o) {
     }
     highest.set(identity, { seq: state.seq, head: state.head });
     cache.set(identity, { state, at: t });
-    return { state, stale: false };
+    return { state, stale: false, fetched: true };
   }
 
   return {
@@ -79,20 +81,25 @@ export function createChainAdmit(o) {
       if (Math.abs(t - Number(h.ts)) > WINDOW_MS) return { ok: false, why: "stale" };
       for (const [n, exp] of nonces) { if (exp > t) break; nonces.delete(n); }
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
-      const refuse = { ok: false, why: "bad_proof" };
+      // the client hears only `bad_proof` for all three of these (so a probe cannot tell a member from a stranger); `detail` is for this server's own log
+      const refuse = (/** @type {string} */ detail) => ({ ok: false, why: "bad_proof", detail });
       // members only, by identity id; the same words as a bad signature when there is none
       const role = await o.roleOf(h.identity);
-      if (!role) return refuse;
+      if (!role) return refuse("no_role: this identity is neither the owner nor a member here");
       const box = await o.boxId().catch(() => null);
       if (!box) return { ok: false, why: "cannot_check" };
       const known = admitted.has(`${h.identity}/${h.entry}`);
-      const c = await chainOf(h.identity, known, h.name);
+      let c = await chainOf(h.identity, known, h.name);
       if ("why" in c) return { ok: false, why: c.why };
-      const entry = (c.state.entries || []).find((/** @type {any} */ e) => e && e.eid === h.entry && e.kind === "device" && typeof e.pub === "string");
-      if (!entry || isRelayKey(entry)) return refuse;
+      const find = (/** @type {any} */ st) => (st.entries || []).find((/** @type {any} */ e) => e && e.eid === h.entry && e.kind === "device" && typeof e.pub === "string");
+      let entry = find(c.state);
+      // a device the person has just added is not in the chain this server cached: read it again now (at most every 10 seconds), then decide
+      if (!entry && !c.fetched) { const again = await chainOf(h.identity, known, h.name, true); if (!("why" in again)) { c = again; entry = find(c.state); } }
+      if (!entry) return refuse("no_entry: the chain lists no device with that entry id");
+      if (isRelayKey(entry)) return refuse("relay_key: the relay's own key is never a device");
       let good = false;
       try { good = await verifyWith(entry.pub, chainHelloMessage(box, h), h.sig, entry); } catch { good = false; }
-      if (!good) return refuse;
+      if (!good) return refuse(`bad_signature: the entry key did not sign this box, identity, entry, time, nonce, channel and presence key (this server's box id starts ${String(box).slice(0, 6)}, ${String(box).length} characters; channel ${h.channel})`);
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
       nonces.set(h.nonce, t + 2 * WINDOW_MS);
       while (nonces.size > NONCE_MAX) nonces.delete(/** @type {string} */ (nonces.keys().next().value));

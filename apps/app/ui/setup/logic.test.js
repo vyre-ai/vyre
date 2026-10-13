@@ -18,6 +18,13 @@ test("only some kinds can be unique", () => {
   for (const k of ["money", "link", "file", "sealed", "boolean", "address"]) assert.ok(!canBeUnique(k), k);
 });
 
+test("a seal that only some people may open names who", () => {
+  const d = { ...newDraft("text"), label: "SSN", sealed: true, seal: { level: "human", class: "us-ssn", reveal_roles: [], hint_allowed: false } };
+  assert.match(checkField(d, [], TYPES).errors.seal, /who may/);
+  assert.equal(checkField({ ...d, seal: { ...d.seal, reveal_roles: ["admin"] } }, [], TYPES).ok, true);
+  assert.equal(checkField({ ...d, seal: { level: "ai", class: "free", reveal_roles: [], hint_allowed: false } }, [], TYPES).ok, true);
+});
+
 test("a draft needs a label, and no other field may carry the same name", () => {
   const siblings = [{ name: "title", label: "Title" }];
   assert.equal(checkField({ ...newDraft("text"), label: "" }, siblings, TYPES).ok, false);

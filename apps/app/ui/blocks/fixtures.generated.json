@@ -4341,6 +4341,20 @@
     }
    }
   },
+  "setup-field-seal": {
+   "title": "Records setup: sealing a field",
+   "screens": {
+    "full": {
+     "component": "setup-field-seal"
+    },
+    "compact": {
+     "component": "setup-field-seal"
+    },
+    "glance": {
+     "component": "setup-field-seal"
+    }
+   }
+  },
   "grouped-list": {
    "title": "Grouped list (tasks)",
    "screens": {

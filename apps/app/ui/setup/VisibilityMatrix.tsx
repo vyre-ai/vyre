@@ -19,7 +19,7 @@ export function VisibilityMatrix({ roles, hiddenFrom, sealed, onChange, onSeal }
           </View>
         ))}
         <Divider />
-        <Row title="Seal from AI" sub={sealed ? "Assistants see only that a value is on file." : "For a Social Security number or an account number."} end={<View className="flex-row items-center gap-s2">{sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}<Switch label="Seal from AI" on={sealed} onChange={onSeal} /></View>} />
+        <Row title="Seal this field" sub={sealed ? "Hidden from every assistant; they see only that a value is on file." : "For a Social Security number or an account number."} end={<View className="flex-row items-center gap-s2">{sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}<Switch label="Seal this field" on={sealed} onChange={onSeal} /></View>} />
       </Card>
       <Text size="caption" tone="label">The owner always sees every field. Hiding a field from a role is privacy; a rule that only hides it on screen is not.</Text>
     </View>
