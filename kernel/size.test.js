@@ -31,9 +31,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9611 (kernel +7 on 9604, per-project seat levels: a viewer on a project reads it and writes nothing in it, refused in words from the one folder guard and the gate; the rule that judges who writes a seat or a task is in gateway/ownership.js, which is not base).
 // 9613 (seats +7 and roles-core +2 together on 9604, merged on the stage 13 Oct 2026).
 // 9615 (invite-seats, 13 Oct 2026, lead ruling: an invite carries its project seats; +2: the shape check and the seats kept beside custom, which invite.used carries to the work module).
-// [kernel +56: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; the stage tip 8cdbc2d34 measures 9633, this adds 56] (flows-ux)
-// 9689 (the stage tip 9633 plus the 56 above).
-const CAP = 9689;
+// [kernel +57: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; the stage tip 8cdbc2d34 measures 9633, this adds 57] (flows-ux)
+// 9690 (the stage tip 9633 plus the 57 above: 56 and the one import of lib/roles/staff.js).
+const CAP = 9690;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
