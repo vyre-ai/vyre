@@ -221,11 +221,15 @@ export function register(ctx, h) {
       const a = h.must(agent);
       await writeOk(meta, a);
       const access = await sharedWith(a);
-      const sp = ctx.kernel && ctx.kernel.space ? await ctx.call("spaces.members.list", { space: ctx.kernel.space }).catch(() => null) : null;
-      const people = sp && !sp.error && sp.data && Array.isArray(sp.data.members) ? sp.data.members.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.person), role: String(m.role || "") })) : [];
-      const rl = await ctx.call("roles.list", {}).catch(() => null);
-      const rrows = rl && !rl.error && rl.data ? (Array.isArray(rl.data) ? rl.data : rl.data.roles || []) : [];
-      const roles = rrows.map((/** @type {any} */ r) => ({ id: String(r.id || r.role || r.name), name: String(r.name || r.label || r.id) })).filter((/** @type {any} */ r) => r.id && r.id !== "owner");
+      // the people who could be picked: the Space's members, read through the kernel on the CALLER's own chain (it shows a manager and above everyone, a member only what she may see). A role is not
+      // offered: an agent is shared with a person for now.
+      let people = [];
+      try {
+        const chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null;
+        const ms = chain && ctx.kernel.grants && ctx.kernel.grants.members ? await ctx.kernel.grants.members.list(chain) : [];
+        people = (Array.isArray(ms) ? ms : []).map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.display_name || m.person), role: String(m.role || "") }));
+      } catch { people = []; }
+      const roles = [];
       return { access, people, roles };
     },
   });
