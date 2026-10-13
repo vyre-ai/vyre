@@ -22,7 +22,7 @@
   "core/tasks-tools/index.js": 1,
   "core/vitals/index.js": 1,
   "core/watchers/index.js": 1,
-  "kernel/core/chain.js": 1,
+  "kernel/core/chain.js": 0,
   "kernel/retrofit/gates.js": 1
  }
 }
