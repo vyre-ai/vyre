@@ -107,3 +107,18 @@ test("a loop's turns and a step's failure path each get their own row; retry lim
   assert.deepEqual(rows.filter((r) => r.title.startsWith("Text the client")).map((r) => r.title), ["Text the client (turn 1)", "Text the client (turn 2)", "Text the client, failure path"]);
   assert.deepEqual(retryLimits({ steps: [{ id: "a", retry: { attempts: 4 } }, { id: "b", kind: "decide", then: [{ id: "c", retry: { attempts: 2 } }] }, { id: "d" }] }), { a: 4, c: 2 });
 });
+
+test("a run's page header says what ran, where it stands, who approved the version, and links the record", { skip: !strip }, async () => {
+  const { runHeader } = await import("./run-model.ts");
+  const h = runHeader({ state: "done", started_at: 1, finished_at: 5, version: 3 }, { fmt: at, title: "Appointment reminder", number: 4, approver: "Pat", record: "vyre://s/matter/m_9" });
+  assert.deepEqual([h.title, h.sub, h.status, h.tone, h.started, h.approver, h.recordId], ["Run of t1", "Appointment reminder, run 4, version 3", "Done", "ok", "Finished t5", "Version approved by Pat", "m_9"]);
+  const w = runHeader({ state: "waiting", waiting: { kind: "task" } }, { fmt: at, title: "x", number: null, approver: "" });
+  assert.deepEqual([w.status, w.tone, w.approver, w.recordId], ["Waiting for a person", "accent", "", ""]);
+});
+
+test("a step shows its tries and who it waits on or who answered", { skip: !strip }, async () => {
+  const { stepRows } = await import("./run-model.ts");
+  const rows = stepRows(painted, { a: { status: "done", tries: 1, attempts_log: [{ at: 5, code: "timeout" }] }, "d?ask": { status: "waiting", wait: { kind: "task" }, answered: { by: "per_1" } } }, at);
+  assert.deepEqual(rows[0].tries, ["Try 1 at t5 did not work (timeout)"]);
+  assert.equal(rows[3].by, "per_1");
+});
