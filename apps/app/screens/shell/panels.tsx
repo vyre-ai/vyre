@@ -15,6 +15,8 @@ import { useFlowsState } from "../flows/store";
 import { flowsRepo } from "../flows/data";
 import { BUILD_SECTIONS } from "../build/sections.js";
 import { FilesTreePanel } from "../drive/FilesTreePanel";
+import { VaultPanel } from "../vault/VaultPanel";
+import { VAULT_PANEL_MIN } from "../vault/vault-nav";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -92,6 +94,7 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
   build: { title: "Build", icon: "kits", empty: "" },
   drive: { title: "Files", icon: "drive", empty: "" },
+  vault: { title: "Vault", icon: "vault", empty: "" },
 };
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
@@ -110,8 +113,8 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
   const { width } = useWindowDimensions();
   const id = panelFor(path, search);
-  // Files' tree is the web's wide screens' panel; a phone keeps the Drive screen's own drill-in list.
-  const meta = id && !(id === "drive" && (width < 760 || Platform.OS !== "web")) ? META[id] : undefined;
+  // Files' tree and the Vault's groups are the web's wide screens' panels; a phone keeps each screen's own list.
+  const meta = id && !((id === "drive" || id === "vault") && (width < VAULT_PANEL_MIN || Platform.OS !== "web")) ? META[id] : undefined;
   if (!id || !meta) return { panel: null, id: null };
   const goBack = () => { const to = backTo(path, search); if (to) router.push(to as never); };
   const all = effective(base, mine) as any[];
@@ -122,7 +125,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
-      before: id === "drive" ? <FilesTreePanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
+      before: id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
       after: id === "records" ? <><SidebarRow label="All objects" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,

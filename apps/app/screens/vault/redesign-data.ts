@@ -9,7 +9,8 @@ import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 
 export type Scope = "space" | "mine";
 export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
-export type NewItem = { name: string; kind: string; value: string };
+/** What the Add sheet saves: the tool to call (vault.put, vault.me.put, or an SSH tool) and its input, built by add-model.js. */
+export type AddCall = { tool: string; input: Record<string, unknown> };
 
 export interface VaultData {
   /** True for the real tools; the sample world edits sharing in memory. */
@@ -20,7 +21,7 @@ export interface VaultData {
   unlock(password: string): Promise<void>;
   create(password: string): Promise<void>;
   lock(): Promise<void>;
-  add(scope: Scope, n: NewItem): Promise<void>;
+  add(scope: Scope, call: AddCall): Promise<void>;
   remove(scope: Scope, item: VItem): Promise<void>;
   /** Space: what happened to an item (vault.uses). */
   events(scope: Scope, item: VItem): Promise<Event[]>;
@@ -38,7 +39,11 @@ export function sampleData(): VaultData {
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false }),
     read: async (_s, v) => v.secret,
     unlock: async () => {}, create: async () => {}, lock: async () => {},
-    add: async (scope, n) => { items.push({ id: `n${items.length}`, sp: scope === "mine" ? "mine" : "juniper", group: groupOf(n.kind, n.name), name: n.name, detail: "Added just now", secret: n.value, usedBy: [], shared: [] }); },
+    add: async (scope, call) => {
+      const i = call.input as { name: string; kind?: string; fields?: Record<string, string>; details?: { provider?: string } };
+      const kind = call.tool.startsWith("vault.ssh") ? "ssh-key" : i.kind ?? "api-key";
+      items.push({ id: `n${items.length}`, sp: scope === "mine" ? "mine" : "juniper", group: groupOf(kind, i.name, i.details?.provider), name: i.name.replace(/[-_]+/g, " "), detail: "Added just now", secret: Object.values(i.fields ?? {})[0] ?? "", usedBy: [], shared: [] });
+    },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
   };
@@ -55,9 +60,11 @@ export function realData(call: Call): VaultData {
     return r.data as T;
   }
   const spaceItem = (r: ListRow): VItem => {
-    const exp = (r as ListRow & { details?: { expires?: string | number } }).details?.expires;
+    const det = (r as ListRow & { details?: { expires?: string | number; provider?: string } }).details;
+    const exp = det?.expires;
     return {
-      id: r.name, sp: "space", group: groupOf(r.kind, r.name), name: r.name.replace(/[-_]+/g, " "), detail: r.description || r.hosts[0] || r.kind, secret: "",
+      // a name with a slash is an item in a shared vault (core/vault/shared.js): it came from someone else
+      id: r.name, sp: "space", group: groupOf(r.kind, r.name, det?.provider), sharedWithMe: r.name.includes("/"), name: r.name.replace(/[-_]+/g, " "), detail: r.description || r.hosts[0] || r.kind, secret: "",
       daysLeft: daysLeftOf(exp), lastUsedDays: undefined,
       usedBy: r.grants.map((g) => ({ kind: g.watcher ? "agent" as const : "connection" as const, name: g.watcher ? `${g.module}/${g.watcher}` : g.module })),
       shared: [],
@@ -91,10 +98,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
-    async add(scope, n) {
-      if (scope === "space") await ask("vault.put", { name: n.name, kind: n.kind, fields: { value: n.value } });
-      else await ask("vault.me.put", { name: n.name, kind: n.kind, fields: { value: n.value } });
-    },
+    async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
       if (scope !== "space") return [];
