@@ -241,6 +241,8 @@ export function createStages(o) {
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
     if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data[fieldOf(cur.data)], why: "the stage is not in the set this record follows now" }); await closeGate(ent, { note: "the stage is not in the set this record follows now" }); return; }
+    // A stage held for a person's sign-off, or in a project whose stages are not run in order: the tasks are done, and someone moves it on (advance); the module does not.
+    if (next && stages[at].hold) { ent.waitingOn = stages[at].hold === "sign_off" ? "sign-off" : "a person"; emit("stage.waiting", { record: ent.urn, stage: ent.stage, why: stages[at].hold === "sign_off" ? `the tasks of ${ent.stage} are done and it waits for ${ent.owner || "its sign-off"} to sign it off` : `the tasks of ${ent.stage} are done; a person moves this project on` }); return; }
     // The next stage has an entry condition the record does not meet yet: it stays where it is, and the gateway would refuse the move anyway.
     if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); ent.waitingOn = "condition"; await mark(ent, "condition", { status: "waiting", output: { say: `${next.name} cannot be entered yet: ${next.enter_if}` } }, { attention: { kind: "stale", message: `${next.name} cannot be entered yet: ${next.enter_if}` } }); return; }
     ent.waitingOn = undefined;
