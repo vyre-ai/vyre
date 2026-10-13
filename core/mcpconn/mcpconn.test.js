@@ -131,8 +131,8 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.ok(face.body.result.isError || JSON.stringify(face.body).includes("denied") || JSON.stringify(face.body).includes("no_such_tool") || JSON.stringify(face.body).includes("not_in"), "a key cannot make keys: " + JSON.stringify(face.body).slice(0, 200));
   // A hosted key has an invisible deny-list, one test per category: code on the box, credentials and connections, devices, people and roles, keys. A local key keeps its reach.
   const { HOSTED_NEVER } = await import("../modules/agent-reach.js");
-  const REP = { code: ["appmods.install", "term.open", "hooks.enable", "runner.start"], credentials: ["vault.list", "vault.delete", "google.add", "connectors.connect", "sessions.accounts.key", "github.connect"],
-    devices: ["computers.list", "spaces.devices.remove", "relay.devices.remove", "link.unpair"], people: ["roles.list", "spaces.members.add", "spaces.invites.create", "projects.access.grant"], keys: ["mcpconn.list", "outside.token"] };
+  const REP = { code: ["appmods.install", "term.open", "hooks.enable", "runner.start", "threads.shell", "agents.spawn", "learn.skill-install", "team.duties.run-now", "work.template.install", "flows.kit.propose", "mcp.add"], desktop: ["computer.use", "chrome.open", "chrome.type", "glass.take", "hands-desktop.act"], credentials: ["vault.list", "vault.delete", "google.add", "connectors.connect", "sessions.accounts.key", "github.connect", "settings.set", "onboard.passkey", "push.key"],
+    devices: ["computers.list", "spaces.devices.remove", "relay.devices.remove", "link.unpair", "network.wink.join"], people: ["roles.list", "spaces.members.add", "spaces.invites.create", "projects.access.grant"], keys: ["mcpconn.list", "outside.token"] };
   assert.deepEqual(Object.keys(REP).sort(), Object.keys(HOSTED_NEVER).sort(), "a test for every category");
   let n = 0;
   for (const [cat, tools] of Object.entries(REP)) for (const tool of tools) {
@@ -148,7 +148,13 @@ test("connect once, then the client is the person: setup tools work, the person'
     const r = await d.registry.call(tool, {}, "mcp", markViaMcp({}, "mcn_x", true));
     assert.ok(r.error && /hosted key/.test(r.error.message || ""), `${cat}: ${tool} in the registry: ` + JSON.stringify(r).slice(0, 160));
   }
-  assert.ok(n >= 15, "most representatives exist: " + n);
+  assert.ok(n >= 20, "most representatives exist: " + n);
+  // the allowlist is the first wall and the deny-list the second: no tool that can run code, drive a screen, install or make a key passes, however it is named
+  const { hostedKeyMay } = await import("../modules/agent-reach.js");
+  const risky = [...d.registry.tools.keys()].filter(t => /shell|exec|install|passkey|spawn|desktop|computer|chrome|glass|screen|hands/.test(t) && hostedKeyMay(t));
+  assert.deepEqual(risky, [], "a hosted key reaches a tool that can run code or drive a screen");
+  for (const ok of ["recall.search", "memory.ask", "records.list", "projects.list", "projects.create", "planner.agenda", "import.sessions.list", "threads.send"]) if (d.registry.tools.has(ok)) assert.ok(hostedKeyMay(ok), `${ok} is what a hosted key is for`);
+  assert.ok(!hostedKeyMay("some.new-tool"), "a tool nobody placed is refused to a hosted key");
   // the same call on a LOCAL key is not refused for being hosted
   assert.ok(!JSON.stringify(await call("roles.list", {}, as2)).includes("hosted key"), "a local key keeps its reach");
   // revoke is one call, and the next request is a 401

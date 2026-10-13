@@ -609,16 +609,22 @@ export function mcpPersonMay(tool) {
 }
 
 /**
- * What a HOSTED key (the public /mcp door) can never use, however the person's own access reads (the lead's ruling, 13 Oct: a leaked hosted key must not be able to run code on the box, add or change
- * credentials or connections, manage computers or devices, change people, roles or grants, or make keys). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the
- * person's own computer) keeps mcpPersonMay's reach. Everything not named here the person may do, a hosted key may do, and outward acts stay held at the Gate. One list, one test per category.
+ * What a HOSTED key (the public /mcp door) can use: an ALLOWLIST, with HOSTED_NEVER as a second wall (the lead's ruling and rc1-e's review, 13 Oct: a leaked hosted key must not be able to run code on the box or
+ * on the person's computer, add or change credentials or connections, drive the desktop or a browser, manage computers or devices, change people, roles or grants, install anything, or make keys; a deny-list alone
+ * keeps missing tools). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the person's own computer) keeps mcpPersonMay's reach. Outward acts stay held at the Gate.
+ * A tool is usable when it starts with an allowed prefix (or is an allowed name) and is on no never-list; a tool nobody has placed is refused.
  */
+export const HOSTED_ALLOW = Object.freeze([
+  "recall.", "memory.", "records.", "projects.", "work.", "planner.", "files.", "flows.", "documents.", "comms.", "mail.", "tasks.", "goals.", "docs.", "skills.find", "skills.get", "skills.list",
+  "threads.list", "threads.get", "threads.history", "threads.send", "agents.list", "agents.get", "import.sessions.", "import.status", "vyre.core",
+]);
 export const HOSTED_NEVER = Object.freeze({
-  code: ["appmods.", "term.", "hooks.", "runner.", "code.", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute."],
-  credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside."],
-  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink."],
-  people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access."],
+  code: ["appmods.", "term.", "hooks.", "runner.", "code.", "threads.shell", "agents.spawn", "team.duties.run-now", "learn.skill-", "work.template.install", "flows.kit.", "bridges.kit.install", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute.", "mcp.add", "mcp.update", "mcp.call"],
+  desktop: ["hands-", "hands.", "computer.", "chrome.", "glass.", "screen."],
+  credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside.", "settings.", "onboard.", "push.", "memory.backup."],
+  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
+  people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access.", "work.chat.keys.", "work.team.", "work.project.level", "work.know.move-", "work.chat.upgrade-", "work.chat.history-import"],
   keys: ["mcpconn.", "pluginagent."],
 });
 /** May a call on a hosted key use this tool? @param {string} tool */
-export const hostedKeyMay = tool => !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p)));
+export const hostedKeyMay = tool => HOSTED_ALLOW.some(p => tool.startsWith(p)) && !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p)));
