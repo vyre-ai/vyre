@@ -12,6 +12,8 @@ import { tokens } from "../../src/theme/tokens";
 import { face, type } from "../../src/theme/type";
 import { BackButton } from "../../src/ui/BackButton";
 import { Button } from "../../src/ui/Button";
+import { ThemeProvider } from "@vyre/ui";
+import { PublishHold } from "../../src/chat/PublishHold";
 
 /**
  * One item waiting, opened by a tap or by a swipe the box would refuse (a send with no proof on
@@ -38,6 +40,21 @@ export default function NeedDetail() {
     );
   }
   if (n.source === "gate") return <HeldSend n={n} />;
+  if (n.source === "publish") {
+    return (
+      <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
+        <Back />
+        <ScrollView contentContainerStyle={styles.content}>
+          <ThemeProvider><View style={{ maxWidth: 720, width: "100%", alignSelf: "center", paddingHorizontal: 16 }}><PublishHold need={n} who={n.agent ?? undefined} /></View></ThemeProvider>
+          {n.thread ? (
+            <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: "/u/chats/[id]", params: { id: n.thread as string } })} style={styles.link}>
+              <Text style={[type.readStrong, { color: color.focus }]}>Open chat</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+      </View>
+    );
+  }
   const approve = canCommit(n, "approve");
   const reject = canCommit(n, "reject");
   const who = [n.agent, n.project].filter(Boolean).join(" · ");

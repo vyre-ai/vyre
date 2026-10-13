@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { Projects, MIGRATIONS, threadId } from "./projects.js";
 import { label } from "./brief.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
@@ -59,10 +60,11 @@ export async function withLive(ctx, cat) {
 }
 /** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
 const OWNER = ["cli", "local", "capsule", "deck"];
+const PERSON_CALLERS = [...PERSON_SURFACES, "tailnet", "device"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
 /** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
-const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
+const CATALOG_READERS = [...OWNER, "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -308,7 +310,7 @@ export default {
     const proj = { type: "object", required: ["project"], properties: { project: str } };
     ctx.tool("projects.docs.get", {
       description: "A project's instructions: AGENTS.md at its root. CLAUDE.md beside it is only a pointer at it.",
-      input: proj, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      input: proj, callers: PERSON_CALLERS,
       run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); const d = readDocs(p.home); return { files: { "AGENTS.md": withNotes(d["AGENTS.md"], d["CLAUDE.md"]) } }; },
     });
     // the one place a session's prompt reads a project's instructions (sessions.prompt.compose), for every provider
@@ -320,18 +322,18 @@ export default {
     ctx.tool("projects.docs.set", {
       description: "Write the project's instructions (file AGENTS.md). CLAUDE.md is only a pointer at it and cannot be written. Every chat in the project gets them from its next start.",
       input: { type: "object", required: ["project", "file", "text"], properties: { project: str, file: { type: "string" }, text: str } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      callers: PERSON_CALLERS,
       run: async ({ project, file, text }, meta = {}) => { noModel(meta); if (file !== "AGENTS.md") throw refuse("Instructions live in AGENTS.md. Write them there; CLAUDE.md only points at it.", "bad_input"); const { p } = await needEdit(meta, project); try { writeInstructions(p.home, text); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "bad_input"); } P.emit("project.changed", { project: p.slug, instructions: true }, { project: p.slug }); return { ok: true, file }; },
     });
     ctx.tool("projects.refs.list", {
       description: "A project's context: the files, notes and references to Vyre Files kept in context/ at its root.",
-      input: proj, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      input: proj, callers: PERSON_CALLERS,
       run: async ({ project }, meta = {}) => { const { p } = await needUse(meta, project); return { items: listContext(p.home) }; },
     });
     ctx.tool("projects.refs.add", {
       description: "Add to a project's context: a file (name, base64), a note (name, text) or a reference to something in Vyre Files (name, files: its path in Files).",
       input: { type: "object", required: ["project", "name"], properties: { project: str, name: str, base64: str, text: str, files: str } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      callers: PERSON_CALLERS,
       run: async (i, meta = {}) => {
         noModel(meta);
         const { p } = await needEdit(meta, i.project);
@@ -346,7 +348,7 @@ export default {
     ctx.tool("projects.refs.remove", {
       description: "Take an item out of a project's context.",
       input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      callers: PERSON_CALLERS,
       run: async ({ project, name }, meta = {}) => { noModel(meta); const { p } = await needEdit(meta, project); try { removeContext(p.home, name); } catch (e) { throw refuse(/** @type {Error} */ (e).message, /** @type {any} */ (e).code || "not_found"); } return { ok: true }; },
     });
     // The work module tells this computer about a Project record it made (and about one made on another computer): a local row and a home folder, nothing else. Only the work module may.

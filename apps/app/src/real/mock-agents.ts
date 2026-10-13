@@ -1,5 +1,8 @@
 // The agent page's tools answered from memory, for the sample build (EXPO_PUBLIC_VYRE_MOCK=1) only: an Intake assistant with its instructions, two context files, a Claude login with an API token behind it, and its use in a chat and a flow.
 // The shapes are the box's own (core/agents/config.js, core/sessions); what a person changes stays for the session.
+import { loadAssistants } from "../../screens/settings/data";
+import { WHO } from "../store-core/mock-ids.js";
+
 const AGENTS_MD = `You are the intake assistant for Juniper Studio.
 
 When a new inquiry arrives:
@@ -42,17 +45,33 @@ const refunds = (): State => ({
 let access: { kind: string; subject: string; level: string; by: string | null }[] = [{ kind: "person", subject: "per_dana", level: "edit", by: "per_you" }];
 let projectDoc = "# Harlow Legal\n\nEvery chat here works for the Harlow matters.\n\n- Never send an email without the lawyer's yes.\n- Cite the file number in every draft.\n";
 let projectRefs: { name: string; kind: string; size: number; files?: string }[] = [{ name: "Fee schedule.md", kind: "note", size: 420 }, { name: "Intake form.link", kind: "link", size: 60, files: "Clients/Harlow/intake.pdf" }, { name: "engagement-letter.docx", kind: "file", size: 52000 }];
-const W: Record<string, State> = { intake: intake(), refunds: refunds() };
+// juno, kit, iris and rev carry their own short sample words, so no page shows the intake agent's.
+const own = (role: string, md: string): State => ({ role, docs: { "AGENTS.md": md, "CLAUDE.md": "Write short sentences.\n" }, files: [], links: [], routes: [{ provider: "claude", account: "acc_login" }], vault: [], instructions: md, lent: [] });
+const ROLES: Record<string, string> = { juno: "Your assistant", kit: "Research agent", iris: "Drafting agent", rev: "Reviewer" };
+const W: Record<string, State> = {
+  intake: intake(), refunds: refunds(),
+  juno: own("Your assistant", "You are Alex's assistant.\n\nKeep Alex's day in order: read what came in, say what needs a decision, and draft the replies for Alex to approve. Never send anything yourself.\n"),
+  kit: own("Agent of Alex", "You are kit, Alex's research agent.\n\nFind the facts behind a question, name the source of each, and say what you could not confirm.\n"),
+  iris: own("Agent of Chris", "You are iris, Chris's drafting agent.\n\nDraft letters and summaries in Chris's voice for Chris to review.\n"),
+  rev: own("Teammate, Juniper Studio", "You are rev, the reviewer on Juniper Studio's matters.\n\nCheck each draft against the file and list what does not match.\n"),
+};
 const w = (i: any): State => W[String(i?.agent ?? i?.name ?? "intake")] ?? W.intake;
 const accounts = [
   { id: "acc_login", provider: "claude", label: "Claude (Alex)", kind: "login", is_default: true, signed_in_at: 1760000000000, identity: { email: "alex@juniper.studio" } },
   { id: "acc_key", provider: "claude", label: "Anthropic API token", kind: "api-key", vault_item: "anthropic-api-key" },
   { id: "acc_or", provider: "openrouter", label: "OpenRouter", kind: "api-key", vault_item: "openrouter-key" },
 ];
-const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
+const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, description: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
+const PROJECTS: Record<string, string> = { juniper: "Juniper Studio", passport: "Passport renewal" };
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
-  "agents.list": () => [...Object.keys(W).map(agentOf), ...["research", "scribe"].map((n) => ({ name: n, label: n[0].toUpperCase() + n.slice(1), kind: "agent", role: n }))],
+  "work.project.ref": (i) => ({ name: PROJECTS[String(i.project)] ?? String(i.project) }),
+  // One list for the Agents screen and the agent page, so every row opens: the sample world's assistants and agents (settings/data.ts), then the two that carry sample pages.
+  "agents.list": () => [
+    ...loadAssistants().map((a) => ({ uid: `agt_${a.id}`, name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", model: a.model, effort: "medium", projects: ["juniper"], computer: false, status: a.paused ? "stopped" : "idle", thread: "x", autonomy: a.autonomy, id: a.id,
+      instructions: W[a.id]?.instructions ?? String(a.role), description: ROLES[a.id] ?? a.role, made_by: a.id === "iris" ? WHO.chris : a.id === "rev" ? WHO.chris : WHO.alex, ...(a.id === "rev" ? { shares: [{ person: WHO.alex, level: "use" }] } : {}) })),
+    ...["intake", "refunds"].map((n) => ({ ...agentOf(n), made_by: WHO.alex })),
+  ],
   "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
   "sessions.models.get": () => ({ aliases: { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" } }),
   "watchers.list": () => [],

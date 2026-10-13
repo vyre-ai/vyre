@@ -12,6 +12,7 @@ import { refresh } from "../../src/state/live";
 import { ageOf } from "./chat-model.js";
 import { tool } from "../../src/real/box";
 import { ChatsList } from "./ChatsList";
+import FlowChatsList from "./FlowChatsList";
 import { UNSUPPORTED, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
@@ -46,6 +47,8 @@ export default function ChatsScreen() {
   const { menu, sheets } = useChatMenu(chats.rows);
   // The list's own search ("/" focuses it): the title, the last line, who is in it and its project.
   const [q, setQ] = useState("");
+  // Flow chats are hidden until asked for: one tap shows them, one tap on Chats goes back.
+  const [flows, setFlows] = useState(false);
   const search = useRef<TextInput>(null);
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -79,8 +82,10 @@ export default function ChatsScreen() {
             <TextInput ref={search} value={q} onChangeText={setQ} placeholder="Search chats  /" placeholderTextColor={color.label} accessibilityLabel="Search chats"
               onKeyPress={(e: any) => { if (e.nativeEvent.key === "Escape" && q) { e.preventDefault?.(); setQ(""); } }}
               style={[type, { minHeight: 36, borderWidth: 1, borderColor: color.edge, borderRadius: 8, paddingHorizontal: 12, color: color.text, outlineStyle: "none" } as any]} />
-            {word && !found.length ? <Card><EmptyState title="No chat matches" body="Try a name, a project or a word from the last message." /></Card> : null}
-            <ChatsList menu={menu} tag={chatsTag} rows={found} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+            <View className="flex-row gap-s2"><Button size="sm" kind={flows ? "ghost" : "secondary"} label="Chats" onPress={() => setFlows(false)} /><Button size="sm" kind={flows ? "secondary" : "ghost"} label="Flows" onPress={() => setFlows(true)} /></View>
+            {flows ? <FlowChatsList now={now} /> : null}
+            {flows ? null : word && !found.length ? <Card><EmptyState title="No chat matches" body="Try a name, a project or a word from the last message." /></Card> : null}
+            {flows ? null : <ChatsList menu={menu} tag={chatsTag} rows={found} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />}
           </View>
         )}
     </Page>

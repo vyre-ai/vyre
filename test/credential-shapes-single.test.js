@@ -23,6 +23,8 @@ const ALLOWED = new Map([
   ["lib/siteops/redact.js", "the source of the extension's redaction (copied to extension/shared/sk/siteops/ by scripts/sync-copies.mjs); the parity check below holds it to the table"],
   ["apps/app/screens/connections/model.ts", "runs in the phone app (no Buffer, TypeScript); redacts a connection's error text"],
   ["apps/app/screens/vault/data.ts", "mock data for screenshots"],
+  ["apps/app/screens/vault/sample-redesign.ts", "sample rows with made-up secrets for the vault design gallery, never a real key"],
+  ["apps/app/scripts/onboard-walk.mjs", "a walk-through script that types a made-up key into the onboarding screen, never shipped"],
   ["web/onboard/onboard.js", "a placeholder in an input box"],
   ["core/runner/testing/", "test support: fake secrets"],
   ["lib/connectors/testing/", "test support: fake secrets"],

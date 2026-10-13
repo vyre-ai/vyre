@@ -40,10 +40,11 @@ function statusOf(live: Dep | null, cur: Dep): Site["status"] {
   return { label: "Retired", tone: "plain" };
 }
 
-/** The next step for a deployment, as the tool it calls and the button's words. A live one can go back one version when it has a previous. */
-export function nextStep(d: Status | Dep): { tool: "preview" | "approve" | "publish" | "rollback"; label: string } | null {
+/** The next step for a deployment, as the tool it calls and the button's words. A preview goes live in one yes. A live one can go back one version when it has a previous. */
+export function nextStep(d: Status | Dep): { tool: "preview" | "go" | "publish" | "rollback"; label: string } | null {
   if (d.stage === "Draft") return { tool: "preview", label: "Build a preview" };
-  if (d.stage === "Preview") return { tool: "approve", label: "Approve the preview" };
+  // one yes approves the preview and puts it live (publish.go); the held card still shows the public plan
+  if (d.stage === "Preview") return { tool: "go", label: "Approve and go live" };
   if (d.stage === "Approved") return { tool: "publish", label: "Go live" };
   if (d.stage === "Production" && "previous" in d && d.previous) return { tool: "rollback", label: "Go back one version" };
   return null;
@@ -68,8 +69,8 @@ export function planLines(p: Plan): { title: string; lines: string[] } {
 /** The input publish.decide takes: bound to exactly the plan the person read. */
 export const decision = (h: Held, approve = true) => ({ task: h.task, approve, plan_hash: h.plan.hash });
 
-export type Draft = { name: string; kind: "repo" | "drive"; ref: string; image: "static" | "node-20" | "node-22"; command: string };
-export const BLANK: Draft = { name: "", kind: "repo", ref: "", image: "static", command: "" };
+export type Draft = { name: string; kind: "repo" | "drive"; ref: string; image: "static" | "node-20" | "node-22"; command: string; private: boolean };
+export const BLANK: Draft = { name: "", kind: "repo", ref: "", image: "static", command: "", private: false };
 export const SOURCES: { kind: Draft["kind"]; title: string; body: string; hint: string }[] = [
   { kind: "repo", title: "From a repo", body: "Builds the folder you point at.", hint: "github.com/owner/repo, or a path in a project" },
   { kind: "drive", title: "From a Files folder", body: "Publishes the pages in a folder.", hint: "A Files folder path" },
@@ -99,8 +100,88 @@ const REFUSALS: Record<string, string> = {
 };
 export const publishRefusal = (code: string | undefined, message: string): string => (code && REFUSALS[code]) || message || "Publish did not answer.";
 
+/** The grant form's preset for a private repo: the GitHub token, for the build only (lib/publish/repo-source.js TOKEN_ID). Null for a public repo or a folder. */
+export const REPO_TOKEN = { name: "GITHUB_TOKEN", use: "build" as const };
+export const repoGrant = (d: Pick<Draft, "kind" | "private">): typeof REPO_TOKEN | null => (d.kind === "repo" && d.private ? REPO_TOKEN : null);
+
+/** The grant form's check before it asks: an item, a field and a setting name in capitals. Returns the words to show, or null when it can go. */
+export function grantProblem(item: string | null, field: string | null, name: string): string | null {
+  if (!item || !field || !/^[A-Z][A-Z0-9_]{0,63}$/.test(name)) return "Pick an item and a field, and name the setting in capitals, like STRIPE_KEY.";
+  return null;
+}
+
 /** A domain's state in words. */
 export const domainLine = (d: Domain): string => (d.status === "verified" || d.status === "active" ? "Connected" : d.status === "pending" ? "Waiting for the DNS record" : d.status);
+/** The DNS record to add as three parts, or null when there is none to add (a vyre.run name, or a challenge this build does not know). */
+export function recordOf(c: unknown): { type: string; name: string; value: string } | null {
+  const x = c as { type?: unknown; name?: unknown; value?: unknown } | null;
+  return x && typeof x === "object" && typeof x.type === "string" && x.type !== "names" && typeof x.name === "string" && typeof x.value === "string" ? { type: x.type, name: x.name, value: x.value } : null;
+}
+
+/** What the sheet says about a domain: pending, verified or failed, with the words under it. `reason` is the box's own, from a check that did not pass. */
+export type Check = { state: "pending" | "verified" | "failed"; line: string };
+export function checkOf(d: Domain | undefined, reason?: string): Check {
+  if (d && (d.status === "verified" || d.status === "active")) return { state: "verified", line: "Connected." };
+  if (d && d.status === "failed") return { state: "failed", line: reason || "The check failed. Make sure the record matches exactly, then check again." };
+  return { state: "pending", line: reason ? `Not connected yet. ${reason}` : "Waiting for the record. DNS can take up to an hour." };
+}
+/** How often the open sheet checks by itself, in milliseconds. */
+export const CHECK_EVERY_MS = 20_000;
+
+export type Canonical = "apex" | "www";
+/** The apex or www choice for a typed host: only an apex name (firm.com) has one; a www name or a subdomain stays as typed. */
+export function canonicalChoice(host: string): { apex: string; www: string } | null {
+  const h = host.trim().toLowerCase();
+  const labels = h.split(".");
+  if (!h || h.startsWith("www.") || labels.length !== 2 || labels.some((l) => !l) || h.endsWith(".vyre.run")) return null;
+  return { apex: h, www: `www.${h}` };
+}
+/** The extra input domain.add takes for that choice: nothing for a host with no choice. */
+export const canonicalInput = (host: string, pick: Canonical): { canonical?: Canonical; www?: boolean } => (canonicalChoice(host) ? { canonical: pick, www: true } : {});
+
+/** The words for a version's row on History. */
+export type VersionRow = { id: string; version: number; stage: string; approvedBy: string; approverId: string | null; wentLive: string; address: string };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A moment as "13 Oct, 06:12" in the viewer's own clock. */
+export function whenText(at: number | null | undefined): string {
+  if (typeof at !== "number" || !isFinite(at)) return "";
+  const d = new Date(at);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+/** A person's name from records.actors (the app's one source of names), "You" for the viewer, "Someone" when the box has no name. A placeholder name that is only the id does not count. */
+export function approverName(actors: unknown, id: string, me: string | null): string {
+  if (me && id === me) return "You";
+  const x = actors as { actors?: unknown } | unknown[] | null;
+  const list = Array.isArray(x) ? x : Array.isArray((x as { actors?: unknown } | null)?.actors) ? ((x as { actors: unknown[] }).actors) : [];
+  const a = list.find((y) => (y as { id?: unknown } | null)?.id === id) as { name?: unknown } | undefined;
+  return typeof a?.name === "string" && a.name.trim() && !/^per_/.test(a.name) ? a.name.trim() : "Someone";
+}
+
+/** The History table: one row per version with who approved it, when it went live and where it answers. `who` turns an actor id into a name; `st` is each version's status when it has loaded. */
+export function versionRows(versions: Dep[], st: Record<string, Status | undefined>, who: (id: string) => string): VersionRow[] {
+  return versions.map((v) => {
+    const s = st[v.id];
+    const by = s?.approved_by;
+    return {
+      id: v.id, version: v.version, stage: v.stage,
+      approvedBy: typeof by === "string" && by ? who(by) : s ? "Not approved" : "", approverId: typeof by === "string" && by ? by : null,
+      wentLive: s?.published_at ? whenText(s.published_at) : s ? "Never live" : "",
+      address: v.stage === "Production" ? (v.domains[0]?.host ?? v.url ?? "") : (v.url ?? "Not built yet"),
+    };
+  });
+}
+
+/** The banner for a public door that is off. `names` is what names.status answered (null when it did not answer: say nothing). Only matters once something is live. */
+export function doorBanner(names: { listening?: unknown } | null, anyLive: boolean): string | null {
+  return anyLive && names && names.listening !== true ? "Online on your devices only. Other people cannot open your sites until the public door is on." : null;
+}
+/** The banner when the edge cannot start: this box has no Docker. */
+export const NO_DOCKER = "This server has no Docker, so Sites can't go live yet. Install Docker on the server, then try again.";
+export const dockerBanner = (code: string | undefined): string | null => (code === "not_available" ? NO_DOCKER : null);
+
+/** The names a site is still waiting on, as one grant row each, in the order the box listed them. */
+export const waitingRows = (ungranted: string[] | undefined): { name: string; sub: string }[] => (ungranted ?? []).map((name) => ({ name, sub: "The site is waiting for this. Pick it from the Vault." }));
+
 /** The DNS record to add, from the challenge the box returned (its own words, shown as they came). */
 export const challengeText = (c: unknown): string => (typeof c === "string" ? c : c && typeof c === "object" ? Object.entries(c as Record<string, unknown>).map(([k, v]) => `${k}: ${String(v)}`).join("\n") : "");
 

@@ -14,6 +14,10 @@ import { showToast } from "../components/Toast";
 import { useStore } from "../store";
 import { haptic } from "../motion/haptics";
 import { TaskFacts, DraftBlock } from "./TaskFacts";
+import { FilePick, type AskFile } from "./AskControls";
+import { askKind, fileNameOf, landing, openTarget, vaultAddRoute } from "./ask-model.js";
+import { allowsMock } from "../store";
+import { spaceUpload } from "../../screens/drive/real";
 import { cardFor, nameOf, recordTitle, STATE_LABEL, taskFacts, draftOf, stateTone, type World } from "./model";
 
 type Task = any;
@@ -38,14 +42,21 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
   const [open, setOpen] = useState<Open>(null);
   const close = () => setOpen(null);
 
-  const run = async (task: Task, id: string, input?: string) => {
+  const run = async (task: Task, id: string, input?: string, extra?: unknown) => {
     if (!world) return;
     const rec = world.records.get(task.record);
     try {
       if (id === "open") { setOpen({ kind: "task", task }); return; }
       if (id === "send" || id === "approve" || id === "yes") { setOpen({ kind: "proof", task, id }); return; }
       if (id === "edit") { setOpen({ kind: "edit", task }); return; }
-      if (id === "fix") { setOpen({ kind: "fix", task }); return; }
+      if (id === "open-chat") { const t = openTarget(task); if (t) go(t.route); else showToast("This one did not come from a chat."); return; }
+      if (id === "fix") {
+        // A password, key or sign-in that stopped it: the Vault's Add sheet opens for that item, not a sheet that only describes it.
+        if (askKind(cardFor(world, task), task) === "credential") { go(vaultAddRoute(task)); return; }
+        setOpen({ kind: "fix", task });
+        return;
+      }
+      if (id === "file-picked") { await answerFile(task, extra as AskFile, rec ? recordTitle(world, rec) : ""); return; }
       if (id === "reassign") { setOpen({ kind: "reassign", task }); return; }
       if (id === "file") { setOpen({ kind: "file", task }); return; }
       if (id === "done") { await store.submit(task.id, handEvidence(task), world.me); haptic.approve(); showToast(`Done: ${task.title}.`); return; }
@@ -59,6 +70,19 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
         showToast(`Saved. ${task.title} is done.`);
       }
     } catch (e) { say(e); }
+  };
+
+  /** A file for a file ask: put in Files where the ask says (or the record's or project's folder), then handed in as the answer. A file already in Vyre Files is handed in where it is. */
+  const answerFile = async (task: Task, f: AskFile, recordTitleText: string) => {
+    if (!f) return;
+    const name = fileNameOf(f.name);
+    const where = landing(task, { recordTitle: recordTitleText });
+    const path = `${where.folder}/${name}`;
+    if (!allowsMock() && !f.fromVyre && f.base64) await spaceUpload(undefined, path, f.base64);
+    // The kernel's file check wants one string (the file's address); the sample store keeps the name.
+    await store.submit(task.id, (allowsMock() ? { file: { name, path } } : { file: path, name }) as never, world!.me);
+    haptic.approve();
+    showToast(`Added ${name}. ${task.title} is done.`);
   };
 
   const confirmProof = async (task: Task, id: "send" | "approve" | "yes") => {
@@ -87,7 +111,7 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
   return { run, sheets };
 }
 
-function Sheets({ world, open, close, confirmProof, run, go }: { world: World; open: Open; close: () => void; confirmProof: (t: Task, id: "send" | "approve" | "yes") => void; run: (t: Task, id: string, i?: string) => void; go: (p: string) => void }) {
+function Sheets({ world, open, close, confirmProof, run, go }: { world: World; open: Open; close: () => void; confirmProof: (t: Task, id: "send" | "approve" | "yes") => void; run: (t: Task, id: string, i?: string, x?: unknown) => void; go: (p: string) => void }) {
   const store = useStore();
   const task = open?.task;
   const rec = task ? world.records.get(task.record) : undefined;
@@ -124,7 +148,7 @@ function Sheets({ world, open, close, confirmProof, run, go }: { world: World; o
         try { await store.reassign(task.id, a.id, world.me); showToast(`${task.title} is with ${a.name}.`); close(); } catch (e) { say(e); }
       }} />
       <Sheet open={open?.kind === "file"} onClose={close} title={open?.kind === "file" ? `Add: ${typeof task.output?.target === "string" ? task.output.target : "the file"}` : undefined}>
-        {open?.kind === "file" ? <AddFile task={task} close={close} me={world.me} /> : null}
+        {open?.kind === "file" ? <FilePick lands={landing(task, { recordTitle: rec ? recordTitle(world, rec) : "" }).words} onFile={(f) => { close(); void run(task, "file-picked", undefined, f); }} /> : null}
       </Sheet>
       <Sheet open={open?.kind === "task"} onClose={close} title={task?.title}>
         {open?.kind === "task" ? <TaskInPlace world={world} task={task} close={close} run={run} go={go} /> : null}
@@ -146,23 +170,6 @@ function EditDraft({ task, close, me }: { task: Task; close: () => void; me: str
         <Button kind="ghost" label="Cancel" onPress={close} />
         <Button kind="primary" label="Save" onPress={async () => {
           try { await store.editTask(task.id, { draft: { ...d, ...(d.subject !== undefined ? { subject } : {}), body } } as never, me); showToast("Draft saved."); close(); } catch (e) { say(e); }
-        }} />
-      </View>
-    </>
-  );
-}
-
-function AddFile({ task, close, me }: { task: Task; close: () => void; me: string }) {
-  const store = useStore();
-  const [name, setName] = useState("");
-  return (
-    <>
-      <Field label="File name" value={name} onChangeText={setName} placeholder={typeof task.output?.target === "string" ? task.output.target : "File"} />
-      <View className="flex-row flex-wrap justify-end gap-s2 pt-s2">
-        <Button kind="ghost" label="Cancel" onPress={close} />
-        <Button kind="primary" label="Add" onPress={async () => {
-          if (!name.trim()) { showToast("Name the file first."); return; }
-          try { await store.submit(task.id, { file: { name: name.trim() } }, me); showToast(`Added ${name.trim()}.`); close(); } catch (e) { say(e); }
         }} />
       </View>
     </>

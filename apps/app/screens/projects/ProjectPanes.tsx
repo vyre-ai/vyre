@@ -14,6 +14,7 @@ import { chatsFrom, chatsOrdered, sampleChats, type ChatRow } from "../chats/cha
 import { useChatMenu } from "../chats/useChatMenu";
 import { playbookPath } from "../templates/board";
 import { dayOf } from "../../src/time/show.js";
+import { memoryRows } from "../assistants/memory-model.js";
 
 /** A project's chats (work.chat.list for the project, by short name or record id): the same rows and the same row menu as the Chat list; the ones the person is in open, the others only show that they exist. */
 export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; name?: string }) {
@@ -64,7 +65,7 @@ export function FilesPane({ id }: { id: string }) {
   );
 }
 
-type Fact = { id: string; urn?: string; text: string; source?: string; scope?: string; by?: string; filed_at?: string | number; kind?: string };
+type Fact = { id: string; urn?: string; text: string; source?: string; scope?: string; by?: string; filed_at?: string | number; kind?: string; lesson?: boolean };
 /** "From a chat", "From a file" or "Added by hand", and where to open it. */
 function sourceOf(f: Fact): { line: string; href: string | null } {
   const s = String(f.source || "");
@@ -76,17 +77,24 @@ function sourceOf(f: Fact): { line: string; href: string | null } {
 const whenOf = (t: string | number | undefined): string => { const n = typeof t === "number" ? t : t ? Date.parse(t) : NaN; if (!Number.isFinite(n)) return ""; const d = Math.floor((Date.now() - n) / 86400000); return d <= 0 ? "today" : d === 1 ? "yesterday" : d < 30 ? `${d} days ago` : dayOf(n); };
 
 /** What this project has learned (memory.space.recall for the project): each item says what was learned, where it came from and when, with Pin, Edit and Forget, and an "Add a memory" field (memory.space.file, memory.space.retire, memory.pin). */
-export function MemoryPane({ id }: { id: string }) {
+export function MemoryPane({ id, slug }: { id: string; slug?: string }) {
   const router = useRouter();
   const [rows, setRows] = useState<Fact[] | null>(null);
   const [n, setN] = useState(0);
   const [adding, setAdding] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
-  useEffect(() => { void callT<{ facts?: Fact[] }>("memory.space.recall", { project: id, limit: 50 }).then((r) => setRows(r.error ? [] : r.data?.facts ?? [])); }, [id, n]);
+  // Lessons are agents' corrections kept as memory writes in this project (memory.writes by its slug): shown with the facts, newest first.
+  useEffect(() => {
+    void Promise.all([callT<{ facts?: Fact[] }>("memory.space.recall", { project: id, limit: 50 }), slug ? callT<{ writes?: any[] }>("memory.writes", { project: slug, limit: 100 }) : Promise.resolve(null)]).then(([r, w]) => {
+      const lessons: Fact[] = memoryRows("", (w && !w.error ? w.data?.writes ?? [] : []).filter((x: any) => x.kind === "correction"), []).map((x) => ({ id: x.id, text: x.text, source: x.href ? `chat:${decodeURIComponent(x.href.split("/").pop() || "")}` : "", by: x.by, filed_at: x.at, kind: "lesson", lesson: true }));
+      const facts = r.error ? [] : r.data?.facts ?? [];
+      setRows([...facts, ...lessons].sort((a, b) => (Number(b.filed_at) || Date.parse(String(b.filed_at)) || 0) - (Number(a.filed_at) || Date.parse(String(a.filed_at)) || 0)));
+    });
+  }, [id, slug, n]);
   const again = () => setN((x) => x + 1);
   const fail = (e?: { message: string }) => { if (e) showToast(e.message || "That did not go through."); else again(); };
   const add = async () => { const t = adding.trim(); if (!t) return; const r = await callT("memory.space.file", { text: t, source: "note:by-hand", kind: "note", scope: `project:${id}` }); if (!r.error) setAdding(""); fail(r.error); };
-  const forget = async (f: Fact) => fail((await callT("memory.space.retire", { id: f.id })).error);
+  const forget = async (f: Fact) => fail((await (f.lesson ? callT("memory.write.forget", { id: f.id, project: slug }) : callT("memory.space.retire", { id: f.id }))).error);
   const pin = async (f: Fact) => fail((await callT("memory.pin", { node: f.urn || f.id, scope: `project:${id}` })).error);
   const saveEdit = async (f: Fact) => { if (!editing || !editing.text.trim()) return; const r = await callT("memory.space.file", { text: editing.text.trim(), source: f.source || "note:by-hand", kind: f.kind || "note", scope: `project:${id}` }); if (r.error) { fail(r.error); return; } await callT("memory.space.retire", { id: f.id }); setEditing(null); again(); };
   if (rows === null) return <LoadingState rows={3} />;
@@ -101,8 +109,8 @@ export function MemoryPane({ id }: { id: string }) {
                 {editing?.id === f.id ? (
                   <View className="gap-s2 p-s3"><Field name="Edit this memory" value={editing.text} onChangeText={(t) => setEditing({ id: f.id, text: t })} multiline lines={3} /><View className="flex-row gap-s2"><Button size="sm" label="Save" onPress={() => void saveEdit(f)} /><Button size="sm" kind="ghost" label="Cancel" onPress={() => setEditing(null)} /></View></View>
                 ) : (
-                  <Row dense title={f.text} sub={[src.line, whenOf(f.filed_at), f.by].filter(Boolean).join(" · ")} onPress={src.href ? () => router.push(src.href as never) : undefined}
-                    end={<View className="flex-row"><IconButton icon="pin" label="Pin this memory" onPress={() => void pin(f)} /><IconButton icon="edit" label="Edit this memory" onPress={() => setEditing({ id: f.id, text: f.text })} /><IconButton icon="trash" label="Forget this memory" onPress={() => void forget(f)} /></View>} />
+                  <Row dense title={f.text} sub={[f.lesson ? "Lesson" : "", src.line, whenOf(f.filed_at), f.by].filter(Boolean).join(" · ")} onPress={src.href ? () => router.push(src.href as never) : undefined}
+                    end={<View className="flex-row">{f.lesson ? null : <><IconButton icon="pin" label="Pin this memory" onPress={() => void pin(f)} /><IconButton icon="edit" label="Edit this memory" onPress={() => setEditing({ id: f.id, text: f.text })} /></>}<IconButton icon="trash" label="Forget this memory" onPress={() => void forget(f)} /></View>} />
                 )}
               </View>
             );

@@ -24,6 +24,10 @@ import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
+import { RunSteps } from "../screens/flows/RunSteps";
+import { FlowBuilder } from "../ui/flows/FlowBuilder";
+import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
+import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
@@ -190,6 +194,16 @@ function Sample({ name }: { name: string }) {
       </View>
     );
   }
+  if (name === "flow-trigger") return <FlowBuilder draft={REMINDER_DRAFT} onChange={() => {}} options={SAMPLE_OPTIONS as any} />;
+  if (name === "run-steps") {
+    const t0 = Date.UTC(2026, 9, 13, 9, 0, 0);
+    const painted = [{ id: "trigger", kind: "trigger", label: "A new appointment is booked" }, { id: "a", label: "Look up the client" }, { id: "b", label: "Text the client" }, { id: "c", label: "Wait until a day before" }, { id: "d", label: "Ask the partner to approve" }, { id: "e", label: "File the notes" }];
+    const steps = { a: { status: "done", started_at: t0, finished_at: t0 + 1800, input: { email: "pat@example.com", ssn: "{{field:ssn}}" }, output: { found: true, client: "Pat Lopez" } },
+      b: { status: "started", tries: 1, started_at: t0 + 2000, error: { code: "timeout", message: "The text service did not answer." }, input: { to: "+1 555 0100", api_key: "sk-live-123" } },
+      c: { status: "waiting", wait: { kind: "time", until: t0 + 86_400_000 } }, d: { status: "waiting", wait: { kind: "task", task: "tsk_1" } },
+      e: { status: "failed", error: { code: "timeout", message: "The notes folder did not answer." }, started_at: t0, finished_at: t0 + 30_000 } };
+    return <Card flush><RunSteps painted={painted} steps={steps} max={{ b: 3 }} fmt={dayTimeOf} /></Card>;
+  }
   if (name === "away-card") return <AwayView lines={["3 new things need you", "1 Flow run did not finish", "2 Flow runs finished", "1 document was signed", "1 new member joined"]} onSeen={() => {}} />;
   if (name === "notice-answered") {
     return <View style={{ gap: 8 }}><NoticeAnswered kind="approved" say="Approved: An assistant (kit) wants to send an email: Northwind" onClose={() => {}} /><NoticeAnswered kind="denied" say="Denied: An assistant (kit) wants to send an email: Oakline" onClose={() => {}} /><NoticeAnswered kind="gone" say="That request ended before you answered." onClose={() => {}} /><NoticeAnswered kind="failed" say="Face ID or Touch ID did not work. Nothing was approved." onClose={() => {}} /></View>;
@@ -290,7 +304,7 @@ function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: P
 }
 
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string }>();
+  const q = useLocalSearchParams<{ f?: string; kind?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string; door?: string; tab?: string; grant?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
@@ -298,9 +312,14 @@ export default function Gallery() {
     // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.
     const dep = (id: string, name: string, version: number, stage: string, url: string | null, domains: { host: string; status: string }[] = []) => ({ id, name, version, stage, url, domains });
     const deps = [dep("d1", "client-intake", 3, "Preview", "https://preview-3.client-intake.example.vyre.run"), dep("d2", "client-intake", 2, "Production", "https://client-intake.example.vyre.run", [{ host: "intake.firm.example", status: "verified" }]), dep("d3", "fee-calculator", 1, "Approved", "https://preview-1.fee-calculator.example.vyre.run"), dep("d4", "menu-site", 4, "Production", null, [{ host: "menu.example.com", status: "waiting" }])];
-    setBoxOverride(async (tool) => {
+    setBoxOverride(async (tool, input) => {
       if (tool === "publish.list") return { deployments: deps };
-      if (tool === "publish.status") return { ...deps[0], previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: null, published_at: null, sealed_check: "no sealed values found" };
+      if (tool === "publish.status") { const d = deps.find((x) => x.id === input.deployment) ?? deps[0]; const live = d.stage === "Production"; return { ...d, previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: d.stage === "Preview" ? null : "per_4f2a9c", published_at: live ? Date.now() - 86400000 * (d.version === 4 ? 1 : 2) : null, sealed_check: "no sealed values found" }; }
+      if (tool === "records.actors") return { actors: [{ id: "per_4f2a9c", name: "Dana Wine" }] };
+      if (tool === "records.me") return { person: "per_me" };
+      if (tool === "names.status") return { listening: q.door === "on" };
+      if (tool === "publish.edge.up") throw Object.assign(new Error("this box has no way to start containers"), { code: "not_available" });
+      if (tool === "publish.domain.verify") return { verified: false, reason: "No TXT record found yet.", domain: { host: String(input.host), status: "pending" }, challenge: { type: "TXT", name: `_vyre-challenge.${input.host}`, value: "vyre-publish=Kq3x9TnV0mZp.7f3a9c1e2b", expires_at: Date.now() + 86400000 } };
       if (tool === "publish.job.attention") return { jobs: [{ deployment: "d4", name: "menu-site", at: Date.now() - 600000, message: "the nightly sync exited 1" }] };
       if (tool === "publish.job.runs") return { runs: [{ at: Date.now() - 3600000, ok: true, seconds: 4 }, { at: Date.now() - 90000000, ok: false, code: 1, message: "the nightly sync exited 1" }] };
       if (tool === "vault.list") return { items: [{ name: "Stripe", kind: "api", fields: ["key"] }] };
@@ -310,6 +329,7 @@ export default function Gallery() {
   }
   if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "file-viewer") return <ThemeProvider><Page><View nativeID="fixture"><FileViewerFixture kind={q.kind} /></View></Page></ThemeProvider>;
+  if (q.f === "run-steps" || q.f === "flow-trigger") return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;

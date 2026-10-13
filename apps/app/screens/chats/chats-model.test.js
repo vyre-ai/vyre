@@ -131,3 +131,11 @@ test("chats list: each chat is one list-block row with faces, provider marks, it
   assert.equal(rows[0].dim, undefined);
   assert.deepEqual(validateScreen({ v: 2, title: "Chats", layout: { block: "l" }, blocks: { l: { type: "list", content: { rows } } } }), [], "the language accepts them");
 });
+
+import { canFork } from "./chats-model.js";
+test("the assistant's and the Engineer's pinned chats cannot be forked; any other chat can", () => {
+  assert.equal(canFork({ pinned: "assistant" }), false);
+  assert.equal(canFork({ pinned: "engineer" }), false);
+  assert.equal(canFork({ pinned: "" }), true);
+  assert.equal(canFork(undefined), true);
+});

@@ -69,11 +69,11 @@ const NO_TOOL = new Set(["no_such_tool", "not_available"]);
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
-/** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+/** The person's own surfaces and Vyre's modules. Writing the edge and revoking a secret are theirs. A model does every step of putting a site live (create, preview, domain, secret, go) and the person's one yes at publish.decide is the only gate. */
 /** What publish.quick says while the box has no public door. */
 const PUBLIC_LATER = "Public once the public door is on. Until then the address works on your own devices only.";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
-/** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
+/** The draft, the preview, a domain claim and the held acts (approve, publish, go, rollback, a real secret): a model may do each, and the publisher holds every act that goes public or hands out a secret for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -375,11 +375,21 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return { plan: await b.pub.plan(b.chain, i.deployment) }; },
     });
 
+    /** A held act remembers the chat it was asked in (the session the daemon vouched), so the card can sit in that chat as well as on Now, and tells the apps to look again. @param {any} b @param {any} r @param {any} meta */
+    const noteHold = async (b, r, meta) => {
+      if (!r || !r.held) return;
+      const st = storeFor(b.space.id);
+      const h = await st.get("holds", r.task);
+      const thread = meta && typeof meta.thread === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(meta.thread) ? meta.thread : null;
+      if (h && thread) await st.put("holds", r.task, { ...h, thread });
+      ctx.events.emit("deployment.held", { deployment: h ? h.deployment : null, space: b.space.id, task: r.task });
+    };
+
     /** The three held acts share one shape. @param {"approve" | "publish" | "rollback"} act */
     const heldTool = act => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const b = await begin(i, meta, await warmDecider(String((await whoIs(i, meta)).space.id), i.task));
       const r = await b.pub[act](b.chain, i.deployment, i.task ? { task: i.task } : {});
-      if (r.held) return { held: true, task: r.task, plan: r.plan };
+      if (r.held) { await noteHold(b, r, meta); return { held: true, task: r.task, plan: r.plan }; }
       return { deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
     };
     ctx.tool("publish.approve", {
@@ -421,6 +431,7 @@ export default {
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
         const held = await b.pub.goLive(b.chain, made.id, {});
+        await noteHold(b, held, meta);
         // until the public door (names.status listening) is on, the address a yes makes live is reachable on the person's own devices only: say so, in the same answer as the yes
         const door = await call("names.status", {}).catch(() => ({ data: null }));
         const open = Boolean(door.data && door.data.listening === true);
@@ -440,7 +451,7 @@ export default {
       presence: true,
       run: async (i, meta) => {
         const { space, person } = await whoIs(i, meta);
-        if ((extras.get(meta) || []).length) throw refuse("a person decides this, not a model", "model_cannot_approve");
+        if ((extras.get(meta) || []).length || (meta && meta.viaMcp)) throw refuse("a person decides this, not a model or a connected AI key: approve it on your Needs you card, in the chat, or on the Sites screen", "model_cannot_approve");
         const m = await member(space.id, person);
         if (!m) throw refuse("you are not a member of this space", "forbidden");
         const st = storeFor(space.id);
@@ -454,6 +465,7 @@ export default {
         if (!i.approve) {
           await st.put("tasks", task.id, { ...task, state: "done", outcome, decided_by: chain, decided_at: Date.now() });
           await st.delete("holds", task.id);
+          ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
           return { task: task.id, outcome };
         }
         const p = publisherFor(space);
@@ -464,9 +476,11 @@ export default {
             const s = (task.plan || {}).secret || {};
             const r = await p.pub.grantSecret(chain, hold.deployment, { ref: s.ref, name: s.name, use: s.use, task: task.id });
             await restartForGrant(space, r.deployment, s.use);
+            ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
             return { ...out, deployment: shown(r.deployment) };
           }
           const r = await serial(p, () => p.pub[hold.action](chain, hold.deployment, { task: task.id }));
+          ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
           return { ...out, deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
         } catch (e) {
           // The act did not complete (for example this person may not approve it): the request stays open for someone who may.
@@ -509,24 +523,59 @@ export default {
       },
     });
 
+    /** A domain on a LIVE site changes what the world sees at once, with no yes after it: a model may connect one while the site is still a draft, preview or approved version (the plan the person says yes to then names the address), and the person does it on a live site. @param {any} b @param {any} meta @param {string} deployment */
+    const liveDomainGuard = async (b, meta, deployment) => {
+      if (isPerson(meta)) return;
+      const d = await storeFor(b.space.id).get("deployments", deployment);
+      if (d && d.stage === "Production") throw refuse("this site is live, so a new domain changes what the world sees now: ask the person to connect it on the Sites screen, or make a new version with the domain and put it live with publish.go, which waits for their yes", "denied");
+    };
     ctx.tool("publish.domain.add", {
-      callers: PEOPLE,
-      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published.",
+      callers: WITH_MODELS,
+      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published (which waits for a person's yes). A model may do this while the site is not yet live.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
+        await liveDomainGuard(b, meta, i.deployment);
         const r = await b.pub.addDomain(b.chain, { host: i.host, deployment: i.deployment, canonical: i.canonical, www: i.www });
         return { domain: { host: r.record.host, status: r.record.status, method: r.record.method }, challenge: r.challenge };
       },
     });
     ctx.tool("publish.domain.verify", {
-      callers: PEOPLE,
-      description: "Check the DNS record (or the name you own) for a connected domain.",
+      callers: WITH_MODELS,
+      description: "Check the DNS record (or the name you own) for a connected domain. Verified does not put anything live: going live still waits for a person's yes.",
       input: obj({ host: str }, ["host"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
+        const rec = (await storeFor(b.space.id).list("domains")).find((/** @type {any} */ x) => x.host === String(i.host).toLowerCase());
+        if (rec && rec.status === "pending") await liveDomainGuard(b, meta, rec.deployment);
         const r = await b.pub.verifyDomain(b.chain, i.host);
         return { verified: r.verified, ...(r.reason ? { reason: r.reason } : {}), ...(r.challenge ? { challenge: r.challenge } : {}), domain: { host: r.record.host, status: r.record.status } };
+      },
+    });
+    ctx.tool("publish.domain.status", {
+      description: "The domains of one site: each host, its status, and for a pending one the exact DNS record to set (type, name, value). Read it to tell the person what to set, then recheck with publish.domain.verify. Never a secret.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => { const b = await begin(i, meta); return { domains: await b.pub.domainsOf(b.chain, i.deployment) }; },
+    });
+    ctx.tool("publish.holds", {
+      description: "Publishing acts waiting for a person's yes in this space: the plan of each (what goes public, at which address, with which secrets, replacing which version) and the task to decide with. Newest last. A model cannot decide them.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const st = storeFor(b.space.id);
+        /** @type {any[]} */ const out = [];
+        const memo = new Map();
+        for (const t of await st.list("tasks")) {
+          if (t.state !== "needs_check") continue;
+          const h = await st.get("holds", t.id);
+          if (!h) continue;
+          // a hold is shown to who may read its site: the same read check status makes, and a project's site only to that project's people (and the Space's owner and admins)
+          const dep = await st.get("deployments", h.deployment);
+          if (!dep || !(await mayReadJob(b.space.id, b.person, dep, memo))) continue;
+          try { await b.pub.status(b.chain, h.deployment); } catch { continue; }
+          out.push({ task: t.id, action: h.action, title: t.title, deployment: h.deployment, thread: h.thread ?? null, plan: t.plan, plan_hash: t.payload_hash, requested_by: t.requested_by, at: h.created_at });
+        }
+        return { holds: out.sort((x, y) => x.at - y.at) };
       },
     });
     ctx.tool("publish.domain.remove", {
@@ -549,7 +598,7 @@ export default {
         const sp = (await whoIs(i, meta)).space.id;
         const b = await begin(i, meta, await warmDecider(sp, i.task));
         const r = await b.pub.grantSecret(b.chain, i.deployment, { ref: i.ref, name: i.name, use: i.use, task: i.task });
-        if (r.held) return { held: true, task: r.task, plan: r.plan };
+        if (r.held) { await noteHold(b, r, meta); return { held: true, task: r.task, plan: r.plan }; }
         await restartForGrant(b.space, r.deployment, i.use);
         return { deployment: shown(r.deployment) };
       },

@@ -17,6 +17,8 @@ import { encodeTicket, encodeCard } from "./relay.js";
 import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
+  // mirror vault.account.reset, vault.put, vault.update and vault.delete
+  "vault.me.account.reset", "vault.me.put", "vault.me.update", "vault.me.remove",
   "vault.put", "vault.delete", "vault.provider.set", "vault.provider.remove", "vault.import", "vault.import.preview", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.autobackup.enrol", "vault.autobackup.run", "vault.autobackup.drill", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
@@ -29,7 +31,10 @@ export const NEEDS_PRESENCE = [
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
-  "vault.pass.list", "vault.pass.revoke", "vault.grants.status", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.history",
+  "vault.pass.list", "vault.pass.revoke", "vault.grants.status", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.me.account.unlock", // mirrors vault.account.unlock: the password and Secret Key are the proof
+  // mirror their owner tools: lock, status, list and grants.status are reads; the store tools are module plumbing for member-mcp (the body refuses non-person callers)
+  "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
+  "vault.history",
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",

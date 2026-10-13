@@ -182,12 +182,12 @@ export const needsLine = (n) => (n === 0 ? "nothing needs you" : n === 1 ? "1 th
 
 /**
  * What Now shows for a scope ("all" or a space id): the tasks that need the person, what is being worked on, what finished today, today's calendar and recent events.
- * @param {World} w @param {string} [scope]
+ * @param {World} w @param {string} [scope] @param {ReadonlySet<string>} [later] ids put away with "Later": they are not waiting right now
  */
-export function nowModel(w, scope = "all") {
+export function nowModel(w, scope = "all", later = new Set()) {
   const inScope = (/** @type {string|undefined} */ space) => scope === "all" || space === scope;
   const tasks = w.tasks.filter((t) => inScope(t.space));
-  const needs = tasks.filter((t) => needsReason(t, w.me, w.actors) !== null).sort((a, b) => b.updated_at - a.updated_at);
+  const needs = tasks.filter((t) => needsReason(t, w.me, w.actors) !== null && !later.has(t.id)).sort((a, b) => b.updated_at - a.updated_at);
   const needIds = new Set(needs.map((t) => t.id));
   const working = tasks.filter((t) => t.state === "working");
   const day = startOfDay(w.now);
