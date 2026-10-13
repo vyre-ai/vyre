@@ -49,6 +49,11 @@ import readline from "node:readline";
 const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
 const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
+// The real CLI refuses to open an id as NEW when a transcript of that id is already in its HOME (FAKE_CLAUDE_SESSION_IN_USE=1 with FAKE_CLAUDE_TRANSCRIPTS).
+if (process.env.FAKE_CLAUDE_SESSION_IN_USE && process.env.FAKE_CLAUDE_TRANSCRIPTS && flag("--session-id") && !argv.includes("--fork-session") && !argv.includes("--resume")
+  && fs.existsSync(path.join(process.env.FAKE_CLAUDE_TRANSCRIPTS, process.cwd().replace(/[^A-Za-z0-9]/g, "-"), `${flag("--session-id")}.jsonl`))) {
+  process.stderr.write(`Error: Session ID ${flag("--session-id")} is already in use.\n`); process.exit(1);
+}
 // The permission mode, as Claude Code keeps it: bypassPermissions only when the launch allowed it.
 let permMode = flag("--permission-mode") || "default";
 const skippable = argv.includes("--allow-dangerously-skip-permissions") || argv.includes("--dangerously-skip-permissions");
