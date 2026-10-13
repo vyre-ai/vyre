@@ -227,6 +227,8 @@ export default {
         try {
           const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {}));
           if (r && r.data && r.data.claimed === identity) return "owner";
+          // the home's owner as its kernel holds it now (a server named its owner at pairing)
+          if (ctx.kernel && typeof ctx.kernel.owner === "string" && ctx.kernel.owner === identity) return "owner";
           const space = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
           if (!space) return null;
           const m = /** @type {any} */ (await ctx.call("spaces.membership", { person: identity, space }));
@@ -391,7 +393,11 @@ export default {
      */
     async function admitChain(pub, hello, id) {
       const r = await chains().check({ ...hello.chain, channel: id }, id);
-      if (!r.ok) throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
+      if (!r.ok) {
+        // the reason for this server's log only; the device hears the one set of words
+        ctx.log(`relay: chain hello refused (${r.why}${r.detail ? `: ${r.detail}` : ""})`);
+        throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
+      }
       const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: "device", owner: (ctx.config.onboard || {}).pe });
       const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now() });
       // The presence key is part of what the entry key signed (the hello's `pk` is its sha256): a key that does not match is not enrolled, so nobody can attach a key of their own to a chain device's hello.

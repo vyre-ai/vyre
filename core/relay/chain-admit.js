@@ -79,20 +79,22 @@ export function createChainAdmit(o) {
       if (Math.abs(t - Number(h.ts)) > WINDOW_MS) return { ok: false, why: "stale" };
       for (const [n, exp] of nonces) { if (exp > t) break; nonces.delete(n); }
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
-      const refuse = { ok: false, why: "bad_proof" };
+      // the client hears only `bad_proof` for all three of these (so a probe cannot tell a member from a stranger); `detail` is for this server's own log
+      const refuse = (/** @type {string} */ detail) => ({ ok: false, why: "bad_proof", detail });
       // members only, by identity id; the same words as a bad signature when there is none
       const role = await o.roleOf(h.identity);
-      if (!role) return refuse;
+      if (!role) return refuse("no_role: this identity is neither the owner nor a member here");
       const box = await o.boxId().catch(() => null);
       if (!box) return { ok: false, why: "cannot_check" };
       const known = admitted.has(`${h.identity}/${h.entry}`);
       const c = await chainOf(h.identity, known, h.name);
       if ("why" in c) return { ok: false, why: c.why };
       const entry = (c.state.entries || []).find((/** @type {any} */ e) => e && e.eid === h.entry && e.kind === "device" && typeof e.pub === "string");
-      if (!entry || isRelayKey(entry)) return refuse;
+      if (!entry) return refuse("no_entry: the chain lists no device with that entry id");
+      if (isRelayKey(entry)) return refuse("relay_key: the relay's own key is never a device");
       let good = false;
       try { good = await verifyWith(entry.pub, chainHelloMessage(box, h), h.sig, entry); } catch { good = false; }
-      if (!good) return refuse;
+      if (!good) return refuse("bad_signature: the entry key did not sign this box, identity, entry, time, nonce, channel and presence key");
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
       nonces.set(h.nonce, t + 2 * WINDOW_MS);
       while (nonces.size > NONCE_MAX) nonces.delete(/** @type {string} */ (nonces.keys().next().value));

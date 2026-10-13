@@ -65,6 +65,17 @@ test("(e) a non-member and a member removed since both get bad_proof, the same a
   assert.equal((await never.admit.check(never.hello(), CH)).why, "bad_proof");
 });
 
+test("the server's log can tell which check refused, while the client hears one word", async () => {
+  const stranger = rig({ role: null });
+  const a = await stranger.admit.check(stranger.hello(), CH);
+  assert.equal(a.why, "bad_proof");
+  assert.match(a.detail, /^no_role/);
+  const wrongEntry = rig();
+  assert.match((await wrongEntry.admit.check(wrongEntry.hello({ entry: EID("z") }), CH)).detail, /^no_entry/);
+  const thief = rig();
+  assert.match((await thief.admit.check({ ...thief.hello(), sig: "x".repeat(86) }, CH)).detail, /^bad_signature/);
+});
+
 test("a hello replayed at another server, on another channel, or after the window is refused", async () => {
   const a = rig();
   const h = a.hello();
