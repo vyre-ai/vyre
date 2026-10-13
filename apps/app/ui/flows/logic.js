@@ -568,10 +568,10 @@ export function fromDefinition(flow) {
   return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
 }
 
-/** Who can approve: a person, a team or role, or an agent made by an owner or an admin (an agent checks internal work only: a send or a stage hold still waits for a person; the kernel checks the maker again each time). @param {Options} o @returns {[string, string][]} */
 /** Who a question can go to: a person or a team or role. The engine refuses an agent for a question. @param {Options} o @returns {[string, string][]} */
 export const askChoices = (o) => whoChoices(o).filter(([v]) => !v.startsWith("agent:"));
 
+/** Who can approve: a person, a team or role, or an agent made by an owner or an admin (an agent checks internal work only: a send or a stage hold still waits for a person; the kernel checks the maker again each time). @param {Options} o @returns {[string, string][]} */
 export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter(([v]) => !v.startsWith("agent:") || o.agents.some((a) => `agent:${a.name}` === v && a.staff === true))];
 
 

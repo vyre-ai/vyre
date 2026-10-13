@@ -61,7 +61,7 @@ function plainText(zip) {
 }
 
 /**
- * The names a template asks for, in the order they first appear: { names: ["client.name", ...], loops: ["items"], loopFields: { items: ["label"] } }. The fields of a loop belong to the loop.
+ * The names a template asks for, in the order they first appear: { names: ["client.name", ...], loops: ["items"], loopFields: { items: ["label"] } }. The fields of a loop belong to the loop (loopLeaves has them in full, "spouse.name" for a field read through a link).
  * @param {Buffer} buf
  */
 export function placeholders(buf) {
@@ -72,18 +72,23 @@ export function placeholders(buf) {
   const loops = [...new Set([...plainText(zip).matchAll(/\{[#^]\s*([A-Za-z0-9_.]+)\s*\}/g)].map(m => m[1]))];
   /** @type {Set<string>} */ const names = new Set();
   /** @type {Record<string, string[]>} */ const loopFields = {};
+  /** @type {Record<string, string[]>} */ const loopLeaves = {};
+  const leaves = (/** @type {any} */ node, /** @type {string} */ prefix, /** @type {string[]} */ acc) => {
+    for (const [k, v] of Object.entries(node || {})) { const full = prefix ? `${prefix}.${k}` : k; if (v && typeof v === "object" && Object.keys(v).length) leaves(v, full, acc); else acc.push(full); }
+    return acc;
+  };
   const walk = (/** @type {any} */ node, /** @type {string} */ prefix) => {
     for (const [k, v] of Object.entries(node || {})) {
       const full = prefix ? `${prefix}.${k}` : k;
       if (v && typeof v === "object" && Object.keys(v).length) {
         // A loop's own fields belong to the loop (listed under it), not to the document.
-        if (loops.includes(full)) loopFields[full] = Object.keys(v); else walk(v, full);
+        if (loops.includes(full)) { loopFields[full] = Object.keys(v); loopLeaves[full] = leaves(v, "", []); } else walk(v, full);
       } else if (!loops.includes(full)) names.add(full);
     }
   };
   // getTags() answers per part of the file: { document: { tags, target }, header1: { ... } }.
   for (const part of Object.values(doc.getTags() || {})) walk(part && /** @type {any} */ (part).tags, "");
-  return { names: [...names], loops, loopFields };
+  return { names: [...names], loops, loopFields, loopLeaves };
 }
 
 /** A template that will not compile, said in plain words: where Word split a tag, the tag. @param {any} e */

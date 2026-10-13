@@ -15,6 +15,8 @@ import { expandConnections } from "./connection-step.js";
 import { runCases } from "./cases.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
+import { linksFor, withLinks } from "./links.js";
+import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
 import { stampAdders } from "./adders.js";
@@ -1141,12 +1143,19 @@ export class FlowRunner {
     if (led && (led.status === "done" || led.status === "skipped") && !INLINE_KINDS.has(s.kind)) return;
     if (led && led.status === "failed_handled" && INLINE_KINDS.has(s.kind)) return;
     run.error = { step: s.id, code: "", message: "" }; // names the step in flight; cleared by a clean finish
-    const scope = () => this.#scope(ctx, locals);
+    // A path that goes through a link field (contact.spouse.name) reads the linked record under the Flow's own chain; `load` lays what it read over this step's scope (kernel/flows/links.js).
+    /** @type {{ at: string[], over: any }[]} */ let linked = [];
+    const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
+    const load = async () => {
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: (type, id) => this.k.records.get(this.#chain(ctx), type, id) }); }
+      catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
+    };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
     const val = (/** @type {any} */ v) => resolveValue(v, scope());
 
     if (s.kind === "decide") {
       await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        await load();
         let branch = led && led.output && led.output.branch;
         if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
         await this.#walk(ctx, s[branch] || [], suffix, locals);
@@ -1156,6 +1165,7 @@ export class FlowRunner {
     }
     if (s.kind === "repeat") {
       await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        await load();
         let items = led && led.output && led.output.items;
         if (!items) {
           const list = ev(s.over);
@@ -1171,6 +1181,7 @@ export class FlowRunner {
     if (led && led.status === "failed_handled") return;
     const dispatch = async () => {
       /** @type {any} */ let out;
+      await load();
       switch (s.kind) {
         case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
         case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;

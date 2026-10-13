@@ -24,6 +24,7 @@ export const FAMILIES = {
   spaces: { section: "space" }, files: { section: "project" }, artifacts: { section: "project" }, publish: { section: "project" }, planner: { section: "planner" }, goals: { section: "planner" }, watchers: { section: "planner" },
   glass: { section: "computer" }, computers: { section: "computer" }, computer: { section: "computer" }, documents: { section: "project" }, comms: { section: "connectors" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
   ask: { section: "show" }, previews: { section: "show" },
+  microsoft: { section: "connectors" }, mcpconn: { section: "connectors" }, roles: { section: "team" },
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
   appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
