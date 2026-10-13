@@ -7,7 +7,7 @@ export type Step = { id: string; kind: string; label: string; who?: string; outw
 export type Def = { id: string; name: string; trigger: string; triggerCode: string; steps: Step[]; v: number; last: string; state: "On" | "Off"; from: string; hash: string };
 export type Run = { id: string; title: string; started: string; state: "waiting" | "done"; at: string | null; note: string; tone: "accent" | "ok" };
 
-const JUNO = "juno, assistant";
+const JUNO = "juno, agent";
 const ATTORNEY = "An attorney (a role)";
 
 const payment: Def = { id: "payment", name: "On payment", trigger: "A payment is received", triggerCode: "on: 'event', event: 'payment.received'", v: 2, last: "2 h ago", state: "On", from: "Estate planning matter", hash: "b7e21c",
@@ -82,8 +82,8 @@ export const flowsRepo = {
     return {
       installed: [{ id: "estate", name: "Estate planning matter", v: 3, blurb: "Matters, stages, the engagement Flows and the letter templates.", adds: { types: 2, flows: 3, views: 4, roles: 1 }, notes: [], space: "Juniper Studio" }],
       available: [
-        { id: "pi", name: "PI intake", v: 2, blurb: "Personal injury intake, medical records and liens.", adds: { types: 2, flows: 3, views: 3, roles: 1 }, notes: ["Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.", "Sealed fields are in play: assistants only ever see placeholders."], space: "Juniper Studio" },
-        { id: "re", name: "Real estate deals", v: 1, blurb: "Deals by stage, closings and escrow tasks.", adds: { types: 2, flows: 2, views: 3, roles: 0 }, notes: ["Assistants start from this Kit's own instructions, which count as outside text until you have read them."], space: "Juniper Studio" },
+        { id: "pi", name: "PI intake", v: 2, blurb: "Personal injury intake, medical records and liens.", adds: { types: 2, flows: 3, views: 3, roles: 1 }, notes: ["Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.", "Sealed fields are in play: agents only ever see placeholders."], space: "Juniper Studio" },
+        { id: "re", name: "Real estate deals", v: 1, blurb: "Deals by stage, closings and escrow tasks.", adds: { types: 2, flows: 2, views: 3, roles: 0 }, notes: ["Agents start from this Kit's own instructions, which count as outside text until you have read them."], space: "Juniper Studio" },
       ],
     };
   },

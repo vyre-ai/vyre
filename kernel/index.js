@@ -86,7 +86,9 @@ export async function createKernel(cfg) {
   // A presence session (the person signed in with their passkey on this device) stands for admin acts only for a chain that is exactly one person.
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
+  /** @type {((agentId: string) => Promise<string | null> | string | null) | null} */ let agentMakerFn = null;
   const tasks = createTasks({
+    agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
     canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
@@ -446,5 +448,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated, stop: async () => { if (typeof log.flush === "function") log.flush(); } }), cfg.drive);   // stop: the log's owner stores its batched cursors when the kernel stops
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, setAgentMaker: (/** @type {typeof agentMakerFn} */ f) => { agentMakerFn = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated, stop: async () => { if (typeof log.flush === "function") log.flush(); } }), cfg.drive);   // stop: the log's owner stores its batched cursors when the kernel stops
 }

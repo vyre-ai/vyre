@@ -16,7 +16,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
  * as the web Sheet (Sheet.web.tsx, a dialog): `open`, `onClose`, `title`, children. The caller owns `open`.
  * Drag from the grabber or the title; the body scrolls on its own.
  */
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode }) {
+export function Sheet({ open, onClose, title, children, scroll = true }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode; /** false when the content scrolls itself (a viewer): one scrollbar, not two. */ scroll?: boolean }) {
   const { height } = useWindowDimensions();
   const inset = useSafeAreaInsets();
   const { resolved, color, map } = useUiTheme();
@@ -75,7 +75,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
                 </View>
               </View>
             </GestureDetector>
-            <ScrollView className="flex-shrink px-s4" contentContainerClassName="gap-s3 pb-s2" keyboardShouldPersistTaps="handled">{children}</ScrollView>
+            {scroll ? <ScrollView className="flex-shrink px-s4" contentContainerClassName="gap-s3 pb-s2" keyboardShouldPersistTaps="handled">{children}</ScrollView> : <View className="min-h-0 flex-shrink gap-s3 px-s4 pb-s2">{children}</View>}
           </Animated.View>
         </KeyboardAvoidingView>
       </GestureHandlerRootView>

@@ -38,7 +38,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
   const connect = () => act("new", async () => { const r = await outside.register(name.trim(), note.trim()); setShown(r); setName(""); setNote(""); });
   const startGiving = (id: string) => {
     setGiving(id); setPicked([]); setWrite(false); setProblem("");
-    outside.types().then(setTypes).catch((e) => setProblem(say(e, "The record types could not be read.")));
+    outside.types().then(setTypes).catch((e) => setProblem(say(e, "The objects could not be read.")));
   };
   const give = (id: string) => {
     const what = recordsGrant(picked, write);

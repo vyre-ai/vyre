@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { agentDir, agentPart } from "../../lib/files/layout.js";
+import { writeDocs, writeRootFile, MIRROR_FILES } from "../../lib/folder-docs.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_context_links (agent TEXT NOT NULL, path TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (agent, path));
@@ -27,11 +28,9 @@ export const contextName = s => String(s ?? "").trim().split(/[\\/]/).pop().repl
 const inside = (dir, f) => { const r = path.relative(dir, f); return r === "" || (!!r && !r.startsWith("..") && !path.isAbsolute(r)); };
 const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
 
-/** What an agent is told about its context, after its instructions: names only, never contents. @param {{ dir: string, files: string[], links: string[], items: string[], claude: string }} c */
+/** What an agent is told about what it may reach beyond its folder: the folders linked for it and the Vault item names put at its disposal. Names only. The instructions and context files are named by the orientation block (lib/orientation.js), never copied. @param {{ links: string[], items: string[] }} c */
 export function contextBrief(c) {
   const out = [];
-  if (c.claude) out.push("", "Notes for Claude:", c.claude);
-  if (c.files.length) out.push("", `Context files kept for you, in ${c.dir}: ${c.files.join(", ")}. Read them when they bear on the work.`);
   if (c.links.length) out.push("", `Folders linked for you: ${c.links.join(", ")}.`);
   if (c.items.length) out.push("", `Vault items put at your disposal (names only; using one still needs the person's yes): ${c.items.join(", ")}.`);
   return out.join("\n");
@@ -95,8 +94,29 @@ export function register(ctx, h) {
   const items = (/** @type {any} */ a) => db.prepare("SELECT item FROM agents_vault_items WHERE agent = ? ORDER BY at").all(a.name).map((/** @type {any} */ r) => String(r.item));
 
   /** What a launch adds to an agent's brief. */
-  const brief = (/** @type {any} */ a) => contextBrief({ dir: ctxDir(a), files: listFiles(a).map((/** @type {any} */ f) => f.name), links: links(a), items: items(a), claude: readClaude(a).trim() });
+  const brief = (/** @type {any} */ a) => contextBrief({ links: links(a), items: items(a) });
+  /**
+   * The agent's folder as a session reads it: AGENTS.md (its instructions) and CLAUDE.md (an import of AGENTS.md, then the notes for Claude) at its root, so Claude Code and Codex read them natively when the
+   * session runs there, and the folders the orientation names. Written fresh at every launch from the stored truth; never from the session. @param {any} a
+   * @returns {{ dir: string, instructions: boolean, context: boolean }}
+   */
+  const materialize = a => {
+    ensureParts(a);
+    const words = String(a.instructions || "").trim(), notes = readClaude(a).trim();
+    writeDocs(home(a), "AGENTS.md", words ? words + "\n" : "");
+    writeDocs(home(a), "CLAUDE.md", words || notes ? `@AGENTS.md\n${notes ? "\n" + notes + "\n" : ""}` : "");
+    // the same words under the other tools' names (Grok reads GROK.md)
+    for (const m of MIRROR_FILES) writeRootFile(home(a), m, words ? words + "\n" : "");
+    return { dir: home(a), instructions: Boolean(words), context: listFiles(a).length > 0 };
+  };
 
+  // Who made an agent, for the kernel: an agent may check another agent's work only while the person who made it is an owner or an admin (kernel/tasks), so the kernel asks, live, each time.
+  ctx.tool("agents.maker", {
+    description: "The person who made an agent (its owner row), or null. For the kernel's check of an agent that approves another agent's work.",
+    internal: true, callers: ["module"],
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }) => { const a = h.must(agent); return { made_by: a.owner ? String(a.owner) : null }; },
+  });
   ctx.tool("agents.docs.get", {
     description: "An agent's two instruction files: AGENTS.md (its instructions) and CLAUDE.md (extra notes for Claude).",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
@@ -155,7 +175,7 @@ export function register(ctx, h) {
       const a = h.must(agent);
       await writeOk(meta, a);
       const f = path.join(ctxDir(a), contextName(name));
-      if (!contextName(name) || !inside(ctxDir(a), f) || !fs.existsSync(f)) throw Object.assign(new Error(`${a.name} has no context file ${name}`), { code: "not_found" });
+      if (!contextName(name) || !inside(ctxDir(a), f) || !fs.existsSync(f)) throw Object.assign(new Error(`${a.name} has no context file ${name}. agents.context.list shows what it keeps`), { code: "not_found" });
       fs.rmSync(f);
       return { ok: true };
     },
@@ -178,7 +198,7 @@ export function register(ctx, h) {
         const owning = (pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects : []).filter((/** @type {any} */ p) => (a.projects === "*" || a.projects.includes(p.slug)) && [p.home, ...(p.workspaces || p.folders || [])].filter(Boolean).some((/** @type {string} */ c) => { try { return inside(fs.realpathSync(c), real); } catch { return false; } }));
         for (const p of owning) {
           const may = await ctx.call("work.project.may-read", { project: p.slug, person }).catch(() => null);
-          if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Link a folder of a project you can open`), { code: "denied" });
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Ask the project's owner to add you, or link a folder of a project you can open`), { code: "denied" });
         }
       }
       db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, by, at) VALUES (?,?,?,?)").run(a.name, real, await h.personOf(meta), Date.now());
@@ -202,7 +222,7 @@ export function register(ctx, h) {
     run: async ({ agent, item }, meta) => {
       const a = h.must(agent);
       await writeOk(meta, a);
-      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and takes no Vault items`), { code: "denied" });
+      if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and takes no Vault items. Put the item on an agent you made, with agents.vault.assign`), { code: "denied" });
       if (typeof item !== "string" || !ITEM.test(item)) throw bad("that is not a Vault item name");
       db.prepare("INSERT OR IGNORE INTO agents_vault_items (agent, item, by, at) VALUES (?,?,?,?)").run(a.name, item, await h.personOf(meta), Date.now());
       return { ok: true };
@@ -239,7 +259,7 @@ export function register(ctx, h) {
     run: async ({ agent, kind, subject, level }, meta) => {
       const a = h.must(agent);
       await shareOk(meta, a);
-      if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared`), { code: "denied" });
+      if (a.builtin && level) throw Object.assign(new Error(`${a.name} is built in and is not shared. Share an agent you made instead, with agents.access.set`), { code: "denied" });
       if (kind !== "person") throw bad("an agent is shared with a person for now; a role comes later");
       if (typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name the person to share with");
       if (level !== null && level !== undefined && !["use", "edit"].includes(level)) throw bad("level is use, edit or null");
@@ -277,5 +297,15 @@ export function register(ctx, h) {
   const sharedLine = async a => (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => `${g.subject} (${g.level})`);
   /** An agent that is gone takes its sharing with it. @param {any} a */
   const clearShared = async a => { if (ctx.kernel && ctx.kernel.mint) for (const g of await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` })) await ctx.kernel.mint.end({ id: g.id, reason: "the agent was removed" }); };
-  return { brief, levelOf, sharedLine, clearShared };
+  /**
+   * Who made an agent and who it is shared with, for the list: the maker's person id, and [{ person, level }]. The owner, an admin, the maker and anyone with Can edit see every share; anyone
+   * else sees only their own, so a list never shows who else was given an agent. @param {any} meta @param {any} a @param {boolean} staff
+   */
+  const sharesFor = async (meta, a, staff) => {
+    const all = (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => ({ person: g.subject, level: g.level }));
+    if (staff || (await levelOf(meta, a)) === "edit") return { made_by: a.owner || null, shares: all };
+    const me = await h.chainPerson(meta);
+    return { made_by: a.owner || null, shares: me ? all.filter((/** @type {any} */ g) => g.person === me) : [] };
+  };
+  return { brief, materialize, levelOf, sharedLine, clearShared, sharesFor };
 }

@@ -20,16 +20,16 @@ export function loadAi(): AiAccount[] {
   return [
     { name: "Claude", on: true, plan: "Max plan", budget: 200, used: 63, note: "" },
     { name: "OpenAI", on: true, plan: "API account", budget: 50, used: 12, note: "" },
-    { name: "Grok", on: false, plan: "", budget: 0, used: 0, note: "Connect it to use it as an assistant's model." },
+    { name: "Grok", on: false, plan: "", budget: 0, used: 0, note: "Connect it to use it as an agent's model." },
     { name: "OpenRouter", on: false, plan: "", budget: 0, used: 0, note: "One account for many models." },
   ];
 }
 
 export function loadAssistants(): Assistant[] {
   return [
-    { id: "juno", name: "juno", role: "Your assistant", model: "Claude Sonnet 5.5", family: "assistant", autonomy: "exceptions", paused: false },
-    { id: "kit", name: "kit", role: "Assistant of Alex", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "exceptions", paused: false },
-    { id: "iris", name: "iris", role: "Assistant of Chris", model: "Codex", family: "assistant", autonomy: "asks", paused: false },
+    { id: "juno", name: "juno", role: "Your agent", model: "Claude Sonnet 5.5", family: "assistant", autonomy: "exceptions", paused: false },
+    { id: "kit", name: "kit", role: "Agent of Alex", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "exceptions", paused: false },
+    { id: "iris", name: "iris", role: "Agent of Chris", model: "Codex", family: "assistant", autonomy: "asks", paused: false },
     { id: "rev", name: "rev", role: "Teammate, Juniper Studio", model: "Claude Sonnet 5.5", family: "teammate", autonomy: "asks", paused: false },
   ];
 }

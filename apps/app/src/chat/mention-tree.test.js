@@ -38,11 +38,11 @@ test("# has four categories in order", () => {
 
 test("Projects: a branch per template with a whole pick, then its projects", () => {
   const projects = tree[0];
-  const estate = projects.kids.find((k) => k.label === "Estate plan");
+  const estate = projects.kids.find((k) => k.label === "Estate plan playbook");
   assert.deepEqual(estate.pick, { pick: "Matters (all)", urn: "template/tpl_estate-plan", kind: "collection" });
   assert.deepEqual(estate.kids.map((k) => k.label), ["Okafor admin"]);
   assert.deepEqual(estate.kids[0].pick, { pick: "Okafor admin", urn: "u/p1", kind: "project" });
-  const ads = projects.kids.find((k) => k.label === "Ad campaign");
+  const ads = projects.kids.find((k) => k.label === "Ad campaign playbook");
   assert.equal(ads.pick.pick, "Ad campaign (all)");
   const loose = projects.kids.find((k) => k.label === "No template");
   assert.deepEqual(loose.kids.map((k) => k.label), ["Loose project"]);
@@ -95,7 +95,7 @@ test("a template with no projects, an object with no records and a category with
     titleOf, templates, files: [], names: {},
   });
   assert.deepEqual(t.map((n) => n.label), ["Projects", "Records"], "no Files, no Tags");
-  assert.deepEqual(t[0].kids.map((k) => k.label), ["Estate plan"], "Ad campaign has no project");
+  assert.deepEqual(t[0].kids.map((k) => k.label), ["Estate plan playbook"], "Ad campaign has no project");
   assert.deepEqual(t[1].kids.map((k) => k.label), ["Clients"], "Leads has no records");
 });
 
@@ -107,18 +107,17 @@ test("searching # finds a record, a project and a file across categories", () =>
   assert.deepEqual(by("Files"), ["Okafor estate"]);
 });
 
-test("@ has People, Teams and roles, Agents, AIs; empty groups are left out", () => {
+test("@ has People, Teams and roles, one Agents group (the chat's AIs first); empty groups are left out", () => {
   const people = [
     { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" },
     { name: "juno", family: "assistant", doing: "Waiting" }, { name: "claude", family: "assistant", group: "ai" },
   ];
   const t = atTree({ people, teams: [{ name: "Attorneys", kind: "role" }, { name: "Intake", kind: "team" }] });
-  assert.deepEqual(t.map((n) => n.label), ["People", "Teams and roles", "Agents", "AIs"]);
+  assert.deepEqual(t.map((n) => n.label), ["People", "Teams and roles", "Agents"]);
   assert.deepEqual(t[0].kids.map((k) => k.label), ["alex", "Dana Okafor"]);
   assert.deepEqual(t[0].kids[0].pick, { pick: "alex" });
   assert.deepEqual(t[1].kids.map((k) => [k.label, k.sub]), [["Attorneys", "Role"], ["Intake", "Team"]]);
-  assert.equal(t[2].kids[0].sub, "Waiting");
-  assert.deepEqual(t[3].kids.map((k) => k.label), ["claude"]);
+  assert.deepEqual(t[2].kids.map((k) => [k.label, k.sub]), [["claude", "AI in this chat"], ["juno", "Waiting"]]);
   const none = atTree({ people: [{ name: "alex", family: "person" }], teams: [] });
   assert.deepEqual(none.map((n) => n.label), ["People"]);
 });
@@ -145,9 +144,9 @@ test("filesOf recovers folder names from the words the Drive gave each file", ()
   assert.deepEqual(r.names, { "Projects/okafor": "Okafor estate" });
 });
 
-test("the chat's own AIs (by name) are AIs, not agents", () => {
+test("the chat's own AIs (by name) lead the one Agents group", () => {
   const t = atTree({ people: [{ name: "Claude", family: "assistant" }, { name: "kit", family: "assistant" }], teams: [], ais: ["claude"] });
-  assert.deepEqual(t.map((n) => [n.label, n.kids.map((k) => k.label)]), [["Agents", ["kit"]], ["AIs", ["Claude"]]]);
+  assert.deepEqual(t.map((n) => [n.label, n.kids.map((k) => k.label)]), [["Agents", ["Claude", "kit"]]]);
 });
 
 test("Files > Linked > <folder> > <file>: linked files nest under Files with a pick of their own kind, and no whole-folder pick", () => {

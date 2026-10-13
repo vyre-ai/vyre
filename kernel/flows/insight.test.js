@@ -9,7 +9,7 @@ import { diffFlows } from "./diff.js";
 import { healthOf } from "./health.js";
 import { timelineOf } from "./timeline.js";
 import { showable } from "./runner.js";
-import { sourceHash } from "./schema.js";
+import { sourceHash, checkFlow } from "./schema.js";
 
 const flowOf = (/** @type {any[]} */ steps, extra = {}) => ({ format: 1, name: "t", label: "Welcome", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
 const src = "return { n: 1 };";
@@ -68,6 +68,18 @@ test("f8: flows.list carries the line per Flow", async () => {
   assert.equal(rows.length, 1);
   assert.match(rows[0].line, /Never run/);
   assert.equal(rows[0].label, "Welcome");
+});
+
+test("group: a Flow may name the group it is listed under, flows.list carries it, and it is a short string", async () => {
+  const w = await world();
+  const steps = [{ id: "m", kind: "create", type: "matter", set: { client: "x" } }];
+  await install(w, flowOf(steps, { group: "Money" }));
+  const rows = await toolsOf(w).tools["flows.list"](chainOf(), {});
+  assert.equal(rows[0].group, "Money");
+  assert.deepEqual(checkFlow(flowOf(steps, { group: "Money" })), []);
+  assert.match(checkFlow(flowOf(steps, { group: 7 }))[0].message, /group is a short string/);
+  assert.match(checkFlow(flowOf(steps, { group: "x".repeat(61) }))[0].message, /group is a short string/);
+  assert.match(checkFlow(flowOf(steps, { group: "  " }))[0].message, /group is a short string/);
 });
 
 // ------------------------------------------------------------------ f12

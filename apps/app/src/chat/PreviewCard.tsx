@@ -55,7 +55,7 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
           <Text strong numberOfLines={2} style={{ flex: 1, minWidth: 0 }}>{b.title}</Text>
           <Chip tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "plain"}>{word}</Chip>
         </View>
-        <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the assistant to start it again." : `${shareWord(b.access)}${lifeWord(b.mode, b.state) ? ` · ${lifeWord(b.mode, b.state)}` : ""}`}</Text>
+        <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the agent to start it again." : `${shareWord(b.access)}${lifeWord(b.mode, b.state) ? ` · ${lifeWord(b.mode, b.state)}` : ""}`}</Text>
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
           {a.open ? <Button kind="primary" size={phone ? "md" : "sm"} icon="external" label="Open" disabled={busy} onPress={open} />
@@ -70,7 +70,7 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
       <Sheet open={share} onClose={() => setShare(false)} title="Who can open this">
         <View style={{ gap: 12 }}>
           <Segmented label="Who can open this" value={(b.access as "me" | "project" | "team")} onChange={(v) => run(() => tool("previews.share", { id: b.id, access: v }), () => showToast(`${shareWord(v)}.`))} options={SHARE_CHOICES} />
-          <Text size="caption" tone="label">Whoever you choose gets it with their assistant. Sharing with anyone who has the link comes later.</Text>
+          <Text size="caption" tone="label">Whoever you choose gets it with their agent. Sharing with anyone who has the link comes later.</Text>
         </View>
       </Sheet>
       <Sheet open={log !== null} onClose={() => setLog(null)} title="What it printed">

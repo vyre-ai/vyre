@@ -89,7 +89,7 @@ export function sessionHits(base: Base, q: string, recall: unknown): Row[] {
 export const projectHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.projects.filter((p) => hasAll(`${p.name} ${p.slug}`, ws)).map((p) => ({ key: `p:${p.slug}`, kind: "project", title: p.name, href: `/u/project/${encodeURIComponent(p.slug)}` })); };
 export function peopleHits(base: Base, q: string): Row[] {
   const ws = words(q);
-  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your assistant" : a.instructions.split("\n")[0] || "agent", href: "/u/assistants" }));
+  const agents = base.agents.filter((a) => hasAll(`${a.name} ${a.instructions}`, ws)).map((a): Row => ({ key: `a:${a.name}`, kind: "agent", title: a.name, sub: a.kind === "assistant" ? "your agent" : a.instructions.split("\n")[0] || "agent", href: "/u/assistants" }));
   const people = base.records.filter((r) => r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r): Row => ({ key: `r:${r.id}`, kind: "person", title: r.title, sub: r.sub.slice(0, 60), href: `/u/record/${r.id}` }));
   return [...agents, ...people];
 }
@@ -163,7 +163,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
   if (want("people")) { add("people", "People", peopleHits(base, q)); if (sc === "all") add("records", "Records", recordHits(base, q)); }
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
-  if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Drive", driveHits(fetched.drive));
+  if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Files", driveHits(fetched.drive));
   if (want("memory") && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   return out;

@@ -33,7 +33,8 @@ test("a checked or outward task can never be skipped or completed by its doer al
   const guarded = c.TASK_TRANSITIONS.filter(r => r.guarded === true);
   for (const r of guarded.filter(r => r.to === "skipped")) assert.equal(r.by, "proposal_for_person_with_presence");
   const toDone = c.TASK_TRANSITIONS.filter(r => r.to === "done" && r.from === "needs_check");
-  assert.deepEqual(toDone.map(r => r.by), ["checker_approval"]);
+  // (an agent may also check an internal task, never a send: rc1-d 13 Oct, enforced in kernel/tasks)
+  assert.deepEqual(toDone.map(r => r.by), ["checker_approval", "agent_checker_approval"]);
   assert.ok(!c.TASK_TRANSITIONS.some(r => r.from === "working" && r.to === "done" && r.guarded !== false), "working to done only for tasks with no checker");
 });
 

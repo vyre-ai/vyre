@@ -132,7 +132,7 @@ export function markSealedNoteSeen(storage, chat) {
 }
 /** The one line of the sealed note. @param {{ sealed: number, assistants: number }} o */
 export function sealedNoteText({ sealed, assistants }) {
-  const who = assistants > 1 ? "Assistants here" : "The assistant here";
+  const who = assistants > 1 ? "Agents here" : "The agent here";
   return sealed > 0
     ? `${who} can read this chat and the records you tag. ${sealed} sealed field${sealed === 1 ? "" : "s"} stay${sealed === 1 ? "s" : ""} hidden from them.`
     : `${who} can read this chat and the records you tag. Sealed fields never reach them.`;

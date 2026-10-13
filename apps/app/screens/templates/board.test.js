@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { boardColumns, changeCount, versionBar, taskCard, doneRule, TEMPLATES_LABEL, initialsOf } from "./board.ts";
+import { boardColumns, changeCount, versionBar, taskCard, doneRule, TEMPLATES_LABEL, initialsOf, playbookPath } from "./board.ts";
 
 const people = [{ id: "alex", name: "Alex Rivera" }];
 const agents = [{ id: "research", name: "Research" }];
@@ -17,7 +17,7 @@ const body = () => ({
   ],
 });
 
-test("the screen's name is one constant", () => { assert.equal(typeof TEMPLATES_LABEL, "string"); assert.ok(TEMPLATES_LABEL.length > 0); });
+test("the screen's name is one constant, and the owner calls these playbooks", () => { assert.equal(TEMPLATES_LABEL, "Playbooks"); assert.equal(playbookPath(), "/u/playbooks"); assert.equal(playbookPath("tpl_estate"), "/u/playbooks/tpl_estate"); });
 
 test("a board has one column per stage, each with its tasks as cards and its rule in words", () => {
   const cols = boardColumns(body(), people, agents);
@@ -41,7 +41,7 @@ test("a task card says who does it, who approves, who follows, when it is due, a
   const a = taskCard(b.stages[0].tasks[0], b, people, agents);
   assert.deepEqual([a.title, a.assignee.label, a.assignee.kind, a.approver.label, a.followers.map((f) => f.label), a.due, a.group, a.optional], ["Conflict check", "The paralegal", "role", "The attorney", ["Alex Rivera"], "1 day", "Documents", false]);
   const c = taskCard(b.stages[0].tasks[1], b, people, agents);
-  assert.deepEqual([c.assignee.label, c.assignee.kind, c.approver, c.needsYes, c.optional, c.due], ["Research (assistant)", "agent", null, "sending anything to the family", true, ""]);
+  assert.deepEqual([c.assignee.label, c.assignee.kind, c.approver, c.needsYes, c.optional, c.due], ["Research (agent)", "agent", null, "sending anything to the family", true, ""]);
   assert.equal(taskCard(b.stages[1].tasks[0], b, people, agents).assignee.label, "The project lead");
 });
 
@@ -73,7 +73,7 @@ test("the version bar: what is live, what changed, whether there is anything to 
 test("initials for an avatar", () => {
   assert.equal(initialsOf("Alex Rivera"), "AR");
   assert.equal(initialsOf("The paralegal"), "P");
-  assert.equal(initialsOf("Research (assistant)"), "R");
+  assert.equal(initialsOf("Research (agent)"), "R");
   assert.equal(initialsOf(""), "?");
 });
 
@@ -107,4 +107,26 @@ test("the start button's words keep an acronym's capitals and take no article", 
   assert.equal(startLabel("Matter"), "Start a matter");
   assert.equal(startLabel("ATP client"), "Start ATP client");
   assert.equal(startLabel("Project"), "Start a project");
+});
+
+test("the people a new project is given: the lead and the others, each once, the lead not twice", async () => {
+  const { seatCalls } = await import("./board.ts");
+  assert.deepEqual(seatCalls("rivera", { lead: "per_a", team: ["per_b", "per_a", "per_b", "per_c"] }), [
+    { project: "rivera", person: "per_a", level: "lead" }, { project: "rivera", person: "per_b", level: "contributor" }, { project: "rivera", person: "per_c", level: "contributor" },
+  ]);
+  assert.deepEqual(seatCalls("rivera", { team: ["per_b"] }), [{ project: "rivera", person: "per_b", level: "contributor" }]);
+  assert.deepEqual(seatCalls("rivera", {}), []);
+});
+
+test("Projects of one playbook: the rows whose template it is", async () => {
+  const { ofPlaybook } = await import("./board.ts");
+  const items = [{ row: { data: { template: "tpl_a" } } }, { row: { data: { template: "tpl_b" } } }, { row: { data: {} } }];
+  assert.equal(ofPlaybook(items, "tpl_a").length, 1);
+  assert.equal(ofPlaybook(items, "").length, 3, "no playbook named: all of them");
+});
+
+test("a stage's pill is neutral and says how far along the pipeline it is", async () => {
+  const { stageProgress } = await import("./board.ts");
+  assert.equal(stageProgress(1, 5), "Stage 2 of 5");
+  assert.equal(stageProgress(0, 1), "Stage 1 of 1");
 });

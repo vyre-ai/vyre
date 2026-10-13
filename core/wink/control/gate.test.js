@@ -579,6 +579,23 @@ test("gate ingress, Vault MCP: the gate's own per-source limit sits in front of 
   assert.match((await raw(port, post("/hooks/abc", "{}"))).toString(), /^HTTP\/1\.1 200 /, "webhooks have their own window");
 });
 
+// ---- the person's AI keys over HTTP: exactly POST /mcp, its own listener ----
+
+test("gate ingress, person MCP: POST /mcp reaches the mcpconn listener with the key and the real address; the other MCP doors are their own, and any other shape is a 404", async t => {
+  const p = await mcpListener(), a = await mcpListener(); t.after(() => { p.close(); a.close(); });
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, agentsmcp: () => a.port, personmcp: () => p.port } });
+  const at = (/** @type {string} */ path) => mcpPost('{"jsonrpc":"2.0"}', "Authorization: Bearer mcn_1~abc\r\nX-Forwarded-For: 6.6.6.6\r\n").replace("POST /vault-mcp ", `POST ${path} `);
+  const r = (await raw(port, at("/mcp"))).toString();
+  assert.match(r, /^HTTP\/1\.1 200 /);
+  assert.deepEqual(p.seen.map(s => [s.method, s.url, s.body]), [["POST", "/mcp", '{"jsonrpc":"2.0"}']]);
+  assert.equal(p.seen[0].headers.authorization, "Bearer mcn_1~abc", "the key reaches the mcpconn module");
+  assert.equal(p.seen[0].headers["x-forwarded-for"], "127.0.0.1");
+  assert.deepEqual(a.seen, [], "the outside agents' listener heard nothing");
+  for (const bad of ["/mcp/", "/mcp?x=1", "//mcp", "/mcp%2f", "/MCP"]) assert.match((await raw(port, at(bad))).toString(), /^HTTP\/1\.1 404 /, bad);
+  assert.equal(p.seen.length, 1);
+  assert.equal(be.seen.length, 0);
+});
+
 // ---- the outside agents' MCP: exactly POST /agents-mcp, the same discipline as /vault-mcp, its own listener and its own budget ----
 
 test("gate ingress, agents MCP: POST /agents-mcp reaches the outside module's listener with the agent's token and the real address; the vault's route is its own", async t => {

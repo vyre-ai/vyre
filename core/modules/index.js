@@ -16,7 +16,8 @@ import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assistantLimit } from "./assistant-limit.js";
-import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
+import { isViaMcp, isViaMcpHosted, viaMcpId, VIA_MCP, VIA_MCP_HOSTED } from "./via-mcp.js";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH, mcpPersonMay, hostedKeyMay } from "./agent-reach.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -344,7 +345,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "threads" && name === "accountKey") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (name === "personalStore" && module === "vault") || (module === "threads" && name === "accountKey") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -655,8 +656,12 @@ const RELAY_ALLOWED = Object.freeze({
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
+  // a team member's own MCP servers (mcp.mine.*) live in the member's own vault store: the mcp module asks it as the member, and the vault tool resolves the person from the relayed claim
+  mcp: ["vault.me.store."],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
+  // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
+  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
 });
 
 export class Registry {
@@ -1239,7 +1244,7 @@ export class Registry {
           const cur = currentCall();
           if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
           const origin = captureOrigin();
-          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token } });
+          return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token, ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) } });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
@@ -1520,6 +1525,10 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
+    // `meta.viaMcp` is the key's id, set here and only here, from the symbol the daemon's route put on the call after it vouched the key (core/modules/via-mcp.js). Whatever a caller put under that name is dropped.
+    { const key = viaMcpId(meta), hosted = isViaMcpHosted(meta); delete meta.viaMcp; delete meta.viaMcpHosted; delete meta[VIA_MCP]; delete meta[VIA_MCP_HOSTED]; if (key && callerKind(caller) === "mcp") { meta.viaMcp = key; if (hosted) meta.viaMcpHosted = true; } }
+    // A hosted key (the public /mcp door) never uses the tools hostedKeyMay names: code on the box, credentials and connections, devices, people and roles, keys. Refused here, before anything else, for the key alone.
+    if (meta.viaMcp && meta.viaMcpHosted === true && !hostedKeyMay(tool)) return { error: { code: "denied", message: `${tool} is not available to a hosted key: keys cannot install apps, add accounts or touch the vault` } };
     delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
@@ -1528,11 +1537,12 @@ export class Registry {
     // A relayed call is the RELAYED PERSON's call (reviewer-5): it is judged as that person with firstParty false everywhere, so a gate that lets first-party callers through (the switchboard chat gate) never lets
     // a relayed person into what they are not in. The module's name stays on the call for audit only (`relayedBy`).
     let relayed = false;
-    { const relay = meta[RELAY]; delete meta[RELAY]; if (relay && String(caller).startsWith("module:")) { relayed = true; meta.relayedBy = String(caller); delete meta.kernelFacts; delete meta.token; if (relay.kernelFacts) meta.kernelFacts = relay.kernelFacts; if (typeof relay.token === "string") meta.token = relay.token; } }
+    { const relay = meta[RELAY]; delete meta[RELAY]; if (relay && String(caller).startsWith("module:")) { relayed = true; meta.relayedBy = String(caller); delete meta.kernelFacts; delete meta.token; if (relay.kernelFacts) meta.kernelFacts = relay.kernelFacts; if (typeof relay.token === "string") meta.token = relay.token; if (typeof relay.viaMcp === "string" && relay.viaMcp && callerKind(String(meta.origin || "")) === "mcp") { meta.viaMcp = relay.viaMcp; if (relay.viaMcpHosted === true) meta.viaMcpHosted = true; } } }
+    if (relayed && meta.viaMcp && meta.viaMcpHosted === true && !hostedKeyMay(tool)) return { error: { code: "denied", message: `${tool} is not available to a hosted key: keys cannot install apps, add accounts or touch the vault` } };
     { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
-    if (this.deps.doorGate && (!String(caller).startsWith("module:") || caller === "module:vyred")) { const refused = await this.deps.doorGate(tool, String(caller), meta); if (refused) return refused; } if (this.deps.limitedGate && String(caller).startsWith("device:")) { const refused = await this.deps.limitedGate(tool, String(caller)); if (refused) return refused; } // a Space member's own session (door-gate.js); a limited chain device (device-admin.js)
+    if (this.deps.doorGate && (!String(caller).startsWith("module:") || caller === "module:vyred")) { const refused = await this.deps.doorGate(tool, String(caller), meta); if (refused) return refused; } if (this.deps.limitedGate && String(caller).startsWith("device:")) { const refused = await this.deps.limitedGate(tool, String(caller), true); if (refused) return refused; } // a Space member's own session (door-gate.js); a limited chain device (device-admin.js)
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
     // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
     let approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
@@ -1584,7 +1594,8 @@ export class Registry {
       // a browser (`web:<id>`) and a setup page (`setup:<id>`) are none of the person's classes (BR-2): each reaches only its own short list (WEB_REACH, SETUP_REACH), whatever a tool's `callers` says, and a label nobody
       // recognises reaches nothing. The relay's setup gate (core/relay/setup.js) still holds the setup channel to its own list first.
       if (classReach(gateCaller, tool, () => this.declaredSetupTools()) === false) return ["web", "setup"].includes(callerKind(gateCaller)) ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-      if (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // The person's own connected client (core/mcpconn): the daemon vouched its token and set meta.viaMcp, so the call is judged on the person's own chain; the kernel still decides, and the tools mcpPersonMay lists stay out.
+      if (!(meta && meta.viaMcp && mcpPersonMay(tool)) && (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1729,8 +1740,10 @@ export class Registry {
         if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
         meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
       } else if (!moment) {
-        if (!isPerson(String(caller))) return { error: { code: "presence_required", message: `${tool} is the person's own action`, methods: [] } };
-        meta = { ...meta, presence: { method: "person", keyId: null } };
+        // The person's connected client: the person's one yes at mcpconn.connect stands for the presence of an ordinary person's-own tool (never a pairing, vault or outward moment, which are the `moment` cases below).
+        if (meta.viaMcp && mcpPersonMay(tool)) meta = { ...meta, presence: { method: "mcp-connection", keyId: null } };
+        else if (!isPerson(String(caller))) return { error: { code: "presence_required", message: `${tool} is the person's own action`, methods: [] } };
+        else meta = { ...meta, presence: { method: "person", keyId: null } };
       } else if (AGENT_PENDS.includes(tool) && !isPerson(String(caller))) {
         // an agent asking for a grant or a pass only files a request: the tool keeps it pending for a person, whose approval (vault.approve) is the moment
         meta = { ...meta, presence: { method: "pending", keyId: null } };
@@ -2009,7 +2022,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((isViaMcp(meta) && mcpPersonMay(name) && (!isViaMcpHosted(meta) || hostedKeyMay(name))) || ((callerAllowed(d.callers, caller, name, () => this.declaredSetupTools()) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta)))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

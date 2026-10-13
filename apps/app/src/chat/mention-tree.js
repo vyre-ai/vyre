@@ -1,7 +1,7 @@
 // @ts-check
 // The trees the nested @ and # pickers walk (ui/lib/nest-model.js). Pure: the box's answers go in, nodes come out.
 //   #  Projects (a template, then its projects) · Records (an object, then its records) · Files (folders, then files; Linked, then each linked folder, then its files) · Tags
-//   @  People · Teams and roles · Agents · AIs
+//   @  People · Teams and roles · Agents (the chat's own AIs first, then the agents)
 // A branch you can choose whole carries a `pick` of kind "collection": a reference to the whole object, template, folder; its id is
 // type/<object>, template/<id> or folder/<path>. The server treats it as a reference, never as text. A single item picks as
 // "record", "project", "file", "linked" (a file in a linked folder; id <link id>:<path>, resolved by the files module's own # provider) or "tag" (id: its urn, file/<path>, tag/<name>).
@@ -22,6 +22,9 @@ function templateRows(d) {
   const list = Array.isArray(d) ? d : Array.isArray(d?.templates) ? d.templates : [];
   return list.filter((/** @type {any} */ t) => t && t.template && !t.archived).map((/** @type {any} */ t) => ({ template: String(t.template), name: String(t.name || t.template), many: String(t.noun?.many || t.name || t.template) }));
 }
+
+/** A project template is a Playbook in the words people read ("Estate plan playbook"); the tools and records keep work.template.*. @param {string} name */
+const playbook = (name) => (/playbook$/i.test(name.trim()) ? name.trim() : `${name.trim()} playbook`);
 
 /** @param {string} name */
 const all = (name) => `${name} (all)`;
@@ -76,7 +79,7 @@ export function hashTree({ world, titleOf, templates, files, names, linked = [] 
   const projects = (world?.byType?.project ?? []).map((/** @type {any} */ r) => ({ ...r, title: titleOf(projectDef, r) }));
   const leaf = (/** @type {any} */ r) => ({ key: String(r.urn), label: r.title, sub: undefined, pick: { pick: r.title, urn: String(r.urn), kind: "project" } });
   /** @type {NestNode[]} */ const byTemplate = templateRows(templates).map((t) => ({
-    key: t.template, label: t.name, pick: { pick: all(t.many), urn: `template/${t.template}`, kind: "collection" },
+    key: t.template, label: playbook(t.name), pick: { pick: all(t.many), urn: `template/${t.template}`, kind: "collection" },
     kids: projects.filter((/** @type {any} */ r) => r.data?.template === t.template).map(leaf),
   }));
   const known = new Set(byTemplate.map((t) => t.key));
@@ -111,7 +114,7 @@ export function hashTree({ world, titleOf, templates, files, names, linked = [] 
 }
 
 /**
- * The @ tree. An empty group is left out. An assistant is an Agent unless it is one of the chat's own AIs (`ais`, by name).
+ * The @ tree. An empty group is left out. Assistants are one group, Agents; the chat's own AIs (`ais`, by name) come first and say so.
  * @param {{ people: readonly { name: string, family: string, doing?: string, group?: string }[], teams: readonly { name: string, kind: string }[], ais?: readonly string[] }} o
  * @returns {NestNode[]}
  */
@@ -121,8 +124,8 @@ export function atTree({ people, teams, ais = [] }) {
   const groups = [
     { key: "people", label: "People", kids: people.filter((p) => p.family !== "assistant").map(one) },
     { key: "teams", label: "Teams and roles", kids: teams.map((t) => ({ key: `${t.kind}:${t.name}`, label: t.name, sub: t.kind === "role" ? "Role" : "Team", pick: { pick: t.name } })) },
-    { key: "agents", label: "Agents", kids: people.filter((p) => p.family === "assistant" && !isAi(p)).map(one) },
-    { key: "ais", label: "AIs", kids: people.filter((p) => p.family === "assistant" && isAi(p)).map(one) },
+    // One group: the chat's own AIs first (said as "AI"), then the agents.
+    { key: "agents", label: "Agents", kids: [...people.filter((p) => p.family === "assistant" && isAi(p)).map((p) => ({ ...one(p), sub: "AI in this chat" })), ...people.filter((p) => p.family === "assistant" && !isAi(p)).map(one)] },
   ];
   return groups.filter((g) => g.kids.length);
 }

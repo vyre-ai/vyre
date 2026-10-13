@@ -39,7 +39,7 @@ export function planLines(plan) {
   const rec = plan?.counts?.records && typeof plan.counts.records === "object" ? Object.entries(plan.counts.records) : [];
   for (const [type, n] of rec) if (typeof n === "number" && n > 0) out.push(count(n, typeWords(type), plural(typeWords(type))));
   if (plan?.counts?.chats) out.push("Your chats, with their history");
-  if (plan?.counts?.memory) out.push("What your assistant remembers about you, still encrypted");
+  if (plan?.counts?.memory) out.push("What your agent remembers about you, still encrypted");
   if (Array.isArray(plan?.sealed) && plan.sealed.length) out.push(`${count(plan.sealed.length, "private field", "private fields")}, moved still sealed`);
   for (const e of Array.isArray(plan?.extend) ? plan.extend : []) if (e && typeof e.type === "string" && Array.isArray(e.fields) && e.fields.length) out.push(`${typeWords(e.type)} gains ${e.fields.map(typeWords).join(", ")} in My Cloud`);
   for (const s of Array.isArray(plan?.skippedTypes) ? plan.skippedTypes : []) if (s && typeof s.type === "string") out.push(`${typeWords(s.type)} stays in Personal${s.why ? `: ${s.why}` : ""}`);

@@ -1,4 +1,5 @@
 // @ts-check
+import { fmtDate } from "../fields/logic.js";
 // The pure half of the create form, the one timeline and the import wizard (Records).
 
 /** @typedef {{ name: string, label: string, kind: string, required?: boolean, hidden?: boolean, unique?: boolean, options?: string[] }} F */
@@ -60,6 +61,7 @@ export function importIssues(rows, mapping, fields) {
       if (f.unique) { const s = (seen[f.name] ??= new Set()); if (s.has(v.toLowerCase())) { out.push({ row: i + 1, field: f.name, problem: "duplicate" }); continue; } s.add(v.toLowerCase()); }
       if ((f.kind === "number" || f.kind === "money") && Number.isNaN(Number(v.replace(/[$,\s]/g, "")))) out.push({ row: i + 1, field: f.name, problem: "not a number" });
       if ((f.kind === "date" || f.kind === "datetime") && Number.isNaN(Date.parse(v))) out.push({ row: i + 1, field: f.name, problem: "not a date" });
+      if (f.kind === "choice" && f.options?.length && !f.options.some((/** @type {string} */ o) => o.toLowerCase() === v.toLowerCase())) out.push({ row: i + 1, field: f.name, problem: "not one of the options" });
     }
   });
   return out;
@@ -103,7 +105,7 @@ export function factsOf(def, rec) {
     if (f === first || f.hidden || f.seal || !["text", "choice", "number", "money", "date"].includes(f.kind)) continue;
     const v = rec.data?.[f.name];
     if (blank(v)) continue;
-    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : String(v);
+    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : f.kind === "date" || f.kind === "datetime" ? fmtDate(v) : String(v);
     out.push([f.label, s]);
   }
   return out;

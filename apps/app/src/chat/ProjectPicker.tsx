@@ -2,12 +2,13 @@
 // "Remove from project" files it under the General project (a chat always has one); it is offered only when the chat is in another and General exists.
 import { useEffect, useMemo, useState } from "react";
 import { Platform, TextInput, View } from "react-native";
-import { Avatar, Icon, PickerList, markRef, useUiTheme, type PickerItem } from "@vyre/ui";
+import { Avatar, Icon, PickerList, markRef, useTypeStyle, useUiTheme, type PickerItem } from "@vyre/ui";
 import { filterItems, moveActive, pickerKey } from "@vyre/ui/lib/picker-model.js";
 import type { ProjectRef } from "./useChatProject";
 
 export function ProjectPicker({ projects, current, onPick, onBack }: { projects: readonly ProjectRef[]; current: ProjectRef | null; onPick: (slug: string | null) => void; onBack: () => void }) {
   const { color } = useUiTheme();
+  const type = useTypeStyle("body");
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const general = projects.find((x) => x.slug === "general") ?? null;
@@ -30,7 +31,7 @@ export function ProjectPicker({ projects, current, onPick, onBack }: { projects:
           else if (a === "pick") { e.preventDefault?.(); pick(items[active].slug); }
           else if (a === "close") { e.preventDefault?.(); e.stopPropagation?.(); onBack(); }
         }}
-        style={{ minHeight: 44, borderWidth: 1, borderColor: color["edge-strong"], color: color.text, borderRadius: 12, paddingHorizontal: 12, fontSize: 16, outlineStyle: "none" } as any}
+        style={[type, { minHeight: 44, borderWidth: 1, borderColor: color["edge-strong"], color: color.text, borderRadius: 12, paddingHorizontal: 12, outlineStyle: "none" } as any]}
       />
       <PickerList id="project-pop" label="Projects" items={items} active={active} onActive={setActive} onPick={(i) => pick(items[i].slug)} footer="Type to filter. Up and Down, Enter to move, Esc to go back" maxRows={8} empty="No project matches" />
     </View>

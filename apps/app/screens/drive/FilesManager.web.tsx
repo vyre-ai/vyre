@@ -183,7 +183,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div key={r.key} style={style}>
         <MenuRow items={menuFor(r)}>{(menu) => (
           <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)}
-            style={{ display: "grid", gridTemplateColumns: GRID_COLS, alignItems: "center", columnGap: 12, height: ROW_H, boxSizing: "border-box", padding: "0 12px", cursor: "pointer", background: on ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", outline: i === focus ? "1px solid var(--edge-strong, rgba(128,128,128,.5))" : "none", outlineOffset: -1 }}>
+            style={{ display: "grid", gridTemplateColumns: GRID_COLS, alignItems: "center", columnGap: 12, height: ROW_H, boxSizing: "border-box", padding: "0 12px", cursor: "pointer", background: on ? "var(--surface-3)" : "transparent", outline: i === focus ? "1px solid var(--edge-strong, rgba(128,128,128,.5))" : "none", outlineOffset: -1 }}>
             <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}><Icon name={ICON[r.kind] as never} tone="text-2" size={18} /><div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></div></div>
             {showDetail ? null : <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><Text size="caption" tone="muted" numberOfLines={1}>{KIND_WORD[r.kind]}</Text></div>}
             <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}><Text size="caption" tone="muted" numberOfLines={1}>{when(r.modified)}</Text></div>
@@ -213,7 +213,7 @@ function Manager({ wide }: { wide: boolean }) {
     : view === "grid" ? (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
-          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge, rgba(128,128,128,.25))", background: sel.set.has(r.key) ? "var(--surface-3, rgba(128,128,255,.14))" : "var(--surface-2, transparent)" }}>
+          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge, rgba(128,128,128,.25))", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
             <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Icon name={ICON[r.kind] as never} tone="text-2" size={44 as never} /></div>
             <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
@@ -264,7 +264,7 @@ function Manager({ wide }: { wide: boolean }) {
             <div style={{ outline: dropping ? "2px dashed var(--accent, #6b5cff)" : "none", outlineOffset: 4, borderRadius: 14 }}>{main}</div>
           </View>
         </div>
-        {showDetail ? <div style={{ width: 320, flex: "none" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
+        {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
       </div>
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(place); setKids({}); }} />
     </Frame>
@@ -275,7 +275,7 @@ const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", lin
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
   const top = !node.id.includes(":") && ROOT_ICON[node.id];
   return (
-    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, paddingRight: 8, background: node.isSelected ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", borderRadius: 8, cursor: "pointer" }}>
+    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: 8, cursor: "pointer" }}>
       <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
       <Icon name={(top ? ROOT_ICON[node.id] : "folder") as never} size={16 as never} tone={node.isSelected ? "text" : "text-2"} />
       <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={node.isSelected || !!top}>{node.data.label}</Text></div>

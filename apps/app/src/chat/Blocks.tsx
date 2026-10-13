@@ -169,8 +169,8 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
-            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Ask about this</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (
@@ -245,7 +245,7 @@ function FileHead({ file, ctx, onPress, open }: { file: DiffFile; ctx: BlockCtx;
       <Text size="caption" tone="ok" mono>+{file.add}</Text>
       <Text size="caption" tone="err" mono>-{file.del}</Text>
       {ctx.onOpenFile && file.op !== "delete" ? <Button size="sm" kind="ghost" label="Open" onPress={() => ctx.onOpenFile?.(file.path)} /> : null}
-      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
+      {ctx.onOpenInDrive ? <IconButton icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(file.path)} /> : null}
     </View>
   );
 }
@@ -297,7 +297,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
                     <DiffLines file={full} wide={ctx.wide} />
-                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Drive" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
+                    {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
               </View>
@@ -446,7 +446,7 @@ export function ScreenFrames({ block, ctx }: { block: Extract<Block, { block: "s
   return (
     <Shell icon="globe" title={block.label || "Screen"} sub={block.live ? "Live" : "Last frame"} right={block.live ? <Chip tone="accent">live</Chip> : null}>
       <View style={{ aspectRatio: 16 / 10, borderRadius: 8, overflow: "hidden", backgroundColor: color["code-bg"], alignItems: "center", justifyContent: "center" }}>
-        {frame ? <Image accessibilityLabel="What the assistant sees" source={{ uri: frame }} style={S.s27} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
+        {frame ? <Image accessibilityLabel="What the agent sees" source={{ uri: frame }} style={S.s27} resizeMode="cover" /> : <Text tone="label" size="caption">Waiting for the first frame</Text>}
       </View>
       {block.live && ctx.onTakeOver ? <View style={S.s12}><Button size="sm" kind="primary" icon="hand" label="Take over" onPress={ctx.onTakeOver} /></View> : null}
     </Shell>

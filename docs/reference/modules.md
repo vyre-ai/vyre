@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 34 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 35 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
@@ -44,21 +44,22 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 47 | 0 | none |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 49 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
-| [`google`](#google) | `core/google` | `box`, `local` | 21 | 7 | capsule, cli, deck |
+| [`google`](#google) | `core/google` | `box`, `local` | 24 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 12 | 4 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
+| [`import`](#import) | `core/import` | `box`, `local` | 8 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
-| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
+| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 13 | 9 | cli, deck |
+| [`mcpconn`](#mcpconn) | `core/mcpconn` | `box`, `local` | 9 | 3 | cli |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
@@ -71,7 +72,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 25 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 30 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
@@ -104,7 +105,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 164 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 180 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -130,7 +131,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [34](tools.md#agents), 6 of them only for other modules
+- Tools: [35](tools.md#agents), 7 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
@@ -437,7 +438,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [47](tools.md#flows), 1 of them only for other modules
+- Tools: [49](tools.md#flows), 1 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
@@ -493,7 +494,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Folder: `core/google`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [21](tools.md#google), 2 of them only for other modules
+- Tools: [24](tools.md#google), 2 of them only for other modules
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
@@ -550,7 +551,7 @@ Discover this device's Claude Code sessions, choose what to import, and follow t
 - Folder: `core/import`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#import)
+- Tools: [8](tools.md#import)
 - Emits: [1 events](events.md#import)
 - Shows on: cli
 
@@ -593,11 +594,23 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [10](tools.md#mcp), 2 of them only for other modules
+- Tools: [13](tools.md#mcp), 2 of them only for other modules
 - Emits: [9 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## mcpconn
+
+The person's own AI, connected: Claude Code or Codex on a computer of theirs, through `vyre mcp`. The person connects it once with presence; the connection is a per-device token (its hash here, the secret in a file only this OS user reads) and a call on it runs as the person, on their own chain, under the same kernel and door as the app. Listed and revoked by the person.
+
+- Folder: `core/mcpconn`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [9](tools.md#mcpconn), 4 of them only for other modules
+- Emits: [3 events](events.md#mcpconn)
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## memory
 
@@ -739,7 +752,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [25](tools.md#projects)
+- Tools: [30](tools.md#projects)
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
 - Needs kernel: `{"reach":true,"actions":["records.read"]}`
@@ -1125,10 +1138,10 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [164](tools.md#vault), 23 of them only for other modules
+- Tools: [180](tools.md#vault), 23 of them only for other modules
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"reach":true,"membership":true}`
+- Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## views
