@@ -86,7 +86,9 @@ export class RealKernel {
     });
     this.tasksApi = createTasks({
       space: this.space, authorizer: { authorize: this.gw.authorize, actions: new Map(this.actions.map(a => [a.action, a])) }, log: this.logw, presence: this.presence, chains: this.chains, clock: this.clock,
-      members: { has: a => this.members.has(`${a.kind}:${a.id}`) },
+      members: { has: a => this.members.has(`${a.kind}:${a.id}`), roleOf: a => (a.kind === "person" ? (this.roleOfPerson ? this.roleOfPerson(a.id) : null) : null) },
+      // who made an agent, for an agent that approves another agent's work (a test sets `agentMakers`; roleOfPerson says what the maker is now)
+      agentMaker: id => (this.agentMakers ? this.agentMakers[id] ?? null : null),
       roleHolders: role => this.roleHolders(role),
       approver: () => ({ kind: "person", id: this.owner, space: this.space }),
       responsible: () => true,

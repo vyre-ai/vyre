@@ -85,6 +85,7 @@ test("the approver's box never rides on the doer's task: the doer who cannot rea
 
 test("an agent can be the approver of an internal step (not of a send)", async () => {
   const w = await world();
+  w.kernel.agentMakers = { research: ALEX.id }; w.kernel.roleOfPerson = () => "admin"; // research was made by an admin
   const { id } = await install(w, base([{ id: "go", kind: "assign", to: "teammate:intake", title: "Draft notes", output: { kind: "note" }, checker: "teammate:research" }]));
   await w.runner.start(id, {}, w.kernel.as(ALEX));
   await settle(w);
