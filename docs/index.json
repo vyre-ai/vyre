@@ -2085,6 +2085,7 @@
     {"kind":"tool","name":"vault.account.enroll-touchid","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountenroll-touchid","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.lock","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountlock","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.status","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountstatus","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.account.reset","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountreset","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.unlock","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountunlock","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.account.unlock-phone","definedIn":"core/vault/tools/account.js","page":"reference/tools.md#vaultaccountunlock-phone","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.agent-carried","definedIn":"core/vault/access.js","page":"reference/events.md#vault","module":"vault","mentions":[]},

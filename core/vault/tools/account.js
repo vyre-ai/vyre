@@ -28,7 +28,7 @@ export function register({ vault, tool }) {
 
   // The recovery secret from the kit replaces a forgotten password. From any of the person's own surfaces it carries the person's yes (a phone's call has no terminal or Mac login behind it);
   // five wrong secrets in a row wait 30 s and double to 15 minutes. The answer never carries a key.
-  tool("vault.account.reset", [...PEOPLE, ...DEVICES], "Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password.",
+  tool("vault.account.reset", [...PEOPLE, ...DEVICES], "Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password. It is for a forgotten password, not a break-in: it does not rotate the vault key.",
     obj({ recovery: password, password }, ["recovery", "password"]), (input, { caller }) => vault.resetAccount(input, caller),
     presence("Set a new password for your personal vault", () => "Set a new password for your personal vault with your recovery kit"));
 

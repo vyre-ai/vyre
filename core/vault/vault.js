@@ -712,7 +712,7 @@ export class Vault {
     // The Secret Key is stored before the account file, so a crash never leaves an account
     // whose Secret Key is nowhere.
     await this.secretKeys.put(secretKey);
-    // The recovery secret wraps the same personal vault key a second time. It is returned once, for the kit, and kept nowhere: with it (and no password) a new password can be set.
+    // The recovery secret wraps the same personal vault key a second time, and ALONE opens that wrap (a bearer key; the kit is as sensitive as the password). It is returned once, for the kit, and kept nowhere: with it (and no password) a new password can be set.
     const rbytes = crypto.randomBytes(16);
     const recoverySecret = formatRecoverySecret(acct, rbytes);
     const recovery = { kv: KV, ...wrapVaultKey(recoveryKey(rbytes, acct), pvk, recoveryAad(KV, acct)) };
@@ -726,7 +726,7 @@ export class Vault {
   }
 
   /**
-   * Set a new password for a forgotten one, with the recovery secret from the kit. The personal vault key is opened by the recovery wrap, then wrapped again under the new password and a NEW
+   * Set a new password for a forgotten one, with the recovery secret from the kit. NOT for a break-in: the same personal vault key is re-wrapped, not rotated. The personal vault key is opened by the recovery wrap, then wrapped again under the new password and a NEW
    * Secret Key (put in this device's store); the recovery wrap stays, so the same kit works again. Touch ID unlock is turned off (its wrap held the old key) and other devices that held the old
    * Secret Key must be added again. A wrong secret counts like a wrong password: five in a row and every try waits 30 s, doubling to 15 minutes. Leaves the personal vault open.
    * @param {{ recovery: string, password: string }} input

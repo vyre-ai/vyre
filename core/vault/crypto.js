@@ -300,7 +300,7 @@ export function parseSecretKey(text) {
 
 /**
  * The recovery secret: 128 random bits made with the account, held only on the recovery kit. It wraps the personal vault key a second time, so a kit can set a new password for a forgotten
- * one. Written like the Secret Key with its own prefix and check: `R1-<acct>-<26 base32>-<2 check>`. It is a different secret from the Secret Key: neither opens anything alone.
+ * one. Written like the Secret Key with its own prefix and check: `R1-<acct>-<26 base32>-<2 check>`. It is a different secret from the Secret Key, and it is a BEARER key: it alone opens the personal vault key (no password, no Secret Key), so the kit that holds it is as sensitive as the master password.
  * @param {string} acct @param {Buffer} bytes 16 bytes
  */
 export function formatRecoverySecret(acct, bytes) {

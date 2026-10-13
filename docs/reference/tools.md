@@ -13340,7 +13340,7 @@ Lock your personal vault now. Agents keep what is granted to them.
 
 ### `vault.account.reset`
 
-Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password.
+Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password. It is for a forgotten password, not a break-in: it does not rotate the vault key.
 
 - Input:
   - `password` string, required
