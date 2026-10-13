@@ -808,12 +808,14 @@ export default {
       run: async (input, extra = {}) => {
         const caller = String(extra.caller || "");
         if (personWrites(caller, extra) || !agentCaller(caller)) throw denied("memory.heard is for an agent passing on what the person said; the person corrects with memory.correct");
-        const out = await fromAgent(input, caller, extra, (i, who) => applyCorrection(i, who));
-        if (out.applied || out.dropped) return out;
-        const project = typeof input.project === "string" && input.project ? input.project : typeof input.room === "string" && input.room ? input.room : null;
-        if (!project) return out;
+        // What it is about is read before the correction applies: once it has, the fact reads differently.
         let target = null;
         try { target = aboutOf(input); } catch { /* nothing to quote */ }
+        const out = await fromAgent(input, caller, extra, (i, who) => applyCorrection(i, who));
+        if (out.dropped) return out;
+        // A correction the person made in this chat is also the agent's lesson: filed as the agent's own write (kind correction) in the project the chat is in, so the agent's Memory pane and the project's both show it. With no project it shows from memory.corrections' heard list.
+        const project = typeof input.project === "string" && input.project ? input.project : typeof input.room === "string" && input.room ? input.room : null;
+        if (!project) return out;
         if (!target) return out;
         try {
           const w = await fileWrite({ kind: "correction", project, text: plain(`an agent reports the person corrected: ${target.summary}`, 400), subject: plain(target.about.join(" "), 100) || undefined,

@@ -21,7 +21,7 @@ export function fakeProvider({ id = "fake", files = {} } = {}) {
   };
   for (const [p, t] of Object.entries(files)) put(p, Buffer.from(t));
   const view = (/** @type {any} */ f) => ({ id: f.id, path: f.path, name: f.path.split("/").pop(), mime: mimeOf(f.path), size: f.bytes.length, modified: f.modified, rev: String(f.rev), ...(f.deleted ? { deleted: true } : {}) });
-  const find = (/** @type {any} */ e) => { const f = store.get(e.id); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); return f; };
+  const find = (/** @type {any} */ e) => { const f = store.get(e.id); if (!f) throw Object.assign(new Error("not found: list the folder again and pick a file from it"), { code: "not_found" }); return f; };
   const provider = {
     id, label: "Fake source", calls, touched, store,
     async pick(/** @type {string} */ person, /** @type {{ parent?: string }} */ o = {}) { calls.push(["pick", person, o.parent ?? null]); return { parent: o.parent || "root", folders: [{ id: "F1", name: "Client docs" }, { id: "F2", name: "Archive" }] }; },
@@ -37,7 +37,7 @@ export function fakeProvider({ id = "fake", files = {} } = {}) {
     async write(/** @type {any} */ link, /** @type {any} */ person, /** @type {string} */ path, /** @type {Uint8Array} */ bytes, /** @type {{ baseRev?: string }} */ o = {}) {
       calls.push(["write", person, path, o.baseRev ?? null]);
       const cur = [...store.values()].find(f => f.path === path && !f.deleted);
-      if (cur && o.baseRev !== undefined && String(cur.rev) !== String(o.baseRev)) throw Object.assign(new Error("the file changed at the source since you opened it"), { code: "conflict" });
+      if (cur && o.baseRev !== undefined && String(cur.rev) !== String(o.baseRev)) throw Object.assign(new Error("the file changed at the source since you opened it: open it again, then redo your change"), { code: "conflict" });
       const f = put(path, Buffer.from(bytes), person); return { id: f.id, rev: String(f.rev) };
     },
     async rename(/** @type {any} */ link, /** @type {any} */ person, /** @type {any} */ entry, /** @type {string} */ to) { calls.push(["rename", person, entry.id, to]); const f = find(entry); f.path = to; f.rev += 1; log.push({ seq: ++seq, id: f.id }); return { id: f.id, rev: String(f.rev) }; },
