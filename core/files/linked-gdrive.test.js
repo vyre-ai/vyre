@@ -141,3 +141,17 @@ test("a source without a folder id is refused", async () => {
   assert.equal(await code(p.list({ id: "x", source: {} }, "per_alex", {})), "bad_input");
   assert.equal(await code(p.list({ id: "x", source: { folder: "../x" } }, "per_alex", {})), "bad_input");
 });
+
+test("pick offers the folders inside a folder, as the person, My Drive first", async () => {
+  const { p, api } = rig();
+  api.add({ id: "root", name: "My Drive", folder: true });
+  api.add({ id: "TOP", name: "Zeta", parent: "root", folder: true });
+  api.add({ id: "TOP2", name: "Alpha", parent: "root", folder: true });
+  api.add({ id: "loose", name: "file.txt", parent: "root", text: "x" });
+  const a = await p.pick("per_alex", {});
+  assert.equal(a.parent, "root");
+  assert.deepEqual(a.folders.map((/** @type {any} */ f) => f.name), ["Alpha", "Zeta"], "folders only, sorted");
+  assert.deepEqual((await p.pick("per_alex", { parent: "ROOT" })).folders.map((/** @type {any} */ f) => f.name), ["Contracts"]);
+  assert.equal(await code(p.pick("per_alex", { parent: "../x" })), "bad_input");
+  assert.equal(p.label, "Google Drive");
+});

@@ -52,7 +52,7 @@ export function registerLinked(ctx, o) {
   const view = (/** @type {any} */ r) => ({ id: r.id, name: r.name, path: linkedDir(r.name), provider: r.provider, source: JSON.parse(r.source), linked_by: r.linked_by, at: r.at });
 
   const t = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {any} */ extra, /** @type {(i: any, d: any, who: string) => Promise<any>} */ run) =>
-    ctx.tool(name, { description, input, callers: extra.readCallers || /^files\.linked\.(list|status|search|ls|read|versions)$/.test(name) ? READ_CALLERS : CALLERS, ...extra, readCallers: undefined, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
+    ctx.tool(name, { description, input, callers: extra.readCallers || /^files\.linked\.(list|status|search|ls|read|versions|providers|pick)$/.test(name) ? READ_CALLERS : CALLERS, ...extra, readCallers: undefined, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
 
   t("files.linked.link", "Link a folder from a source (Google Drive first) so it appears live at Linked/<name> in this Space: { space?, name, provider, source }. `source` is what the provider needs to find the folder (Drive: { folder }). Nothing is copied; each person sees it through their own account.",
     obj({ space: str, name: str, provider: str, source: { type: "object" } }, ["name", "provider", "source"]),
@@ -70,6 +70,16 @@ export function registerLinked(ctx, o) {
       catch (e) { if (/UNIQUE/i.test(String(/** @type {any} */ (e).message))) throw refuse(`Linked/${name} is already a linked folder`, "conflict"); throw e; }
       return view(row);
     });
+
+  t("files.linked.providers", "The sources a folder can be linked from: { } -> { providers: [{ id, label, pick }] }.", obj({}), {}, async () =>
+    ({ providers: [...providers.values()].map(p => ({ id: p.id, label: String(p.label || p.id), pick: typeof p.pick === "function" })) }));
+
+  t("files.linked.pick", "Choose a folder to link, one level at a time, as you (what your account may see): { provider, parent? } -> { parent, folders: [{ id, name }] }.", obj({ provider: str, parent: str }, ["provider"]), {}, async (i, _d, who) => {
+    const p = providers.get(String(i.provider));
+    if (!p) throw refuse(`no such source: ${String(i.provider)}`, "bad_input");
+    if (typeof p.pick !== "function") throw refuse("this source has no folder picker; give the folder directly", "unsupported");
+    return p.pick(who, i.parent === undefined ? {} : { parent: String(i.parent) });
+  });
 
   t("files.linked.list", "The folders linked in this Space: { space? } -> { links }.", obj({ space: str }), {}, async (_i, d) =>
     ({ links: db().prepare("SELECT * FROM files_linked WHERE space = ? AND removed_at IS NULL ORDER BY name").all(d.space).map(view) }));

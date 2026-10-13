@@ -8,13 +8,14 @@ import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textO
 import { listReal, readReal, statusReal } from "./real";
 import { SpaceDrive } from "./SpaceDrive";
 import { SharedLinks } from "./SharedLinks";
+import { LinkedFiles } from "./LinkedFiles";
 import { SharedArtifacts } from "../chat-tools";
 import { REAL_TABS } from "./tabs.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
 
-type Tab = "space" | "shared" | "files" | "sharing";
+type Tab = "space" | "shared" | "linked" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
@@ -92,10 +93,10 @@ export default function RealDrive() {
   ) : <LoadingState rows={3} />;
 
   return (
-    <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+    <Frame title="Drive" sub="The space's files with their versions, linked folders, and the box's own folders.">
       <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
-      {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
+      {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

@@ -227,3 +227,12 @@ test("writing, renaming and deleting reach outside the Space, so each carries pr
   for (const n of ["write", "rename", "delete"]) { assert.ok(r.tools.get(`files.linked.${n}`).presence, n); }
   assert.equal(r.tools.get("files.linked.read").presence, undefined);
 });
+
+test("providers lists what can be linked, and pick offers the folders the person may choose, as the person", async () => {
+  const r = rig();
+  assert.deepEqual((await r.run("files.linked.providers")).providers, [{ id: "fake", label: "Fake source", pick: true }]);
+  const pk = await r.run("files.linked.pick", { provider: "fake" });
+  assert.deepEqual(pk.folders.map(f => f.name), ["Client docs", "Archive"]);
+  assert.deepEqual(r.linked.providers.get("fake").calls.at(-1), ["pick", "per_alex", null]);
+  assert.equal(await code(r.run("files.linked.pick", { provider: "nope" })), "bad_input");
+});

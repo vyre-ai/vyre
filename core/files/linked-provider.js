@@ -10,6 +10,9 @@
 //   rename(link, person, entry, toPath)   -> { id, rev }
 //   delete(link, person, entry)           -> { deleted: true }                         (a Drive trash; a git commit that removes the file)
 //   versions(link, person, entry)         -> [{ rev, modified, by?, note? }]           (Drive revisions; git history)
+// Optional, for choosing what to link:
+//   label                                  a name for the app ("Google Drive")
+//   pick(person, { parent? })             -> { parent, folders: [{ id, name }] }          the folders a person may link, one level at a time, as that person (the choice becomes `source`)
 export const PROVIDER_METHODS = Object.freeze(["list", "read", "write", "rename", "delete", "versions"]);
 const ID = /^[a-z][a-z0-9-]{0,31}$/;
 

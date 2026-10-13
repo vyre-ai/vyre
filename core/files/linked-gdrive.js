@@ -58,10 +58,10 @@ export function googleDriveProvider({ client }) {
   const call = async (/** @type {string} */ person, /** @type {any} */ req, /** @type {string} */ what) => { try { return await client.request(person, req); } catch (e) { throw mapError(e, what); } };
 
   /** The folder's children, all pages. */
-  async function children(/** @type {string} */ person, /** @type {string} */ parent, /** @type {string} */ what, /** @type {string} */ name) {
+  async function children(/** @type {string} */ person, /** @type {string} */ parent, /** @type {string} */ what, /** @type {string} */ name, /** @type {boolean} */ foldersOnly = false) {
     const out = []; let pageToken;
     do {
-      const r = await call(person, { path: "/drive/v3/files", query: { q: `'${q1(parent)}' in parents and trashed = false${name ? ` and name = '${q1(name)}'` : ""}`, fields: `nextPageToken,files(${FIELDS})`, pageSize: 1000, ...(pageToken ? { pageToken } : {}), supportsAllDrives: true, includeItemsFromAllDrives: true } }, what);
+      const r = await call(person, { path: "/drive/v3/files", query: { q: `'${q1(parent)}' in parents and trashed = false${name ? ` and name = '${q1(name)}'` : ""}${foldersOnly ? ` and mimeType = '${FOLDER}'` : ""}`, fields: `nextPageToken,files(${FIELDS})`, pageSize: 1000, ...(pageToken ? { pageToken } : {}), supportsAllDrives: true, includeItemsFromAllDrives: true } }, what);
       out.push(...(r.files || [])); pageToken = r.nextPageToken;
     } while (pageToken);
     return out;
@@ -142,6 +142,14 @@ export function googleDriveProvider({ client }) {
 
   return {
     id: "gdrive",
+    label: "Google Drive",
+    /** The folders directly inside `parent` (My Drive when none), as the person, for choosing a folder to link. @param {string} person @param {{ parent?: string }} [o] */
+    async pick(person, o = {}) {
+      const parent = o.parent === undefined || o.parent === "" ? "root" : String(o.parent);
+      if (parent !== "root" && !ID.test(parent)) throw fail("that is not a Drive folder", "bad_input");
+      const kids = await children(person, parent, "that folder", "", true);
+      return { parent, folders: kids.map(f => ({ id: String(f.id), name: String(f.name) })).sort((a, b) => a.name.localeCompare(b.name)) };
+    },
     /** @param {any} link @param {string} person @param {{ token?: string }} [o] */
     async list(link, person, o = {}) {
       const root = rootOf(link);

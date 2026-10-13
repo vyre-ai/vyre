@@ -38,6 +38,8 @@
     {"name": "files.drive.link.revoke", "effect": "write", "reach": "person"},
     {"name": "files.linked.link", "outward": true, "effect": "write", "reach": "person"},
     {"name": "files.linked.list", "effect": "read", "reach": "person"},
+    {"name": "files.linked.providers", "effect": "read", "reach": "person"},
+    {"name": "files.linked.pick", "effect": "read", "reach": "person"},
     {"name": "files.linked.unlink", "effect": "write", "reach": "person"},
     {"name": "files.linked.sync", "effect": "write", "reach": "person"},
     {"name": "files.linked.status", "effect": "read", "reach": "person"},

@@ -42,7 +42,7 @@ export function fakeDriveApi({ pageSize = 1000 } = {}) {
         if (!seen(person, parent[1])) throw err(404, "not_found");
         const nm = /name = '((?:[^'\\]|\\.)*)'/.exec(String(q.q || ""));
         const want = nm ? nm[1].replace(/\\(.)/g, "$1") : null;
-        const all = [...files.values()].filter(f => f.parents.includes(parent[1]) && !f.trashed && seen(person, f.id) && (want === null || f.name === want));
+        const all = [...files.values()].filter(f => f.parents.includes(parent[1]) && !f.trashed && seen(person, f.id) && (want === null || f.name === want) && (!/mimeType = '/.test(String(q.q || "")) || f.mimeType === FOLDER));
         const start = Number(q.pageToken || 0), size = Math.min(Number(q.pageSize) || pageSize, pageSize);
         const page = all.slice(start, start + size).map(meta);
         return { files: page, ...(start + size < all.length ? { nextPageToken: String(start + size) } : {}) };

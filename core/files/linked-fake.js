@@ -23,7 +23,8 @@ export function fakeProvider({ id = "fake", files = {} } = {}) {
   const view = (/** @type {any} */ f) => ({ id: f.id, path: f.path, name: f.path.split("/").pop(), mime: mimeOf(f.path), size: f.bytes.length, modified: f.modified, rev: String(f.rev), ...(f.deleted ? { deleted: true } : {}) });
   const find = (/** @type {any} */ e) => { const f = store.get(e.id); if (!f) throw Object.assign(new Error("not found"), { code: "not_found" }); return f; };
   const provider = {
-    id, calls, touched, store,
+    id, label: "Fake source", calls, touched, store,
+    async pick(/** @type {string} */ person, /** @type {{ parent?: string }} */ o = {}) { calls.push(["pick", person, o.parent ?? null]); return { parent: o.parent || "root", folders: [{ id: "F1", name: "Client docs" }, { id: "F2", name: "Archive" }] }; },
     /** a change made at the source, not through Vyre */
     external: { put: (/** @type {string} */ p, /** @type {string} */ t) => put(p, Buffer.from(t), "someone"), remove: (/** @type {string} */ p) => { const f = [...store.values()].find(x => x.path === p && !x.deleted); if (f) { f.deleted = true; f.rev += 1; log.push({ seq: ++seq, id: f.id }); } } },
     async list(/** @type {any} */ link, /** @type {any} */ person, /** @type {{ token?: string }} */ o = {}) {
