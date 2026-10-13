@@ -12,7 +12,7 @@ import { asOwner, tempHome, present } from "./helpers.js";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 
-test("the owner's paired Mac is a computer for the owner and for nobody else: a member's session sees the cloud only and cannot be sent to the Mac", { timeout: 120_000 }, async t => {
+test("the owner's paired Mac is a computer for the owner and for nobody else: a new member is refused the computers and cannot be sent to the Mac", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false } }));
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
@@ -31,8 +31,10 @@ test("the owner's paired Mac is a computer for the owner and for nobody else: a 
   const names = async (/** @type {any} */ chain) => ((await d.registry.call("computer.targets", {}, "cli", { token: await tokenOf(chain) })).data.computers || []).map((/** @type {any} */ c) => c.name);
   const ownerSees = await names(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }));
   assert.deepEqual(ownerSees, ["Cloud computer", "Alex's MacBook", "Office Mac mini"], "the owner's session sees the cloud computer and each paired Mac");
-  assert.deepEqual(await names(member), ["Cloud computer"], "a member's session sees the cloud computer only");
+  // a new member has no computers until a role turns them on (roles ruling, 13 Oct): the door refuses her the computer tools in the owner's words, so she is shown no Mac
+  const memberTargets = await d.registry.call("computer.targets", {}, "cli", { token: await tokenOf(member) });
+  assert.ok(memberTargets.error && memberTargets.error.code === "denied" && memberTargets.data === undefined, `a member is refused the computers: ${JSON.stringify(memberTargets).slice(0, 300)}`);
   const use = await d.registry.call("computer.use", { do: "look", on: "Office Mac mini" }, "cli", { token: await tokenOf(member) });
-  assert.ok(!use.error || use.error.code !== "offline", `the member was not sent to the Mac: ${JSON.stringify(use).slice(0, 300)}`);
+  assert.ok(use.error && use.error.code === "denied", `the member was not sent to the Mac: ${JSON.stringify(use).slice(0, 300)}`);
   assert.ok(!(use.data && use.data.computer === "Office Mac mini"), "and the Mac was not the one picked");
 });
