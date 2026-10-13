@@ -5,7 +5,7 @@
   "core/switchboard/index.js": 5103,
   "core/spaces/index.js": 2623,
   "core/cli/commands/vault.js": 2158,
-  "core/modules/index.js": 2061,
+  "core/modules/index.js": 2063,
   "core/daemon/index.js": 2007,
   "core/vault/vault.js": 2121,
   "kernel/flows/runner.js": 2052
