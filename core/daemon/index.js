@@ -77,14 +77,15 @@ function kernelProof(req) {
   try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
 }
 /**
- * Is this device row the OWNER's? There are exactly three ways, and this is the one place that names them; add a fourth here and nowhere else:
+ * Is this device row the OWNER's? There are exactly four ways, and this is the one place that names them; add a fourth here and nowhere else:
  *   1. `homeOwner`: Wink's record of who confirmed the device says it is this home's owner (the typed-code app, a window phone).
  *   2. `ownerPaired`: the relay wrote the fact because the owner was present at the pairing (the first device, a window he confirmed, a phone or ring ticket he confirmed with the words), or he marked it later (`relay.devices.mark`).
  *   3. a named row: the row's `person` is exactly the home's owner id.
+ *   4. `viaChain`: the person's identity chain lists this device (core/relay/chain-admit.js) and the chain names the home's owner. Never owner_paired: the chain's limits (a newcomer, a relay-held device) still keep the chain-class acts from it.
  * A bearer code (the classic QR) and a ticket a module minted prove none of these. One statement for the caller's facts and the event bus.
  * @param {any} device @param {string} [owner] the home's owner id
  */
-export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && device.person === owner));
+export const deviceIsOwner = (device, owner) => Boolean(device) && (device.homeOwner === true || device.ownerPaired === true || (typeof owner === "string" && owner !== "" && (device.person === owner || (device.viaChain && device.viaChain.identity === owner))));
 
 /**
  * Does a `tailnet:<login>` label hold? The label is the tailnet listener's claim, so it is the owner's own only when the peer that listener verified (whois) is that very login and that login is the one the home

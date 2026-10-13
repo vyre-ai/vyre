@@ -14,6 +14,7 @@
 // expires after `relay.web_expiry_days` without use. Its build is checked against the releases
 // this box knows and shown with every pairing notice.
 
+import { createChainAdmit } from "./chain-admit.js";
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
@@ -76,6 +77,9 @@ export const MIGRATIONS = [
   // The classic bearer code is gone (13 Oct 2026). NULL: not yet judged; 1: this device came in by a code anyone could hold, before this version, and no one confirmed it; 0: it did not. Judged once, at the first
   // start of a version that has it (see `judgeOldCodes`); every device enrolled after that is written 0. Only a 1 with no owner fact is refused, so the owner can still mark a phone of his own before it next connects.
   `ALTER TABLE relay_devices ADD COLUMN old_code INTEGER;`,
+  // Design B (rc.4): this device came in because the person's identity chain lists it, not because the owner was present: { identity, entry, seq, limited, at }. Never owner_paired. `limited` (a newcomer under 24 hours,
+  // or a relay-held entry) keeps it from the chain-class acts (pair, mark, remove, rename and the like); core/relay/chain-admit.js decides.
+  `ALTER TABLE relay_devices ADD COLUMN via_chain TEXT;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -210,9 +214,21 @@ export default {
       if (c.startsWith("tailnet-guest:")) throw fail("denied", `${what} is the owner's; a guest never sees the box's devices`);
       if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
       if (["anonymous", "hook"].includes(c)) throw fail("denied", `${what} is the owner's`);
+      // a device that came in on the identity chain and is limited (a newcomer, or relay-held) uses and sends but does not do the acts only a full device does
+      if (c.startsWith("device:")) { const v = viaChainOf(c.slice(7)); if (v && v.limited) throw fail("denied", `${what} is for a device you have had on your list for 24 hours, or one you paired in person. Do it from your first device.`); }
       // a bare model session ("mcp", "harness") and a Vyre-owned session are not the owner either (platform-3: relay.status let a bare mcp through)
       if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
+
+    /** The chain fact of a device row, or null: { identity, entry, seq, limited }. @param {string} id */
+    const viaChainOf = id => { try { const r = /** @type {any} */ (db.prepare("SELECT via_chain FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id)); return r && r.via_chain ? JSON.parse(r.via_chain) : null; } catch { return null; } };
+    /** The chain-hello check: members are the owner's own identity here (a member's devices come in through the member door). Built on first use. */
+    /** @type {ReturnType<typeof createChainAdmit> | null} */ let chainGate = null;
+    const chains = () => (chainGate ??= createChainAdmit({
+      boxId: async () => { await keys.ready(); return Buffer.from(k().box.pub).toString("base64url"); },
+      roleOf: async identity => { try { const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {})); return r && r.data && r.data.claimed === identity ? "owner" : null; } catch { return null; } },
+      fetchState: async identity => { const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
+    }));
 
     // ---- the link ----
 
@@ -304,6 +320,8 @@ export default {
         if (typeof /** @type {any} */ (homes).homeArrive === "function") /** @type {any} */ (homes).homeArrive();
         return { v: 1, box: { name: boxName() }, home: id };
       }
+      // Design B: a key the person's identity chain lists, for the owner's own identity, with a signed chain hello. Makes a row marked via_chain (never owner_paired).
+      if (hello && hello.chain && typeof hello.chain === "object" && !existing && !pendingPairs.has(id)) return admitChain(pub, hello, id);
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error(`this pairing code has expired or was already used. ${ADD_A_DEVICE}`);
@@ -329,13 +347,18 @@ export default {
         if (!crypto.timingSafeEqual(waiting.pub, pub)) throw new Error("not a paired device");
         return { v: 1, box: { name: boxName() }, pending: id, gate: waiting.gate };
       }
-      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen, owner_paired, old_code FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen, owner_paired, old_code, via_chain FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
         // A device the owner removed hears exactly that, on the same code (4401) as when its open channel was
         // closed, so an app can tell "removed" from "box unreachable" and stop retrying (pwa).
         const gone = /** @type {any} */ (db.prepare("SELECT pub FROM relay_devices WHERE id = ? AND removed_at IS NOT NULL").get(id));
         if (gone && crypto.timingSafeEqual(Buffer.from(gone.pub, "base64url"), pub)) throw new Error("device removed");
         throw new Error("not a paired device");
+      }
+      // A device that came in on the chain is checked against the chain again (at most every 5 minutes): taken off the list, it is refused at once.
+      if (row.via_chain) {
+        let v = null; try { v = JSON.parse(row.via_chain); } catch { v = null; }
+        if (!v || (await chains().stillListed(String(v.identity), String(v.entry))) === "gone") { forget(id, "removed from your identity list"); throw new Error("device removed"); }
       }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
@@ -352,6 +375,28 @@ export default {
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
+
+    /**
+     * Design B: admit a key the identity chain lists. The check is core/relay/chain-admit.js; this writes the row (kind app, via_chain, no owner_paired, no presence key yet: the entry key is what presence accepts, offered in
+     * the hello as presenceKey and enrolled as for any device) and answers as a paired device. @param {Buffer} pub @param {any} hello @param {string} id
+     */
+    async function admitChain(pub, hello, id) {
+      const r = await chains().check({ ...hello.chain, channel: id }, id);
+      if (!r.ok) throw new Error(`this device could not be checked against your identity list (${r.why}). Add it from a device you already use.`);
+      const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: "device", owner: (ctx.config.onboard || {}).pe });
+      const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, limited: r.limited, at: now() });
+      let presenceKey = null;
+      const pk = hello.presenceKey;
+      if (pk && typeof pk.public_key === "string") {
+        const e = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        if (e && e.data && (e.data.keyId || e.data.id)) presenceKey = String(e.data.keyId || e.data.id);
+      }
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
+      ctx.events.emit("device.paired", { kind: "relay", id, name, via: "chain" });
+      return { v: 1, box: { name: boxName() }, device: id };
+    }
 
     /**
      * Enrols a device that redeemed a ticket: its row, its presence key, the notice and the tailnet grant. Everything a pairing makes happens here and only here, so a gated or
@@ -1303,8 +1348,11 @@ export default {
       description: "A paired relay device as the link module's companion check needs it: kind, trusted, when it paired, its presence key id and whether it was removed. Null for an id never paired. Modules only.",
       input: obj({ id: str }, ["id"]),
       run: async input => {
-        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired FROM relay_devices WHERE id = ?").get(String(input.id)));
-        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null } : null;
+        const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired, via_chain FROM relay_devices WHERE id = ?").get(String(input.id)));
+        // a chain device taken off the identity list is removed here, at its next call (the chain is read again at most every 5 minutes)
+        let via = null; try { via = row && row.via_chain && row.removed_at == null ? JSON.parse(row.via_chain) : null; } catch { via = null; }
+        if (via && (await chains().stillListed(String(via.identity), String(via.entry))) === "gone") { forget(String(input.id), "removed from your identity list"); return { ...(row.kind ? { kind: row.kind } : {}), kind: row.kind, trusted: false, pairedAt: row.paired_at, presenceKey: null, removed: true, ownerPaired: false }; }
+        return row ? { kind: row.kind, trusted: Boolean(row.trusted), pairedAt: row.paired_at, presenceKey: row.presence_key || null, removed: row.removed_at !== null && row.removed_at !== undefined, ownerPaired: Boolean(row.owner_paired) && row.removed_at == null, ...(via ? { viaChain: { identity: String(via.identity), limited: via.limited === true } } : {}) } : null;
       },
     });
 
