@@ -58,13 +58,13 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   const now = Date.now();
   return (
     <Page title="Your AI keys" back="/u/settings">
-      <Banner>A key lets one of your AIs act as you in Vyre, with the access you have and no more. Name it for what it is. Sending, publishing and paying still wait for your yes.</Banner>
+      <Banner icon="info">A key lets one of your AIs act as you in Vyre, with the access you have and no more. Name it for what it is. Sending, publishing and paying still wait for your yes.</Banner>
       {problem ? <Banner tone="warn">{problem}</Banner> : null}
       {made ? <MadeCard made={made} onDone={() => setMade(null)} /> : null}
       <Sec title="Make a key">
         <Card className="gap-s2">
-          <Field name="Its name" value={name} onChangeText={setName} placeholder="Claude Code on laptop" />
-          <Row dense title="Hosted" sub="A URL and a key for any MCP client. Keys can't install apps, add accounts or touch the vault." end={<Switch label="Hosted" on={hosted} onChange={setHosted} />} />
+          <Field label="Name" name="Its name" value={name} onChangeText={setName} placeholder="For example: Claude on laptop" />
+          <Row dense title="Hosted" sub={<Text size="secondary" tone="label">A URL and a key for any MCP client. Keys can't install apps, add accounts or touch the vault.</Text>} end={<Switch label="Hosted" on={hosted} onChange={setHosted} />} />
           <View className="self-start"><Button label="Make the key" disabled={!name.trim() || busy === "new"} onPress={() => void act("new", async () => { setMade(await mcp.connect(name.trim(), hosted)); setName(""); })} /></View>
         </Card>
       </Sec>

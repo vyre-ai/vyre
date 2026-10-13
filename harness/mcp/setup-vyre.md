@@ -22,8 +22,8 @@ Write one short plan and ask the person to correct it. Per client or product:
 - the project name and which folders and sessions go in it;
 - instructions for that project, in the person's own voice and rules (from their CLAUDE.md files, not invented);
 - agents worth having (for example an intake agent or a reviewer), each with its instructions;
-- the Records they work with (clients, matters, invoices, whatever the work shows), as a Kit;
-- templates and Flows they repeat.
+- the Objects they work with (clients, matters, invoices, whatever the work shows), as a Kit;
+- templates and Playbooks they repeat.
 
 Ask only what you cannot see in the work. Then wait for their answer.
 
@@ -33,8 +33,8 @@ In this order, saying what you made after each:
 
 1. `projects_create` for each project (a name and the home folder). Use their folder names.
 2. `agents_create` and `agents_update` for the agents, with their instructions.
-3. Record types, templates, roles and Flows can go in as one Kit: build it, check it with `flows_kit_test`, then `flows_kit_propose`. The person sees one install card and says yes once. For a single type, `records_define` works as it does for them.
-4. `flows_define` and `work_template_define` for the Flows and templates that stand alone. Nothing runs until they approve a Flow.
+3. Object types, templates, roles and Playbooks can go in as one Kit: build it, check it with `flows_kit_test`, then `flows_kit_propose`. The person sees one install card and says yes once. For a single type, `records_define` works as it does for them.
+4. `flows_define` and `work_template_define` for the Playbooks and templates that stand alone (the tools still say flows). Nothing runs until they approve a Playbook.
 
 If a tool answers "not_in_grant" or "denied", that is a rule, not a fault. Tell the person which step needs them and move on.
 
@@ -48,4 +48,4 @@ If a tool answers "not_in_grant" or "denied", that is a rule, not a fault. Tell 
 
 - No sending, publishing or paying. Those still wait for the person.
 - Never write a secret into an instruction or an agent. If the work shows a key, name where it lives and leave it there.
-- When you finish, say what exists now and what is waiting on them (the Kit card, any Flow to approve).
+- When you finish, say what exists now and what is waiting on them (the Kit card, any Playbook to approve).
