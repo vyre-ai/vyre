@@ -16,6 +16,7 @@ import { page404, downloadsPage } from './site/pages.mjs';
 import { pillarPages, PILLAR_LLMS } from './site/pillars.mjs';
 import { computerPages, COMPUTER_LLMS, COMPUTER_FULL } from './site/computer.mjs';
 import { buildIndustries } from './site/industries.mjs';
+import { buildCompare } from './site/compare.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -85,6 +86,7 @@ const NAV = [
   ['Architecture', '/architecture/'],
   ['Downloads', '/downloads/'],
   ['Industries', '/for/'],
+  ['Compare', '/compare/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
@@ -92,6 +94,7 @@ function nav(slug) {
   const links = NAV.map(([t, h]) => {
     const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/')) ? ' aria-current="page"' : '';
     const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('for') && h === '/for/')) ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('compare') && h === '/compare/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -117,7 +120,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -845,6 +848,8 @@ page({
 for (const p of pillarPages({ esc, eyebrow, crumbs, SITE, REPO, MAP_URL, VERSION })) page(p);
 // ---------- Vyre Computer (scripts/site/computer.mjs) ----------
 for (const spec of computerPages({ SITE, REPO, MAP_URL, eyebrow, crumbs, term })) page(spec);
+// ---------- compare pages (scripts/site/compare.mjs) ----------
+const COMPARE = buildCompare({ page, eyebrow, faqHtml, faqLd, crumbs, SITE, REPO, MAP_URL });
 
 // ---------- start page ----------
 const part = (n, id, h, inner) => `<section class="part rv" id="${id}" aria-labelledby="${id}-h"><span class="n">${n}</span><div><h2 id="${id}-h">${h}</h2>${inner}</div></section>`;
@@ -1023,6 +1028,7 @@ ${PILLAR_LLMS(SITE).join('\n')}
 ${IND.llms}
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
+${COMPARE.llmsBlock}
 ## Devices
 - [Mac: Vyre](${SITE}/mac/): the Vyre app in its own window
 - [Windows: Vyre](${SITE}/windows/): tray app with an Alt+Space panel
@@ -1088,6 +1094,7 @@ Records, chats, files and the vault stay on your server and your computers. vyre
 ## Releases
 ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
+${COMPARE.fullBlock}
 ## Direction (not a promise of dates)
 - Now, 0.5: the features above.
 - Next, 0.5.1: one chat per Flow, deadlines on agent steps, a failure panel on every step, per-record privacy for custom record types, Flow email with CC, BCC and attachments, an audit screen for admins.

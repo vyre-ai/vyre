@@ -21,6 +21,13 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Vyre for real estate brokerages](https://vyre.run/for/real-estate-brokerages/): Lead response, qualification, listing or buyer agreement signed, a transaction from a Playbook, key dates from the contract date, documents, client updates, closing and follow-up.
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
+## Compare
+- [Compare Vyre with other tools](https://vyre.run/compare/): how Vyre fits next to automation tools, work management tools, AI assistants and practice software
+- [Vyre and automation tools: Zapier, Make and n8n](https://vyre.run/compare/automation-tools/): How Vyre’s approach compares with Zapier, Make and n8n: where app-to-app automation is strong, where Vyre differs, and how the two work together.
+- [Vyre and work management tools: Notion, ClickUp, Asana, Monday](https://vyre.run/compare/work-management/): How Vyre compares with Notion, ClickUp, Asana and Monday: what planning tools do well, how Vyre adds agents as members who take tasks, and how to use both.
+- [Vyre and AI assistants: team workspaces and agent platforms](https://vyre.run/compare/ai-assistants/): How Vyre compares with team AI assistants such as ChatGPT team workspaces and Claude for teams, and with agent builders: what each does well and how they combine.
+- [Vyre with practice software and CRMs: Clio, Karbon, HubSpot](https://vyre.run/compare/practice-software/): Use Clio, Karbon, HubSpot or a similar suite with Vyre: the suite stays your system of record, and Vyre gives your people and agents a place to do the work around it.
+
 ## Devices
 - [Mac: Vyre](https://vyre.run/mac/): the Vyre app in its own window
 - [Windows: Vyre](https://vyre.run/windows/): tray app with an Alt+Space panel
