@@ -1,13 +1,13 @@
 # Vyre
 
-> Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.
+> Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.
 
-Current release: 0.3.0. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
+Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
 
 ## Start here
 - [Home](https://vyre.run/): what Vyre is and what it does
 - [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
-- [Get started](https://vyre.run/start/): the steps in order
+- [Architecture](https://vyre.run/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent's turn runs, the Gate
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
@@ -22,3 +22,4 @@ Current release: 0.3.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [agents.md](https://vyre.run/agents.md): guidance for AI agents that install or operate Vyre
 - [sitemap.xml](https://vyre.run/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
+- [Map your business onto Vyre](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
