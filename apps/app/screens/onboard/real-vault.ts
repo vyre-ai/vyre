@@ -22,6 +22,17 @@ const opened = (): void => { void import("../../src/real/space-list-app").then((
 let resetKit = "";
 export const holdResetKit = (text: string): void => { resetKit = text.trim(); };
 
+/** The home hint for the recovery kit: the route and pinned box key of the server that holds this vault, as text (not secret; it lets a new device reach the vault's home). "" when this device has no pairing. */
+export async function homeHintText(): Promise<string> {
+  if (MOCK) return JSON.stringify({ v: 1, relay: "wss://relay.example", route: "demo", box: "DEMODEMODEMODEMODEMODEMODEMODEMODEMO" });
+  try {
+    const [{ loadPairing }, { homeHintOf, serializeHomeHint }] = await Promise.all([import("../../src/api/relay"), import("../../src/real/home-hint.js")]);
+    const p = await loadPairing();
+    const h = p ? homeHintOf({ relay: p.relay, route: p.route, box: p.box }) : null;
+    return h ? serializeHomeHint(h) : "";
+  } catch { return ""; }
+}
+
 /** Create the personal vault with the master password (`reset`: it is the new one after a recovery kit). Nothing but the password is sent; the Secret Key the box answers with is not read. */
 export async function createVault(password: string, reset = false): Promise<Outcome<{ recoverySecret?: string }>> {
   if (MOCK) { await slow(600); return { ok: true, recoverySecret: "R1-DEMO42-ABCDEFGHIJKLMNOPQRSTUVWXYZ-23" }; }

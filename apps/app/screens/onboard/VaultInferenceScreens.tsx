@@ -3,7 +3,7 @@ import { Linking } from "react-native";
 import { Banner, Button, Card, CodeDisplay, IconTile, Row, Divider, Field, FlowStep, PasswordField, ProviderRow, Segmented, Stack, Switch, Text, passwordStrength, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { DEMO } from "./flow-model.js";
-import { createVault, holdResetKit, openVault } from "./real-vault";
+import { createVault, holdResetKit, homeHintText, openVault } from "./real-vault";
 import { claudeConnected, finishSignIn, followSignIn, saveKey, startSignIn, type Flow, type Step } from "./real-inference";
 import type { AiState, ScreenProps } from "./types";
 
@@ -61,6 +61,7 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
   const [say, setSay] = useState("");
   const [made, setMade] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [hint, setHint] = useState("");
   const open = async () => {
     setBusy(true); setSay("");
     const r = await createVault(ctx.master, ctx.reset);
@@ -68,13 +69,14 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
     if (!r.ok) { setSay(r.say); return; }
     // The password is not needed again: the prototype keeps it only to pretend to check it on the next screen.
     if (!MOCK) set({ master: "" });
-    if (r.recoverySecret) setMade(r.recoverySecret); else go("inf.pick");
+    if (r.recoverySecret) { setHint(await homeHintText()); setMade(r.recoverySecret); } else go("inf.pick");
   };
   if (made) {
     return (
       <FlowStep steps={steps} title="Save your vault recovery secret" lead="This page can open your vault and sign in as you. Keep it like a house key: printed or in a safe place, never in email or chat."
         primary={{ label: "Continue", disabled: !saved, onPress: () => { setMade(null); go("inf.pick"); } }}>
         <CodeDisplay label="Vault recovery secret" code={made} note="If you forget your master password, this sets a new one. It is shown once." />
+        {hint ? <CodeDisplay label="Home hint" code={hint} note="Not secret. It tells a new device where your vault lives. Keep it with the kit." /> : null}
         <Banner tone="warn" icon="warning">Keep it apart from your identity recovery code if you can. Anyone with both can sign in as you and open your vault. If you lose this and your master password, your vault cannot be opened, and Vyre cannot get it back.</Banner>
         <Stack row gap={3} align="center" justify="between"><Text>I saved my vault recovery secret</Text><Switch label="I saved my vault recovery secret" on={saved} onChange={setSaved} /></Stack>
       </FlowStep>
