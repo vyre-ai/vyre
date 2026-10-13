@@ -531,7 +531,7 @@ export default {
     };
     ctx.tool("publish.domain.add", {
       callers: WITH_MODELS,
-      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published (which waits for a person's yes). A model may do this while the site is not yet live.",
+      description: "Start connecting a domain to a site. Returns the DNS record to add. Nothing serves until verified and published, which waits for a person's yes.",
       input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -542,7 +542,7 @@ export default {
     });
     ctx.tool("publish.domain.verify", {
       callers: WITH_MODELS,
-      description: "Check the DNS record (or the name you own) for a connected domain. Verified does not put anything live: going live still waits for a person's yes.",
+      description: "Check the DNS record for a connected domain. Verified does not put anything live: that waits for a person's yes.",
       input: obj({ host: str }, ["host"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
@@ -553,12 +553,12 @@ export default {
       },
     });
     ctx.tool("publish.domain.status", {
-      description: "The domains of one site: each host, its status, and for a pending one the exact DNS record to set (type, name, value). Read it to tell the person what to set, then recheck with publish.domain.verify. Never a secret.",
+      description: "The domains of one site: each host, its status, and for a pending one the DNS record to set (type, name, value). Never a secret.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => { const b = await begin(i, meta); return { domains: await b.pub.domainsOf(b.chain, i.deployment) }; },
     });
     ctx.tool("publish.holds", {
-      description: "Publishing acts waiting for a person's yes in this space: the plan of each (what goes public, at which address, with which secrets, replacing which version) and the task to decide with. Newest last. A model cannot decide them.",
+      description: "Publishing acts awaiting a person's yes: each plan (what goes public, where, which secrets, what it replaces) and its task. A model cannot decide them.",
       input: obj({}),
       run: async (i, meta) => {
         const b = await begin(i, meta);

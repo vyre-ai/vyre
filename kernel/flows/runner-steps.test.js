@@ -56,6 +56,33 @@ test("steps: update, upsert, stage and remove act on the records they name, and 
   assert.equal(run.steps.up2.output.created, false);
 });
 
+test("steps: an upsert with `update` is find or create: a found record keeps what it has, or takes only the update fields", async () => {
+  const w = await world();
+  const one = await install(w, flowOf([
+    { id: "a", kind: "upsert", type: "payment", match: { client: "Z" }, set: { amount: 1 }, update: {} },
+    { id: "b", kind: "upsert", type: "payment", match: { client: "Z" }, set: { amount: 2 }, update: {} },
+  ]));
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const run = await last(w, one.id);
+  assert.equal(run.state, "done", JSON.stringify(run.error));
+  assert.equal(run.steps.a.output.created, true);
+  assert.equal(run.steps.b.output.created, false, "the second step found the record");
+  assert.equal(run.steps.b.output.record.id, run.steps.a.output.record.id, "and returned it");
+  assert.equal(mine(w, "payment").length, 1);
+  assert.equal(mine(w, "payment")[0].data.amount, 1, "set is for a new record only, so the found record kept its amount");
+  const two = await install(w, flowOf([
+    { id: "c", kind: "upsert", type: "payment", match: { client: "Z" }, set: { amount: 3 }, update: { amount: 9 } },
+  ], { name: "t2", trigger: { on: "event", event: "payment.revisited" } }));
+  w.kernel.inbound("payment.revisited", {});
+  await settle(w);
+  const run2 = await last(w, two.id);
+  assert.equal(run2.state, "done", JSON.stringify(run2.error));
+  assert.equal(run2.steps.c.output.created, false);
+  assert.equal(mine(w, "payment").length, 1);
+  assert.equal(mine(w, "payment")[0].data.amount, 9, "update changes a found record");
+});
+
 test("steps: repeat runs its steps once per item, each turn keyed apart, and a replay does not repeat a turn", async () => {
   const w = await world();
   const { id } = await install(w, flowOf([{ id: "each", kind: "repeat", over: "trigger.names", as: "n", steps: [{ id: "mk", kind: "create", type: "matter", set: { client: { expr: "n" } } }] }]));

@@ -17,7 +17,8 @@ import { ROOT, renderAll, renderPage, STEP_HELP, NEXT } from "../scripts/gen-age
 
 const nav = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/nav.json"), "utf8"));
 const corpus = loadCorpus(ROOT);
-const TOTAL_BUDGET = 12000;
+// 12200 (13 Oct 2026): the generated tools page grew with the Microsoft, linked-files, publish and comms tools; the hand-written pages were trimmed (behaviour.md back to 500).
+const TOTAL_BUDGET = 12200;
 
 test("nav.agents is exactly the files of docs/agents, and docs/agents is an unpublished folder", () => {
   const files = fs.readdirSync(path.join(ROOT, "docs/agents")).filter((f) => f.endsWith(".md")).map((f) => `agents/${f}`).sort();

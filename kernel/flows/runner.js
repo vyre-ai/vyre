@@ -1672,7 +1672,12 @@ export class FlowRunner {
       if (s.kind === "upsert") {
         const match = val(s.match);
         const found = await this.k.records.query(chain, s.type, { filter: { and: Object.entries(match).map(([field, value]) => ({ field, op: "eq", value })) }, page: { limit: 1 } });
-        if (found.rows[0]) { const r = await this.k.records.update(chain, s.type, found.rows[0].id, val(s.set), found.rows[0].version, kernelOpts); return { record: plain(r), created: false }; }
+        if (found.rows[0]) {
+          // (with `update` the found record gets those fields and `set` is for a new one only; an empty `update` leaves it alone: that is "find or create")
+          const patch = s.update !== undefined ? val(s.update) : val(s.set);
+          if (s.update !== undefined && !Object.keys(patch).length) return { record: plain(found.rows[0]), created: false };
+          const r = await this.k.records.update(chain, s.type, found.rows[0].id, patch, found.rows[0].version, kernelOpts); return { record: plain(r), created: false };
+        }
         const r = await this.k.records.create(chain, s.type, { ...match, ...val(s.set) }, kernelOpts);
         return { record: plain(r), created: true };
       }
