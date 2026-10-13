@@ -1,9 +1,10 @@
 // An agent's Work: its threads from threads.list (agent filter), newest first, told apart by the thread's own purpose. A Flow step or a task that gives an agent work records no thread today
 // (team audit, 13 Oct), so there is no "From Flows" group: a thread started by a job is a Job, anything else is a person's chat.
 import { threadStatus } from "../../../../lib/thread-status.js";
+import { markerOf } from "../chats/flow-chat-model.ts";
 
-export type WorkFilter = "all" | "people" | "jobs";
-export const WORK_FILTERS: [WorkFilter, string][] = [["all", "All"], ["people", "From people"], ["jobs", "Jobs"]];
+export type WorkFilter = "all" | "people" | "jobs" | "flows";
+export const WORK_FILTERS: [WorkFilter, string][] = [["all", "All"], ["people", "From people"], ["jobs", "Jobs"], ["flows", "Flows"]];
 
 export type WorkRow = { id: string; title: string; kind: "people" | "job"; state: "running" | "waiting" | "done" | "failed" | "paused"; stateText: string; sub: string; last: number; needsYou: boolean };
 
@@ -20,7 +21,7 @@ export function workRows(list: unknown, agent: string, now = Date.now()): WorkRo
     if (!r || typeof r !== "object") continue;
     const o = r as Record<string, any>;
     const id = s(o.id);
-    if (!id || s(o.agent) !== agent || o.archived) continue;
+    if (!id || s(o.agent) !== agent || o.archived || markerOf(o)) continue; // a Flow wake is in its Flow chat, not here
     const kind = JOB_PURPOSES.has(s(o.purpose)) ? "job" : "people";
     const canon = s(o.canonical_status) || threadStatus(s(o.status) || "idle", s(o.stopped_reason) || null);
     const asks = typeof o.asks === "number" ? o.asks : 0;
@@ -34,7 +35,7 @@ export function workRows(list: unknown, agent: string, now = Date.now()): WorkRo
 }
 
 export function filterWork(rows: WorkRow[], f: WorkFilter): WorkRow[] {
-  return f === "all" ? rows : rows.filter((r) => (f === "jobs" ? r.kind === "job" : r.kind === "people"));
+  return f === "all" ? rows : f === "flows" ? [] : rows.filter((r) => (f === "jobs" ? r.kind === "job" : r.kind === "people"));
 }
 
 export function ago(at: number, now: number): string {
@@ -48,6 +49,7 @@ export function ago(at: number, now: number): string {
 
 /** The empty line for a filter, with what to do next. */
 export function emptyWork(name: string, f: WorkFilter): string {
+  if (f === "flows") return `${name} works in no Flow yet. Add an agent step to a Flow and pick ${name}.`;
   if (f === "jobs") return `${name} has run no jobs yet. A job runs when a scheduled task of ${name}'s rings.`;
   if (f === "people") return `Nobody has chatted with ${name} yet. Use Talk to ${name} above to start.`;
   return `${name} has no threads yet. Talk to ${name}, or schedule a task for it.`;
