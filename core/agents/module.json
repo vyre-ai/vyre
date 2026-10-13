@@ -137,6 +137,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.instructions",
+        "summary": "an agent's instructions text, for a session's system prompt",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.docs.get",
         "reach": "person",
         "effect": "read"

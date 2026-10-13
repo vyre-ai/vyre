@@ -41,6 +41,22 @@ export function scopeOf(s) {
 /** @typedef {{ scope: string, version: number, mode: "append"|"replace", text: string, by: string|null, note: string|null, at: number }} PromptRow */
 
 /** @returns {PromptRow} */
+const DOC_PROMPT_MAX = 24000;
+/**
+ * The instructions blocks of a session's prompt: the agent's AGENTS.md, then the project's. Each is the file's words under one line that says whose they are; a long one is cut with a pointer to the file.
+ * @param {{ agent?: { name: string, text: string }, project?: { name: string, text: string } } | null | undefined} x
+ * @returns {string[]}
+ */
+export function instructionBlocks(x) {
+  /** @type {string[]} */ const out = [];
+  const add = (/** @type {string} */ head, /** @type {{ name: string, text: string } | undefined} */ d) => {
+    const t = d && typeof d.text === "string" ? d.text.trim() : "";
+    if (t) out.push(`${head} (its AGENTS.md):\n\n${t.length > DOC_PROMPT_MAX ? t.slice(0, DOC_PROMPT_MAX).replace(/\s+\S*$/, "") + "\n\n(cut here: the rest is in the file)" : t}`);
+  };
+  if (x) { add(`Instructions for you, the agent "${x.agent && x.agent.name}"`, x.agent); add(`Instructions for the project "${x.project && x.project.name}"`, x.project); }
+  return out;
+}
+
 const shape = (/** @type {any} */ r) => ({
   scope: String(r.scope), version: Number(r.version), mode: r.mode === "replace" ? "replace" : "append", text: String(r.text),
   by: r.by == null ? null : String(r.by), note: r.note == null ? null : String(r.note), at: Number(r.at),
@@ -101,13 +117,13 @@ export class Prompts {
 
   /**
    * The system prompt for one session.
-   * @param {{ agent?: string|null, agentKind?: string|null, project?: string|null, append?: string|null, environment?: string|null, context?: string|null }} [o]
+   * @param {{ agent?: string|null, agentKind?: string|null, project?: string|null, append?: string|null, environment?: string|null, context?: string|null, instructions?: { agent?: { name: string, text: string }, project?: { name: string, text: string } } | null }} [o]
    *   append is Vyre's own launch text: first in append mode, last in replace mode, never dropped
    *   environment (environment.js) is layer one and context (the project's own, for a driver with no SessionStart hook) layer three: the environment is always there, even when a
    *   prompt replaces Claude Code's own (a replacing prompt replaces only the role layer), and the context comes last. The role layer is the launch text and the prompt levels.
    * @returns {{ mode: "append"|"replace", text: string, parts: { scope: string, version: number, mode: "append"|"replace" }[], warning?: string }}
    */
-  compose({ agent = null, agentKind = null, project = null, append = null, environment = null, context = null } = {}) {
+  compose({ agent = null, agentKind = null, project = null, append = null, environment = null, context = null, instructions = null } = {}) {
     /** @type {string[]} */
     const scopes = [];
     if (!agent || agentKind === "assistant") scopes.push("assistant");
@@ -122,12 +138,14 @@ export class Prompts {
     for (let i = levels.length - 1; i >= 0; i--) if (levels[i].mode === "replace") { base = i; break; }
     const env = environment && String(environment).trim() ? [String(environment)] : [];
     const ctx = context && String(context).trim() ? [String(context)] : [];
+    // the agent's and the project's own AGENTS.md, in the words of the file: every provider is told them here, whatever its CLI reads on its own
+    const docs = instructionBlocks(instructions);
     if (base < 0) {
-      const texts = [...env, ...(vyre ? [vyre] : []), ...levels.map(r => r.text), ...ctx];
+      const texts = [...env, ...(vyre ? [vyre] : []), ...levels.map(r => r.text), ...docs, ...ctx];
       return { mode: "append", text: texts.join("\n\n"), parts: levels.map(part) };
     }
     const used = levels.slice(base);
-    const texts = [...env, ...used.map(r => r.text), ...(vyre ? [vyre] : []), ...ctx];
+    const texts = [...env, ...used.map(r => r.text), ...(vyre ? [vyre] : []), ...docs, ...ctx];
     return { mode: "replace", text: texts.join("\n\n"), parts: used.map(part), warning: REPLACE_WARNING };
   }
 }

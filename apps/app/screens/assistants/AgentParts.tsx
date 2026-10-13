@@ -20,7 +20,7 @@ function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): Load<T> {
   return { data, err, reload };
 }
 
-/** 1. Instructions: AGENTS.md and CLAUDE.md, in the same Markdown viewer and editor as Files (the shared DocsEditor), under the line that says who made the agent. */
+/** 1. Instructions: AGENTS.md, in the same Markdown viewer and editor as Files (the shared DocsEditor), under the line that says who made the agent. */
 export function Instructions({ name }: { name: string }) {
   const q = useLoad(() => config.docs(name), [name]);
   const names = useLoad(() => config.access(name).then((a) => a.people).catch(() => []), [name]);
