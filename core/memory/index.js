@@ -6,6 +6,7 @@
 // over a large history does not hold up vyred. Without Recall's tables there is nothing to
 // read; every tool still answers, with nothing.
 
+import { collectHeavyNow } from "../../lib/gc-nudge.js";
 import { Curator } from "./curator.js";
 import { Graph, ago } from "./graph.js";
 import { floorPlan } from "./floor.js";
@@ -222,6 +223,8 @@ export default {
             known = new Set(now.map(n => String(n.id)));
           }
         } while (again && !stopping);
+        // A pass that read and derived a lot leaves the heap grown with garbage; collecting now keeps V8 from doing it later on its own, in the quiet that follows (its memory reducer).
+        if (!stopping && result && (result.turns || result.changed)) collectHeavyNow();
         return result;
       })().finally(() => { running = null; });
       return running;

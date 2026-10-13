@@ -19,6 +19,7 @@
 // Measured on the prototype: the graph is precise for identity and routing, and did NOT make
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
+import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { sourceOf } from "./iq/fix.js";
 import { extract } from "./extract.js";
 import { lesson, within, ENDS } from "./teach.js";
@@ -55,7 +56,9 @@ export const T = {
 /** Rows read per page before yielding to the event loop. */
 const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
+const EMPTY = new Map();
 const yieldNow = () => new Promise(r => setImmediate(r));
+const yieldAndTidy = () => new Promise(r => setImmediate(() => { collectIfHeavy(); r(undefined); }));
 
 export class Curator {
   /**
@@ -209,7 +212,7 @@ export class Curator {
           done.run(session, recall.get(session), this.now());
         });
         since += list.length;
-        if (since >= batch) { since = 0; await yieldNow(); }
+        if (since >= batch) { since = 0; await yieldAndTidy(); }
       }
       // Sessions Recall counts but whose turns we found none of still move their cursor, or
       // they would be asked for again on every pass.
@@ -220,6 +223,7 @@ export class Curator {
     const never = !db.prepare("SELECT 1 FROM memory_runs LIMIT 1").get();
     if (!(turns || full || force || this.dirty || never)) return { recall: true, sessions: need.size, turns, ...this.counts(), changed: 0, ms: Date.now() - t0 };
     this.dirty = false;
+    collectIfHeavy();
     const changed = await this.derive();
     const counts = this.counts();
     const ms = Date.now() - t0;
@@ -412,14 +416,16 @@ export class Curator {
       const rows = obsPage.all(at[0], at[1], at[2], PAGE);
       for (const r of rows) {
         const s = String(r.session);
-        turnTs.set(s + "\u0000" + r.seq, Number(r.ts));
+        let ts = turnTs.get(s);
+        if (!ts) turnTs.set(s, ts = new Map());
+        ts.set(Number(r.seq), Number(r.ts));
         if (!obsBy.has(s)) obsBy.set(s, []);
         obsBy.get(s).push({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
       }
       if (rows.length < PAGE) break;
       const l = rows[rows.length - 1];
       at = [String(l.session), Number(l.seq), String(l.node)];
-      await yieldNow();
+      await yieldAndTidy();
     }
     /** @type {Map<string, { session: string, seq: number, rel: string, a: string, b: string, ts: number }[]>} */
     const cuesBy = new Map();
@@ -474,7 +480,7 @@ export class Curator {
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
       results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
         said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
-      await yieldNow();
+      await yieldAndTidy();
     }
     results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
       said: facts.filter(c => c.scope === "*") }, common));
@@ -486,7 +492,7 @@ export class Curator {
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, Map<number, number>>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -556,7 +562,7 @@ export class Curator {
       cues.push(c);
     }
     cues.sort((x, y) => (x.session < y.session ? -1 : x.session > y.session ? 1 : x.seq - y.seq));
-    await yieldNow();
+    await yieldAndTidy();
 
     // Taught facts: their things are nodes whatever the thresholds say, since a module asserted
     // them, and each claim remembers which lessons made it.
@@ -799,12 +805,12 @@ export class Curator {
       else if (n >= T.nameSessions && a.mid) kept.add(a.id);
     }
 
-    await yieldNow();
+    await yieldAndTidy();
     // ---- edges
     /** @type {Want[]} */
     const want = [];
     const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t.seq]));
-    const tsOf = (session, seq) => turnTs.get(session + "\u0000" + seq) || 0;
+    const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();
@@ -1145,7 +1151,7 @@ export class Curator {
         for (const r of rows) this.rowSession.set(Number(r.rowid), String(r.session));
         if (rows.length < PAGE) break;
         after = Number(rows[rows.length - 1].rowid);
-        await yieldNow();
+        await yieldAndTidy();
       }
     }
     const sessionOf = rowid => {
@@ -1174,7 +1180,7 @@ export class Curator {
       if (!all) {
         try { all = [...new Set(q.all(`"${form.replace(/"/g, "")}"`).map(r => sessionOf(Number(r.rowid))).filter(Boolean))]; } catch { all = []; }
         saidBy.set(form, all);
-        if (++asked % 50 === 0) await yieldNow();
+        if (++asked % 50 === 0) await yieldAndTidy();
       }
       const said = all.filter(inScope);
       if (!said.length) continue;
@@ -1213,7 +1219,7 @@ export class Curator {
     let changed = 0;
     for (const r of results) {
       changed += this.tx(() => this.writeScope(r, now));
-      await yieldNow();
+      await yieldAndTidy();
     }
     // Rooms that are gone keep nothing.
     changed += this.tx(() => {

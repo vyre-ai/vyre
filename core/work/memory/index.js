@@ -139,7 +139,8 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
           await idx.put({ source: `event:${e.id}`, kind: "event", resource: e.subject, text: `${e.type} ${JSON.stringify(modelView(e.data || {}))}`, labels: { trust: e.trust || "member", red: e.red || "internal", source_spaces: e.source_spaces || [space] } }); n++;
         }
       } else if (source.kind === "lines") {
-        for (const l of lines.all(source.session)) {
+        // A capture names the seq range it just kept, so only those lines are indexed again; without one, the whole session.
+        for (const l of lines.all(source.session, Number.isInteger(source.from) ? source.from : undefined, Number.isInteger(source.to) ? source.to : undefined)) {
           await idx.put({ source: lineAddress(source.session, l.seq), kind: "line", resource: l.record, text: `${l.role}: ${l.text}`, labels: l.labels }); n++;
         }
       }

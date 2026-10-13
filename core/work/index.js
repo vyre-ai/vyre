@@ -962,7 +962,8 @@ export default {
         const projectRecord = typeof input.project === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/i.test(input.project) ? `vyre://${kernelOf().space}/project/${input.project}` : null;
         const record = input.record && urnOk(input.record) ? input.record : projectRecord;
         const kept = e.lines.ingest(String(input.session), lines, record ? { record } : {});
-        const indexed = await e.index({ kind: "lines", session: String(input.session) });
+        const seqs = lines.map((/** @type {{ seq: number }} */ l) => l.seq);
+        const indexed = await e.index({ kind: "lines", session: String(input.session), ...(seqs.length ? { from: Math.min(...seqs), to: Math.max(...seqs) } : {}) });
         return { kept, indexed };
       },
     });
