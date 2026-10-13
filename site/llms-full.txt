@@ -86,7 +86,7 @@ Tracks (Playbooks): Social retainer, Paid media, Website build. Agents: Intake, 
 8. Follow-up
 Tracks (Playbooks): Listing side, Buyer side. Agents: Responder, Coordinator, Reviewer, Content. Apps named: Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign, Transaction and listing tools.
 
-Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Next, 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).
+Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Coming in 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).
 - Architecture: see https://vyre.run/architecture/ and https://vyre.run/docs/project/ARCHITECTURE.md.
 
 ## Docs
@@ -140,7 +140,7 @@ Zapier, Make and n8n connect apps. Vyre keeps the work, the people and the agent
   - Changing a live automation. Automation tools: Set by each tool. Vyre: An edit is a new version. A person approves it, and an earlier version can be restored.
   - Outward actions. Automation tools: Set by how each automation is built. Vyre: Held at the Gate until a person approves the exact words.
   - Credentials. Automation tools: Held in each tool’s own connection store. Vyre: The Vault. Agents get use only and never read the value.
-  - Ready-made app connections. Automation tools: A large catalogue. Vyre: A connection to any service that has an API, used from a Flow’s web step. Next (0.5.2): packaged Integrations.
+  - Ready-made app connections. Automation tools: A large catalogue. Vyre: A connection to any service that has an API, used from a Flow’s web step. Coming in 0.5.2: packaged Integrations.
   - Cost. Automation tools: Set by each vendor. Vyre: Vyre is free and open source (Apache 2.0). You pay your AI providers directly.
 
 ### Vyre and work management tools: Notion, ClickUp, Asana, Monday (https://vyre.run/compare/work-management/)
@@ -189,7 +189,7 @@ Practice management and CRM suites are built for one job and do it well. Vyre do
   - Agents. Practice software and CRM suites: Many include AI features inside the product. Vyre: Agents are members of the Space and work across its records, tasks and files.
   - Documents. Practice software and CRM suites: Document features vary by product. Vyre: Your Word templates filled from records, signing with no account for the signer.
   - Outward actions. Practice software and CRM suites: Set by how each product and automation is configured. Vyre: Held at the Gate until a person approves the exact words.
-  - Connecting to the suite. Practice software and CRM suites: Native to the suite. Vyre: Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Next (0.5.2): packaged Integrations.
+  - Connecting to the suite. Practice software and CRM suites: Native to the suite. Vyre: Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Coming in 0.5.2: packaged Integrations.
 
 ### Vyre and Zapier (https://vyre.run/compare/zapier/)
 - What Zapier is: Connects apps with triggers and actions. Operations and marketing teams that want to link the apps they already use, often without writing code.

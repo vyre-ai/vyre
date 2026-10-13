@@ -258,7 +258,7 @@ ${connectsTo([
       <div class="piece"><span class="num">05</span><h3>Your documents and signing</h3><p>Your Word templates, filled from records. Signers need no account, and the signed copy files on the record.</p></div>
       <div class="piece"><span class="num">06</span><h3>Your stack, connected</h3><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*</p></div>
     </div>
-    <p class="sm" style="margin-top:14px">*where the vendor provides an API. Today a Connection plus a Flow step, or a custom module. Next, 0.5.2: packaged Integrations.</p>
+    <p class="sm" style="margin-top:14px">*where the vendor provides an API. Today a Connection plus a Flow step, or a custom module. Coming in 0.5.2: packaged Integrations.</p>
   </div>
 </section>
 
@@ -299,7 +299,7 @@ ${connectsTo([
     '## Vyre by kind of firm (pages under ' + SITE + '/for/)',
     'Each page follows one client from inquiry to closed work for an invented firm, and names the Vyre pieces behind every step. The firms and the sample data are invented.',
     ...INDUSTRIES.map((d) => `### ${d.short}: ${SITE}/for/${d.slug}/\n${d.journey.map(([t], i) => `${i + 1}. ${t}`).join('\n')}\nTracks (Playbooks): ${d.playbooks.map((p) => p.name).join(', ')}. Agents: ${d.agents.map((a) => a[1]).join(', ')}. Apps named: ${d.stack.map((s) => s[0]).join(', ')}.`),
-    'Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Next, 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).',
+    'Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Coming in 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).',
   ].join('\n\n');
   const sitemap = [['/for/', '0.7'], ...INDUSTRIES.map((d) => [`/for/${d.slug}/`, '0.7'])];
   return { llms, full, sitemap };

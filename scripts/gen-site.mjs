@@ -214,7 +214,6 @@ const homeBody = `
       <div class="btn-row">
         <a class="btn btn-fill" href="/start/">Set up Vyre</a>
         <a class="btn" href="#agent-guide">Ask your AI agent</a>
-        <a class="btn" href="/architecture/">See the architecture</a>
       </div>
       <p class="hero-note">Free. Needs one AI account. <a href="/architecture/">See the architecture</a>.</p>
     </div>

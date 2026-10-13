@@ -1148,3 +1148,6 @@ li > .chip-next, .ar-box > .chip-next, h3 > .chip-next { margin-bottom: 8px; dis
 .dl .dl-acts, .dl .dl-foot a:not(.stretch) { position: relative; z-index: 2; }
 /* stacked pillar sections keep one column even when align's .feat.flip ratio applies */
 .feat.pl-stack, .feat.flip.pl-stack { grid-template-columns: minmax(0, 1fr); align-items: start; }
+
+/* the closed mega-menu panels are wider than a 1024 screen on the right: they must not make the page scroll sideways */
+.nav { overflow-x: clip; }

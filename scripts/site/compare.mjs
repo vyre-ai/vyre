@@ -59,7 +59,7 @@ const PAGES = [
       ['Changing a live automation', 'Set by each tool.', 'An edit is a new version. A person approves it, and an earlier version can be restored.'],
       ['Outward actions', 'Set by how each automation is built.', 'Held at the Gate until a person approves the exact words.'],
       ['Credentials', 'Held in each tool’s own connection store.', 'The Vault. Agents get use only and never read the value.'],
-      ['Ready-made app connections', 'A large catalogue.', 'A connection to any service that has an API, used from a Flow’s web step. Next (0.5.2): packaged Integrations.'],
+      ['Ready-made app connections', 'A large catalogue.', 'A connection to any service that has an API, used from a Flow’s web step. Coming in 0.5.2: packaged Integrations.'],
       ['Cost', 'Set by each vendor.', 'Vyre is free and open source (Apache 2.0). You pay your AI providers directly.'],
     ],
     together: [
@@ -216,7 +216,7 @@ const PAGES = [
       ['Agents', 'Many include AI features inside the product.', 'Agents are members of the Space and work across its records, tasks and files.'],
       ['Documents', 'Document features vary by product.', 'Your Word templates filled from records, signing with no account for the signer.'],
       ['Outward actions', 'Set by how each product and automation is configured.', 'Held at the Gate until a person approves the exact words.'],
-      ['Connecting to the suite', 'Native to the suite.', 'Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Next (0.5.2): packaged Integrations.'],
+      ['Connecting to the suite', 'Native to the suite.', 'Today: a connection plus a Flow web step, or a custom module, where the vendor provides an API. Coming in 0.5.2: packaged Integrations.'],
     ],
     together: [
       'Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, and the same goes for Clio, Karbon and HubSpot. The suite stays the system of record. Vyre reads from it, does the preparation, and writes back once a person has said yes.',
@@ -386,7 +386,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
     const rows = [
       ['What it is', x.what, 'A shared working layer for people and agents: records, tasks, Flows, documents, sites and a Gate.'],
       ['Where it runs', x.host, 'On a server you own.'],
-      ['Connecting to the other', x.api === false ? 'See the vendor’s developer documentation.' : x.apiNote, 'A Connection in the Vault and a Flow web step or custom module. Next (0.5.2): a packaged Integration.'],
+      ['Connecting to the other', x.api === false ? 'See the vendor’s developer documentation.' : x.apiNote, 'A Connection in the Vault and a Flow web step or custom module. Coming in 0.5.2: a packaged Integration.'],
       ['Parts of the job in Vyre', 'Set by the product.', list(nativeTitles(x)) + '.'],
       ['Outward actions', 'Set by how the product is configured.', 'Held at the Gate until a person approves the exact words.'],
     ];
