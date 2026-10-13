@@ -12,6 +12,7 @@ import { agentDelete, agentResume, agentStop, agentsList } from "../settings/rea
 import { AGENT_GROUPS, agentRow, agentsDef, asRecords, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
 import { useChats } from "../../src/state/chats";
 import { useMembers } from "../spaces/state";
+import { teammates } from "../teammates/teammates";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 
 type Row = ReturnType<typeof agentRow>;
@@ -49,7 +50,11 @@ export function AgentsHome() {
 
   // The sample world answers the same agents.list the page reads (mock-agents.ts); only the pause and autonomy a person sets here are layered on it.
   const agents: any[] | null = live && mock ? live.map((a) => { const x = sample.assistants.find((y) => y.name === a.name); return x ? { ...a, status: x.paused ? "stopped" : "idle", autonomy: x.autonomy } : a; }) : live;
-  const rows: Row[] = useMemo(() => visibleAgents((agents ?? []).map((a) => agentRow(a, me)), me), [agents, me]);
+  // the projects' own names, so "Works on" says Juniper Studio and not its id
+  const [names, setNames] = useState<Record<string, string>>({});
+  const slugs = [...new Set((agents ?? []).flatMap((a) => (Array.isArray(a.projects) ? a.projects.map(String) : [])))].join(",");
+  useEffect(() => { let on = true; if (slugs) void teammates.names(slugs.split(",")).then((n) => { if (on) setNames(n); }).catch(() => {}); return () => { on = false; }; }, [slugs]);
+  const rows: Row[] = useMemo(() => visibleAgents((agents ?? []).map((a) => agentRow(a, me, names)), me), [agents, me, names]);
   const titleOf = (id: string) => AGENT_GROUPS.find(([g]) => g === id)?.[1] ?? id;
   const items = rows.map((r) => ({ ...r, group: placed[r.name] ?? titleOf(r.group) }));
   const def = useMemo(() => agentsDef(rows), [rows]);

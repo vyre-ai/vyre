@@ -7,12 +7,16 @@ import { roleLine, statusOf, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsD
 
 const NOW = 1_760_000_000_000;
 
-test("the role is the first line of the instructions, without markup, short", () => {
-  assert.equal(roleLine("# Intake agent\n\nWelcomes new clients."), "Intake agent");
-  assert.equal(roleLine("\n\n  **Drafts** welcome emails for the attorney.  \nMore."), "Drafts welcome emails for the attorney.");
-  assert.equal(roleLine("x".repeat(200)).length, 90);
-  assert.equal(roleLine(null, "Your agent"), "Your agent");
-  assert.equal(roleLine("   ", "Agent"), "Agent");
+test("the role is the description, else the role, never the instruction text", () => {
+  assert.equal(roleLine({ description: "# Intake agent\n\nWelcomes new clients.", instructions: "You are x." }), "Intake agent");
+  assert.equal(roleLine({ role: "Research agent", instructions: "You are kit." }), "Research agent");
+  assert.equal(roleLine({ description: "x".repeat(200) }).length, 90);
+  assert.equal(roleLine({ instructions: "You are kit, Alex's research agent." }, "Agent"), "Agent");
+});
+
+test("where it works names the project, not its id", () => {
+  assert.equal(agentRow({ name: "a", projects: ["juniper"] }, "", { juniper: "Juniper Studio" }).works, "Works on Juniper Studio");
+  assert.equal(agentRow({ name: "a", projects: ["juniper"] }).works, "Works on juniper");
 });
 
 test("status: paused when its thread is stopped, running when it is doing something, else idle", () => {
@@ -23,7 +27,7 @@ test("status: paused when its thread is stopped, running when it is doing someth
 });
 
 test("a row carries what the list shows", () => {
-  const r = agentRow({ name: "Intake", kind: "agent", projects: ["Doe trust"], model: "sonnet-5.5", instructions: "# Intake\nWelcomes clients.", status: "running", personal: true, thread: "t1" });
+  const r = agentRow({ name: "Intake", kind: "agent", projects: ["Doe trust"], model: "sonnet-5.5", description: "Intake", status: "running", personal: true, thread: "t1" });
   assert.deepEqual([r.name, r.role, r.model, r.works, r.status, r.group, r.canPause], ["Intake", "Intake", "sonnet-5.5", "Works on Doe trust", "Running now", "yours", true]);
   assert.equal(agentRow({ name: "A", kind: "agent" }).model, "Default model");
   assert.equal(agentRow({ name: "A", kind: "agent" }).canPause, false);

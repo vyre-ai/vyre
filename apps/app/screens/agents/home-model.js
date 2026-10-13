@@ -4,10 +4,10 @@
 /** The three built-in groups a row falls in: [id, title]. A person's own groups come after them. */
 export const AGENT_GROUPS = /** @type {[string, string][]} */ ([["yours", "Yours"], ["team", "Your team's agents"], ["shared", "Shared with you"], ["builders", "Builders"]]);
 
-/** One line of role: the first line of the instructions with the markup taken off, at most 90 characters. @param {string | null | undefined} instructions @param {string} [fallback] */
-export function roleLine(instructions, fallback = "") {
-  const first = String(instructions ?? "").split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|__|`/g, "").trim()).find(Boolean);
-  return (first || fallback).slice(0, 90);
+/** One line of role: the agent's description, else its role; never the raw instruction text. At most 90 characters. @param {any} a @param {string} [fallback] */
+export function roleLine(a, fallback = "") {
+  const one = (/** @type {unknown} */ t) => String(t ?? "").split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|__|`/g, "").trim()).find(Boolean) ?? "";
+  return (one(a?.description) || one(a?.role) || fallback).slice(0, 90);
 }
 
 /** @param {any} a */
@@ -28,19 +28,19 @@ export function sharingOf(a, me) {
   return { mine: mine ? (mine.level === "edit" ? "Can edit" : "Can use") : "", count: sh.length };
 }
 
-const worksLine = (/** @type {unknown} */ projects) => {
+const worksLine = (/** @type {unknown} */ projects, /** @type {Record<string, string>} */ names = {}) => {
   if (projects === "*") return "Works on every project";
   const n = Array.isArray(projects) ? projects.length : 0;
-  if (n === 1 || n === 2) return `Works on ${/** @type {unknown[]} */ (projects).map(String).join(" and ")}`;
+  if (n === 1 || n === 2) return `Works on ${/** @type {unknown[]} */ (projects).map((x) => names[String(x)] || String(x)).join(" and ")}`;
   return n ? `Works on ${n} projects` : "No projects yet";
 };
 
-/** One agents.list row as the list shows it. @param {any} a @param {string} [me] */
-export function agentRow(a, me) {
+/** One agents.list row as the list shows it. @param {any} a @param {string} [me] @param {Record<string, string>} [names] project names by id */
+export function agentRow(a, me, names = {}) {
   const sharing = sharingOf(a, me);
   return {
-    name: String(a.name), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a.instructions, a.kind === "assistant" ? "Your agent" : a.builtin ? "Builds your Space by conversation" : "Agent"),
-    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
+    name: String(a.name), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
+    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects, names), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
     ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
   };
 }
