@@ -13,6 +13,8 @@ import { createFolder } from "../../../apps/app/src/chat/frames.js";
 import { waitLine, createGroup } from "../../../apps/app/src/chat/group.js";
 import { NOT_FOR_MEMBERS_YET, isTeamWork, memberWire } from "../../../apps/app/src/real/with-space.js";
 
+/** A Space's record store starts on its own clock after the Space is made ("the first start takes a few minutes"): a call that meets it still starting is asked again, as a person's app does. @param {() => Promise<any>} f */
+const untilStore = async (f) => { for (const end = Date.now() + 10 * 60_000; ;) { try { return await f(); } catch (e) { if (!/still starting/i.test(String(/** @type {any} */ (e).message)) || Date.now() > end) throw e; await new Promise(r => setTimeout(r, 10_000)); } } };
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const chainOf = (/** @type {string} */ space, /** @type {string} */ person) => ({ space, hops: [{ actor: { kind: "person", id: person, space } }] });
 
@@ -53,7 +55,7 @@ export async function memberDaySteps({ J, w, team, needs }) {
 
   const C = "Grace starts a chat with Edith, the owner and the AI (Frank, the admin, is not in it); the AI answers every message";
   await J.step(C, async () => {
-    const made = await grace.joined.call("chat.create", [{ title: "Member day", people: [edith.id, owner.id], agents: ["assistant"] }]);
+    const made = await untilStore(() => grace.joined.call("chat.create", [{ title: "Member day", people: [edith.id, owner.id], agents: ["assistant"] }], { timeoutMs: 120_000 }));
     chat = String(made.chat);
     await grace.joined.call("chat.reply-mode", [{ chat, mode: "every" }]);
     return chat;

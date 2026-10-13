@@ -31,7 +31,7 @@ export async function doorGateSteps({ J, w, team, needs }) {
 
   const C = "Grace starts a chat with the AI in it";
   await J.step(C, async () => {
-    const made = await grace.joined.call("chat.create", [{ title: "Door gate", people: [edith.id], agents: ["assistant"] }]);
+    let made; for (const end = Date.now() + 10 * 60_000; ;) { try { made = await grace.joined.call("chat.create", [{ title: "Door gate", people: [edith.id], agents: ["assistant"] }], { timeoutMs: 120_000 }); break; } catch (e) { if (!/still starting/i.test(String(/** @type {any} */ (e).message)) || Date.now() > end) throw e; await sleep(10_000); } }
     chat = String(made.chat);
     await grace.joined.call("chat.reply-mode", [{ chat, mode: "every" }]);
     return chat;
