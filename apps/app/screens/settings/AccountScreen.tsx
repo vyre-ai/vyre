@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef , allowsMock} from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
+import { GithubCard } from "./GithubCard";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadAccount } from "./data";
 import { useSettings } from "./state";
@@ -21,6 +22,7 @@ function SampleAccountScreen() {
           {A.ways.map((w, i) => <View key={w.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", w.name)} />} title={w.name} sub={w.line} end={w.here ? <Chip tone="ok">This phone</Chip> : undefined} /></View>)}
         </Card>
       </Group>
+      <GithubCard />
       <Group title="Recovery">
         <Card className="gap-s3">
           <Text strong>Recovery code</Text>

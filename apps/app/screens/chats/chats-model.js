@@ -128,7 +128,7 @@ export function chatRowsOf(list, now, places) {
     /** @type {{ label: string, tone?: string, as?: "text" }[]} */ const accessories = [];
     if (state === "needs-you") accessories.push({ label: "Needs you", tone: "accent" });
     else if (state === "failed") accessories.push({ label: "Failed", tone: "warn" });
-    if (t.unread > 0) accessories.push({ label: t.unread > 99 ? "99+" : String(t.unread), tone: "accent" });
+    if (t.unread > 0) accessories.push({ label: t.unread > 99 ? "99+" : String(t.unread), tone: "plain" });
     if (t.last) accessories.push({ label: ageOf(t.last, now), as: "text" });
     return {
       id: t.id, title: t.pinned === "assistant" ? "Your assistant" : t.title, subtitle: t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id)),
