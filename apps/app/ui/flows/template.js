@@ -7,7 +7,7 @@ import { isRecordTrigger } from "./logic.js";
 /** @typedef {import("./logic.js").Draft} Draft */
 /** @typedef {import("./logic.js").Options} Options */
 /** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, note?: string, address?: boolean }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
-/** @typedef {{ title: string, items: Item[] }} Group */
+/** @typedef {{ title: string, items: Item[], object?: string }} Group  `object`: the object's own label, shown before a field in a chip */
 
 export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)\}/gi;
 
@@ -57,13 +57,13 @@ export function insertList(d, stepId, o, opt = {}) {
   const fieldsOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.fields || [];
   const labelOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.label || type;
   const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}) });
-  if (isRecordTrigger(t) && t.type) out.push({ title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
+  if (isRecordTrigger(t) && t.type) out.push({ object: labelOf(t.type), title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
   else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, { name: f })) });
   /** @type {Item[]} */ const steps = [];
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
     if (s.kind === "create" || s.kind === "upsert") {
-      out.push({ title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldsOf(s.type).map((f) => item(`{steps.${s.id}.record.data.${f.name}}`, f.label, f))] });
+      out.push({ object: labelOf(s.type), title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldsOf(s.type).map((f) => item(`{steps.${s.id}.record.data.${f.name}}`, f.label, f))] });
     }
     if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null));
     if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null));
@@ -71,16 +71,14 @@ export function insertList(d, stepId, o, opt = {}) {
   }
   if (steps.length) out.push({ title: "Earlier steps", items: steps });
   const has = new Set(opt.engineHas || []);
-  // only helpers the engine resolves are offered: a token it cannot read would send an empty value
-  const helpers = HELPERS.filter((h) => h.engine || has.has(h.token)).map((h) => ({ token: h.token, label: h.label, known: true }));
-  if (helpers.length) out.push({ title: "Helpful values", items: helpers });
+  out.push({ title: "Helpful values", items: HELPERS.map((h) => ({ token: h.token, label: h.label, known: h.engine || has.has(h.token), ...(h.engine || has.has(h.token) ? {} : { note: "Not available yet" }) })) });
   return out;
 }
 
 /** The words for one token path, from the insert list. @param {string} path @param {Group[]} groups */
 export function tokenLabel(path, groups) {
   const tok = `{${path}}`;
-  for (const g of groups) { const it = g.items.find((x) => x.token === tok); if (it) return it.label; }
+  for (const g of groups) { const it = g.items.find((x) => x.token === tok); if (it) return g.object ? `${g.object} \u00b7 ${it.label}` : it.label; }
   return path;
 }
 
@@ -124,7 +122,7 @@ export const appendToken = (text, token) => `${text}${text && !/\s$/.test(text) 
 export function smsCount(text) {
   const s = String(text ?? "");
   const chars = [...s].length;
-  const plain = /^[\x20-\x7e\n\r£¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ¤¡ÄÖÑÜ§¿äöñüà]*$/.test(s);
+  const plain = /^[\x20-\x7e\n\r£¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ¤¡ÄÖÑÜ\u00a7¿äöñüà]*$/.test(s);
   const one = plain ? 160 : 70, many = plain ? 153 : 67;
   return { chars, segments: chars === 0 ? 0 : chars <= one ? 1 : Math.ceil(chars / many), unicode: !plain };
 }

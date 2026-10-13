@@ -32,14 +32,14 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   assert.ok(g[0].items.some((i) => i.token === "{email}"));
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
-  assert.equal(g.some((x) => x.title === "Helpful values"), false);
+  assert.ok(g[g.length - 1].items.every((i) => i.known === false && i.note === "Not available yet"));
 });
 
 test("only steps before this one are offered, and the engine can declare helpers", () => {
   const d = draft([email, { id: "later", kind: "formula", formula: "1" }]);
   assert.equal(insertList(d, "mail", O).some((g) => g.title === "Earlier steps"), false);
   const g = insertList(d, "mail", O, { engineHas: ["{now.date}"] });
-  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), ["{now.date}"]);
+  assert.deepEqual(g[g.length - 1].items.filter((i) => i.known).map((i) => i.token), ["{now.date}"]);
 });
 
 test("a record trigger lists its object's fields, and a sealed one carries a lock note", () => {
@@ -98,6 +98,7 @@ test("address boxes offer the email-type fields in context, labelled from the da
   const picks = addressPicks(insertList(d, "mail", o));
   assert.deepEqual(picks.map((p) => p.token), ["{after.contact}", "{after.work_email}", "{steps.mk.record.data.contact}", "{steps.mk.record.data.work_email}"]);
   assert.match(picks[0].label, /^Contact \(Thing\)$/);
+  assert.equal(tokenLabel("after.contact", insertList(d, "mail", o)), "Thing \u00b7 Contact");
   assert.deepEqual(addressPicks(insertList(draft([email]), "mail", O)).map((p) => p.token), ["{email}"]);
 });
 
