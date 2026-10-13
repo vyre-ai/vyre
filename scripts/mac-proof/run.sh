@@ -49,8 +49,8 @@ export VYRE_SERVER_DIR="$HOME/.vyre-server"
 # The vyre command goes to a profile file in the work folder here (the runner's own home is left alone), and the shell the person types in is not a terminal.
 export VYRE_PROFILE="$work/zprofile" VYRE_LINK_DIRS=""
 echo "::group::install"
-# VYRE_STORE=sqlite is the install line's small built-in store: a hosted runner cannot run Colima, so Records (Twenty) could never start there and the network module would wait for it
-env PATH="$PATH_MIN" VYRE_CODE="" VYRE_STORE=sqlite sh "$script" --yes >"$work/install.out" 2>&1 || { cat "$work/install.out"; bad "the install failed"; }
+# VYRE_STORE=sqlite with VYRE_PROOF_BUILTIN_STORE=1 is the CI proof's small built-in store (Records is always on for a person): a hosted runner cannot run Colima, so Records (Twenty) could never start there and the network module would wait for it
+env PATH="$PATH_MIN" VYRE_CODE="" VYRE_STORE=sqlite VYRE_PROOF_BUILTIN_STORE=1 sh "$script" --yes >"$work/install.out" 2>&1 || { cat "$work/install.out"; bad "the install failed"; }
 cat "$work/install.out"
 echo "::endgroup::"
 # The one line's shape: the five steps, the signature line, and an honest ending that prints no code into a log.

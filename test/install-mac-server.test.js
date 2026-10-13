@@ -138,18 +138,52 @@ test("install-mac-server.sh: installs, writes the code and its time at 0600, run
   assert.match(m.calls(), /colima start/);
 });
 
-test("install-mac-server.sh: the Records choice from the install line lands in vyre.env: auto by default, sqlite when asked, a later choice replaces an older one, anything else refuses", t => {
+test("install-mac-server.sh: Records is always on: auto or nothing is Records, sqlite is refused unless the CI proof flag is set, anything else is refused, all before anything is installed", t => {
   const m = mac(t);
   const f = path.join(m.env.VYRE_HOME, "vyre.env");
   assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
   assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=auto$/m);
-  assert.equal(run({ ...m.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", m.src]).status, 0);
-  assert.equal(fs.readFileSync(f, "utf8").match(/^VYRE_STORE=/gm)?.length, 1);
-  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m);
-  assert.equal(run({ ...m.env }, ["--yes", "--from", m.src]).status, 0);
-  assert.match(fs.readFileSync(f, "utf8"), /^VYRE_STORE=sqlite$/m, "no choice named keeps the one made");
+  const n = mac(t);
+  let r = run({ ...n.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", n.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more\. Run the install line again without VYRE_STORE \(or with VYRE_STORE=auto\)\./);
+  assert.ok(!fs.existsSync(n.env.VYRE_SERVER_DIR), "nothing was laid out");
+  const p2 = mac(t);
+  assert.equal(run({ ...p2.env, VYRE_STORE: "sqlite", VYRE_PROOF_BUILTIN_STORE: "1" }, ["--yes", "--from", p2.src]).status, 0);
+  assert.match(fs.readFileSync(path.join(p2.env.VYRE_HOME, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m);
   const bad = run({ ...m.env, VYRE_STORE: "twenty" }, ["--yes", "--from", m.src]);
-  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto/);
+  assert.notEqual(bad.status, 0); assert.match(bad.stderr, /VYRE_STORE is auto \(Records\), not twenty\. Run the install line again without it\./);
+});
+
+test("install-mac-server.sh: under 4 GB of memory it stops before anything is laid out and says so; a dry run only says it; 4 GB goes on", t => {
+  const m = mac(t);
+  const r = run({ ...m.env, VYRE_RAM_BYTES: String(3 * 1024 ** 3) }, ["--yes", "--from", m.src]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Vyre needs at least 4 GB of memory, 8 GB recommended\./);
+  assert.match(r.stderr, /Use a larger server, then run this again\./);
+  assert.ok(!fs.existsSync(m.env.VYRE_SERVER_DIR), "nothing was laid out");
+  const d = run({ ...m.env, VYRE_RAM_BYTES: String(3 * 1024 ** 3) }, ["--dry-run", "--from", m.src]);
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout, /would stop: Vyre needs at least 4 GB of memory/);
+  const four = run({ ...m.env, VYRE_RAM_BYTES: String(4 * 1024 ** 3) }, ["--yes", "--from", m.src]);
+  assert.equal(four.status, 0, four.stderr);
+  assert.match(four.stdout, /8 GB or more is recommended/, "a warning under 8 GB");
+  const eight = mac(t);
+  const e8 = run({ ...eight.env, VYRE_RAM_BYTES: String(8 * 1024 ** 3) }, ["--yes", "--from", eight.src]);
+  assert.equal(e8.status, 0, e8.stderr);
+  assert.ok(!/recommended/.test(e8.stdout), "no warning at 8 GB");
+});
+
+test("install-mac-server.sh: a system install works under a home folder with a space in its path", t => {
+  const m = sys(t);
+  const home = path.join(m.base, "my home"); fs.mkdirSync(home);
+  const env = { ...m.env, HOME: home, VYRE_HOME: path.join(home, ".vyre"), VYRE_SERVER_DIR: path.join(home, ".vyre-server"), VYRE_LAUNCHAGENTS: path.join(home, "LA") };
+  delete /** @type {any} */ (env).VYRE_PROFILE;
+  const r = run(env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(fs.existsSync(path.join(home, ".vyre-server", "cmd", "vyre")));
+  assert.match(fs.readFileSync(path.join(home, ".zshenv"), "utf8"), /# vyre: command/);
+  assert.match(r.stdout, /ok  vyre is at /);
 });
 
 test("install-mac-server.sh: the wrapper drops a setup code older than an hour, and keeps the rest", t => {

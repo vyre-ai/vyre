@@ -186,6 +186,29 @@ report_left() {
   printf '  It left:%s\n  To remove all of it, run this one line:\n\n  %s\n\n  Then run the install line again.\n' "$left" "${cmd%; }" >&2
 }
 
+# store_gate: Records is always on (the same rule as install-box.sh). VYRE_STORE unset or auto is Records; sqlite (the small built-in store) is only for the CI install proof (VYRE_PROOF_BUILTIN_STORE=1), never offered.
+store_gate() {
+  case "${VYRE_STORE:-auto}" in
+    auto) ;;
+    sqlite) [ "${VYRE_PROOF_BUILTIN_STORE:-0}" = 1 ] || die "Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more. Run the install line again without VYRE_STORE (or with VYRE_STORE=auto)." ;;
+    *) die "VYRE_STORE is auto (Records), not ${VYRE_STORE}. Run the install line again without it." ;;
+  esac
+}
+
+# memory_gate: Records (Twenty, Postgres, Redis) and agents' computers run in Colima. Under about 4 GB the Mac cannot host them, and that is said before anything is laid out. VYRE_RAM_BYTES is for tests;
+# a Mac whose memory cannot be read is not refused.
+memory_gate() {
+  ram=${VYRE_RAM_BYTES:-$(sysctl -n hw.memsize 2>/dev/null || true)}
+  case "$ram" in ''|*[!0-9]*) return 0 ;; esac
+  mb=$((ram / 1048576))
+  if [ "$mb" -ge "${VYRE_MIN_MEM_MB:-3500}" ]; then
+    [ "$mb" -ge "${VYRE_REC_MEM_MB:-7500}" ] || say "  note  This Mac has $((mb / 1024)) GB of memory. Vyre works, with room for one space; 8 GB or more is recommended."
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then say "would stop: Vyre needs at least 4 GB of memory, 8 GB recommended ($mb MB here)."; return 0; fi
+  die "Vyre needs at least 4 GB of memory, 8 GB recommended. This Mac has $mb MB. Use a larger server, then run this again."
+}
+
 # free_kb DIR: kilobytes free on the disk DIR is on (VYRE_FREE_KB is for tests).
 free_kb() {
   [ -z "${VYRE_FREE_KB:-}" ] || { printf '%s' "$VYRE_FREE_KB"; return 0; }
@@ -665,7 +688,6 @@ write_env() {
   : >"$TMP/vyre.env"
   [ ! -f "$f" ] || grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$f" >"$TMP/vyre.env" || true
   # The Records choice from the install line (VYRE_STORE=auto is Records, sqlite is the small built-in store). A choice named now replaces an older one; none named keeps it, or takes auto.
-  case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
   if [ -n "${VYRE_STORE:-}" ]; then grep -v '^VYRE_STORE=' "$TMP/vyre.env" >"$TMP/vyre.env.x" || true; cat "$TMP/vyre.env.x" >"$TMP/vyre.env"; fi
   grep -q '^VYRE_STORE=' "$TMP/vyre.env" || printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.env"
   grep -q '^DOCKER_HOST=' "$TMP/vyre.env" || printf 'DOCKER_HOST=unix://%s/.colima/default/docker.sock\n' "$HOME" >>"$TMP/vyre.env"
@@ -1068,6 +1090,8 @@ main() {
   say "When it finishes, go back to the Vyre app."
   phase "Checking this Mac"
   filevault_gate
+  store_gate
+  memory_gate
   disk_gate
   check_git
   snapshot_before
