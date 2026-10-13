@@ -8,6 +8,8 @@ import { listen } from "../api/box";
 import { tool } from "../real/box";
 import { isSpendCapFor, spendCardData, watcherNames } from "./extras.js";
 import { ShownScreen, useShownScreens } from "./ChatShown";
+import { useNeeds } from "../state/needs";
+import { PublishHold } from "./PublishHold";
 
 export function ChatExtras({ thread, empty, busy }: { thread: string; empty: boolean; busy: boolean }) {
   const real = !allowsMock();
@@ -25,13 +27,16 @@ export function ChatExtras({ thread, empty, busy }: { thread: string; empty: boo
     return () => { live = false; };
   }, [real, thread, busy]);
   const screens = useShownScreens(thread, busy, real);
+  // A publish an agent asked for in this chat: the one yes is asked here too, not only on Now.
+  const holds = useNeeds().filter((n) => n.source === "publish" && n.thread === thread);
   if (!real) return null;
-  if (!cap && !names.length && !empty && !screens.length) return null;
+  if (!cap && !names.length && !empty && !screens.length && !holds.length) return null;
   return (
     <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 12, gap: 8, paddingTop: 6 }}>
       {empty ? <WelcomeCard /> : null}
       {names.map((n) => <WatcherCard key={n} name={n} />)}
       {screens.map((e) => <ShownScreen key={`${e.module}/${e.command}/${e.id ?? ""}`} entry={e} />)}
+      {holds.map((n) => <PublishHold key={n.id} need={n} who={n.agent ?? undefined} />)}
       {cap ? <SpendCapCard data={cap as never} /> : null}
     </View>
   );
