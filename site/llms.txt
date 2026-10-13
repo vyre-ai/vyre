@@ -9,6 +9,12 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](https://vyre.run/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent's turn runs, the Gate
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
+- [For professional services firms](https://vyre.run/for/): client journeys on Vyre by kind of firm
+- [Vyre for law firms](https://vyre.run/for/law-firms/): Inquiry, screening and conflict check, consultation, engagement letter signed, matter opened from a Playbook, deadlines from a trigger date, documents from the firm’s own templates, client updates, billing hand-off.
+- [Vyre for accounting firms](https://vyre.run/for/accounting-firms/): Inquiry and scoping, engagement letter signed, client onboarding, document collection with reminders, a monthly close Playbook, tax season tracks, review and delivery, billing and renewal.
+- [Vyre for consulting firms](https://vyre.run/for/consulting-firms/): Inquiry, scoping call, proposal, statement of work signed, engagement from a Playbook, weekly status, change requests, final report and renewal.
+- [Vyre for marketing and creative agencies](https://vyre.run/for/marketing-agencies/): Inquiry, discovery and brief, proposal and statement of work signed, onboarding with access in the Vault, a campaign Playbook per offer, creative review rounds, client approval, monthly report, renewal.
+- [Vyre for real estate brokerages](https://vyre.run/for/real-estate-brokerages/): Lead response, qualification, listing or buyer agreement signed, a transaction from a Playbook, key dates from the contract date, documents, client updates, closing and follow-up.
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices

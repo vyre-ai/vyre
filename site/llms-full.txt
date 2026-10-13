@@ -19,6 +19,67 @@ Release 0.5.0. Updated 2026-10-13. Source: https://github.com/vyre-ai/vyre. Lice
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
 - Architecture: see https://vyre.run/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
 
+## Vyre by kind of firm (pages under https://vyre.run/for/)
+
+Each page follows one client from inquiry to closed work for an invented firm, and names the Vyre pieces behind every step. The firms and the sample data are invented.
+
+### Law firms: https://vyre.run/for/law-firms/
+1. Inquiry comes in
+2. Screening and conflict check
+3. Consultation
+4. Engagement letter signed
+5. Matter opens from a Playbook
+6. Deadlines from a trigger date
+7. Documents and client updates
+8. Closing and billing hand-off
+Tracks (Playbooks): Personal injury, Estate plan. Agents: Intake, Drafting, Reviewer, Updates. Apps named: Clio, Lawmatics, Practice tools, Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign.
+
+### Accounting firms: https://vyre.run/for/accounting-firms/
+1. Inquiry and scoping
+2. Proposal and engagement letter
+3. Client onboarding
+4. Document collection
+5. Monthly close Playbook
+6. Tax season tracks
+7. Review and delivery
+8. Billing and renewal
+Tracks (Playbooks): Monthly close, Individual return, Business return. Agents: Intake, Chaser, Preparer assistant, Reviewer. Apps named: QuickBooks, Xero, Karbon, Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign.
+
+### Consulting firms: https://vyre.run/for/consulting-firms/
+1. Inquiry comes in
+2. Research and scoping
+3. Proposal
+4. Statement of work signed
+5. Engagement from a Playbook
+6. Weekly status
+7. Change requests
+8. Final report and renewal
+Tracks (Playbooks): Diagnostic, Program, Retainer. Agents: Research, Proposal, Reviewer, Status. Apps named: Zoho, QuickBooks, Xero, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign.
+
+### Marketing and creative agencies: https://vyre.run/for/marketing-agencies/
+1. Inquiry comes in
+2. Discovery and brief
+3. Proposal and statement of work
+4. Onboarding
+5. Campaign Playbook
+6. Creative review rounds
+7. Client approval
+8. Reporting and renewal
+Tracks (Playbooks): Social retainer, Paid media, Website build. Agents: Intake, Content, Reviewer, Site. Apps named: Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign, QuickBooks, Ad and analytics platforms.
+
+### Real estate brokerages: https://vyre.run/for/real-estate-brokerages/
+1. Lead comes in
+2. Qualification
+3. Agreement signed
+4. Transaction from a Playbook
+5. Key dates from the contract date
+6. Documents and client updates
+7. Closing
+8. Follow-up
+Tracks (Playbooks): Listing side, Buyer side. Agents: Responder, Coordinator, Reviewer, Content. Apps named: Zoho, RingCentral, Google Workspace, Microsoft 365, Dropbox, DocuSign, Transaction and listing tools.
+
+Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*. *where the vendor provides an API. Today: a Connection plus a Flow service step, or a custom module. Next, 0.5.2: packaged Integrations (Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned).
+
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.

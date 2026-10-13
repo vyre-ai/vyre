@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { buildIndustries } from './site/industries.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -69,12 +70,13 @@ const NAV = [
   ['Product', '/#product'],
   ['Devices', '/#devices'],
   ['Architecture', '/architecture/'],
+  ['Industries', '/for/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
   const links = NAV.map(([t, h]) => {
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/')) ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('for') && h === '/for/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -99,7 +101,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/for/">Industries</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -1029,6 +1031,9 @@ ${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defe
   writeFileSync(join(site, '404.html'), html404);
 }
 
+// ---------- industry pages (scripts/site/industries.mjs) ----------
+const IND = buildIndustries({ page, esc, eyebrow, crumbs, SITE, VERSION });
+
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
 const SUMMARY = 'Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person\'s yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.';
@@ -1044,6 +1049,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Get started](${SITE}/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
+${IND.llms}
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
@@ -1080,6 +1086,8 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Needs you is one place for approvals, asks and stuck tasks. Teams get roles, per-project seat levels and invites with a role.
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
 - Architecture: see ${SITE}/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
+
+${IND.full}
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
@@ -1186,7 +1194,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ...IND.sitemap, ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
