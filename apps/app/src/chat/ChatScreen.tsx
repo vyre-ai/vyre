@@ -17,6 +17,7 @@ import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
+import { peopleOnly } from "./composer-model.js";
 import { useVyreFiles } from "./useVyreFiles";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
@@ -317,6 +318,9 @@ export function ChatScreen(p: ChatScreenProps) {
     ...(allowsMock() ? [{ id: "slot:claude", label: "Claude", provider: "claude" }, { id: "slot:codex", label: "Codex", provider: "codex" }, { id: "slot:grok", label: "Grok", provider: "grok" }] : []),
   ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
+  const sharedChat = Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1;
+  // A chat between people: a message goes to the people and no AI answers unless one is asked for it (reply mode "mention", or no AI in the chat).
+  const peopleChat = peopleOnly({ shared: sharedChat, replyMode: store.group.replyMode(), ais: faces.filter((f) => f.family === "assistant" || f.family === "model").length });
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
@@ -327,7 +331,7 @@ export function ChatScreen(p: ChatScreenProps) {
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
-        shared={Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1} replyMode={store.group.replyMode()}
+        shared={sharedChat} replyMode={store.group.replyMode()}
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
@@ -460,6 +464,7 @@ export function ChatScreen(p: ChatScreenProps) {
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
           slots={answerSlots}
+          peopleOnly={peopleChat}
           onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}

@@ -248,6 +248,7 @@ export function peopleScript(o: { tps?: number } = {}): Segment[] {
   a.push("status", { state: "waiting", turn: "turn-p" });
   a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
   a.push("participant-joined", { who: "person:sam", name: "Sam", role: "Associate" }, 5);
+  a.push("reply-mode", { mode: "mention", default: true }, 5);
   a.push("user-message", { message: "p1", text: "Did the intake form come through for the Okafor estate?", state: "sent" }, 40, { author: VIEWER, message: "p1" });
   const s = new Clock().at(a.t);
   s.say("p2", "Yes, this morning. I will call them Monday to book the first meeting.", tps, 600, { ...sam, message: "p2" });

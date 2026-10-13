@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel } from "./composer-model.js";
+import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel, peopleOnly } from "./composer-model.js";
 
 test("@, # and / open their pickers at the caret", () => {
   assert.equal(triggerAt("ask @ju", 7)?.kind, "person");
@@ -69,4 +69,13 @@ test("only the # tags picked from the list and still in the words are sent, once
   assert.deepEqual(mentionsIn('Summarise #"Jane Doe" and #"Jane Doe" again, and #Nobody', picked).map((m) => m.id), ["vyre://s/contact/c1"]);
   assert.deepEqual(mentionsIn("nothing tagged", picked), []);
   assert.deepEqual(mentionsIn('#"Okafor estate" first', picked).map((m) => m.name), ["Okafor estate"]);
+});
+
+test("a chat between people sends to the people: shared and set to mention, or shared with no AI; every and one-person chats keep the AI", () => {
+  assert.equal(peopleOnly({ shared: true, replyMode: "mention", ais: 1 }), true, "shared, AI answers when mentioned");
+  assert.equal(peopleOnly({ shared: true, replyMode: null, ais: 0 }), true, "shared, no AI at all");
+  assert.equal(peopleOnly({ shared: true, replyMode: "every", ais: 1 }), false, "AI answers every message keeps today's behaviour");
+  assert.equal(peopleOnly({ shared: true, replyMode: "every", ais: 0 }), false);
+  assert.equal(peopleOnly({ shared: true, replyMode: null, ais: 2 }), false, "unset with an AI in it is unchanged");
+  assert.equal(peopleOnly({ shared: false, replyMode: "mention", ais: 0 }), false, "one person alone keeps their AI");
 });

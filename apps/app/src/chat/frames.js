@@ -272,6 +272,7 @@ export function createFolder() {
         break;
       }
       case "reply-mode": {
+        if (d.default === true) break; // the mode a people-only chat starts with: no one set it, so there is no line
         const mode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
         const key = "rm:" + f.cur;
         put(key, "notice", { key, kind: "notice", text: `${f.author && names.has(String(f.author)) ? nameOf(String(f.author)) : "Someone"} set replies to: ${mode === "every" ? "the AI answers every message" : "the AI answers when mentioned"}` });
