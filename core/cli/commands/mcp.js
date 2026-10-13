@@ -18,10 +18,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, fail, usage, failTool, parse } from "../kit.js";
 import { call } from "../../daemon/client.js";
+import { ensureUp } from "../daemonctl.js";
 
 /** The label printed for each connection line the daemon returns, by the key it returns it under. */
 const SNIPPET_LABELS = [["claude", "Claude Code"], ["codex", "Codex"]];
-import { ensureUp } from "../daemonctl.js";
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "harness", "mcp", "server.js");
 /** The Design and Module MCP: added when the work is design or building a module (harness/mcp/design-serve.js). */
