@@ -16,7 +16,7 @@ export const STEPS: readonly Step[] = Object.freeze([
   { id: "ai", title: "Sign in to your AI", where: "In your browser", optional: false },
   { id: "phone", title: "Add your phone", where: "In your browser", optional: true },
   { id: "passkey", title: "Create your passkey", where: "At your address", optional: false },
-  { id: "assistant", title: "You and your assistant", where: "At your address", optional: false },
+  { id: "assistant", title: "You and your agent", where: "At your address", optional: false },
   { id: "computers", title: "Your computers", where: "At your address", optional: true },
   { id: "history", title: "Your history", where: "At your address", optional: true },
 ]);

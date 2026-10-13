@@ -43,7 +43,7 @@ export function SampleAiScreen() {
       <Sheet open={!!acct} onClose={() => setSheet(null)} title={acct ? `${acct.name} budget` : undefined}>
         {acct ? (
           <>
-            <Text tone="muted">A month's limit for chats on this account. At the limit, assistants stop and ask you.</Text>
+            <Text tone="muted">A month's limit for chats on this account. At the limit, agents stop and ask you.</Text>
             <Segmented label="Monthly budget" value={String(acct.budget)} onChange={(v) => { setBudget(acct.name, Number(v)); showToast(`${acct.name} budget is ${money(Number(v))} a month.`); }} options={BUDGET_STEPS.map((n) => [String(n), money(n)] as [string, string])} />
             <View className="flex-row"><Button kind="primary" label="Done" onPress={() => setSheet(null)} /></View>
           </>

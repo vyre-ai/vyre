@@ -19,4 +19,4 @@ export function agentsOf(data: unknown): AgentRow[] | null {
   return Array.isArray(a) ? (a as AgentRow[]) : null;
 }
 
-export const CREATE_ASSISTANT = { title: "Create your assistant", body: "It reads your mail and calendar, drafts, and works while you do something else. Give it a name and a job.", action: "Create", href: "/u/settings/assistants/new" };
+export const CREATE_ASSISTANT = { title: "Create your agent", body: "It reads your mail and calendar, drafts, and works while you do something else. Give it a name and a job.", action: "Create", href: "/u/settings/assistants/new" };

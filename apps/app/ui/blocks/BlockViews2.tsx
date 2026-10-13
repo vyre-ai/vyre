@@ -54,7 +54,7 @@ export function StagesBlock({ b }: P) {
         <View accessibilityRole="list" className="flex-row gap-s2">
           {names.map((n, i) => (
             <View key={n} accessibilityLabel={n} accessibilityState={{ selected: i === idx }} className="min-w-0 flex-1 gap-s1">
-              <View style={{ height: 4, borderRadius: 2, backgroundColor: i < idx ? color.ok : i === idx ? color.accent : color["edge-strong"] }} />
+              <View style={{ height: 4, borderRadius: 2, backgroundColor: i < idx ? color.ok : i === idx ? color.primary : color["edge-strong"] }} />
               <Text size="caption" strong={i === idx} tone={i > idx ? "label" : i < idx ? "muted" : "default"} numberOfLines={1}>{n}</Text>
             </View>
           ))}

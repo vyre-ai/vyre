@@ -9,6 +9,8 @@ import { usePhone } from "../places/Page";
 type Who = { id: string; name: string };
 
 const web = Platform.OS === "web";
+/** A stage column's width: the list's card column (320). */
+const COLUMN_WIDTH = 320;
 
 /**
  * A box that can be picked up and dropped on, on the web (the move buttons stay for the keyboard and a phone). `what` makes it draggable and says what it carries ("task:1:0", "stage:2"); `onDrop` makes it a
@@ -46,14 +48,14 @@ function People({ c }: { c: TaskCard }) {
 function TaskCardView({ c, selected, onOpen }: { c: TaskCard; selected: boolean; onOpen: () => void }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${c.title}, open its settings`} onPress={onOpen}>
-      <Card><View className={`gap-s2 p-s3 ${selected ? "rounded-card border border-accent" : ""}`}>
+      <Card><View className={`gap-s2 p-s3 ${selected ? "rounded-card border border-edge-strong" : ""}`}>
         <Text strong>{c.title || "Untitled task"}</Text>
         <People c={c} />
         {c.due || c.needsYes || c.optional || c.group ? (
           <View className="flex-row flex-wrap gap-s1">
             {c.group ? <Chip>{c.group}</Chip> : null}
             {c.due ? <Chip icon="clock">{`Due ${c.due}`}</Chip> : null}
-            {c.needsYes ? <Chip tone="warn">Needs a yes</Chip> : null}
+            {c.needsYes ? <Chip>Needs a yes</Chip> : null}
             {c.optional ? <Chip>Optional</Chip> : null}
           </View>
         ) : null}
@@ -76,7 +78,7 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
   // dropped on a column: a task goes to its end; a stage takes this column's place
   const dropColumn = (w: string, si: number, end: number) => { const d = parse(w); if (!d) return; onChange(d.kind === "task" ? E.moveTaskTo(body, { si: d.a, ti: d.b }, { si, ti: end }) : E.moveStageTo(body, d.a, si)); };
   const column = (col: (typeof cols)[number]) => (
-    <DragBox key={col.index} className="gap-s2" style={phone ? undefined : { width: 288 }} onDrop={editable ? (w) => dropColumn(w, col.index, col.tasks.length) : undefined}>
+    <DragBox key={col.index} className="gap-s2" style={phone ? undefined : { width: COLUMN_WIDTH }} onDrop={editable ? (w) => dropColumn(w, col.index, col.tasks.length) : undefined}>
       <DragBox className="flex-row items-center gap-s2" what={editable && !none ? `stage:${col.index}` : undefined}>
         <View className="min-w-0 flex-1">
           <View className="flex-row flex-wrap items-center gap-s2"><Text strong numberOfLines={1}>{col.name}</Text>{none ? null : <Chip>{stageProgress(col.index, cols.length)}</Chip>}</View>

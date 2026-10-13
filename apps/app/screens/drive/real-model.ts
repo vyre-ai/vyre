@@ -69,5 +69,5 @@ export function textOf(bytes: number[]): string {
 export function driveRefusal(code: string | undefined, message: string): string {
   if (code === "not_available") return "That folder is not available on your home.";
   if (code === "denied") return "You may not open that.";
-  return message || "Drive did not answer.";
+  return message || "Files did not answer.";
 }

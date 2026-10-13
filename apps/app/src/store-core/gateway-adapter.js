@@ -30,7 +30,7 @@ export function readableActors(actors, me) {
     const id = String(a.id ?? "");
     const named = typeof a.name === "string" && a.name.trim() !== "" && a.name !== id;
     if (named) return a;
-    return { ...a, name: a.family === "person" || !a.family ? (me && id === me ? "You" : "Someone") : a.family === "assistant" ? "An assistant" : "An agent" };
+    return { ...a, name: a.family === "person" || !a.family ? (me && id === me ? "You" : "Someone") : a.family === "assistant" ? "An agent" : "An agent" };
   });
 }
 

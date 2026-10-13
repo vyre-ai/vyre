@@ -26,7 +26,7 @@ const ITEMS: Activity[] = [
   { id: "2", kind: "note", at: 5, when: "Yesterday", actor: "Alex Rivera", what: "left a note", why: "Wants the trust signed before the 30th. Call after 3pm." },
   { id: "3", kind: "call", at: 4, when: "Mon", actor: "Priya Shah", what: "called, 12 minutes", why: "Confirmed the two accounts to retitle." },
   { id: "4", kind: "change", at: 3, when: "Mon", actor: "Alex Rivera", what: "changed Plan from Will to Trust" },
-  { id: "5", kind: "change", at: 2, when: "Last week", actor: "Your assistant", what: "filled in Household size", why: "From the intake form." },
+  { id: "5", kind: "change", at: 2, when: "Last week", actor: "Your agent", what: "filled in Household size", why: "From the intake form." },
 ];
 
 /** A record page as a person needs it: who it is and what to do, the records linked to it by type, one timeline with a note box. */

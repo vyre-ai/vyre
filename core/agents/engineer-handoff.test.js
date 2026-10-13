@@ -8,11 +8,11 @@ import { ENGINEER } from "./index.js";
 test("the Engineer's instructions teach the handoff: read, two or three questions, a draft, and nothing applied before the yes", () => {
   const t = ENGINEER.instructions;
   for (const w of ["From Playbooks", "From Objects", "From Flows", "From Agents", "engineer-context", "source, ref, name, intent, words, shape", "work.template.define", "flows.define", "agents.update", "Apply nothing before the yes", "shape is empty"]) assert.ok(t.includes(w), `says ${w}`);
-  assert.ok(t.startsWith("You are the Engineer."), "the earlier instructions are kept");
+  assert.ok(t.startsWith("You are the Engineer. You set up the Space for the person you are talking to"), "the earlier instructions are kept");
 });
 
 test("a home holding the instructions this build shipped before is upgraded; the earlier ones are listed", () => {
-  assert.equal(ENGINEER.previous.length, 2);
-  assert.ok(ENGINEER.instructions.startsWith(ENGINEER.previous[1]), "the new text is the earlier text plus the handoff");
+  assert.equal(ENGINEER.previous.length, 3);
+  assert.ok(ENGINEER.instructions.startsWith(ENGINEER.previous[2]), "the new text is the earlier text plus the handoff");
   assert.ok(!ENGINEER.previous.includes(ENGINEER.instructions));
 });

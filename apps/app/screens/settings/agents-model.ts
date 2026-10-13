@@ -12,7 +12,7 @@ export function worksLine(projects: unknown): string {
   return n ? `${n} ${n === 1 ? "project" : "projects"}` : "No projects yet";
 }
 /** "Your assistant" for the one assistant, else "Agent". */
-export const roleOf = (a: Agent): string => (a.kind === "assistant" ? "Your assistant" : "Agent");
+export const roleOf = (a: Agent): string => (a.kind === "assistant" ? "Your agent" : "Agent");
 /** The line under a name: its job now, model and how it signs in. */
 export function agentLine(a: Agent): string {
   const auth = a.auth === "subscription" ? "your subscription" : a.auth === "api-key" ? "an API key" : "the account on your home";
