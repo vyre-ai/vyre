@@ -36,6 +36,11 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://vyre.run/map/</loc>
+    <lastmod>2026-10-13</lastmod>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://vyre.run/start/</loc>
     <lastmod>2026-10-13</lastmod>
     <priority>0.7</priority>

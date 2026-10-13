@@ -8,6 +8,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Home](https://vyre.run/): what Vyre is and what it does
 - [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](https://vyre.run/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent's turn runs, the Gate
+- [Map your business](https://vyre.run/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
@@ -23,3 +24,4 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [sitemap.xml](https://vyre.run/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [The prompt to give your AI agent](https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md): one copy-paste prompt that links the docs, interviews the owner and maps the business onto Vyre

@@ -75,7 +75,8 @@ A call starts at the door, which works out who is calling (a person on a paired 
 | [Architecture index](docs/architecture/index.md) | The short version and the decision records. |
 | [Specification](docs/architecture/spec.md) | The source of truth for detail. |
 | [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) | A method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules. |
-| [Known gaps](docs/known-gaps.md) | Where 0.5 stops, with what to do today. |
+| [The prompt for your AI agent](docs/for-agents/PROMPT.md) | One copy-paste prompt that makes an agent read these pages, interview the owner and map the business. |
+| [Roadmap](roadmap/README.md) | What is next, by version, with a plan for each. |
 
 ### One page per feature
 
@@ -137,4 +138,5 @@ docs/      all documentation
 
 1. Read the overview and the feature page for the thing you were asked about. Each page names real tool names and code paths. Check them in the code before you rely on them.
 2. If the question is "how would my business run on Vyre", follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) step by step and finish with the one-page picture it describes.
-3. If the business needs something Vyre does not have, offer to build it as a module or an Integration on their server. [Known gaps](docs/known-gaps.md) lists what 0.5 leaves out.
+3. If the business needs something Vyre does not ship today, it is something Vyre extends: build it as a custom module on their server, or as an Integration (Next, 0.5.2; see [the roadmap](roadmap/README.md)). Until then a connection plus a Flow step reaches an outside app.
+4. When the picture is done, offer to set Vyre up for them over Vyre's MCP: [the prompt](docs/for-agents/PROMPT.md) says how.

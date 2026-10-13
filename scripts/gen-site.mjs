@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PROMPT, MAP_META, homeBlock, mapBody } from './site/agent-prompt.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -70,6 +71,7 @@ const NAV = [
   ['Devices', '/#devices'],
   ['Architecture', '/architecture/'],
   ['Direction', '/direction/'],
+  ['Map your business', '/map/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
@@ -99,7 +101,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">Roadmap</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -193,7 +195,7 @@ const HOME_FAQ = [
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do.'],
   ['What stops an agent from doing something I did not ask for?', 'Anything that leaves your server, such as an email, a payment, a deletion or a published page, waits at the Gate until a person has read the exact words and approved them. An agent can ask and cannot approve. A model sees a placeholder where a secret would be. The <a href="/architecture/">architecture page</a> shows how.'],
   ['Who is Vyre for?', 'Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. <a href="'+MAP_URL+'">Point your AI agent at the repo</a> and it can show how your business would run on Vyre.'],
-  ['Is it ready?', `It is ${VERSION}, and what this page shows works today. Some things come next, and the <a href="/direction/">direction page</a> lists them. The <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> list what ${VERSION} does not do yet.`],
+  ['Is it ready?', `It is ${VERSION}, and what this page shows works today. What comes next is labelled with its version on the <a href="/direction/">direction page</a> and in the <a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">roadmap</a>.`],
 ];
 
 const homeBody = `
@@ -381,15 +383,7 @@ const homeBody = `
   </div>
 </section>
 
-<section class="sec" id="agent-guide" aria-labelledby="agt-h">
-  <div class="wrap">
-    <div class="note rv">
-      <p class="lbl" id="agt-h" style="margin-bottom:8px">For your AI agent</p>
-      <p style="margin:0 0 10px"><b>See how your business would run on Vyre.</b> An agent reads the repo and follows a method that turns a business into members, records, Playbooks, Flows, agents, documents, sites and Gate rules.</p>
-      <p style="margin:0"><a class="btn btn-fill btn-sm" href="${MAP_URL}">Point your AI agent at the repo</a> <a class="btn btn-sm" href="/architecture/">Read the architecture</a></p>
-    </div>
-  </div>
-</section>
+${homeBlock(MAP_URL)}
 
 
 <section class="sec" id="install" aria-labelledby="in-h">
@@ -654,7 +648,7 @@ const DIR = `
   </div>
 </section>
 <section class="sec" aria-labelledby="note-h">
-  <div class="wrap"><div class="note rv"><p class="lbl" id="note-h" style="margin-bottom:8px">A plain note</p><p style="margin:0">This is direction, not a promise of dates. Order and scope can change when we learn something. The <a href="https://github.com/vyre-ai/vyre/releases">releases</a> and the <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> are what is true today.</p></div></div>
+  <div class="wrap"><div class="note rv"><p class="lbl" id="note-h" style="margin-bottom:8px">A plain note</p><p style="margin:0">This is direction, not a promise of dates. Order and scope can change when we learn something. The <a href="https://github.com/vyre-ai/vyre/releases">releases</a> are what is true today.</p></div></div>
 </section>
 <section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Start with <b>what works today.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
 page({
@@ -664,6 +658,9 @@ page({
   ogTitle: 'Where Vyre is going.', ogSub: 'A workplace for your team and its AI agents, on a server you own.',
   body: DIR, ld: [crumbs([['Vyre', `${SITE}/`], ['Direction', `${SITE}/direction/`]])],
 });
+
+// ---------- map your business (scripts/site/agent-prompt.mjs) ----------
+page({ ...MAP_META, body: mapBody({ MAP_URL, REPO, eyebrow }), ld: [crumbs([['Vyre', `${SITE}/`], ['Map your business', `${SITE}/map/`]])] });
 
 // ---------- architecture page ----------
 // The system in one designed view, drawn in HTML and CSS (classes ar-* in v2.css). Wording follows docs/architecture/overview.md.
@@ -913,7 +910,7 @@ ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Sideloaded apps.</strong> The Mac app has no Apple Developer ID signature yet and the Android app is not on a store, so you install both from the file.</li>
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li>
 </ul>
-<p>More detail: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
+<p>What comes next, by version: <a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/README.md">the roadmap</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
 ${part('?', 'trouble', 'If something goes wrong', `<ul>
 <li>The app says the reservation code is not valid: it lasts 24 hours and works once. Reserve the name again on vyre.run/setup.</li>\n<li>The app says the line expired, or two servers used it: press <em>Start again</em> for a new line.</li>
 <li>The words do not match: press <em>They don’t match</em>, then start again. It means the line was not run on your server.</li>
@@ -1043,6 +1040,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Home](${SITE}/): what Vyre is and what it does
 - [Get started](${SITE}/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
+- [Map your business](${SITE}/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
@@ -1058,6 +1056,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [sitemap.xml](${SITE}/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](${MAP_URL}): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
+- [The prompt to give your AI agent](${REPO}/blob/main/docs/for-agents/PROMPT.md): one copy-paste prompt that links the docs, interviews the owner and maps the business onto Vyre
 `;
 
 const FULL = `# Vyre, in full
@@ -1112,13 +1111,12 @@ ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 - Later: Screen Share (watch and take over your agents' computers and Chrome, on every device).
 - Later: a Vyre-hosted home for people without a server.
 
-## Known gaps in ${VERSION}
-- A member can read every row of a record type the Space defined itself; per-record privacy for custom types is planned for 0.5.1.
-- An agent step has no deadline yet. A session that ends without finishing is marked stuck.
-- A Flow email cannot yet carry CC, BCC or attachments.
-- CSV export is in the web app; a phone does not offer it yet.
-- The Mac and Windows apps are not signed with a store identity yet, and the iPhone app is built from source.
-See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
+## Map your business onto Vyre
+To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It is also at ${SITE}/map/, where a short form tailors it, and in the repository as docs/for-agents/PROMPT.md.
+
+\`\`\`
+${PROMPT}
+\`\`\`
 
 ## FAQ
 ${HOME_FAQ.map(([q, a]) => `### ${q}\n${strip(a)}`).join('\n\n')}
@@ -1132,13 +1130,13 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Read any page and the machine-readable files: ${SITE}/llms.txt, ${SITE}/llms-full.txt, ${SITE}/sitemap.xml.
 - Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) the architecture (${SITE}/architecture/) and direction (${SITE}/direction/). Direction is not a promise of dates.
-- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre.
+- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre. The prompt that starts that conversation is https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md, and ${SITE}/map/ tailors it. When you have mapped the business, offer to set Vyre up for the user over Vyre's MCP (\`vyre mcp install\` in Claude Code, or a named key under Settings, Your AI keys). The user installs Vyre and approves each outward act.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do
 - Do not run the install line, or anything with a pairing code in it, for the user. The code belongs to the user, works once, and is entered in their Vyre app.
 - Do not ask the user to paste secrets, vault values, recovery codes or setup codes into a chat.
-- Do not claim Vyre runs a server on Windows, or that a Mac download exists. Check ${SITE}/llms-full.txt for the current gaps.
+- Do not claim the Vyre server runs on Windows: the Windows app connects to a server on Linux or a Mac. Planned work is labelled Next with its version on ${SITE}/direction/; check what is shipped against the docs and the code.
 
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
@@ -1186,7 +1184,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/map/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

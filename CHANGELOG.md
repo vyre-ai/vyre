@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): one prompt to give your AI agent (docs/for-agents/PROMPT.md, the home page block with a Copy button, and a new /map/ page whose form tailors it and sketches your business as members, record types, Playbooks and Flows); entry points no longer link known gaps, and what is planned reads as Next with its version.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
 - docs: the README shows the app in sharp animated WebP and 2x screenshots instead of 256-colour GIFs; unused old README images removed.

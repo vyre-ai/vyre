@@ -12,7 +12,7 @@ A business owner pointed you at this repository and asked how the business would
 
 Take every noun from the owner. Do not assume an industry, and do not invent people, record types or systems. If you do not know, ask.
 
-You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
+If the owner gave you [the prompt](PROMPT.md), this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
 
 ## What to tell the owner Vyre is good at
 
@@ -182,20 +182,22 @@ Some parts of a business will not match what Vyre ships. Treat those as work to 
 
 **Custom modules.** A module is a folder with a `module.json` and an entry file. It registers tools, emits events, can declare Flow steps, and runs under the same checks as the built-in modules. The contract is in [the module contract](../build/module-contract.md), [writing a module](../build/writing-a-module.md) and [the module list](../MODULES.md). `vyre module new` starts one.
 
-**Integrations.** Integrations with popular applications are planned (roadmap item R052-01). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
+**Integrations.** Integrations with popular applications are Next, in 0.5.2 ([plan](../../roadmap/0.5.2.md)). An Integration wraps an outside application's API and ships its own Flow steps, triggers, connection and agent tools. Until they ship, a connection or an MCP server reaches an outside app, and a custom module can wrap it.
 
 **You can build these.** Building a module or an Integration for this business is straightforward for an agent, and it can do it on the business's own server. If the owner needs something Vyre does not do, offer to build it. [The agent brief](../build/AGENT-BRIEF.md) is where you start.
 
-**What 0.5 does today.** Say these plainly so the owner plans around them. The full list is in [Known gaps](../known-gaps.md).
+**Where each part is going.** All of the above works today. Plan with the owner around the items below, and name the version each one arrives in. The plans are in [the roadmap](../../roadmap/README.md).
 
-- A member reads every row of a record type the Space defined itself. Per-record privacy for custom types is planned for 0.5.1.
-- The editor's "For each" step handles 50 items. The engine allows 1000.
-- An agent step has no deadline. A session that ends early is marked stuck. One that never ends is not timed out.
-- A Flow email carries no CC, BCC or attachments yet. Put a link in the body.
-- CSV export is in the web app.
-- Claude is the model proven on real accounts. Codex and Grok run against recorded sessions. There is no Gemini.
-- Nobody has walked the app on a real iPhone or Android. Web push works, and native push waits for Apple and Google accounts.
-- Windows is a device that works against a server. A home runs on a Mac, Linux or a server.
+| Area | Today | Next |
+| --- | --- | --- |
+| Custom record types | Built-in types, and a project's matters, tasks and files, follow the project team. A member reads the rows of a type the Space defined itself. | 0.5.1: per-record privacy for custom types. |
+| "For each" step | The editor handles 50 items. The engine allows 1000. | 0.5.1: the author sets the limit. |
+| Agent steps | A session that ends early is marked stuck, with a plain reason. | 0.5.1: deadlines that stop the agent, and failure paths in the editor. |
+| Flow email | The body carries links. | 0.5.1: CC, BCC and attachments. |
+| Flows over MCP | Owners inspect Flows. | 0.5.1: members, after a per-Flow access check. |
+| Integrations | A connection plus a Flow step, or a custom module. | 0.5.2: Clio, Lawmatics, GoHighLevel and DecisionVault as packaged Integrations, and an agent can write one from an API's docs. |
+
+Two facts for the picture: Claude is the model proven most on real accounts, and Codex, Grok and OpenRouter answer in the same chat. A home runs on a Linux server or a Mac that stays on; the Mac, Windows and phone apps connect to it. CSV export is in the web app.
 
 ## Worked example 1. A small design studio
 
@@ -265,4 +267,5 @@ The owner says: "We fix and install things in people's homes. Customers call or 
 ## Related
 
 - [Architecture overview](../architecture/overview.md) and [the Vyre map](../architecture/map.md).
-- [Known gaps](../known-gaps.md) and [the roadmap](../roadmap.md).
+- [The roadmap](../roadmap.md) and the plan for each version in [roadmap/](../../roadmap/README.md).
+- [The prompt that starts this conversation](PROMPT.md).
