@@ -2,7 +2,7 @@
 title: Import wizard
 summary: Four steps to bring records in from a file or another system; nothing is written until the third is approved.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 

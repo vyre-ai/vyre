@@ -1,6 +1,7 @@
 // Publish from a preview card (R032-07): one tap builds the folder as a site and asks for the one yes; the yes puts it live and the card shows the address. The words of the plan are the box's
 // own (screens/sites/real-model planLines); nothing here names a tool, a path or a task.
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "expo-router";
 import { Linking, Platform, View } from "react-native";
 import { AskCard, Banner, Button, Sheet, Text } from "@vyre/ui";
 import { presenceText } from "../../screens/shell/FaceIdSheet";
@@ -13,6 +14,7 @@ type Step = { kind: "building" } | { kind: "asking"; held: Held; later: string }
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export function PublishSheet({ open, onClose, preview }: { open: boolean; onClose: () => void; preview: { id: string; title: string } }) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>({ kind: "building" });
   const started = useRef(false);
   useEffect(() => {
@@ -53,6 +55,7 @@ export function PublishSheet({ open, onClose, preview }: { open: boolean; onClos
             <View style={{ flexDirection: "row", gap: 8 }}>
               {step.address ? <Button kind="primary" icon="external" label="Open it" onPress={() => openAddress(step.address)} /> : null}
               <Button kind="ghost" label="Done" onPress={onClose} />
+              <Button kind="ghost" label="Open the site page" onPress={() => { onClose(); router.push(`/u/sites/${siteNameOf(preview.title)}` as never); }} />
             </View>
           </>
         ) : null}

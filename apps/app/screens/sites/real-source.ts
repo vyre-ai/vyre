@@ -1,6 +1,6 @@
 // Sites' calls on the real box (publish.*), over an injected `call` (the app's box connection, or a fake box in a test). Held acts (approve, publish, rollback, a real secret)
 // take two calls: the first answers { held, task, plan }, then the person decides with publish.decide, which carries presence.
-import type { Dep, Held, Status } from "./real-model";
+import type { Dep, Held, JobRun, Status } from "./real-model";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 
@@ -24,6 +24,13 @@ export function sitesSource(call: Call) {
     domainRemove: (host: string) => ask<unknown>("publish.domain.remove", { host }),
     secretGrant: (deployment: string, ref: string, name: string, use: ("build" | "runtime")[]) => ask<Held | { deployment: Dep }>("publish.secret.grant", { deployment, ref, name, use }),
     secretRevoke: (deployment: string, name: string) => ask<{ deployment: Dep }>("publish.secret.revoke", { deployment, name }),
+    /** A live job: run it now, its last runs (newest first), and the live jobs whose last run failed (what Now shows). */
+    jobRun: (deployment: string) => ask<JobRun>("publish.job.run", { deployment }),
+    jobRuns: async (deployment: string, limit = 10): Promise<JobRun[]> => (await ask<{ runs?: JobRun[] }>("publish.job.runs", { deployment, limit })).runs ?? [],
+    jobAttention: async (): Promise<{ deployment: string; name: string; at: number; message: string }[]> => (await ask<{ jobs?: { deployment: string; name: string; at: number; message: string }[] }>("publish.job.attention")).jobs ?? [],
+    /** The edge: start it (builds its Caddy image, brings the project up) or stop it. A box without a way to start containers answers not_available with what to run by hand. */
+    edgeUp: () => ask<{ project?: string }>("publish.edge.up"),
+    edgeDown: () => ask<unknown>("publish.edge.down"),
     /** The vault's items a secret can come from: names and field names, never a value. */
     vaultItems: async (): Promise<{ name: string; kind: string; fields: string[] }[]> => (await ask<{ items?: { name: string; kind: string; fields: string[] }[] }>("vault.list")).items ?? [],
   };

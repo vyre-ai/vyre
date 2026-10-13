@@ -9,6 +9,7 @@ import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
 import fx from "../screens/vault/real-box.fixture.json";
 import { setBoxOverride } from "../src/real/box";
+import { RealSite, RealSites } from "../screens/sites/RealSites";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
@@ -288,10 +289,24 @@ function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: P
 }
 
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string }>();
+  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string; id?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
   if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
+  if (q.f === "sites-real" || q.f === "sites-real-site") {
+    // Sites on a stand-in box: canned publish.* answers, so the real screens can be looked at with no server.
+    const dep = (id: string, name: string, version: number, stage: string, url: string | null, domains: { host: string; status: string }[] = []) => ({ id, name, version, stage, url, domains });
+    const deps = [dep("d1", "client-intake", 3, "Preview", "https://preview-3.client-intake.example.vyre.run"), dep("d2", "client-intake", 2, "Production", "https://client-intake.example.vyre.run", [{ host: "intake.firm.example", status: "verified" }]), dep("d3", "fee-calculator", 1, "Approved", "https://preview-1.fee-calculator.example.vyre.run"), dep("d4", "menu-site", 4, "Production", null, [{ host: "menu.example.com", status: "waiting" }])];
+    setBoxOverride(async (tool) => {
+      if (tool === "publish.list") return { deployments: deps };
+      if (tool === "publish.status") return { ...deps[0], previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: null, published_at: null, sealed_check: "no sealed values found" };
+      if (tool === "publish.job.attention") return { jobs: [{ deployment: "d4", name: "menu-site", at: Date.now() - 600000, message: "the nightly sync exited 1" }] };
+      if (tool === "publish.job.runs") return { runs: [{ at: Date.now() - 3600000, ok: true, seconds: 4 }, { at: Date.now() - 90000000, ok: false, code: 1, message: "the nightly sync exited 1" }] };
+      if (tool === "vault.list") return { items: [{ name: "Stripe", kind: "api", fields: ["key"] }] };
+      return {};
+    });
+    return <ThemeProvider><Page><View nativeID="fixture">{q.f === "sites-real" ? <RealSites /> : <RealSite />}</View></Page></ThemeProvider>;
+  }
   if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.

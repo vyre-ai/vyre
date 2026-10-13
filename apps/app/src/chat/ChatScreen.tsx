@@ -173,6 +173,8 @@ export function ChatScreen(p: ChatScreenProps) {
   // Find in this conversation (Cmd-F): the rows that hold the words, one at a time, the current one scrolled to and lit.
   const [findOpen, setFindOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  // The thread's own width (the chat panel beside it takes some): a diff is side by side only when there is room for two columns.
+  const [threadW, setThreadW] = useState(1000);
   const [findQ, setFindQ] = useState("");
   const [findAt, setFindAt] = useState(-1);
   const matches = useMemo(() => (findOpen ? findMatches(rows.filter((r) => r.kind === "user" || r.kind === "text").map((r) => ({ key: r.key, text: String(store.item(r.key)?.text ?? "") })), findQ) : []), [findOpen, findQ, rows, store]);
@@ -221,6 +223,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
+      diffSplit: !phone && threadW >= 560,
       ...(actions
         ? {
             onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
@@ -255,7 +258,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -330,7 +333,7 @@ export function ChatScreen(p: ChatScreenProps) {
       />
   );
   const body = (
-    <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
+    <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
