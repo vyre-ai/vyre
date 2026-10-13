@@ -333,8 +333,7 @@ export async function createKernel(cfg) {
         if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
           // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in. The call came in on a device, so it is refused: it never falls back to the module's service chain (that has no person hop, and a door treats it as a module call).
           if (!(await enrolledHere(cfg.space, meta.kernelFacts))) throw new KernelError("not_a_member", "This device is no longer part of this Space. Pair it again from the owner's Vyre to bring it back.");
-          // Facts the kernel refuses (a uid that is not the owner's, an unverified Capsule) give no chain at all: a caller that claimed to be someone never gets the module's own authority.
-          try { return chains.fromFacts(meta.kernelFacts); } catch { throw new KernelError("not_a_member", "Vyre could not establish who this call is from. Sign in again on this device and retry."); }
+          try { return chains.fromFacts(meta.kernelFacts); } catch { /* facts the kernel refuses: no chain, never the module's own authority */ throw new KernelError("not_a_member", "Vyre could not establish who this call is from. Sign in again on this device and retry."); }
         }
         await ready;
         return gateway.serviceChain(m.name);
