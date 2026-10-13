@@ -12,7 +12,7 @@ const GH = (REPO, p) => `${REPO}/blob/main/${p}`;
 const li = (items) => `<ul class="cp-list">${items.map((t) => `<li>${t}</li>`).join('')}</ul>`;
 const node = (n, t, d) => `<li class="ar-node"><span class="ar-n">${n}</span><b>${t}</b><span>${d}</span></li>`;
 const card = (t, d, extra = '') => `<div class="piece cp-piece"><h3>${t}</h3><p>${d}</p>${extra}</div>`;
-const next = (v) => `<span class="ar-chip">${v ? `Next &middot; ${v}` : 'Next'}</span>`;
+const next = (v) => `<span class="chip-next">${v ? `Coming in ${v}` : 'Coming next'}</span>`;
 const pre = (s) => `<pre class="cp-pre"><code>${s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
 
 function connects(REPO, SITE, items) {
@@ -151,16 +151,16 @@ function overview({ SITE, REPO, MAP_URL, eyebrow, crumbs }) {
         <div class="ar-box ar-dash">${next()}<b>Borrow from the pool</b><span>An agent uses a computer a member has lent, as well as its own.</span></div>
       </div>
     </div>
-    <p class="demo-tag">Solid boxes are built. Dashed boxes are Next.</p>
+    <p class="demo-tag">Solid boxes are built. Dashed boxes are coming next.</p>
 
     <ul class="list rv" style="margin-top:36px">
-      <li><b>One Chrome extension ${next('0.5.2')}</b><span>The password and passkey extension, the Chrome control extension and the standalone server become one. It signs in like a device of yours: its own key, listed in Devices, removable there, with no typed address. Roadmap items R052-15 and R052-16 (vault unlock in the extension).</span></li>
-      <li><b>Chrome control for chats ${next('0.5.2')}</b><span>A chat asks to use this Chrome. You allow it once and it is hands-free on that browser until you take it back. Esc or the toolbar stops everything, and sends, posts and payments stay held. No native host and no local port. R052-17.</span></li>
-      <li><b>A chat in the browser side panel ${next('0.5.2')}</b><span>Every chat there is an ordinary Vyre thread saved in the Space, openable from the app and the phone. The agent sees the current tab only when you turn sharing on. R052-18.</span></li>
-      <li><b>Screen Share ${next()}</b><span>Watch and take over your agents’ computers and Chrome on every device. The take-over rules it needs (keyboard ownership, a shield for private sign-in) are already built in the computers module.</span></li>
-      <li><b>Drive your computer from your phone ${next()}</b><span>The phone is already a paired device that approves with Face ID. The direction is a request from it to a connected computer that is awake, under the same grants as an agent’s.</span></li>
-      <li><b>Agents borrow a computer from the Space’s pool ${next()}</b><span>Placement already decides where a Space’s sessions run: on a computer lent to it, on the server, or wait. The direction is the same decision for an agent’s computer use.</span></li>
-      <li><b>A Chrome profile for each agent ${next()}</b><span>Each agent’s own computer already has its own Chrome profile. The direction is the same inside one person’s Chrome: a tab group and profile per agent, so several agents work there at once.</span></li>
+      <li>${next('0.5.2')}<b>One Chrome extension</b><span>The password and passkey extension, the Chrome control extension and the standalone server become one. It signs in like a device of yours: its own key, listed in Devices, removable there, with no typed address.</span></li>
+      <li>${next('0.5.2')}<b>Chrome control for chats</b><span>A chat asks to use this Chrome. You allow it once and it is hands-free on that browser until you take it back. Esc or the toolbar stops everything, and sends, posts and payments stay held. No native host and no local port.</span></li>
+      <li>${next('0.5.2')}<b>A chat in the browser side panel</b><span>Every chat there is an ordinary Vyre thread saved in the Space, openable from the app and the phone. The agent sees the current tab only when you turn sharing on.</span></li>
+      <li>${next()}<b>Screen Share</b><span>Watch and take over your agents’ computers and Chrome on every device. The take-over rules it needs (keyboard ownership, a shield for private sign-in) are already built in the computers module.</span></li>
+      <li>${next()}<b>Drive your computer from your phone</b><span>The phone is already a paired device that approves with Face ID. The direction is a request from it to a connected computer that is awake, under the same grants as an agent’s.</span></li>
+      <li>${next()}<b>Agents borrow a computer from the Space’s pool</b><span>Placement already decides where a Space’s sessions run: on a computer lent to it, on the server, or wait. The direction is the same decision for an agent’s computer use.</span></li>
+      <li>${next()}<b>A Chrome profile for each agent</b><span>Each agent’s own computer already has its own Chrome profile. The direction is the same inside one person’s Chrome: a tab group and profile per agent, so several agents work there at once.</span></li>
     </ul>
   </div>
 </section>
@@ -280,8 +280,8 @@ function chrome({ SITE, REPO, eyebrow, crumbs, term }) {
 <section class="sec" id="one" aria-labelledby="one-h">
   <div class="wrap">
     <div class="sec-head rv">
-      ${eyebrow('Next.')}
-      <h2 id="one-h" class="h2">Three pieces become one, <b>${next('0.5.2')}</b></h2>
+      ${next('0.5.2')}
+      <h2 id="one-h" class="h2">Three pieces become <b>one.</b></h2>
       <p class="lead">Today the password extension, the Chrome control extension and the standalone server are separate. The 0.5.2 plan merges them into one extension for Chrome first, then Edge, Brave and Arc. It signs in like a device of yours, shows up in Devices and stops working when you remove it there. Chats can then ask to use that Chrome, with Esc and the toolbar as the stop, and a Vyre chat can open in Chrome’s side panel. See <a href="${GH(REPO, 'roadmap/0.5.2.md')}">the 0.5.2 plan</a>, items 15 to 19.</p>
     </div>
   </div>

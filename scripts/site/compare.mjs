@@ -419,7 +419,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
     </div>
     <div class="cmp-two rv">
       <div class="cmp-col cmp-col-v"><h3>Today</h3><p>${x.api === false ? NOAPI : esc(x.apiNote) + ' ' + TODAY}</p><p>Where the vendor publishes an MCP server, a person can add it for agents to use.</p></div>
-      <div class="cmp-col"><h3>Next (0.5.2)</h3><p>${NEXT.replace('Next (0.5.2): a', 'A')}</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, ${esc(x.name)} included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
+      <div class="cmp-col"><h3><span class="chip-next">Coming in 0.5.2</span></h3><p>${NEXT.replace('Coming in 0.5.2: a', 'A')}</p><p>Vyre can be extended by integrating your Zoho, QuickBooks, RingCentral and the rest of your software stack*, ${esc(x.name)} included.</p><p class="cmp-fn">*Where the vendor provides an API.</p></div>
     </div>
   </div>
 </section>
@@ -496,7 +496,7 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
 - Why that helps: ${x.why.map((k) => `${WHY[k][0]}. ${WHY[k][1]}`).join(' ')}`);
   }
 
-  const cards = PAGES.map((c, i) => `<div class="piece"><span class="num">0${i + 1}</span><h3>${esc(c.name)}</h3><p>${c.ogSub}</p><p><a href="/compare/${c.key}/">Read the comparison</a></p></div>`).join('');
+  const cards = PAGES.map((c, i) => `<div class="piece"><span class="num">0${i + 1}</span><h3>${esc(c.name)}</h3><p>${c.ogSub}</p><p><a class="stretch" href="/compare/${c.key}/">Read the comparison</a></p></div>`).join('');
   const indexBody = `
 <section class="phead">
   <div class="wrap">

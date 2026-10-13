@@ -21,7 +21,7 @@ test("PROMPT.md holds exactly the short prompt the site serves, and the prompt i
   assert.equal(m[1], PROMPT);
   assert.ok(PROMPT.includes("https://vyre.run/agenthome.md"));
   assert.ok(PROMPT.length < 320, "two or three lines");
-  assert.ok(!/[—§]/.test(PROMPT));
+  assert.ok(!/[\u2014\u00a7]/.test(PROMPT));
 });
 
 test("every raw GitHub file START-HERE links exists in the repo", () => {
@@ -35,7 +35,7 @@ test("START-HERE carries the reading list, the questions, the mapping, Get start
   for (const h of ["## What Vyre is", "## How to operate", "## A map of everything", "## 2. Ask", "## 3. Map", "## 4. Get started", "## Next", "## Stay in the loop"]) assert.ok(START.includes(h), h);
   for (const w of ["DigitalOcean", "Hetzner", "8 GB", "2 GB", "cloud-init", "vyre mcp connect", "tools_find", "Engineer", "https://vyre.run/setup", "https://vyre.run/updates/", "Same", "four words"]) assert.ok(START.includes(w), w);
   assert.ok(!/known-gaps/i.test(START));
-  assert.ok(!/[—§]/.test(START), "no em dash or section sign");
+  assert.ok(!/[\u2014\u00a7]/.test(START), "no em dash or section sign");
 });
 
 test("the site serves START-HERE as /agenthome.md and as real HTML text at /agenthome/", () => {

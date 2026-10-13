@@ -187,7 +187,7 @@ const term = (cmd, copy = cmd) => `<div class="term"><span class="pr" aria-hidde
 const eyebrow = (t) => `<p class="eyebrow">${t}</p>`;
 const faqHtml = (faq) => `<div class="faq rv">${faq.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div>`;
 const list = (items) => `<ul class="list">${items.map(([b, s]) => `<li><b>${b}</b><span>${s}</span></li>`).join('')}</ul>`;
-const gaps = (items) => `<div class="note"><p class="lbl" style="margin-bottom:8px">Known gaps in ${VERSION}</p><ul class="plain" style="margin:0;padding-left:1.1em">${items.map((x) => `<li style="margin:.3em 0">${x}</li>`).join('')}</ul></div>`;
+const gaps = ({ now, next }) => `<div class="note"><p class="lbl" style="margin-bottom:8px">What to expect in ${VERSION}</p><ul class="plain" style="margin:0;padding-left:1.1em">${now.map((x) => `<li style="margin:.3em 0">${x}</li>`).join('')}</ul>${next && next.length ? `<p style="margin:14px 0 6px"><span class="chip-next">Coming next</span></p><ul class="plain" style="margin:0;padding-left:1.1em">${next.map((x) => `<li style="margin:.3em 0">${x}</li>`).join('')}</ul>` : ''}</div>`;
 
 // ---------- home ----------
 const HOME_FAQ = [
@@ -255,11 +255,11 @@ ${agentBand()}
       <p class="lead">Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not.</p>
     </div>
     <div class="pieces p4 rv">
-      <div class="piece"><span class="num">01</span>${I.records}<h3>Records</h3><p>Contacts, projects, tasks and the record types you define, with views, tags and Excel or CSV import. A sealed field shows an agent a placeholder, never the value.</p><a class="more" href="/records/">Records in depth &rarr;</a></div>
-      <div class="piece"><span class="num">02</span>${I.flows}<h3>Flows</h3><p>Start from a person, a schedule, a record change, a stage, a form or a link. Steps find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</p><a class="more" href="/flows/">Flows in depth &rarr;</a></div>
-      <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p><a class="more" href="/agents/">Agents in depth &rarr;</a></div>
+      <div class="piece"><span class="num">01</span>${I.records}<h3>Records</h3><p>Contacts, projects, tasks and the record types you define, with views, tags and Excel or CSV import. A sealed field shows an agent a placeholder, never the value.</p><a class="more stretch" href="/records/">Records in depth &rarr;</a></div>
+      <div class="piece"><span class="num">02</span>${I.flows}<h3>Flows</h3><p>Start from a person, a schedule, a record change, a stage, a form or a link. Steps find, create, wait, ask, assign and run an agent. A person approves a Flow before it runs.</p><a class="more stretch" href="/flows/">Flows in depth &rarr;</a></div>
+      <div class="piece"><span class="num">03</span>${I.chat}<h3>One group chat</h3><p>Claude, Codex, Grok and OpenRouter answer in the same chat. Give agents roles: a team that does the work, one model that reviews, one that plans.</p><a class="more stretch" href="/agents/">Agents in depth &rarr;</a></div>
       <div class="piece"><span class="num">04</span>${I.stages}<h3>Playbooks and tracks</h3><p>A project template holds stages, the tasks in each and who does each task. Run each kind of work as its own track, with its own Playbook and Flows over shared records.</p></div>
-      <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p><a class="more" href="/vault/">Vault in depth &rarr;</a></div>
+      <div class="piece"><span class="num">05</span>${I.vault}<h3>Vault</h3><p>Passwords, API keys, logins with one-time codes, cards, notes and SSH keys. Share an item as Can use or Can edit. Agents use a credential without seeing it.</p><a class="more stretch" href="/vault/">Vault in depth &rarr;</a></div>
       <div class="piece"><span class="num">06</span>${I.sites}<h3>Sites</h3><p>An agent builds a site, previews it at a private address and puts it live on your yes. Your own domain shows the DNS record to add.</p></div>
       <div class="piece"><span class="num">07</span>${I.doc}<h3>Documents</h3><p>Fill your own Word templates from a record and the records linked to it, as Word or PDF. A model never rewrites the document.</p></div>
       <div class="piece"><span class="num">08</span>${I.sign}<h3>Signing</h3><p>Send a document for signature from a record. The signer needs no account, and the signed copy files back on the record.</p></div>
@@ -376,7 +376,7 @@ ${agentBand()}
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div class="piece"><span class="num">Now &middot; 0.5</span><h3>Agents and people, one place</h3><p>Records, Flows, Playbooks, one group chat across providers, a Vault, Sites, Documents and Signing.</p></div>
-      <div class="piece"><span class="num">Next &middot; 0.5.1</span><h3>Flows you can trust</h3><p>One chat per Flow, deadlines on agent steps, a failure panel on every step, and per-record privacy for custom record types.</p></div>
+      <div class="piece"><span class="num"><span class="chip-next">Coming in 0.5.1</span></span><h3>Flows you can trust</h3><p>One chat per Flow, deadlines on agent steps, a failure panel on every step, and per-record privacy for custom record types.</p></div>
       <div class="piece"><span class="num">After that &middot; 0.5.2</span><h3>Integrations and skills</h3><p>An Integration wraps an outside app. Clio, Lawmatics, GoHighLevel and DecisionVault are planned, with screens for skills and plugins.</p></div>
       <div class="piece"><span class="num">Later</span><h3>Screen Share and more</h3><p>Watch and take over your agents' computers, the iPhone App Store app, and a hosted option.</p></div>
     </div>
@@ -422,7 +422,7 @@ const dlBtn = (file, label, fill = false) => `<a class="btn btn-sm${fill ? ' btn
     ['Why is there no app store link?', 'The phone apps are not on a store yet. Android installs from a file you open on the phone. iPhone is built and installed with Xcode.'],
     ['How do I know a file is what the release signed?', 'Every file is listed in SHA256SUMS, and SHA256SUMS.sig is an Ed25519 signature over that list by the release key. The Vyre app and the install line check it for you; to check it yourself, read the release page.'],
   ];
-  const card = (ico, h, p, acts, foot) => `<div class="dl rv"><span class="dl-ic">${ico}</span><h3>${h}</h3><p>${p}</p><div class="dl-acts">${acts}</div><div class="dl-foot">${foot}</div></div>`;
+  const card = (ico, h, p, acts, foot, href) => `<div class="dl rv"><span class="dl-ic">${ico}</span><h3>${href ? `<a class="stretch" href="${href}">${h}</a>` : h}</h3><p>${p}</p><div class="dl-acts">${acts}</div><div class="dl-foot">${foot}</div></div>`;
   const body = `
 <section class="phead">
   <div class="wrap">
@@ -437,12 +437,12 @@ const dlBtn = (file, label, fill = false) => `<a class="btn btn-sm${fill ? ' btn
   <div class="wrap">
     <div class="sec-head rv"><span class="lbl" id="apps-h">The apps</span></div>
     <div class="dl-grid">
-      ${card(I.mac, 'Mac', 'The Vyre app in its own window, with Touch ID. Apple silicon or Intel.', dlBtn('Vyre-aarch64.dmg', 'Apple silicon', true) + dlBtn('Vyre-x86_64.dmg', 'Intel'), '<a href="/mac/">How it works on a Mac</a>')}
-      ${card(I.win, 'Windows', 'A tray app with an Alt+Space panel. Run the installer, or paste the line in PowerShell.', dlBtn('VyreSetup.exe', 'VyreSetup.exe', true), term('irm vyre.run/w | iex', 'irm vyre.run/w | iex') + '<a href="/windows/">How it works on Windows</a>')}
-      ${card(I.phone, 'Android', 'The Vyre app from a file. Open it on the phone and allow installs when Android asks.', dlBtn('Vyre-android.apk', 'Vyre-android.apk', true), '<a href="/phone/">Pair your phone</a>')}
-      ${card(I.phone, 'iPhone', 'There is no App Store app yet. You build the app and install it with Xcode on a Mac.', `<a class="btn btn-sm btn-fill" href="${SITE}/docs/using/mobile">Install with Xcode</a>`, '<a href="/phone/">Pair your phone</a>')}
-      ${card(I.doc, 'Every file', 'The checksums, the signature and every other file of the release are on the release page.', `<a class="btn btn-sm btn-fill" href="${REPO}/releases/latest">Release page</a>`, `<a href="${DL}/SHA256SUMS">SHA256SUMS</a>`)}
-      ${card(I.sites, 'Web app', 'Vyre in any browser, with nothing to install. Log in with your passkey.', `<a class="btn btn-sm btn-fill" href="${APP_URL}">Open the web app</a>`, 'The same app as the desktop and phone apps.')}
+      ${card(I.mac, 'Mac', 'The Vyre app in its own window, with Touch ID. Apple silicon or Intel.', dlBtn('Vyre-aarch64.dmg', 'Apple silicon', true) + dlBtn('Vyre-x86_64.dmg', 'Intel'), '<a href="/mac/">How it works on a Mac</a>', '/mac/')}
+      ${card(I.win, 'Windows', 'A tray app with an Alt+Space panel. Run the installer, or paste the line in PowerShell.', dlBtn('VyreSetup.exe', 'VyreSetup.exe', true), term('irm vyre.run/w | iex', 'irm vyre.run/w | iex') + '<a href="/windows/">How it works on Windows</a>', '/windows/')}
+      ${card(I.phone, 'Android', 'The Vyre app from a file. Open it on the phone and allow installs when Android asks.', dlBtn('Vyre-android.apk', 'Vyre-android.apk', true), '<a href="/phone/">Pair your phone</a>', '/phone/')}
+      ${card(I.phone, 'iPhone', 'There is no App Store app yet. You build the app and install it with Xcode on a Mac.', `<a class="btn btn-sm btn-fill" href="${SITE}/docs/using/mobile">Install with Xcode</a>`, '<a href="/phone/">Pair your phone</a>', '/phone/')}
+      ${card(I.doc, 'Every file', 'The checksums, the signature and every other file of the release are on the release page.', `<a class="btn btn-sm btn-fill" href="${REPO}/releases/latest">Release page</a>`, `<a href="${DL}/SHA256SUMS">SHA256SUMS</a>`, `${REPO}/releases/latest`)}
+      ${card(I.sites, 'Web app', 'Vyre in any browser, with nothing to install. Log in with your passkey.', `<a class="btn btn-sm btn-fill" href="${APP_URL}">Open the web app</a>`, 'The same app as the desktop and phone apps.', APP_URL)}
     </div>
   </div>
 </section>
@@ -545,7 +545,7 @@ devicePage({
   ] },
   needs: [['Mac', 'macOS 14 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
   extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too: run the install line in Terminal.</p>`,
-  gapList: ['The Mac app is not yet signed with an Apple Developer ID, so you open it once with Open Anyway.'],
+  gapList: { now: ['The Mac app is not signed with an Apple Developer ID yet, so the first time you open it macOS asks you to allow it: System Settings, Privacy and Security, Open Anyway.'], next: ['Signing with an Apple Developer ID.'] },
   faq: [
     ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Vyre app opens in any browser.'],
     ['Can my Mac be the server?', 'Yes, a Mac that stays on can be the server. A Linux server is the best home, because agents keep working when a laptop sleeps.'],
@@ -574,7 +574,7 @@ devicePage({
     `<b>Press Alt+Space.</b> Ask from anywhere, or open the tray icon.`,
   ] },
   needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
-  gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'A Windows PC is a device, never the home: it joins a team or connects to a server that runs on a Linux machine or a Mac that stays on.'],
+  gapList: { now: ['The app is not code-signed yet, so Windows asks you to confirm on the first run. The installer script checks the file\'s SHA-256, and updates install only when the Vyre release key signed them.', 'A Windows PC is a device: it joins a team or connects to a server that runs on Linux or on a Mac that stays on.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.'], next: ['Code signing for the Windows app.'] },
   faq: [
     ['Can my Windows PC be the server?', 'Not yet. The server runs on Linux or on a Mac that stays on, and your Windows PC joins a team or connects to that server.'],
     ['Why does Windows warn me?', 'The app is not code-signed yet. The installer script checks its SHA-256, and updates install only when the Vyre release key signed them.'],
@@ -604,7 +604,7 @@ devicePage({
     `<b>Finish in the app.</b> Give the space a look, connect your AI account and your tools, and pick a Kit or start empty.`,
   ] },
   needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Size', 'One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
-  gapList: ['The first Windows install is not signature-checked; the server install is.', 'Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler for many sessions on one server.', 'Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.', 'The Mac server installer has not run on a real Mac yet.'],
+  gapList: { now: ['The server install checks the release signature before it installs anything. The first Windows install is checked by its SHA-256.', 'The Mac server line is tested on a clean macOS in CI.', 'Where there is no direct path through a home router, the relay carries the connection.'], next: ['Idle sessions that sleep under memory pressure, and a fair-share scheduler for many sessions on one server.', 'Proof on real Mac hardware for the agents\' computers and Records.'] },
   faq: [
     ['What server do I need?', 'A Linux machine you can ssh into with sudo. A small cloud machine or a spare computer both work. Docker Compose 2.24 or newer is required, and the installer offers to add Docker.'],
     ['Can I use a Mac as the server?', 'Yes, a Mac that stays on. Run the same line in Terminal on that Mac.'],
@@ -634,7 +634,7 @@ devicePage({
     `<b>Confirm the words.</b> The phone and the computer show the same words. Say yes only if they match.`,
   ] },
   needs: [['Phone', 'An Android phone, or an iPhone and a Mac with Xcode'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
-  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications to a closed phone app are not set up: Apple and Google push accounts are needed. Open the app to see what is waiting.', 'Screen Share (live view and computer use) comes later; Chrome control works today.'],
+  gapList: { now: ['Android installs from the APK, which is signed with the Vyre Android release key. iPhone installs by building the app with Xcode. Both are sideloaded.', 'Open the app to see what is waiting: notifications to a closed phone app are not set up yet.', 'Chrome control works today.'], next: ['Native push notifications to a closed app, which need Apple and Google push accounts.', 'Screen Share, a live view and computer use on every device.', 'A walk of Face ID pairing and the removed-phone wipe on real iPhones and Androids.'] },
   faq: [
     ['Is there an App Store app?', 'Not yet. On Android you install the APK from the release page; on iPhone you build the app and install it with Xcode. Both are sideloaded.'],
     ['Does the phone need a VPN?', 'No. The phone reaches your server through Vyre’s own network, and where a direct path is not possible, through the relay. Your identity on the phone is a key that Face ID unlocks, so there is no separate login to the server.'],
@@ -665,8 +665,8 @@ const DIR = `
   <div class="wrap">
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">Where Vyre is going</h2>
     <div class="road">
-      <div class="stop rv"><p class="ver">Next &middot; 0.5.1</p><h3>Flows you can trust</h3><ul><li><b>One chat per Flow</b>A divider for each run.</li><li><b>Deadlines on agent steps</b>An agent step that runs too long is stopped and takes a timeout path.</li><li><b>A failure panel</b>On every step in the Flows editor.</li><li><b>Per-record privacy</b>For custom record types.</li><li><b>Flow email</b>With CC, BCC and attachments.</li><li><b>An audit screen</b>For admins: who changed what on a record.</li></ul></div>
-      <div class="stop rv"><p class="ver">After that &middot; 0.5.2</p><h3>Integrations and skills</h3><ul><li><b>Integrations</b>An Integration wraps an outside app\'s API and ships its own Flow steps, triggers, connection and agent tools. Clio, Lawmatics, GoHighLevel and DecisionVault are planned.</li><li><b>Make an Integration from an API</b>An agent can build one for your business on your own server.</li><li><b>Skills and Plugins</b>Browse, write, version and roll back skills. Install and enable plugins per agent and project.</li></ul></div>
+      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.5.1</span></p><h3>Flows you can trust</h3><ul><li><b>One chat per Flow</b>A divider for each run.</li><li><b>Deadlines on agent steps</b>An agent step that runs too long is stopped and takes a timeout path.</li><li><b>A failure panel</b>On every step in the Flows editor.</li><li><b>Per-record privacy</b>For custom record types.</li><li><b>Flow email</b>With CC, BCC and attachments.</li><li><b>An audit screen</b>For admins: who changed what on a record.</li></ul></div>
+      <div class="stop rv"><p class="ver"><span class="chip-next">Coming in 0.5.2</span></p><h3>Integrations and skills</h3><ul><li><b>Integrations</b>An Integration wraps an outside app\'s API and ships its own Flow steps, triggers, connection and agent tools. Clio, Lawmatics, GoHighLevel and DecisionVault are planned.</li><li><b>Make an Integration from an API</b>An agent can build one for your business on your own server.</li><li><b>Skills and Plugins</b>Browse, write, version and roll back skills. Install and enable plugins per agent and project.</li></ul></div>
       <div class="stop rv"><p class="ver">Later</p><h3>And beyond</h3><ul><li><b>Screen Share</b>Watch and take over your agents\' computers and browsers from any device.</li><li><b>iPhone App Store</b>The iPhone app from the App Store, with notifications.</li><li><b>A hosted option</b>A Vyre-hosted home for people without a server.</li></ul></div>
     </div>
   </div>

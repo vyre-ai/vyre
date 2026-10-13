@@ -30,7 +30,7 @@ export function updatesForm({ id = 'upd', source = '/updates/', compact = false 
 }
 
 /** The home page's band above the footer. */
-export const updatesBand = () => `<section class="upd-band" aria-label="Weekly update"><div class="wrap">${updatesForm({ id: 'updh', source: '/', compact: true })}</div></section>`;
+export const updatesBand = () => `<section class="upd-band" aria-label="Weekly update"><div class="wrap upd-bin"><div class="upd-bt"><h2 class="upd-bh">Get the weekly update</h2><p class="upd-bl">One email a week with what changed in Vyre. Never more.</p></div>${updatesForm({ id: 'updh', source: '/', compact: true })}</div></section>`;
 
 const link = (href, t, d) => `<li><a href="${href}"><b>${t}</b><span>${d}</span></a></li>`;
 

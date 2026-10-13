@@ -40,7 +40,7 @@ export const WHY = {
 };
 
 const TODAY = 'A person adds a Connection in the Vault that declares the host, how the key is sent and which operations read, draft, change, send, spend or delete. A Flow then calls the service from a web step, or a custom module wraps it.';
-const NEXT = 'Next (0.5.2): a packaged Integration, so the Connection and its operations arrive ready-made.';
+const NEXT = 'Coming in 0.5.2: a packaged Integration, so the Connection and its operations arrive ready-made.';
 const NOAPI = 'Check the vendor’s developer documentation for what it offers. Where there is nothing to call, a person can export a list and import the CSV into a Records type, and a custom module can wrap anything that has an endpoint.';
 
 // p(key, group, name, details). strong: three [bold, plain] pairs. use: [[nativeKey, sentence]]. mode: part (Vyre covers part of the job), whole (a team can drop it for most uses), with (keep it, Vyre works alongside).

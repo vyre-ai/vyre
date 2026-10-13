@@ -172,7 +172,7 @@ export function buildIndustries(h) {
       <p class="lead">${esc(d.firm)} keeps its tools. Vyre reaches them through the same checks as everything else: the key lives in the Vault, every call is marked read, draft, change, send, spend or delete, and anything that leaves the Space waits at the Gate.</p>
     </div>
     <ul class="in-stack rv">
-      ${d.stack.map(([n, s, t]) => `<li><b>${n}</b><span class="pill${s === 'Today' ? ' ok' : s === 'Connection' ? ' acc' : ''}">${s}</span><span>${t}</span></li>`).join('')}
+      ${d.stack.map(([n, s, t]) => `<li><b>${n}</b>${/^Coming/.test(s) ? `<span class="chip-next">${s}</span>` : `<span class="pill${s === 'Today' ? ' ok' : s === 'Connection' ? ' acc' : ''}">${s}</span>`}<span>${t}</span></li>`).join('')}
     </ul>
     <p class="sm" style="margin-top:14px">*where the vendor provides an API</p>
 
@@ -180,7 +180,7 @@ export function buildIndustries(h) {
       <div class="note"><p class="lbl" style="margin-bottom:8px">Today</p>
         <p><b>A Connection plus a Flow step.</b> A person adds a Connection: a declared host, how the key is sent and a list of operations, each marked by what it does. A Flow’s service step calls an operation, and a send waits at the Gate.</p>
         <p style="margin:0"><b>Or a custom module.</b> A module is a folder with a <code>module.json</code> and an entry file. It registers tools, emits events and declares Flow steps under the same checks as the built-in modules. An agent can write one on your own server.</p></div>
-      <div class="note"><p class="lbl" style="margin-bottom:8px">Next, 0.5.2</p>
+      <div class="note"><p class="lbl" style="margin-bottom:8px"><span class="chip-next">Coming in 0.5.2</span></p>
         <p><b>Integrations, packaged.</b> An Integration wraps an application’s API and ships its own Flow steps, triggers, Connection and agent tools. You install, verify, configure and remove it from one place. An agent can make one from an API.</p>
         <p style="margin:0">Clio, Lawmatics, GoHighLevel and DecisionVault are the first planned. This is direction, not a date.</p></div>
     </div>
@@ -205,7 +205,7 @@ ${connectsTo([
   ['Documents and signing', `${FEAT}/documents-and-signing`, 'Fill your Word templates from a record and send them for signature.'],
   ['The Gate', `${FEAT}/gate`, 'Why nothing leaves the Space until a person approves the exact words.'],
   ['Direction', '/direction/', 'What comes next, including Integrations in 0.5.2.'],
-  ...others.slice(0, 2).map((o) => [`For ${o.short.toLowerCase()}`, `/for/${o.slug}/`, 'The same journey for another kind of firm.']),
+  ...others.slice(0, 2).map((o) => [`For ${o.short.toLowerCase()}`, `/for/${o.slug}/`, 'The same journey for another kind of business.']),
 ])}
 `;
     page({
@@ -221,9 +221,9 @@ ${connectsTo([
 <section class="phead">
   <div class="wrap">
     <p class="crumbs"><a href="/">Vyre</a> / For</p>
-    ${eyebrow('Vyre for your kind of firm.')}
-    <h1 class="display">Your firm, as an <b>AI-native firm.</b></h1>
-    <p class="lead">Our mission is to help every professional services team become AI-native. Pick the kind of firm closest to yours. Each page follows one client from the first inquiry to closed work and shows the records, Playbooks, Flows and agents behind every step.</p>
+    ${eyebrow('Vyre for your kind of business.')}
+    <h1 class="display">Your business, as an <b>AI-native business.</b></h1>
+    <p class="lead">Our mission is to help every professional services team become AI-native. Pick the kind of business closest to yours. Each page follows one client from the first inquiry to closed work and shows the records, Playbooks, Flows and agents behind every step.</p>
     <div class="btn-row"><a class="btn btn-fill" href="/map/">Explore the interactive map</a><a class="btn" href="#prompt">Map my business</a></div>
   </div>
 </section>
@@ -247,11 +247,11 @@ ${connectsTo([
   <div class="wrap">
     <div class="sec-head rv">
       ${eyebrow('What every journey shares.')}
-      <h2 id="same-h" class="h2">One product, <b>shaped to the firm.</b></h2>
+      <h2 id="same-h" class="h2">One product, <b>shaped to your business.</b></h2>
       <p class="lead">The pages differ in their words. The pieces underneath are the same, and you shape them without writing code.</p>
     </div>
     <div class="in-grid3 rv">
-      <div class="piece"><span class="num">01</span><h3>Records you shape</h3><p>As many types as the firm has, joined by links, with views and sealed fields an agent never reads.</p></div>
+      <div class="piece"><span class="num">01</span><h3>Records you shape</h3><p>As many types as the business has, joined by links, with views and sealed fields an agent never reads.</p></div>
       <div class="piece"><span class="num">02</span><h3>A Playbook per track</h3><p>Each kind of work has its own stages, tasks and doers, and they run side by side over shared records.</p></div>
       <div class="piece"><span class="num">03</span><h3>Flows with a person in the loop</h3><p>Triggers, waits and branches run the same way each time. A send, a signature request or a page waits for a yes.</p></div>
       <div class="piece"><span class="num">04</span><h3>Agents with roles</h3><p>Intake, drafting, reviewer and more, in one group chat across Claude, Codex, Grok and OpenRouter.</p></div>
@@ -269,7 +269,7 @@ ${connectsTo([
       <h2 id="map-h" class="h2">Ask your agent to <b>map your business.</b></h2>
       <p class="lead">Insurance agencies, architecture and engineering firms and others follow the same method. Paste this into Claude, Codex or any agent that can read the web. The full prompt lives on <a href="/">the home page</a>.</p>
     </div>
-    ${promptBlock(`Read ${SITE}/llms-full.txt and ${MAP_DOC}. I run [describe your firm]. We use [your main software]. Interview me about my people, what we track, the kinds of work we do, our paperwork and our software. Then show my business as a Vyre Space: members and roles, record types, a Playbook for each kind of work, Flows, agents with roles, documents and signing, a client page, the apps to connect, and what waits for my yes. Mark what Vyre does today and what is Next. Design on paper and change nothing until I say so.`)}
+    ${promptBlock(`Read ${SITE}/llms-full.txt and ${MAP_DOC}. I run [describe your business]. We use [your main software]. Interview me about my people, what we track, the kinds of work we do, our paperwork and our software. Then show my business as a Vyre Space: members and roles, record types, a Playbook for each kind of work, Flows, agents with roles, documents and signing, a client page, the apps to connect, and what waits for my yes. Mark what Vyre does today and what is Next. Design on paper and change nothing until I say so.`)}
     <div class="btn-row"><a class="btn btn-fill" href="/map/">Explore the interactive map</a><a class="btn" href="${MAP_DOC}">Read the method</a></div>
   </div>
 </section>
@@ -282,7 +282,7 @@ ${connectsTo([
     page({
       slug: 'for', path: '/for/', title: 'Vyre for professional services firms: law, accounting, consulting, agencies, real estate',
       desc: 'Pick the kind of firm closest to yours and follow one client from the first inquiry to closed work on Vyre: records, Playbooks, Flows, agents with roles and your own stack.',
-      ogTitle: 'Your firm, as an AI-native firm.', ogSub: 'Law, accounting, consulting, agencies and real estate: one client journey each.', body,
+      ogTitle: 'Your business, as an AI-native business.', ogSub: 'Law, accounting, consulting, agencies and real estate: one client journey each.', body,
       ld: [crumbs([['Vyre', home], ['For', `${SITE}/for/`]])],
     });
   }
