@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useStoreQuery } from "../store";
 import type { FieldEnv } from "../fields/types";
 import { isHiddenType, linkIndex } from "./logic.js";
+import { tally } from "../tags/model.js";
 import type { RecordsWorld } from "./shared";
 
 export function useRecordsWorld() {
@@ -20,6 +21,9 @@ export function useRecordEvents(urn: string | undefined) {
 }
 
 /** The env every field renderer on a screen gets: who the actors are, what a link points at, the clock, where a link goes. */
-export function useFieldEnv(world: RecordsWorld | undefined, open: (urn: string) => void): FieldEnv {
-  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? linkIndex(world.types, world.byType) : {}, now: Date.now(), open }), [world, open]);
+export function useFieldEnv(world: RecordsWorld | undefined, open: (urn: string) => void, openTag?: (tag: string) => void): FieldEnv {
+  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? linkIndex(world.types, world.byType) : {}, now: Date.now(), open, openTag, tags: world ? spaceTags(world) : [] }), [world, open, openTag]);
 }
+
+/** Every tag the Space's records carry, most used first (the suggestions of a tag field and the picks of a tag filter). */
+export const spaceTags = (world: RecordsWorld): string[] => tally(Object.values(world.byType).flat()).map((t) => t.tag);

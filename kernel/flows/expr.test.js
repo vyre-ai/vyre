@@ -118,3 +118,14 @@ test("expr: format prints a time in named formats, in a zone, after an optional 
   assert.equal(run("format(t, \"time\", z, 1, \"parsec\")", { t, z: LA }), String(t), "an unknown unit leaves the time as it was given");
   assert.equal(run("format(t, \"time\", \"Nowhere/None\")", { t }), "4:00 pm", "an unknown zone is UTC");
 });
+
+test("expr: first reads the main address of a list field", () => {
+  assert.equal(run("first(a)", { a: ["a@x.co", "b@x.co"] }), "a@x.co");
+  assert.equal(run("first(a)", { a: [{ email: "a@x.co" }, { email: "b@x.co", primary: true }] }), "b@x.co", "the one marked primary");
+  assert.equal(run("first(a)", { a: [{ address: "c@x.co" }] }), "c@x.co");
+  assert.equal(run("first(a)", { a: [] }), null);
+  assert.equal(run("first(a)", {}), null);
+  assert.equal(run("first(a)", { a: "plain@x.co" }), "plain@x.co", "not a list: the value");
+  assert.equal(run("\"To \" + first(a) + \".\"", { a: ["a@x.co"] }), "To a@x.co.");
+  assert.equal(run("\"To \" + first(a) + \".\"", { a: [] }), "To .", "an empty list reads as empty text");
+});

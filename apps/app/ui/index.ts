@@ -157,6 +157,8 @@ export { FlowBuilder } from "./flows/FlowBuilder";
 export { StepCard } from "./flows/StepCard";
 export { ContextBox } from "./flows/ContextBox";
 export { parseTags, tagLabel, tagToken } from "./flows/tags.js";
+export { TagRow } from "./components/TagRow";
+export { isTagsField, tagsOf, withTag, withoutTag, tally as tallyTags, suggest as suggestTags, tagChip, tagOfChip } from "./tags/model.js";
 export { flowSentence, fromDefinition as flowFromDefinition, toDefinition as flowDefinition, draftProblems as flowProblems, triggerPhrase, stepSummary as flowStepSummary } from "./flows/logic.js";
 export type { Draft as FlowDraft, DraftStep as FlowDraftStep, Options as FlowOptions } from "./flows/logic.js";
 export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";

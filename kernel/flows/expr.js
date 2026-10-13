@@ -217,7 +217,16 @@ function show(v, zone, format, amount, unit) {
   }
 }
 
+/** The main item of a list field (an emails or phones field): the one marked primary, else the first. A text inside a record-like item is read from email, address, number, phone or value. Not a list: the value itself. @param {any} v */
+function first(v) {
+  const list = Array.isArray(v) ? v : [v];
+  const x = list.find(e => e && typeof e === "object" && e.primary === true) ?? list[0];
+  if (x && typeof x === "object") { for (const k of ["email", "address", "number", "phone", "value"]) if (typeof x[k] === "string") return x[k]; return null; }
+  return x ?? null;
+}
+
 export const FUNCTIONS = Object.freeze({
+  first,
   date: (/** @type {any} */ v, /** @type {any} */ zone) => show(v, zone, "weekday"),
   datetime: (/** @type {any} */ v, /** @type {any} */ zone) => show(v, zone, "weekdaytime"),
   addtime: (/** @type {any} */ v, /** @type {any} */ amount, /** @type {any} */ unit, /** @type {any} */ zone) => { const ms = toTime(v); return ms === null ? null : moved(ms, Number(amount), unit, zoneOf(zone)); },

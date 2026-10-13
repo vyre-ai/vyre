@@ -13,6 +13,7 @@ import type { Participant } from "./group.js";
 import type { AboutInfo } from "./AboutSheet";
 import type { ProjectRef } from "./useChatProject";
 import { chatTools } from "../../screens/chat-tools/instance";
+import { ChatTags } from "../../screens/tags/RecordTags";
 import { ForkRows, TasksPage, ContextPage, TranscriptPage, BackPage } from "../../screens/chat-tools/ChatToolsSheet";
 import { ChatFiles } from "../../screens/chat-tools/ChatFiles";
 import { driveSource } from "../../screens/drive/file-source";
@@ -123,6 +124,7 @@ export function ChatPanel(p: ChatPanelProps) {
       ) : <Row dense title="Add a teammate" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
 
       <SectionLabel>About</SectionLabel>
+      <ChatTags chat={p.chat} thread={p.thread} />
       <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => p.onPage("project")} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
       <Row dense lead={<Icon name="hash" size={20} />} title={p.info.record ? p.info.record.title : "Link to a record"} sub={p.info.record ? `${p.info.record.type}${p.info.space ? " in " + p.info.space : ""}` : "Types # in the message box and picks one"} chevron={!p.info.record} onPress={p.info.record ? undefined : () => { p.onClose(); p.onLinkRecord(); }} />
       <View style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 6 }}>

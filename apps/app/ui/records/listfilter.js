@@ -3,6 +3,7 @@
 // A chip is { field, op, operand }: the op and operand are the field kind's own (ui/fields/logic.js KIND_LOGIC), so a new kind of field filters with no change here.
 import { KIND_LOGIC, actorIdOf, fmtMoney, isEmpty, isSealedValue, isoDay, matches, normalizeKind, plain, toDate } from "../fields/logic.js";
 import { sectionsOf } from "../components/groups.js";
+import { isTagsField, tagWords } from "../tags/model.js";
 
 /** @typedef {{ field: string, op: string, operand?: any }} Chip */
 
@@ -27,6 +28,7 @@ const opOf = (/** @type {any} */ f, /** @type {string} */ id) => (KIND_LOGIC[nor
 /** A chip in words: "Stage is Intake", "Owner is you". @param {any} def @param {Chip} chip @param {{ me?: string, actors?: { id: string, name: string }[], links?: Record<string, { title: string }> }} [ctx] */
 export function chipWords(def, chip, ctx = {}) {
   const f = fieldOf(def, chip.field) || { label: chip.field, kind: "text" };
+  if (isTagsField(f)) { const w = tagWords(chip); if (w) return w; }
   const o = opOf(f, chip.op);
   const label = o?.label ?? chip.op;
   const a = chip.operand;

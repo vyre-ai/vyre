@@ -12,6 +12,10 @@ export type FieldEnv = {
   open?: (urn: string) => void;
   space?: string;
   allowed?: string[];
+  /** Every tag the Space's records carry, for the tag field's suggestions. */
+  tags?: string[];
+  /** Where a tag's page is: given, a tag chip in view mode opens it. */
+  openTag?: (tag: string) => void;
 };
 
 /** FieldRendererProps (kernel/contracts/fields.d.ts), as the Deck had them. `reveal` asks the store for a sealed value after the person's proof. */

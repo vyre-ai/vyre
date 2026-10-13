@@ -8,6 +8,7 @@ import { View } from "react-native";
 import * as D from "./display";
 import * as E from "./editors";
 import { SealedEdit, SealedView } from "./Sealed";
+import { isTagsField } from "../tags/model.js";
 import { KIND_LOGIC, PICKABLE_KINDS, isSealedValue, normalizeKind } from "./logic.js";
 import type { EditProps, FieldEnv, FieldProps, ViewProps } from "./types";
 
@@ -53,9 +54,13 @@ export const KINDS: [string, string][] = PICKABLE_KINDS as [string, string][];
 
 const kindOf = (kind: string) => registry[normalizeKind(kind)] || registry.text;
 
+/** The free-tags field (a text named "tags", R031-02) is drawn as tag chips by every screen that draws a field; it is still text to the engine and to filters. */
+const TAGS_KIND: Kind = { ...registry.text, label: "Tags", view: D.TagsView, edit: E.TagsEdit };
+const kindFor = (p: FieldProps) => (isTagsField(p.definition) && normalizeKind(p.kind) === "text" ? TAGS_KIND : kindOf(p.kind));
+
 /** The view of a field. */
 export function renderField(p: FieldProps, env: FieldEnv = {}): ReactElement {
-  const k = kindOf(p.kind);
+  const k = kindFor(p);
   const sealed = isSealedValue(p.value) && normalizeKind(p.kind) !== "sealed";
   const V = (sealed ? registry.sealed : k).view;
   const body = <V p={p} env={env} />;
@@ -65,7 +70,7 @@ export function renderField(p: FieldProps, env: FieldEnv = {}): ReactElement {
 /** The edit form of a field. A sealed value is never prefilled: its editor starts empty and says nothing until the person types. */
 export function editField(p: FieldProps, env: FieldEnv = {}): ReactElement {
   const sealed = isSealedValue(p.value) && normalizeKind(p.kind) !== "sealed";
-  const k = sealed ? registry.sealed : kindOf(p.kind);
+  const k = sealed ? registry.sealed : kindFor(p);
   const E = k.edit;
   const body = <E p={p} env={env} emit={(v) => p.onChange?.(v)} />;
   return p.error ? <View className="gap-s1">{body}<Text size="caption" tone="err" accessibilityRole="alert">{p.error}</Text></View> : body;

@@ -10,7 +10,7 @@ import { Row } from "../components/Row";
 import { Text } from "../components/Text";
 import { PHONE_MAX, useUiTheme } from "../theme";
 import { Select } from "../components/Select";
-import { DATE_DIRS, DATE_UNITS, appendToken, dateRefs, datePending, dateToken, dateWords, aliasTable, toAliasText, toPathText, completeBrace, history, insertList, openBrace, parseTemplate, renderPreview, smsCount, suggest, tokenKnown, tokenLabel, unknownTokens } from "./template.js";
+import { DATE_DIRS, DATE_FORMATS, DATE_UNITS, appendToken, dateRefs, datePending, dateToken, dateWords, aliasTable, toAliasText, toPathText, completeBrace, history, insertList, openBrace, parseTemplate, renderPreview, smsCount, suggest, tokenKnown, tokenLabel, unknownTokens } from "./template.js";
 import type { Draft, Options } from "./logic.js";
 
 /**
@@ -42,7 +42,7 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
   const soon = groups.flatMap((g) => g.soon || []);
   const refs = useMemo(() => dateRefs(groups), [groups]);
   const [dateOpen, setDateOpen] = useState(false);
-  const [dt, setDt] = useState({ ref: "", dir: "at", amount: 1, unit: "days" });
+  const [dt, setDt] = useState({ ref: "", dir: "at", amount: 1, unit: "days", format: "" });
   const refLabel = refs.find((r) => r.token === dt.ref)?.label ?? "";
   const spec = { ...dt, refLabel, kind: refs.find((r) => r.token === dt.ref)?.dateKind };
   const panel = groups.map((g) => ({ ...g, items: g.items.filter((i) => !q || `${i.label} ${i.token}`.toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.items.length);
@@ -97,6 +97,7 @@ export function TemplateComposer({ open, onClose, title, value, onChange, draft,
                           <View className="min-w-0 flex-1"><Select label="Unit" value={dt.unit} options={DATE_UNITS} onChange={(unit) => setDt({ ...dt, unit })} /></View>
                         </View>
                       )}
+                      <Select label="Show it as" value={dt.format} options={DATE_FORMATS} onChange={(format) => setDt({ ...dt, format })} />
                       {dt.ref ? <Chip icon="cal">{dateWords(spec)}</Chip> : null}
                       <Text size="caption" tone="label">{datePending(spec) ?? ""}</Text>
                       <Button kind="primary" size="sm" label="Insert the date" disabled={!dt.ref} onPress={() => { edit(appendToken(value, dateToken(dt))); setDateOpen(false); }} />

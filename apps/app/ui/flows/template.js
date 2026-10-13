@@ -9,16 +9,17 @@ import { isRecordTrigger } from "./logic.js";
 /** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, alias: string, note?: string, address?: boolean, date?: boolean, dateKind?: string }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
 /** @typedef {{ title: string, items: Item[], object?: string, soon?: Item[] }} Group  `object`: the object's own label, shown before a field in a chip */
 
-export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)\}/gi;
+/** `{path}`, and for a date `{path - 1 day}`, `{path + 2 hours as date}`: a path, then an optional offset and an optional format (the engine's own grammar, logic.js). The path is group 1, the rest group 2. */
+export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}/gi;
 
-/** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string })[]} */
+/** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string, suffix: string })[]} */
 export function parseTemplate(text) {
   const s = String(text ?? "");
   /** @type {any[]} */ const out = [];
   let at = 0;
   for (const m of s.matchAll(TOKEN_RE)) {
     if (m.index > at) out.push({ text: s.slice(at, m.index) });
-    out.push({ token: m[0], path: m[1] });
+    out.push({ token: m[0], path: m[1], suffix: m[2] });
     at = m.index + m[0].length;
   }
   if (at < s.length) out.push({ text: s.slice(at) });
@@ -26,7 +27,7 @@ export function parseTemplate(text) {
 }
 
 /** Just the tokens, in order. @param {string} text */
-export const tokensOf = (text) => /** @type {{ token: string, path: string }[]} */ (parseTemplate(text).filter((p) => "token" in p));
+export const tokensOf = (text) => /** @type {{ token: string, path: string, suffix: string }[]} */ (parseTemplate(text).filter((p) => "token" in p));
 
 /** Helper values a message can use, by token. `engine` is true only for those the Flow engine resolves today; the rest are listed and marked. */
 export const HELPERS = /** @type {{ token: string, label: string, engine: boolean }[]} */ ([
@@ -105,7 +106,7 @@ export const unknownTokens = (text, groups) => tokensOf(text).filter((t) => !tok
 
 /** The text with every token swapped for a sample value; one with no sample shows its label in brackets. @param {string} text @param {Record<string, string>} sample @param {Group[]} groups */
 export function renderPreview(text, sample, groups = []) {
-  return parseTemplate(text).map((p) => ("token" in p ? (p.path in sample ? String(sample[p.path]) : `[${tokenLabel(p.path, groups)}]`) : p.text)).join("");
+  return parseTemplate(text).map((p) => ("token" in p ? (p.path in sample ? String(sample[p.path]) : `[${tokenLabel(p.path, groups)}${p.suffix ? `,${p.suffix}` : ""}]`) : p.text)).join("");
 }
 
 /** When the text ends inside an open brace ("Hello {cl"), the part typed after it; otherwise null. This is what opens the autocomplete. @param {string} text @returns {string | null} */
@@ -165,7 +166,9 @@ export function dateRefs(groups) {
 }
 
 export const DATE_DIRS = /** @type {[string, string][]} */ ([["before", "before"], ["at", "at"], ["after", "after"]]);
-export const DATE_UNITS = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"], ["weeks", "weeks"]]);
+export const DATE_UNITS = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"], ["weeks", "weeks"], ["months", "months"]]);
+/** The formats the engine prints a time in, and how a person says them. The first, "", lets the field's own type decide. */
+export const DATE_FORMATS = /** @type {[string, string][]} */ ([["", "As the field is set"], ["date", "date"], ["time", "time"], ["datetime", "date and time"], ["weekday", "weekday and date"], ["weekdaytime", "weekday, date and time"], ["iso", "ISO (2026-10-14T14:00)"]]);
 
 /** How the engine shows a date: a date as "Tue 14 Oct" (weekday and date), a datetime as "Tue 14 Oct, 2:00 pm", both in the Space's time zone; any other field as plain text. @param {string} [kind] */
 export const dateFormatWords = (kind) => (kind === "datetime" ? "date and time" : kind === "date" ? "weekday and date" : "text");
@@ -173,18 +176,32 @@ export const dateFormatWords = (kind) => (kind === "datetime" ? "date and time" 
 /**
  * One inserted date as a spec: { ref (a token), refLabel, kind (the field's type), dir, amount, unit }. `dateWords` reads it back ("Appointment \u00b7 Start, minus 1 day, as weekday and date") and `dateToken` is
  * what goes into the text. The engine formats a date or datetime field by its type, so the format is not a choice; an offset has no engine function yet, so `datePending` says so.
- * @param {{ ref: string, refLabel: string, kind?: string, dir: string, amount: number, unit: string }} d
+ * @param {{ ref: string, refLabel: string, kind?: string, dir: string, amount: number, unit: string, format?: string }} d
  */
 export function dateWords(d) {
   const unit = d.amount === 1 ? d.unit.replace(/s$/, "") : d.unit;
   const shift = d.dir === "at" || !d.amount ? "" : `, ${d.dir === "before" ? "minus" : "plus"} ${d.amount} ${unit}`;
-  return `${d.refLabel}${shift}, as ${dateFormatWords(d.kind)}`;
+  const named = DATE_FORMATS.find((f) => f[0] && f[0] === d.format);
+  return `${d.refLabel}${shift}, as ${named ? named[1] : dateFormatWords(d.kind)}`;
 }
-/** @param {{ ref: string }} d */
-export const dateToken = (d) => d.ref;
+/** The token to put in the text: `{after.starts_at - 1 day as date}`. The offset is left out for "at" or an amount of 0, the format when the field's own type decides. @param {{ ref: string, dir: string, amount: number, unit: string, format?: string }} d */
+export function dateToken(d) {
+  if (!d.ref) return "";
+  const unit = d.amount === 1 ? d.unit.replace(/s$/, "") : d.unit;
+  const shift = d.dir === "at" || !d.amount ? "" : ` ${d.dir === "before" ? "-" : "+"} ${d.amount} ${unit}`;
+  return `${d.ref.slice(0, -1)}${shift}${d.format ? ` as ${d.format}` : ""}}`;
+}
+/** The other way: a date token read back into its choices, or null when it is not one. @param {string} token */
+export function parseDateToken(token) {
+  TOKEN_RE.lastIndex = 0;
+  const m = new RegExp(TOKEN_RE.source, "i").exec(token);
+  if (!m || m[0] !== token) return null;
+  const off = /^ ([+-]) (\d+) (\w+?)s?(?= as |$)/.exec(m[2]);
+  const fmt = /as (\w+)$/.exec(m[2]);
+  return { ref: `{${m[1]}}`, dir: off ? (off[1] === "-" ? "before" : "after") : "at", amount: off ? Number(off[2]) : 1, unit: off ? `${off[3]}s` : "days", format: fmt ? fmt[1] : "" };
+}
 /** What the engine does not do yet for this date, in words, or null. @param {{ ref: string, kind?: string, dir: string, amount: number }} d @param {{ engineDates?: boolean }} [o] */
 export function datePending(d, o = {}) {
-  if (d.dir !== "at" && d.amount && !o.engineDates) return "An offset (plus or minus) is Coming next: this inserts the date as it is.";
   if (d.ref && !d.kind) return "This field is not a date type, so it is inserted as plain text. Set its type to date in Records to format it.";
   return null;
 }
@@ -195,10 +212,10 @@ export const aliasTable = (groups) => groups.flatMap((g) => [...g.items, ...(g.s
 /** A text with its engine paths shown as friendly names. A token not on the list stays as written. @param {string} text @param {{ alias: string, path: string }[]} table */
 export function toAliasText(text, table) {
   const m = new Map(table.map((r) => [r.path, r.alias]));
-  return String(text ?? "").replace(TOKEN_RE, (all) => m.get(all) ?? all);
+  return String(text ?? "").replace(TOKEN_RE, (all, p, suf) => { const a = m.get(`{${p}}`); return a ? `${a.slice(0, -1)}${suf}}` : all; });
 }
 /** The other way, on save: friendly names back to engine paths. @param {string} text @param {{ alias: string, path: string }[]} table */
 export function toPathText(text, table) {
   const m = new Map(table.map((r) => [r.alias, r.path]));
-  return String(text ?? "").replace(TOKEN_RE, (all) => m.get(all) ?? all);
+  return String(text ?? "").replace(TOKEN_RE, (all, p, suf) => { const a = m.get(`{${p}}`); return a ? `${a.slice(0, -1)}${suf}}` : all; });
 }
