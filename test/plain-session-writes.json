@@ -329,6 +329,14 @@
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
   },
+  "publish.domain.add": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; a domain on a live site is refused to a model, and nothing is served until a person says yes to going live"
+  },
+  "publish.domain.verify": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; a domain on a live site is refused to a model, and nothing is served until a person says yes to going live"
+  },
   "publish.preview": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"

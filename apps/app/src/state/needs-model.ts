@@ -13,7 +13,7 @@ export type Presence = { required: boolean; covered: boolean; since: number | nu
 export type Need = {
   /** "gate:<id>" or "ask:<id>": unique across both sources. */
   id: string;
-  source: "gate" | "ask";
+  source: "gate" | "ask" | "publish";
   /** The Gate item's id or the ask's id, as the box names it. */
   ref: string;
   /** gate: send, spend or delete; ask: permission or question. */
@@ -35,6 +35,9 @@ export type Need = {
   via?: string | null;
   why?: string | null;
   tool?: string | null;
+  /** Publish only: the plan the person says yes to (what goes public, where, with which secrets, replacing what) and its hash, which publish.decide checks. */
+  plan?: unknown;
+  planHash?: string;
 };
 
 /** What joins an item to names: projects by slug, threads by id. */
@@ -149,14 +152,47 @@ export function fromAsk(a: Record<string, unknown>, ctx: NeedsContext = {}, at?:
   };
 }
 
+/** One publishing act waiting for a yes (publish.holds): the plan is the box's own words, shown as it came. */
+export function fromPublish(h: Record<string, unknown>, ctx: NeedsContext = {}, at?: number): Need | null {
+  const task = str(h.task);
+  const planHash = str(h.plan_hash);
+  if (!task || !planHash || !h.plan || typeof h.plan !== "object") return null;
+  const thread = str(h.thread);
+  const requested = Array.isArray(h.requested_by) ? h.requested_by.filter((x): x is string => typeof x === "string") : [];
+  const agent = (thread ? str(ctx.threads?.[thread]?.agent) : null) ?? requested.map((r) => /^(?:agent|mcp|harness):(.+)$/.exec(r)?.[1] ?? null).find(Boolean) ?? null;
+  const urls = Array.isArray((h.plan as Record<string, unknown>).urls) ? ((h.plan as Record<string, unknown>).urls as unknown[]).filter((u): u is string => typeof u === "string") : [];
+  return {
+    id: "publish:" + task,
+    source: "publish",
+    ref: task,
+    kind: "publish",
+    title: str(h.title) ?? "Put a site on the internet",
+    detail: urls.join(", "),
+    mono: false,
+    agent,
+    project: null,
+    thread,
+    at: num(h.at, at ?? 0),
+    // Going live is the person's own yes with Face ID or the click the Gate uses (publish.decide takes presence).
+    presence: { required: true, covered: false, since: null },
+    tool: "publish.decide",
+    plan: h.plan,
+    planHash,
+  };
+}
+
 /** Oldest first, so nothing starves; ties by id, so the order is stable. */
 export function order(list: readonly Need[]): Need[] {
   return [...list].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /** gate.held and threads.asks as one list. */
-export function merge(gates: unknown, asks: unknown, ctx: NeedsContext = {}): Need[] {
+export function merge(gates: unknown, asks: unknown, ctx: NeedsContext = {}, holds: unknown = null): Need[] {
   const out: Need[] = [];
+  for (const h of Array.isArray(holds) ? holds : []) {
+    const n = h && typeof h === "object" ? fromPublish(h as Record<string, unknown>, ctx) : null;
+    if (n) out.push(n);
+  }
   for (const g of Array.isArray(gates) ? gates : []) {
     const n = g && typeof g === "object" ? fromGate(g as Record<string, unknown>, ctx) : null;
     if (n) out.push(n);
@@ -206,6 +242,11 @@ export function applyNeedsEvent(list: readonly Need[], e: NeedsEvent, ctx: Needs
     }
     case "gate.revised":
       return { list, refetch: true };
+    // A publishing act was held for a yes, or a person decided one (here or on another screen): the list says which.
+    case "deployment.held":
+      return { list, refetch: true };
+    case "deployment.decided":
+      return { list: without("publish:" + String(p.task ?? "")), refetch: false };
     default:
       return { list, refetch: false };
   }
@@ -218,7 +259,7 @@ export function hydrate(value: unknown): Need[] | null {
   for (const v of value) {
     if (!v || typeof v !== "object") return null;
     const n = v as Partial<Need>;
-    if (typeof n.id !== "string" || (n.source !== "gate" && n.source !== "ask") || typeof n.ref !== "string" || typeof n.title !== "string"
+    if (typeof n.id !== "string" || (n.source !== "gate" && n.source !== "ask" && n.source !== "publish") || typeof n.ref !== "string" || typeof n.title !== "string"
       || typeof n.at !== "number" || !n.presence || typeof n.presence !== "object") return null;
     out.push({
       ...(n as Need),
@@ -236,6 +277,8 @@ export function hydrate(value: unknown): Need[] | null {
 /** Can a swipe commit this answer here, or must the item open? */
 export function canCommit(n: Need, d: Decision): { ok: true } | { ok: false; why: string } {
   if (d === "approve" && n.source === "ask" && n.kind === "question") return { ok: false, why: "Needs your answer" };
+  // Putting a site on the internet is read first: the plan is on the item's page, never a swipe.
+  if (d === "approve" && n.source === "publish") return { ok: false, why: "Read the plan first" };
   // Discarding a Gate item and denying an ask send nothing, so they never need a proof.
   const needsProof = d === "approve" && n.presence.required;
   if (needsProof && !n.presence.covered) return { ok: false, why: "Needs Face ID on this device" };
@@ -244,6 +287,7 @@ export function canCommit(n: Need, d: Decision): { ok: true } | { ok: false; why
 
 /** The tool call an answer is. */
 export function answerCall(n: Need, d: Decision, surface: string): { tool: string; input: Record<string, unknown> } {
+  if (n.source === "publish") return { tool: "publish.decide", input: { task: n.ref, approve: d === "approve", ...(n.planHash ? { plan_hash: n.planHash } : {}) } };
   if (n.source === "gate") return d === "approve" ? { tool: "gate.approve", input: { id: n.ref } } : { tool: "gate.reject", input: { id: n.ref } };
   return { tool: "threads.answer", input: { ask: n.ref, decision: d === "approve" ? "allow" : "deny", surface } };
 }

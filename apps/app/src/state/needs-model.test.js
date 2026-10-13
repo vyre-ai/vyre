@@ -122,3 +122,26 @@ test("needs: ages read short", { skip: !strip }, async () => {
   assert.equal(age(0, 3 * 3_600_000), "3h");
   assert.equal(age(0, 72 * 3_600_000), "3d");
 });
+
+const hold = (o = {}) => ({ task: "tsk_1", action: "goLive", title: "Put version 1 of northwind on the internet", deployment: "dep_abc", thread: "t2", plan: { action: "publish", goes_public: true, urls: ["https://northwind.example.com"], deployment: { id: "dep_abc", name: "northwind", version: 1 }, secrets: [], ungranted_env: [], replaces: null, hash: "h".repeat(64) },
+  plan_hash: "h".repeat(64), requested_by: ["person:per_a", "agent:juno"], at: 1500, ...o });
+
+test("needs: a publish an agent asked for is a row beside the Gate's and the asks, answered by publish.decide with the plan's hash", { skip: !strip }, async () => {
+  const { merge, answerCall, canCommit, applyNeedsEvent, hydrate } = await load();
+  const list = merge([gate()], [ask()], ctx, [hold()]);
+  assert.deepEqual(list.map((n) => n.id), ["gate:g1", "publish:tsk_1", "ask:a1"]);
+  const n = list[1];
+  assert.equal(n.source, "publish");
+  assert.equal(n.agent, "juno", "the thread's agent is who asked");
+  assert.equal(n.thread, "t2");
+  assert.equal(n.detail, "https://northwind.example.com");
+  assert.deepEqual(answerCall(n, "approve", "phone"), { tool: "publish.decide", input: { task: "tsk_1", approve: true, plan_hash: "h".repeat(64) } });
+  assert.equal(answerCall(n, "reject", "phone").input.approve, false);
+  assert.equal(canCommit(n, "approve").ok, false, "a swipe never puts a site live: the plan is read first");
+  assert.equal(canCommit(n, "reject").ok, true);
+  // events: a new hold reads the list again, a decision (from any screen) takes the row away at once
+  assert.equal(applyNeedsEvent(list, { type: "deployment.held", payload: { task: "tsk_2" } }, ctx).refetch, true);
+  assert.deepEqual(applyNeedsEvent(list, { type: "deployment.decided", payload: { task: "tsk_1" } }, ctx).list.map((x) => x.id), ["gate:g1", "ask:a1"]);
+  assert.equal(hydrate(JSON.parse(JSON.stringify(list)))?.length, 3, "the cache keeps it");
+  assert.equal(merge([], [], ctx, [hold({ plan: null })]).length, 0, "a hold with no plan is not shown: there would be nothing to read before the yes");
+});

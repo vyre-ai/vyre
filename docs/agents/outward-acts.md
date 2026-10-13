@@ -4,7 +4,7 @@ summary: What counts as an outward act, how to ask for one, and what a person se
 audience: agents
 owner: docs
 status: stable
-tokens: 650
+tokens: 720
 when: You want to send an email or message, pay, post, publish, share, or delete something, or a call came back held.
 ---
 
@@ -26,6 +26,14 @@ A connection's operation is outward when its kind is `change`, `send`, `spend`, 
 2. Call the tool that does the act (`gate.request` for a message, a payment or a deletion; a connector's operation; a publish). If the act is outward, the call is held: you get a held result, not a success. One exception: if the person's own words already asked for exactly this (same kind, same recipients), it goes at once and is logged.
 3. Tell the person what is waiting and where (Now, or the waiting list). Do not call the tool again.
 4. When the person approves, the system sends exactly the approved words. You are told the outcome. A person may edit the words first; trust the settled result, not your draft.
+
+## Put a site live
+
+1. `publish.create`, then `publish.preview` (private address).
+2. `publish.secret.grant` for Vault items you may use (a real secret is held).
+3. `publish.domain.add` (`canonical` apex or www). `publish.domain.status` gives the DNS record to tell the person; recheck with `publish.domain.verify`. Live sites: the person's.
+4. `publish.go` returns `held` with the plan and a task. Nothing is live.
+5. Ask the person to approve it on Now or in this chat. You cannot approve. Do not call `publish.go` again.
 
 ## What the system guarantees
 
