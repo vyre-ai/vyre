@@ -76,13 +76,13 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     pause wait for_ms=3600000
 - ask: to, title, form, record
     yes ask to=role:partner title="Send the welcome email?"
-- assign: to, title, record, output, how, template, checker, await, skills
+- assign: to, title, record, output, how, template, checker, await, skills, followers, notes, brief
     task assign to=teammate:paralegal title="Draft the engagement letter" output={kind: draft}
 - call: action, resource, input, with, approve
     mail call action=email.send resource=vyre://space/email/outbox input={to: `trigger.email`, subject: Welcome}
 - stage: type, record, to
     move stage type=matter record=`steps.make.record.id` to=Active
-- agent: assistant, title, instructions, record, output, await, skills
+- agent: assistant, title, instructions, record, output, await, skills, checker, followers, notes
     draft agent assistant=teammate:paralegal title="Summarise the file" instructions="Read the file and write a short summary." output={kind: note}
 - classify: input, labels
     kind classify input=`trigger.message` labels=["new client", "existing client", spam]
