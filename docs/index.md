@@ -8,7 +8,7 @@ status: stable
 
 # Vyre docs
 
-Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out. Your sessions run on a server you control (the box), so untrusted code never touches your laptop and you can reach them from anywhere. Vyre sorts those sessions into projects and threads, remembers what was said across all of them, and marks in gold anything that came from memory rather than a model. You can launch agents that run on your own Claude subscription or an API key with a budget, each with its own computer. A built-in vault lets agents use credentials nobody sees. Vyre's built-in private network puts it all at your own address, reachable only from your devices. Vyre is not a fork or a wrapper: it plugs into Claude Code as a plugin, and improves when Claude Code does. The full statement is [Section 1 of the spec](architecture/spec.md#1-what-vyre-is).
+Vyre is one product for a team and its AI agents. It runs on a server you own and on the computers your people use. People and agents share chats, records, files, a vault, Flows and projects. Agents work on tasks and report back, any model can be used on your own accounts, and everything that leaves your server waits for a person's yes. A built-in vault lets agents use credentials nobody sees. Start with the [architecture overview](architecture/overview.md) for the picture, or the [full statement in the spec](architecture/spec.md#1-what-vyre-is).
 
 ## Start here
 
