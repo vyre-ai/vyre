@@ -48,6 +48,17 @@ function FlowsLoader() {
   return null;
 }
 
+function AgentsLoader() {
+  const put = useLoaded((s) => s.put);
+  useEffect(() => {
+    if (MOCK) { put("agents", ["intake", "refunds"].map((n) => ({ id: n, label: n, href: `/u/assistants/${n}`, icon: "assistants" }))); return; }
+    let live = true;
+    tool<any>("agents.list", {}).then((r) => { const rows = Array.isArray(r) ? r : Array.isArray(r?.agents) ? r.agents : []; if (live) put("agents", rows.filter((a: any) => a?.name).map((a: any) => ({ id: String(a.name), label: String(a.name), href: `/u/assistants/${a.name}`, icon: "assistants" }))); }, () => {});
+    return () => { live = false; };
+  }, [put]);
+  return null;
+}
+
 /** The sections of Settings: what the owner moved under it (sidebar-ia). */
 const SETTINGS: PanelItem[] = [
   { id: "spaces", label: "Space", href: "/u/spaces", icon: "space", group: "Space" },
@@ -73,13 +84,14 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
   chats: { title: "Chat", icon: "chat", search: "Search chats", empty: "No chats yet." },
   records: { title: "Records", icon: "records", empty: "" },
+  agents: { title: "Agents", icon: "assistants", search: "Search agents", empty: "No agents yet." },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
 };
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
 export function PanelLoader({ id }: { id: string | null }) {
-  return id === "projects" ? <ProjectsLoader /> : id === "chats" ? <ChatsLoader /> : id === "flows" ? <FlowsLoader /> : null;
+  return id === "projects" ? <ProjectsLoader /> : id === "chats" ? <ChatsLoader /> : id === "flows" ? <FlowsLoader /> : id === "agents" ? <AgentsLoader /> : null;
 }
 
 /** The panel the path opens, or null (the main sidebar): a place with no list built yet stays on the main sidebar. */
