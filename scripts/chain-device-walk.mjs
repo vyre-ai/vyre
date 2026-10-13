@@ -110,13 +110,20 @@ try {
     const rl = await callAs(conn, "records.list", { type: "contact" });
     return `system.info 200 (${info.text.slice(0, 80)}); spaces.list ${sp.status} ${sp.text.slice(0, 160)}; records.list ${rl.status} ${rl.text.slice(0, 160)}`;
   });
-  await step("3b. the server marks its row via_chain (relay_devices)", async () => {
-    const script = `const {DatabaseSync}=require("node:sqlite");`;
-    void script;
-    const r = await srv.operator("relay.device.info", { id: "x" }).catch((/** @type {any} */ e) => ({ error: e.message }));
+  await step("3b. the server marks its row via_chain (relay.devices, then relay.device.info of the chain device's row)", async () => {
+    const rows = await rowsOf();
+    const list = JSON.stringify(rows).slice(0, 400);
+    const arr = Array.isArray(rows) ? rows : (rows && (rows.devices || rows.rows)) || [];
+    const row = arr.find((/** @type {any} */ d) => d && /founder-laptop|chain/.test(String(d.name || ""))) || arr[arr.length - 1];
+    assert.ok(row && row.id, `a device row: ${list}`);
+    const r = await srv.operator("relay.device.info", { id: row.id }).catch((/** @type {any} */ e) => ({ error: e.message }));
     const s = JSON.stringify(r);
-    assert.ok(/via_chain|viaChain|chain/.test(s), `a row mentions the chain: ${s.slice(0, 500)}`);
+    assert.ok(/via_?[cC]hain|chain/.test(s), `the row mentions the chain: ${s.slice(0, 500)}`);
     return s.slice(0, 500);
+  });
+  await step("3c. a chain device asks for a person-session challenge over its own channel (presence.person.pair-challenge): what it hears", async () => {
+    const ch = await callAs(conn, "presence.person.pair-challenge");
+    return `pair-challenge ${ch.status} ${ch.text.slice(0, 220)}`;
   });
 
   // 8: replay
