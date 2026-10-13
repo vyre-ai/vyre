@@ -49,6 +49,9 @@ test("manifest: canonical bytes, a valid signature, and every kind of tamper ref
   await assert.rejects(verifyManifest(bytes, sig, pubOf(other)), /does not verify/);
   await assert.rejects(buildManifest({ release: "1.2", files }), /not a release manifest/);
   await assert.rejects(buildManifest({ release: "1.2.3", files: { "../x": files["a.js"] } }), /bad manifest entry/);
+  // a dynamic route's chunk name carries brackets; traversal and absolute paths stay refused
+  await buildManifest({ release: "1.2.3", files: { "_expo/static/js/web/[flow]-0a1b.js": files["a.js"] } });
+  await assert.rejects(buildManifest({ release: "1.2.3", files: { "[x]/../y": files["a.js"] } }), /bad manifest entry/);
   assert.equal(newer("0.10.0", "0.9.9"), true);
   assert.equal(newer("0.4.2", "0.4.2"), false);
 });

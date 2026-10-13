@@ -15,7 +15,7 @@ import { utf8, fromUtf8, hex, base64url, fromBase64url } from "../client/bytes.j
 export const MANIFEST = "release-manifest.json";
 export const SIGNATURE = "release-manifest.sig";
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
-const PATH = /^(?!\/)(?!.*\.\.)[\w./@-]{1,200}$/;
+const PATH = /^(?!\/)(?!.*\.\.)[\w./@[\]-]{1,200}$/;   // [ and ] for the web export's chunk names of dynamic routes, e.g. "[flow]-<hash>.js"; still no "..", no leading "/"
 
 const subtle = () => globalThis.crypto.subtle;
 
