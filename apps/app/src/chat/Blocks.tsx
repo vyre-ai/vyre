@@ -54,6 +54,8 @@ const S = StyleSheet.create({
 export type BlockCtx = {
   /** A wide screen shows diffs side by side. */
   wide: boolean;
+  /** Whether the thread is wide enough (about 560 points) for a side by side diff; with the chat panel open beside it, it is not, and a diff is one column. Defaults to `wide`. */
+  diffSplit?: boolean;
   onOpenTerminal?: (command: string) => void;
   onOpenInDrive?: (path: string) => void;
   /** A file a model made or changed: open it in the file viewer, here. */
@@ -264,7 +266,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
         {block.files.map((f) => (
           <View key={f.path}>
             <FileHead file={f} ctx={ctx} />
-            <DiffLines file={f} wide={ctx.wide} />
+            <DiffLines file={f} wide={ctx.diffSplit ?? ctx.wide} />
           </View>
         ))}
         <RoomNote note={block.note} />
@@ -296,7 +298,7 @@ export function DiffBlock({ block, ctx }: { block: Extract<Block, { block: "diff
                 </Pressable>
                 {open && full ? (
                   <View style={{ borderTopWidth: 1, borderTopColor: color.edge }}>
-                    <DiffLines file={full} wide={ctx.wide} />
+                    <DiffLines file={full} wide={ctx.diffSplit ?? ctx.wide} />
                     {ctx.onOpenInDrive ? <View style={S.s17}><Button size="sm" icon="drive" label="Open in Files" onPress={() => ctx.onOpenInDrive?.(path)} /></View> : null}
                   </View>
                 ) : null}
