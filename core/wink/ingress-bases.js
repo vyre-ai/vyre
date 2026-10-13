@@ -3,7 +3,7 @@
 // refuses never stops the others.
 
 /** Every tool that takes the public base, in the order they were added: share links, the Vault MCP passes, the outside agents' tokens. */
-export const BASE_TOOLS = Object.freeze(["artifacts.public.base", "vault.mcp.base", "outside.mcp.base"]);
+export const BASE_TOOLS = Object.freeze(["artifacts.public.base", "vault.mcp.base", "outside.mcp.base", "mcpconn.base"]);
 
 /** @param {(tool: string, input: any) => any} call @param {string | null} base */
 export function tellIngressBase(call, base) {

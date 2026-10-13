@@ -1,4 +1,5 @@
 // @ts-check
+import { fmtDate } from "../fields/logic.js";
 // The pure half of the create form, the one timeline and the import wizard (Records).
 
 /** @typedef {{ name: string, label: string, kind: string, required?: boolean, hidden?: boolean, unique?: boolean, options?: string[] }} F */
@@ -104,7 +105,7 @@ export function factsOf(def, rec) {
     if (f === first || f.hidden || f.seal || !["text", "choice", "number", "money", "date"].includes(f.kind)) continue;
     const v = rec.data?.[f.name];
     if (blank(v)) continue;
-    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : String(v);
+    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : f.kind === "date" || f.kind === "datetime" ? fmtDate(v) : String(v);
     out.push([f.label, s]);
   }
   return out;

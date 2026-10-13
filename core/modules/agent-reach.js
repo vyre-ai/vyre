@@ -7,6 +7,7 @@
 // person-only, so the person can always take it back).
 // Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
 
+import { readFileSync } from "node:fs";
 import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
@@ -163,6 +164,12 @@ export const PERSON_ONLY = new Map([
   ["files.drive.link.revoke", "takes an outsider's link away: the person's own decision about who reaches a file"],
   ["wink.server.probe", "the person's own device calls out to a server it paired: a network call as the person's device"],
   ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
+  ["import.sessions.list", "reads the sessions on the person's computer, nothing else: the person's own view, which their connected AI reaches through its own door"],
+  ["import.sessions.run", "sends the person's chosen coding sessions to their Vyre: the person's own act, which their connected AI does with the person's yes"],
+  ["mcpconn.connect", "needs the person's Face ID or presence: it widens an AI's authority to the person's own, the person's own yes"],
+  ["mcpconn.list", "the person's own connections of their AI: the person's own view"],
+  ["mcpconn.activity", "what the person's own connected AI changed: the person's own view"],
+  ["mcpconn.revoke", "the person's own stop: ends a connection of their AI; an assistant must not undo it"],
   ["pluginagent.revoke", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.decline", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.on", "the person's own decision about what Claude Code on a computer may reach"],
@@ -629,3 +636,36 @@ export const WEB_REACH = new Map([
  * @type {ReadonlyMap<string, string>}
  */
 export const SETUP_REACH = new Map([...SETUP_REASONS]);
+
+/**
+ * A connected client of the person's own (core/mcpconn: Claude Code or Codex through `vyre mcp`) acts AS the person: the daemon vouches its token and the call runs on the person's own chain, so the
+ * person-only setup tools work for it as they do in the app. It is still a model, not a face: outward acts stay held, and what a person proves with a face or a key, or does to the doors themselves,
+ * stays out of its reach. This is that list: a tool in PERSON_ONLY whose reason is the person's presence, devices, sign-in or secrets, the human-only tools, and these families.
+ */
+export const MCP_NEVER_PREFIXES = Object.freeze(["mcpconn.", "pluginagent.", "presence.", "signin.", "relay.", "vault.", "outside.", "wink.", "link.", "modules.list.reset", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity."]);
+const NEVER_REASON = /face id|presence|device|pairing|sign[- ]?in|secret|passkey|identity|key/i;
+/** May a call that came in on a person's MCP connection use this tool as the person? @param {string} tool */
+export function mcpPersonMay(tool) {
+  if (MCP_NEVER_PREFIXES.some(p => tool.startsWith(p))) return false;
+  const why = PERSON_ONLY.get(tool);
+  return !(why && NEVER_REASON.test(why));
+}
+
+/**
+ * What a HOSTED key (the public /mcp door) can use: an ALLOWLIST, with HOSTED_NEVER as a second wall (the lead's ruling and rc1-e's review, 13 Oct: a leaked hosted key must not be able to run code on the box or
+ * on the person's computer, add or change credentials or connections, drive the desktop or a browser, manage computers or devices, change people, roles or grants, install anything, or make keys; a deny-list alone
+ * keeps missing tools). Invisible to the person: no prompt, the tool is simply refused. A LOCAL key (stdio on the person's own computer) keeps mcpPersonMay's reach. Outward acts stay held at the Gate.
+ * A tool is usable when it is on the allowlist BY NAME (the work surface: records read/write without define or forget, projects read, chats and threads send/read without a shell, files read and versions write, flows run and read without define or kits, tasks and approvals listing, memory read/file, recall, mentions, held sends) and is on no never-list; a tool nobody has placed is refused. core/modules/hosted-allow.json holds the list with one reason each, and test/hosted-keys.test.js pins it.
+ */
+export const HOSTED_ALLOW_REASONS = Object.freeze(/** @type {Record<string, string>} */ (JSON.parse(readFileSync(new URL("./hosted-allow.json", import.meta.url), "utf8")).allow));
+export const HOSTED_ALLOW = Object.freeze(new Set(Object.keys(HOSTED_ALLOW_REASONS)));
+export const HOSTED_NEVER = Object.freeze({
+  code: ["appmods.", "term.", "hooks.", "runner.", "code.", "threads.shell", "agents.spawn", "team.duties.run-now", "learn.skill-", "work.template.install", "flows.kit.", "bridges.kit.install", "publish.secret.", "publish.domain.", "publish.edge", "spaces.server.", "spaces.compute.", "mcp.add", "mcp.update", "mcp.call"],
+  desktop: ["hands-", "hands.", "computer.", "chrome.", "glass.", "screen."],
+  credentials: ["vault.", "connectors.", "sessions.accounts.", "google.add", "google.connect", "google.remove", "google.release", "github.connect", "github.remove", "mail.release", "comms.release", "agents.credentials", "flows.connections", "outside.", "settings.", "onboard.", "push.", "memory.backup."],
+  devices: ["computers.", "spaces.devices.", "spaces.presence.", "spaces.identity.", "spaces.setup.", "memory.identity.", "relay.", "link.", "presence.", "signin.", "wink.", "network."],
+  people: ["spaces.members.", "spaces.invites.", "spaces.moves.", "spaces.upgrade.", "spaces.owner.", "spaces.host-here", "spaces.name-here", "spaces.retire-here", "roles.", "grants.", "projects.access.", "assistant.access.", "work.chat.keys.", "work.team.", "work.project.level", "work.know.move-", "work.chat.upgrade-", "work.chat.history-import"],
+  keys: ["mcpconn.", "pluginagent."],
+});
+/** May a call on a hosted key use this tool? @param {string} tool */
+export const hostedKeyMay = tool => HOSTED_ALLOW.has(tool) && !Object.values(HOSTED_NEVER).some(list => list.some(p => tool.startsWith(p)));
