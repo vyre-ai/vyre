@@ -53,7 +53,7 @@ export function sourcesOf(s) {
 function setAt(base, path, value) {
   if (!path.length) return value;
   const [h, ...rest] = path;
-  const copy = Array.isArray(base) ? [...base] : { ...(base || {}) };
+  const copy = Object.assign(Array.isArray(base) ? [] : {}, base);     // an array keeps the names laid on it (children.name)
   copy[h] = setAt(copy[h], rest, value);
   return copy;
 }
@@ -102,12 +102,12 @@ export async function linksFor(step, scope, reader) {
       found.set(key, mine);
     }
   }
-  return [...found.values()].map(f => ({ at: f.at, over: Array.isArray(f.base) ? f.over : { ...f.over, urn: f.base.urn } }));
+  return [...found.values()].map(f => ({ at: f.at, over: Array.isArray(f.base) ? Object.assign([...f.base], f.over) : { ...f.over, urn: f.base.urn } }));
 }
 
 /** The scope with the links laid over it. @param {Record<string, any>} scope @param {{ at: string[], over: any }[]} overs */
 export function withLinks(scope, overs) {
   let out = scope;
-  for (const { at, over } of overs) out = setAt(out, at, over);
+  for (const { at, over } of [...overs].sort((a, b) => a.at.length - b.at.length)) out = setAt(out, at, over);
   return out;
 }

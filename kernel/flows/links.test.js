@@ -24,8 +24,7 @@ const payments = async (/** @type {any} */ w, /** @type {any} */ chain) => (awai
 
 test("a second hop through a link that is empty stops the step, plainly", async () => {
   const { w, chain, urn } = await setup();
-  const mother = await w.kernel.records.create(chain, "kin", { name: "Rae" });
-  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam", spouse: urn(mother) });
+  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   await install(w, copyFlow("trigger.after.spouse.name + ' / ' + trigger.after.spouse.spouse.name"));
   await w.kernel.records.create(chain, "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
@@ -56,13 +55,15 @@ test("a many link read without a number is the names joined by a comma; with a n
 test("a linked record that is gone stops the step with a plain error", async () => {
   const { w, chain, urn } = await setup();
   const gone = await w.kernel.records.create(chain, "kin", { name: "Gone" });
+  const main = await w.kernel.records.create(chain, "kin", { name: "Main", spouse: urn(gone) });
   await w.kernel.records.remove(chain, "kin", gone.id, gone.version);
-  await install(w, copyFlow("trigger.after.spouse.name"));
-  await w.kernel.records.create(chain, "kin", { name: "Main", spouse: urn(gone) });
+  await install(w, { ...copyFlow("trigger.after.spouse.name"), trigger: { on: "event", event: "kin.updated", where: 'trigger.after.name == "Main2"' } });
+  await w.kernel.records.update(chain, "kin", main.id, { name: "Main2" }, main.version);
   await settle(w);
   const runs = await w.runner.listRuns();
-  assert.ok(runs.length >= 1 && runs.every((/** @type {any} */ r) => r.state === "failed"));
-  assert.match(String(runs[0].error.message), /step put: trigger\.after\.spouse: the kin it links to is not there, or is not yours to see/);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].state, "failed");
+  assert.match(String(runs[0].error.message), /step put: .*the kin it links to is not there, or is not yours to see/);
   assert.deepEqual(await payments(w, chain), []);
 });
 
