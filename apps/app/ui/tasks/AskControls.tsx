@@ -100,7 +100,7 @@ export function DatePick({ label, value, onChange, now }: { label: string; value
         </Pressable>
       </View>
       {open ? (
-        <View style={{ borderWidth: 1, borderColor: color.edge, borderRadius: 12, padding: 10, gap: 6, backgroundColor: color["surface-3"], alignSelf: "flex-start", width: 7 * 40 + 20, maxWidth: "100%" }}>
+        <View style={{ borderWidth: 1, borderColor: color.edge, borderRadius: 12, padding: 10, gap: 6, backgroundColor: color["surface-3"], alignSelf: "flex-start", width: 7 * 40 + 24, maxWidth: "100%" }}>
           <View className="flex-row items-center justify-between">
             <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => step(-1)} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}><Icon name="chev-l" size={16} tone="muted" /></Pressable>
             <Text strong>{MONTHS[shown.m]} {shown.y}</Text>
