@@ -98,7 +98,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
               ) : null}
               {s.kind === "project" ? (
                 <>
-                  <Select label="Project template" value={s.template ?? ""} options={options.templates.map((x) => [x.id, x.name] as [string, string])} placeholder="Choose a template" onChange={(template) => setStep(s.id, { template })} />
+                  <Select label="Project playbook" value={s.template ?? ""} options={options.templates.map((x) => [x.id, x.name] as [string, string])} placeholder="Choose a playbook" onChange={(template) => setStep(s.id, { template })} />
                   <Field label="Project name" value={s.name ?? ""} onChangeText={(name) => setStep(s.id, { name })} placeholder="Named after the record" help="Leave blank to name it after the record." />
                   <Select label="Link the project to" value={s.link ?? ""} options={[["", "Nothing"], ...links]} onChange={(link) => setStep(s.id, { link })} />
                   <Tasks tpl={options.templates.find((x) => x.id === s.template)} o={options} />
@@ -297,7 +297,7 @@ function SendWith({ kind, s, set, options }: { kind: "email" | "sms"; s: DraftSt
   );
 }
 
-/** What a started project hands out, from the template's own first stage: it shows that the template, not the Flow, assigns the tasks. */
+/** What a started project hands out, from the playbook's own first stage: it shows that the playbook, not the Flow, assigns the tasks. */
 function Tasks({ tpl, o }: { tpl: Options["templates"][number] | undefined; o: Options }) {
   const t = firstStageTasks(tpl, o);
   if (!t) return null;

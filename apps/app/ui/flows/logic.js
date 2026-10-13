@@ -58,7 +58,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
   ] },
   { name: "Work", items: [
     { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent", words: "todo give delegate" },
-    { kind: "project", icon: "projects", label: "Start a project", hint: "From a template, linked to a record", words: "template" },
+    { kind: "project", icon: "projects", label: "Start a project", hint: "From a playbook, linked to a record", words: "playbook template" },
     { kind: "subflow", icon: "flows", label: "Run another flow", hint: "Use a flow you already made", words: "subflow call nested" },
   ] },
 ]);
@@ -113,7 +113,7 @@ export function stepSummary(s, o, d) {
     case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ")}` : ""}`;
     case "project": {
       const t = o.templates.find((x) => x.id === s.template);
-      return `Start a project from the ${t ? t.name : "chosen"} template${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
+      return `Start a project from the ${t ? t.name : "chosen"} playbook${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
     }
     case "agent": return `Hand it to the ${named(o.agents, s.agent) || "chosen"} agent${s.instructions && s.instructions.trim() ? " with your instructions" : ""}${crew(s, o)}`;
     case "assign": return `Ask ${whoWords(s.to, o)} to ${s.title && s.title.trim() ? lc(s.title.trim()) : "do a task"}${crew(s, o)}`;
@@ -165,7 +165,7 @@ export function stepProblem(s, o) {
   void o;
   switch (s.kind) {
     case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which object to create a record in.";
-    case "project": return s.template ? null : "Choose a project template.";
+    case "project": return s.template ? null : "Choose a project playbook.";
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;

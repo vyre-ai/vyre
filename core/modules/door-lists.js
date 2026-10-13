@@ -14,6 +14,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
   "agents.vault.assign", "agents.vault.list", "agents.vault.unassign",
+  // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
+  "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
@@ -116,7 +118,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "google.mail.search", "google.mail.send", "google.open", "google.remove", "google.test",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
   "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",
-  "import.cancel", "import.plan", "import.scan", "import.start", "import.status", "import.stop",
+  "import.cancel", "import.plan", "import.scan", "import.sessions.list", "import.sessions.run", "import.start", "import.status", "import.stop",
   "learn.accept", "learn.add", "learn.check", "learn.edit", "learn.lessons", "learn.relax", "learn.retire", "learn.signals", "learn.skill-dismiss", "learn.skill-install",
   "learn.skill-retire", "learn.skills", "learn.stats",
   "link.companion.approve", "link.companion.hello", "link.companion.list", "link.companion.pair", "link.companion.remove", "link.events", "link.health", "link.hello",
@@ -141,7 +143,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "outside.grant", "outside.list", "outside.register", "outside.revoke", "outside.token", "outside.ungrant",
   "planner.agenda", "planner.calendar.create", "planner.calendar.sync", "planner.delete", "planner.dismiss", "planner.done", "planner.get", "planner.settings",
   "planner.snooze", "planner.update",
-  "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.status",
+  "mcpconn.activity", "mcpconn.connect", "mcpconn.guide", "mcpconn.list", "mcpconn.revoke", "pluginagent.ask", "pluginagent.decline", "pluginagent.grant", "pluginagent.on", "pluginagent.pending", "pluginagent.revoke", "pluginagent.status",
   "presence.capsule.pin", "presence.code", "presence.enroll", "presence.keys", "presence.person.locked", "presence.person.renew-allow", "presence.person.revoke", "presence.person.rotate",
   "presence.person.sessions", "presence.remove",
   "previews.frame", "previews.keep", "previews.log", "previews.open", "previews.operator", "previews.remove", "previews.reply", "previews.restart", "previews.run-get",
@@ -226,7 +228,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
 export const SELF_GATED = Object.freeze(new Set([
-  "vault.account.create", "vault.account.enroll-touchid", "vault.account.lock", "vault.account.status", "vault.account.unlock", "vault.account.unlock-phone",
+  "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
+  "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",
   "vault.connect", "vault.connections.grant", "vault.connections.list", "vault.connections.revoke", "vault.connections.sync", "vault.connections.update", "vault.copy",

@@ -14960,6 +14960,72 @@
    "review": true,
    "description": "Change work (records).",
    "was": "List the tools this caller may use in this Space: name, what it does and risk. Give tool or schemas for input shapes."
+  },
+  {
+   "old": "import.sessions.list",
+   "name": "spaces.import.sessions.list",
+   "area": "spaces",
+   "object": "import.sessions",
+   "verb": "list",
+   "effect": "read",
+   "review": false,
+   "description": "List import sessions (spaces).",
+   "was": "List the coding-agent sessions on this computer (Claude Code, Codex, Gemini CLI; Grok is not supported yet) one per line: { id, agent, cwd, "
+  },
+  {
+   "old": "import.sessions.run",
+   "name": "spaces.import.sessions.run",
+   "area": "spaces",
+   "object": "import.sessions",
+   "verb": "run",
+   "effect": "write",
+   "review": false,
+   "description": "Run import sessions (spaces). Needs: sessions, confirmed.",
+   "was": "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list f"
+  },
+  {
+   "old": "mcpconn.connect",
+   "name": "system.mcpconn.create",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "create",
+   "effect": "write",
+   "review": true,
+   "description": "Create mcpconn (settings).",
+   "was": "The person connects their own Claude Code or Codex on this computer: from then on `vyre mcp` acts as them, with the access they have, and ou"
+  },
+  {
+   "old": "mcpconn.guide",
+   "name": "system.mcpconn.update",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "update",
+   "effect": "write",
+   "review": true,
+   "description": "Change mcpconn (settings).",
+   "was": "The walk-through for setting Vyre up from the work on this computer (the same words as the setup-vyre MCP prompt): look, propose per client,"
+  },
+  {
+   "old": "mcpconn.list",
+   "name": "system.mcpconn.list",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "list",
+   "effect": "read",
+   "review": true,
+   "description": "List mcpconn (settings).",
+   "was": "The connections of the person's own AI: [{ id, client, device, created, lastUsed, revoked }], newest first."
+  },
+  {
+   "old": "mcpconn.revoke",
+   "name": "system.mcpconn.revoke",
+   "area": "system",
+   "object": "mcpconn",
+   "verb": "revoke",
+   "effect": "access",
+   "review": true,
+   "description": "Revoke mcpconn (settings). Needs: id. Needs the person.",
+   "was": "The person ends a connection: its key stops working at once. No presence needed, so it is always possible."
   }
  ]
 }

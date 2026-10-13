@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Card, Divider, FlowStep, Row, Segmented, Switch, ToastHost } from "@vyre/ui";
+import { Banner, Card, Divider, FlowStep, Row, Segmented, Switch } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { shellKind } from "../../src/shell/shell";
 import { SCREENS, stepLabels } from "./flow-model.js";
@@ -62,7 +62,6 @@ export function OnboardFlow() {
   return (
     <>
       <View key={`${id}:${stack.length}`} ctx={ctx} set={set} go={go} back={stack.length > 1 ? back : undefined} steps={at >= 0 ? { labels, current: at } : undefined} />
-      <ToastHost />
     </>
   );
 }

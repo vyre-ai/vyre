@@ -6,10 +6,10 @@ import { facesFor } from "../../src/theme/fonts";
 import { useUiTheme } from "../theme";
 
 /** One-line input shell, label above. `kind` picks the keyboard and the mask; the value is always a string at this layer. */
-export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, onSubmit, onKey }: {
+export function Field({ label, name, value, onChangeText, placeholder, kind = "text", error, help, disabled, multiline, lines, mono, className, inputRef, onKey, autoFocus, onSubmit }: {
+  /** Pressed Enter in a one-line field. */ onSubmit?: () => void;
   label?: string; value: string; onChangeText?: (v: string) => void; placeholder?: string; kind?: "text" | "number" | "email" | "phone" | "password" | "url" | "date"; /** The accessible name when there is no visible label. */ name?: string;
-  /** Pressed Enter in a one-line field. */ onSubmit?: () => void; /** A key pressed in the field (its name, for example ArrowDown). */ onKey?: (key: string) => void;
-  error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string;
+  error?: string; help?: string; disabled?: boolean; multiline?: boolean; /** Visible lines of a multiline field (default 3). */ lines?: number; mono?: boolean; className?: string; /** The text input itself, for a screen that moves focus to it (a list's search takes "/"). */ inputRef?: React.Ref<TextInput>; /** A key pressed in it (web: "Escape", "Enter"). */ onKey?: (key: string) => void; autoFocus?: boolean;
 }) {
   const [focus, setFocus] = useState(false);
   const { color, resolved } = useUiTheme();
@@ -20,6 +20,10 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
     <View className={cn("min-w-0 gap-s1", disabled && "opacity-60", className)}>
       {label ? <Text size="caption" strong tone="label">{label}</Text> : null}
       <TextInput
+        ref={inputRef}
+        autoFocus={autoFocus}
+        onSubmitEditing={onSubmit}
+        onKeyPress={onKey ? (e) => onKey(e.nativeEvent.key) : undefined}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -31,8 +35,6 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
         secureTextEntry={kind === "password"}
         autoCapitalize="none"
         accessibilityLabel={label ?? name ?? placeholder}
-        onSubmitEditing={onSubmit}
-        onKeyPress={onKey ? (e: any) => onKey(String(e.nativeEvent?.key ?? "")) : undefined}
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
         style={[mono ? faces.mono : faces.regular, { outlineStyle: "none" } as any]}

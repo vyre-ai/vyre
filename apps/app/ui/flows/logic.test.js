@@ -14,7 +14,7 @@ test("the refund starter reads as one sentence", () => {
 test("the ATP starter says what it does", () => {
   const s = flowSentence(ATP_DRAFT, O);
   assert.match(s, /^When a person signs up, create a Client record with Name, Email/);
-  assert.match(s, /start a project from the ATP template and link it to the new Client record/);
+  assert.match(s, /start a project from the ATP playbook and link it to the new Client record/);
 });
 
 for (const d of [REFUND_DRAFT, ATP_DRAFT]) {
@@ -52,7 +52,7 @@ test("a project step shows what its first stage hands out", () => {
   const t = firstStageTasks(O.templates[0], O);
   assert.equal(t.stage, "Kickoff");
   assert.deepEqual(t.tasks.map((x) => x.who), ["the project lead", "the Paralegal team", "the Research agent"]);
-  assert.equal(stepSummary({ id: "p", kind: "project", template: "tpl_atp" }, O), "Start a project from the ATP template");
+  assert.equal(stepSummary({ id: "p", kind: "project", template: "tpl_atp" }, O), "Start a project from the ATP playbook");
 });
 
 test("a stored Flow opens as a draft and saves back the same", () => {

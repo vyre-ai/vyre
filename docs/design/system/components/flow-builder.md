@@ -34,7 +34,7 @@ Owner's words: Flows are "process automation and project automation", and the ol
 | Palette name | Stored as | Settings |
 |---|---|---|
 | Create a record | `create` | kind of record, copy the details it started with |
-| Start a project | `call work.start-project` | template, name, the record to link it to. Shows the template's first-stage tasks and who each goes to, because the template, not the Flow, assigns them |
+| Start a project | `call work.start-project` | playbook, name, the record to link it to. Shows the playbook's first-stage tasks and who each goes to, because the template, not the Flow, assigns them |
 | Hand to an agent | `agent` | agent, task title, instructions, the record to hand over, pass the record's details and the project |
 | Assign a task | `assign` | role, agent or person, the task |
 | Send an email | `call comms.send` | to, subject, message. Goes through the space's sending service and is held for a yes each time |

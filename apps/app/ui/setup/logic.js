@@ -130,10 +130,10 @@ const EDITED = ["description", "required", "unique", "hidden", "options", "to", 
 export function applyDraft(original, d) {
   const base = { ...(original ?? {}) };
   for (const k of EDITED) delete base[k];
-  const own = original?.kind === "sealed";
-  const def = toDefinition({ ...d, sealed: false, kind: own ? "sealed" : d.kind });
-  const out = { ...base, ...def, kind: own ? "sealed" : def.kind };
-  if (own) delete out.options;
-  if (own || d.sealed) out.seal = { level: d.seal.level, class: d.seal.class, ...(d.seal.level === "human" && d.seal.reveal_roles.length ? { reveal_roles: [...d.seal.reveal_roles] } : {}), ...(d.seal.hint_allowed ? { hint_allowed: true } : {}) };
+  // The kernel seals only a field of kind sealed (kernel/gateway/index.js), and a sealed field stays sealed.
+  const sealed = d.sealed || original?.kind === "sealed";
+  const def = toDefinition({ ...d, sealed: false, kind: sealed ? "sealed" : d.kind });
+  const out = { ...base, ...def, kind: sealed ? "sealed" : def.kind };
+  if (sealed) { delete out.options; delete out.unique; out.seal = { level: d.seal.level, class: d.seal.class, ...(d.seal.level === "human" && d.seal.reveal_roles.length ? { reveal_roles: [...d.seal.reveal_roles] } : {}), ...(d.seal.hint_allowed ? { hint_allowed: true } : {}) }; }
   return out;
 }

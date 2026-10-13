@@ -114,11 +114,11 @@ export const factHits = (d: unknown): Row[] => arr(d).filter((f) => f.text).map(
 export function driveHits(d: unknown): Row[] {
   const list = arr((d as { results?: unknown } | null)?.results);
   return list.filter((x) => typeof x.path === "string").map((x): Row => ({ key: `d:${x.path}`, kind: "file", title: str(x.name) || String(x.path).split("/").pop() || "", sub: str(x.chat) ? `In a chat you are in, ${shortDir(x.path)}` : shortDir(x.path),
-    href: str(x.chat) ? `/u/chats/${encodeURIComponent(str(x.chat))}` : "/u/drive" }));
+    href: str(x.chat) ? `/u/chats/${encodeURIComponent(str(x.chat))}` : "/u/files" }));
 }
 
 /** Where a mentions.search result opens; null reads only. */
-export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/drive" : null);
+export const mentionRoute = (kind: string): string | null => (kind === "vault" ? "/u/vault" : kind === "drive" ? "/u/files" : null);
 /** mentions.search: names the box can find beyond what Find already searches (vault names, Drive, artifacts, GitHub), one section per kind. Records and sessions are Find's own, so they are left out;
  * a provider that was late or locked is named in a note. Names only, never a value. */
 export function mentionSections(d: unknown): { sections: Section[]; note: string } {

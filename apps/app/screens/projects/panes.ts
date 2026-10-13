@@ -43,3 +43,18 @@ export function panesAt(width: number, tab: PaneId, data: Record<string, unknown
   if (tab === "team" || tab === "timeline") return [tab];
   return want.includes(tab) ? want : [...want.slice(0, want.length - 1), tab];
 }
+
+// The project page, redone: Chats are the wide column; a right rail holds the rest as compact sections. On a phone the same parts are tabs.
+export type RailId = "stages" | "instructions" | "context" | "files" | "memory" | "access";
+export type PageTab = "chats" | "about" | "files" | "memory" | "timeline" | "team";
+export const PAGE_LABEL: Record<PageTab, string> = { chats: "Chats", about: "About", files: "Files", memory: "Memory", timeline: "Timeline", team: "Team" };
+export const RAIL_LABEL: Record<RailId, string> = { stages: "Stages", instructions: "Instructions", context: "Context", files: "Files", memory: "Memory", access: "Access" };
+
+/** The rail's sections, top to bottom; a project started from a template shows its stages first. */
+export const railFor = (data: Record<string, unknown> | undefined | null): RailId[] => (isTemplateProject(data) ? ["stages", "instructions", "context", "files", "memory", "access"] : ["instructions", "context", "files", "memory", "access"]);
+
+/** The tabs of a project page on a phone or a narrow window: Chats first, then About (instructions, context, stages), Files, Memory, Timeline, Team. */
+export const pageTabs = (): [PageTab, string][] => (["chats", "about", "files", "memory", "timeline", "team"] as PageTab[]).map((p) => [p, PAGE_LABEL[p]]);
+
+/** The reference a project's chats and timeline are asked for by: its short name, else its record id (the box's work hub resolves either); empty only when the page has neither. */
+export const refOf = (slug: string, pid: string): string => slug || pid;
