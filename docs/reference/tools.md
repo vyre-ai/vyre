@@ -3671,7 +3671,7 @@ The sources a folder can be linked from: { } -> { providers: [{ id, label, pick 
 
 ### `files.linked.read`
 
-Open a file in a linked folder: { id, path }. Fetched from the source as you, up to 8 MB. Keep rev to write back.
+Open a file in a linked folder: { id, path }. Fetched from the source as you, at most 8 MB. Keep rev.
 
 - Input:
   - `id` string, required
