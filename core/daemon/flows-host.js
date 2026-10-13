@@ -13,6 +13,7 @@
 import { retryAfter } from "../../lib/store-away.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createAgentWake } from "./agent-wake.js";
+import { teammateNames } from "./teammate-names.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -134,7 +135,7 @@ export function createFlowsHost(o) {
       const triggers = o.flowTriggers ? o.flowTriggers() : [];
       // The light of each Connection (green, amber, red), by the name a Flow's service step uses (`conn-<id>`): a Flow that uses a red one says so in its health line.
       const lights = o.lights ? await o.lights().catch(() => ({})) : {};
-      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
+      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: await teammateNames(o.callModule, space, log), templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }

@@ -115,7 +115,9 @@ test("@ has People, Teams and roles, one Agents group (the chat's AIs first); em
   const t = atTree({ people, teams: [{ name: "Attorneys", kind: "role" }, { name: "Intake", kind: "team" }] });
   assert.deepEqual(t.map((n) => n.label), ["People", "Teams and roles", "Agents"]);
   assert.deepEqual(t[0].kids.map((k) => k.label), ["alex", "Dana Okafor"]);
-  assert.deepEqual(t[0].kids[0].pick, { pick: "alex" });
+  assert.deepEqual(t[0].kids[0].pick, { pick: "alex", kind: "person", id: "alex" });
+  assert.deepEqual(t[2].kids[1].pick, { pick: "juno", kind: "agent", id: "juno" }, "a pick says what it is, so a document can keep a reference to it");
+  assert.deepEqual(t[1].kids.map((k) => k.pick), [{ pick: "Attorneys", kind: "role", id: "Attorneys" }, { pick: "Intake", kind: "team", id: "Intake" }]);
   assert.deepEqual(t[1].kids.map((k) => [k.label, k.sub]), [["Attorneys", "Role"], ["Intake", "Team"]]);
   assert.deepEqual(t[2].kids.map((k) => [k.label, k.sub]), [["claude", "AI in this chat"], ["juno", "Waiting"]]);
   const none = atTree({ people: [{ name: "alex", family: "person" }], teams: [] });

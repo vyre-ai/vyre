@@ -71,3 +71,10 @@ test("markdown: a table needs its separator row, and a pipe in a paragraph is no
   assert.deepEqual(kinds(parse("| a | b |\n| - | - |\n| 1 | 2 |")), ["table"]);
   assert.equal(parse("| a | b |\n|---|---|\n| 1 \\| 2 | 3 |")[0].rows[0][0].map((n) => n.v).join(""), "1 | 2");
 });
+
+test("markdown: a vyre:// link whose words start with @ or # is a reference node; any other vyre:// link is still only its words", () => {
+  const p = parse("Ask [@Sam](vyre://acme/person/p_1) and [#Doe estate](vyre://acme/matter/m_9), or [open](vyre://pair).")[0].c;
+  assert.deepEqual(p.filter((n) => n.t === "ref").map((n) => [n.lead, n.name, n.urn]), [["@", "Sam", "vyre://acme/person/p_1"], ["#", "Doe estate", "vyre://acme/matter/m_9"]]);
+  assert.equal(plainOf(p), "Ask @Sam and #Doe estate, or open.", "plainOf reads a reference as its words, and an ordinary vyre link as its label");
+  assert.ok(!p.some((n) => n.t === "a"), "a reference is never an outside link");
+});

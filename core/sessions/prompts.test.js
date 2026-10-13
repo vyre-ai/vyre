@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf, instructionBlocks } from "./prompts.js";
+import { Prompts, PROMPTS_MIGRATION, MAX_CHARS, REPLACE_WARNING, scopeOf, instructionBlocks, withRefsResolved } from "./prompts.js";
 
 function fresh() {
   const db = new DatabaseSync(":memory:");
@@ -167,4 +167,35 @@ test("compose: the agent's and the project's AGENTS.md are in the prompt, in bot
   assert.ok(r.text.includes("Be exact.") && r.text.includes("Cite the file number."), "a replacing prompt still carries the instructions");
   assert.deepEqual(instructionBlocks({ agent: { name: "x", text: "  " } }), [], "empty instructions add nothing");
   assert.match(instructionBlocks({ agent: { name: "x", text: "w ".repeat(20000) } })[0], /cut here: the rest is in the file/);
+});
+
+const SAM_LINK = "[@Sam](vyre://acme/person/p_1)";
+const PROJ_LINK = "[#Harlow](vyre://acme/project/p_7)";
+const REC_LINK = "[#Doe estate](vyre://acme/matter/m_9)";
+
+test("instructions: a reference becomes a line with its address, in the prompt", async () => {
+  const p = fresh();
+  const x = await withRefsResolved({ agent: { name: "rex", text: `Ask ${SAM_LINK} first.` }, project: { name: "Harlow", text: `See ${PROJ_LINK}.` } }, async () => true);
+  assert.equal(x?.agent?.text, "Ask @Sam (person, vyre://acme/person/p_1) first.");
+  assert.equal(x?.project?.text, "See #Harlow (project, vyre://acme/project/p_7).");
+  const c = p.compose({ agent: "rex", agentKind: "agent", append: VYRE, instructions: x });
+  assert.ok(c.text.includes("@Sam (person, vyre://acme/person/p_1)") && !c.text.includes("]("), "the model reads a plain line, not link markup");
+});
+
+test("instructions: a reference the reader may not read keeps only its name, and a check that fails counts as no", async () => {
+  /** @type {string[]} */ const asked = [];
+  const x = await withRefsResolved({ agent: { name: "rex", text: `${SAM_LINK} ${REC_LINK} ${PROJ_LINK} ${REC_LINK}` } }, async (r) => {
+    asked.push(r.urn);
+    if (r.kind === "person") return true;
+    if (r.kind === "project") throw new Error("no answer");
+    return false;
+  });
+  assert.equal(x?.agent?.text, "@Sam (person, vyre://acme/person/p_1) #Doe estate #Harlow #Doe estate");
+  assert.ok(!JSON.stringify(x).includes("m_9") && !JSON.stringify(x).includes("p_7"), "no address of what was refused");
+  assert.equal(asked.length, 3, "each address is asked once");
+});
+
+test("instructions: nothing to resolve is returned as it was", async () => {
+  assert.equal(await withRefsResolved(null, async () => true), null);
+  assert.deepEqual(await withRefsResolved({ agent: { name: "x", text: "Be brief." } }, async () => true), { agent: { name: "x", text: "Be brief." } });
 });
