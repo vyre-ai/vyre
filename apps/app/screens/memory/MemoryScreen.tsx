@@ -65,7 +65,7 @@ export default function MemoryScreen() {
         <View key={f.id} className="gap-s2 p-s4">
           <Field label="Fact" value={editing.text} onChangeText={(text) => setEditing({ id: f.id, text })} />
           <View className="flex-row gap-s2">
-            <Button kind="primary" size="sm" label="Save" onPress={() => { const text = editing.text; (real ? editReal(f.id, text) : Promise.resolve()).then(() => { setFacts((xs) => edit(xs, f.id, text)); setEditing(null); showToast("Saved. Assistants recall the new wording."); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not save.")); }} />
+            <Button kind="primary" size="sm" label="Save" onPress={() => { const text = editing.text; (real ? editReal(f.id, text) : Promise.resolve()).then(() => { setFacts((xs) => edit(xs, f.id, text)); setEditing(null); showToast("Saved. Agents recall the new wording."); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not save.")); }} />
             <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
           </View>
         </View>
@@ -93,7 +93,7 @@ export default function MemoryScreen() {
   return (
     <Frame title="Memory" sub="What Vyre knows, and where each fact came from." scope={!real}>
       <PlaceTag of="home" />
-      {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Juniper Studio never show here, and your assistants do not carry them into Mine.</Footnote> : null}
+      {!real && scope === "mine" ? <Footnote icon="shield">This is the Mine boundary. Facts from Juniper Studio never show here, and your agents do not carry them into Mine.</Footnote> : null}
       {!real && scope === "juniper" ? <Footnote icon="shield">This is the Juniper Studio boundary. Facts here stay in Juniper Studio. Your own Mine facts are not shown.</Footnote> : null}
 
       {real ? <View className="pt-s2"><Segmented label="Memory" value={tab} onChange={setTab} options={[["facts", "Facts"], ["lessons", proposed ? `Lessons (${proposed})` : "Lessons"], ["sites", "Sites"]]} /></View> : null}
@@ -123,7 +123,7 @@ export default function MemoryScreen() {
       {undo ? (
         <Banner>
           <View className="flex-row flex-wrap items-center gap-s3">
-            <Text className="min-w-0 flex-1">Forgot one fact. It is gone from Memory and from what assistants recall.</Text>
+            <Text className="min-w-0 flex-1">Forgot one fact. It is gone from Memory and from what agents recall.</Text>
             <Button size="sm" label="Undo" onPress={() => { const u = undo; (real && u.cid != null ? uncorrectReal(u.cid) : Promise.resolve()).then(() => { setFacts((xs) => restore(xs, u)); setUndo(null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); }} />
           </View>
         </Banner>
@@ -140,12 +140,12 @@ export default function MemoryScreen() {
         </View>
       )) : load.state === "loading" ? <LoadingState rows={3} />
         : load.state === "error" ? <ErrorState title="Memory did not load" reason={load.say ?? "Try again in a moment."} />
-        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
+        : <Card><EmptyState title="Nothing here yet" body={real ? "Nothing is remembered yet. Facts appear as your agents learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {real ? <RealExtras /> : null}
 
       {sealed.length ? (
-        <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Assistants see "SSN on file, sealed" and nothing more.`}</Footnote>
+        <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Agents see "SSN on file, sealed" and nothing more.`}</Footnote>
       ) : null}
 
       </>}

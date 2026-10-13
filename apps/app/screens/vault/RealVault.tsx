@@ -199,7 +199,7 @@ export default function RealVault() {
   const slug = adding ? slugName(adding.name) : "";
 
   return (
-    <Frame title="Vault" sub="Assistants use these and never see them." actions={<>{addMenu}<AssistantAreaMenu area="vault" label="the Vault" /></>}>
+    <Frame title="Vault" sub="Agents use these and never see them." actions={<>{addMenu}<AssistantAreaMenu area="vault" label="the Vault" /></>}>
       <PlaceTag of="home" />
       {ready && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={SECTIONS} fill={phone} /> : null}
       {ready && section === "sharing" ? <SharingPage rows={rows!} reload={load} openItem={openFrom} /> : null}
@@ -239,7 +239,7 @@ export default function RealVault() {
       {tab === "Held" ? (
         records.error && !records.data ? <Card flush><EmptyState title="Records did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
         : records.loading && !records.data ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card>
-        : <><Text size="caption" tone="label">Some fields on a record, such as a tax ID, are kept here instead. The record shows that one is on file, and an assistant sees the same, never the value.</Text><Card flush>
+        : <><Text size="caption" tone="label">Some fields on a record, such as a tax ID, are kept here instead. The record shows that one is on file, and an agent sees the same, never the value.</Text><Card flush>
             {held.length ? heldByRecord(held).map((g, gi) => (
               <View key={g.urn}>{gi ? <Divider /> : null}
                 <Row dense title={g.title} sub={g.typeLabel} />
@@ -273,7 +273,7 @@ export default function RealVault() {
       <Sheet open={!!sharing} onClose={() => setSharing(null)} title={cur ? `Give access to ${cur.name}` : "Give access"}>
         {sharing && cur ? (
           <View className="gap-s3">
-            <Field label="Assistant or app" value={sharing.module} onChangeText={(module) => setSharing({ ...sharing, module })} placeholder="mail" help="Its name as it appears in Vyre." />
+            <Field label="Agent or app" value={sharing.module} onChangeText={(module) => setSharing({ ...sharing, module })} placeholder="mail" help="Its name as it appears in Vyre." />
             <Field label="Only in this project (optional)" value={sharing.project} onChangeText={(project) => setSharing({ ...sharing, project })} />
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <Button kind="primary" label={busy ? "Sharing" : "Give access"} onPress={busy ? () => {} : () => doShare(cur)} />
@@ -302,7 +302,7 @@ export default function RealVault() {
             {adding.kind === "login" ? <Field label="Web address (optional)" error={fieldErr.url} value={adding.url} onChangeText={(url) => { setFieldErr((e) => ({ ...e, url: undefined })); setAdding({ ...adding, url }); }} placeholder="https://drive.juniper.example" /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <Button kind="primary" label={busy ? "Saving" : "Save"} onPress={busy ? () => {} : doAdd} />
-            <Text size="caption" tone="label">Assistants use it and never see the value.</Text>
+            <Text size="caption" tone="label">Agents use it and never see the value.</Text>
           </View>
         ) : null}
       </Sheet>

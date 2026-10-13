@@ -215,7 +215,7 @@ test("mentions: vault names, Drive, artifacts and GitHub as their own sections; 
   const m = mentionSections(d);
   assert.deepEqual(m.sections.map((x) => [x.key, x.rows.map((r) => [r.title, r.sub, r.href])]), [["m:vault", [["Gmail", "login", "/u/vault"]]], ["m:github", [["acme/site", "repo", undefined]]]]);
   assert.equal(m.note, "artifacts did not answer in time.");
-  assert.equal(mentionRoute("drive"), "/u/drive");
+  assert.equal(mentionRoute("drive"), "/u/files");
   assert.equal(mentionRoute("github"), null);
   assert.deepEqual(mentionSections(null), { sections: [], note: "" });
   assert.deepEqual(sections(b, "gmail", "all", { mentions: d }).map((x) => x.key), ["m:vault", "m:github"]);
@@ -237,7 +237,7 @@ test("Drive file names: a chat's file opens its chat and says so; a Drive file o
   const { driveHits, sections } = await import("./model.ts");
   const b = await base();
   const d = { results: [{ path: "Clients/A/retainer.txt", name: "retainer.txt", size: 3 }, { path: "Projects/p1/chat/chat_abc1234/notes.txt", name: "notes.txt", chat: "chat_abc1234" }, { name: "no path" }] };
-  assert.deepEqual(driveHits(d).map((r) => [r.title, r.sub, r.href]), [["retainer.txt", "Clients/A", "/u/drive"], ["notes.txt", "In a chat you are in, …/chat/chat_abc1234", "/u/chats/chat_abc1234"]]);
+  assert.deepEqual(driveHits(d).map((r) => [r.title, r.sub, r.href]), [["retainer.txt", "Clients/A", "/u/files"], ["notes.txt", "In a chat you are in, …/chat/chat_abc1234", "/u/chats/chat_abc1234"]]);
   assert.deepEqual(sections(b, "retainer", "all", {}).map((x) => x.key), []);
   assert.deepEqual(sections(b, "retainer", "all", { drive: d }).map((x) => x.key), ["drive"]);
   assert.deepEqual(sections(b, "retainer", "chats", { drive: d }).map((x) => x.key), [], "only in the all and files scopes");

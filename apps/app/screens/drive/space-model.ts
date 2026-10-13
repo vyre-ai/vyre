@@ -75,14 +75,14 @@ export function toBase64(bytes: Uint8Array): string {
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
 export function spaceDriveRefusal(code: string | undefined, message: string): string {
-  if (code === "unavailable") return "This space has no Drive yet.";
-  if (code === "no_such_tool") return "This box does not have the space's Drive yet. Update your Vyre.";
+  if (code === "unavailable") return "This space has no Files yet.";
+  if (code === "no_such_tool") return "This box does not have the space's Files yet. Update your Vyre.";
   if (code === "too_large") return "That file is bigger than 8 MB. The app sends files up to 8 MB.";
-  if (code === "denied") return "You may not do that in this space's Drive.";
+  if (code === "denied") return "You may not do that in this space's Files.";
   if (code === "not_found") return "That file is not there, or you may not read it.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "bad_input") return message || "That path is not allowed.";
-  return message || "Drive did not answer.";
+  return message || "Files did not answer.";
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------ shared links

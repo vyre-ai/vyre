@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createSessionSync, localReaderFor } from "./sync.js";
-import { isCredentialFile } from "./credfiles.js";
+import { isCredentialFile } from "../../lib/credfiles.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "nocreds-"));

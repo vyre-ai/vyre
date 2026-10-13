@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
 import type { Draft, Group, Rules } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useKernelTypes } from "./kernel-types";
@@ -17,7 +17,7 @@ export function TypeScreen() {
   const { type } = useLocalSearchParams<{ type: string }>();
   const router = useRouter();
   const { phone } = useUiTheme();
-  const { defs, load, loading, save } = useKernelTypes();
+  const { defs, load, loading, save, busy } = useKernelTypes();
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [label, setLabel] = useState("");
@@ -45,9 +45,10 @@ export function TypeScreen() {
     setEdit(null);
     showToast(`${field.label} saved.`);
   };
+  const working = !!busy[def.name];
   const pane = edit ? (
     <FieldEditor draft={edit.draft} onChange={(draft) => setEdit({ ...edit, draft })} owner={self} types={types} roles={ROLES} siblings={siblings} rules={edit.rules} onRules={(rules) => setEdit({ ...edit, rules })}
-      tried={edit.tried} editing={!!edit.orig} groups={groups.map((g) => g.name)} onSave={commit} onCancel={() => setEdit(null)} />
+      tried={edit.tried} busy={working} editing={!!edit.orig} groups={groups.map((g) => g.name)} sealLocked={edit.orig && edit.orig.kind !== "sealed" ? "To seal values this field already holds, add a new sealed field. Moving existing values into the vault is not offered here yet." : edit.orig ? "A sealed field stays sealed. Who may reveal it can be changed below." : undefined} onSave={commit} onCancel={() => setEdit(null)} />
   ) : null;
   const stages = (def.stages ?? []).map((s) => s.name);
   const putStages = (n: string[]) => { const old = new Map((def.stages ?? []).map((s: any) => [s.name, s])); save({ ...def, stages: n.map((x) => old.get(x) ?? { name: x }) } as Def); };
@@ -56,7 +57,7 @@ export function TypeScreen() {
       <SectionLabel first>Name</SectionLabel>
       <Card className="gap-s3">
         <Field label="Name (one of them)" value={label} onChangeText={setLabel} />
-        <View className="flex-row"><Button kind="primary" size="sm" label="Save" disabled={!label.trim() || label === def.label} onPress={() => { save({ ...def, label: label.trim() } as Def); showToast("Name saved."); }} /></View>
+        <View className="flex-row"><Button kind="primary" size="sm" label="Save" loading={working} disabled={working || !label.trim() || label === def.label} onPress={() => { save({ ...def, label: label.trim() } as Def); showToast("Name saved."); }} /></View>
       </Card>
       <SectionLabel>Fields</SectionLabel>
       <GroupedList groups={groups} items={rows} itemNoun="fields"
@@ -93,6 +94,7 @@ export function TypeScreen() {
   );
   return (
     <Page title={def.label ? `${self.plural}` : "Type"} sub="Customize" back="/u/settings/customize">
+      {working ? <Banner><Text strong>{`Setting up ${def.label} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
       <View className={phone ? "gap-s3" : "flex-row items-start gap-s4"}>
         {list}
         {!phone && pane ? <View className="min-w-0 flex-1 gap-s3"><SectionLabel first>{edit?.orig ? `Edit ${edit.orig.label}` : "New field"}</SectionLabel><Card>{pane}</Card></View> : null}

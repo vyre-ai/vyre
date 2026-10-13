@@ -20,7 +20,7 @@ export function loadInstall() {
     sees: "The projects you are added to and what Juniper Studio shares. Nothing else on your devices, and none of your other spaces.",
   };
   const connectors: Connector[] = [
-    { id: "gmail", label: "Gmail", sub: "Mail the assistants can read and draft in" }, { id: "calendar", label: "Google Calendar", sub: "Meetings on Now" },
+    { id: "gmail", label: "Gmail", sub: "Mail the agents can read and draft in" }, { id: "calendar", label: "Google Calendar", sub: "Meetings on Now" },
     { id: "drive", label: "Google Drive", sub: "Files in Drive" }, { id: "stripe", label: "Stripe", sub: "Payments, for the client-pays Flow" },
   ];
   const kits: FirstKit[] = [{ id: "estate", label: "Estate planning matter", sub: "2 record types, 3 Flows, 4 views and 1 role" }];

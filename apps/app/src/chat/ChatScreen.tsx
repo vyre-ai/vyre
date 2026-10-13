@@ -29,7 +29,9 @@ import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
+import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
 import { useChatProject } from "./useChatProject";
+import { chatPrefs, useChatPrefs } from "../state/chat-prefs";
 import { SelectionAsk } from "./SelectionAsk";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
@@ -135,7 +137,7 @@ export function ChatScreen(p: ChatScreenProps) {
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
   const toolsOpen = panel !== null;
-  const chatProject = useChatProject(here.thread ?? p.sessionId, p.project);
+  const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
   const [filesOpen, setFilesOpen] = useState(false);
   // the person's latest message, for "Link this chat to Northwind?"
@@ -150,8 +152,11 @@ export function ChatScreen(p: ChatScreenProps) {
     tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
     return () => { live = false; };
   }, [toolsOpen, p.sessionId, here.thread]);
-  const [muted, setMuted] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const prefs = useChatPrefs();
+  const muted = prefs.muted.includes(p.sessionId);
+  const pinned = prefs.pinned.includes(p.sessionId);
+  const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
+  const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
   const [replyTo, setReplyTo] = useState<{ message: string; name: string; text: string } | null>(null);
   // Tapping a quote goes to the original and lights it up for a moment.
@@ -167,6 +172,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
   // Find in this conversation (Cmd-F): the rows that hold the words, one at a time, the current one scrolled to and lit.
   const [findOpen, setFindOpen] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [findQ, setFindQ] = useState("");
   const [findAt, setFindAt] = useState(-1);
   const matches = useMemo(() => (findOpen ? findMatches(rows.filter((r) => r.kind === "user" || r.kind === "text").map((r) => ({ key: r.key, text: String(store.item(r.key)?.text ?? "") })), findQ) : []), [findOpen, findQ, rows, store]);
@@ -245,6 +251,7 @@ export function ChatScreen(p: ChatScreenProps) {
         flashTimer.current = setTimeout(() => setFlash(null), 1800);
       },
       onHighlight: (o: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => setHighlights((l) => addHighlight(l, makeHighlight(o))),
+      onOpenFile: (path: string) => setViewing(path),
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
@@ -311,6 +318,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const body = (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <FileViewerSheet path={viewing} onClose={() => setViewing(null)} />
       <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
@@ -413,7 +421,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {highlights.length ? (
-        <View accessibilityLabel="Highlighted for the assistant" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
+        <View accessibilityLabel="Highlighted for the agent" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 12 : 20, paddingTop: 6, gap: 6 }}>
           {highlights.map((h) => (
             <View key={h.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: phone ? 44 : 36, paddingLeft: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
               <Icon name="chat" tone="label" />

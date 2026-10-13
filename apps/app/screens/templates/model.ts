@@ -68,7 +68,11 @@ export const projectIdOf = (urn: string): string => String(urn).split("/").pop()
  * What the toast says after Start project: where the first tasks are, or which could not be made and why (an assistant that is not in this space yet), so "its first tasks are in Now" is never said of tasks
  * that do not exist.
  */
-export function startWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }): string {
+export function startWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[]; seats_failed?: { person: string; why: string }[] }): string {
+  const seats = (Array.isArray(r.seats_failed) ? r.seats_failed : []).map((x) => ` ${x.person} could not be added to the team: ${x.why}.`).join("");
+  return `${tasksWords(name, r)}${seats}`;
+}
+function tasksWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }): string {
   const skipped = Array.isArray(r.tasks_skipped) ? r.tasks_skipped : [];
   if (!skipped.length) return `${name} is started. Its first tasks are in Now.`;
   const made = Number(r.tasks_made) || 0;

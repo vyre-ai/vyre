@@ -4369,6 +4369,20 @@
     }
    }
   },
+  "documents-bar": {
+   "title": "Records: documents bar",
+   "screens": {
+    "full": {
+     "component": "documents-bar"
+    },
+    "compact": {
+     "component": "documents-bar"
+    },
+    "glance": {
+     "component": "documents-bar"
+    }
+   }
+  },
   "record-form": {
    "title": "Records: create form",
    "screens": {

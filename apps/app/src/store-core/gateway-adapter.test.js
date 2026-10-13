@@ -98,7 +98,7 @@ test("an actor known only by its id reads as a word, never as the id", () => {
     { id: "agt_1111111111", name: "agt_1111111111", family: "agent" },
     { id: "per_named", name: "Dana Smith", family: "person" },
   ], "per_l47gpa4r2zy6cn6jmyzi5rh");
-  assert.deepEqual(actors.map((a) => a.name), ["You", "Someone", "An assistant", "An agent", "Dana Smith"]);
+  assert.deepEqual(actors.map((a) => a.name), ["You", "Someone", "An agent", "An agent", "Dana Smith"]);
   assert.deepEqual(readableActors([], "x"), []);
 });
 

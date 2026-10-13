@@ -18,6 +18,7 @@ import { Text } from "../components/Text";
 import { TimelineItem } from "../components/TimelineItem";
 import { iconFor } from "./symbols.js";
 import { accessoryAsChip, rowExtras } from "./list-rules.js";
+import { MenuRow } from "./RowMenu";
 import { AvatarStack } from "../components/Avatar";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { markRef } from "../marks/useMark";
@@ -61,14 +62,16 @@ export function ListBlock({ k, b, h }: P) {
         return (
           <View key={x.id ?? i} style={ex.dim ? { opacity: 0.5 } : undefined}>
             {i > 0 ? <Divider inset={iconFor(x.icon, ICON_NAMES) ? 60 : 0} /> : null}
+            <MenuRow items={h.rowMenu?.(k, x) ?? []}>{(menu) => (
             <Row dense={tight} chevron={tight && !!h.open}
               lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => markRef(f.kind as "person" | "assistant", f.name))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
               title={x.title} sub={x.subtitle}
               end={<>{tagOf(x) ? <SpaceTag text={tagOf(x)} /> : null}{ex.any
                 ? <>{ex.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{ex.accessories.map((a, j) => (a.as === "text" ? <Text key={j} size="caption" tone="label">{a.label}</Text> : <Chip key={j} tone={a.tone as any}>{a.label}</Chip>))}</>
-                : x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined}</>}
+                : x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined}{menu}</>}
               state={!ex.any && x.accessory && !accessoryAsChip(tight, x.tone) ? String(x.accessory) : undefined}
               onPress={h.open ? () => h.open!(k, x) : undefined} />
+            )}</MenuRow>
           </View>
         );
       })}
@@ -107,7 +110,7 @@ export function StatsBlock({ b }: P) {
 /** A row of thin bars: the shape of a series, no axis. */
 function Spark({ points }: { points: number[] }) {
   const max = Math.max(1, ...points);
-  return <View className="mt-s2 flex-row items-end gap-s1" style={{ height: 24 }} accessibilityLabel={`Trend: ${points.join(", ")}`}>{points.map((p, i) => <View key={i} className="flex-1 bg-accent" style={{ borderTopLeftRadius: 3, borderTopRightRadius: 3, height: `${Math.max(8, (p / max) * 100)}%`, opacity: 0.35 + 0.65 * ((i + 1) / points.length) }} />)}</View>;
+  return <View className="mt-s2 flex-row items-end gap-s1" style={{ height: 24 }} accessibilityLabel={`Trend: ${points.join(", ")}`}>{points.map((p, i) => <View key={i} className="flex-1 bg-primary" style={{ borderTopLeftRadius: 3, borderTopRightRadius: 3, height: `${Math.max(8, (p / max) * 100)}%`, opacity: 0.35 + 0.65 * ((i + 1) / points.length) }} />)}</View>;
 }
 
 export function ChartBlock({ b }: P) {
@@ -117,7 +120,7 @@ export function ChartBlock({ b }: P) {
   return (
     <Card title={b.props?.title}>
       <View className="flex-row items-end gap-s2" style={{ height: 120 }} accessibilityRole="image" accessibilityLabel={pts.map((p) => `${p.label} ${p.value}`).join(", ")}>
-        {pts.map((p) => <View key={p.label} className="flex-1 bg-accent" style={{ height: `${Math.max(4, (p.value / max) * 100)}%`, maxWidth: 56, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} />)}
+        {pts.map((p) => <View key={p.label} className="flex-1 bg-primary" style={{ height: `${Math.max(4, (p.value / max) * 100)}%`, maxWidth: 56, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} />)}
       </View>
       <View className="mt-s2 flex-row gap-s2">{pts.map((p) => <View key={p.label} className="flex-1"><Text size="caption" tone="label" numberOfLines={1} style={{ textAlign: "center" }}>{p.label}</Text></View>)}</View>
     </Card>

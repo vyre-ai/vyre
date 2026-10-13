@@ -37,7 +37,7 @@ export function ArtifactScreen({ id, version }: { id: string; version?: number }
   const title = String(art?.title || art?.name || "Shared");
   const by = String(art?.agent || art?.by || "");
   return (
-    <Page title={title} back="/u/drive">
+    <Page title={title} back="/u/files">
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!art && !err ? <LoadingState rows={4} /> : null}
       {art ? (
@@ -48,7 +48,7 @@ export function ArtifactScreen({ id, version }: { id: string; version?: number }
             <SectionLabel first>Versions</SectionLabel>
             {versions.length ? versions.slice().sort((a, b) => b.v - a.v).map((x, i) => (
               <View key={x.v}>{i ? <Divider /> : null}<Row dense title={`Version ${x.v}`} sub={[when(x.at), x.by].filter(Boolean).join(" · ") || undefined} state={x.v === shown ? "Showing" : undefined} chevron={x.v !== shown} onPress={x.v === shown ? undefined : () => setV(x.v)} /></View>
-            )) : <EmptyState title="One version" body="A new version shows here when the assistant changes it." />}
+            )) : <EmptyState title="One version" body="A new version shows here when the agent changes it." />}
           </Card>
           <Card flush>
             <SectionLabel first>What happened</SectionLabel>

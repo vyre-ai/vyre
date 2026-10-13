@@ -1,38 +1,49 @@
-// The project a chat is in, and moving it: projects.list says which projects hold the thread (their picks), projects.add-threads files it into one, projects.remove-threads takes it out of the others.
-// A thread can be in several projects at the box; here a move leaves it in exactly one (moveProject). The sample world keeps the choice in memory.
+// The project a chat is in, and moving it: work.chat.list says which project the chat's record is filed under, projects.list names the projects, work.chat.move files the chat under another (its record and
+// Drive folders follow). One mechanism for the chat panel and the chat list. The sample world keeps the choice in memory.
 import { useCallback, useEffect, useState } from "react";
 import { allowsMock } from "@vyre/ui";
 import { callT } from "../real/call-tool";
-import { moveProject } from "@vyre/ui/lib/picker-model.js";
 
 export type ProjectRef = { slug: string; name: string };
-const SAMPLE: ProjectRef[] = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
+const SAMPLE: ProjectRef[] = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }, { slug: "general", name: "General" }];
 
-export function useChatProject(thread: string | undefined, startIn?: string | null) {
+/** The projects the person can file a chat under. */
+export async function listProjects(): Promise<ProjectRef[]> {
+  const r = await callT<{ projects?: { slug?: string; name?: string }[] }>("projects.list", {});
+  return (r.data?.projects ?? []).filter((x) => x.slug).map((x) => ({ slug: String(x.slug), name: String(x.name || x.slug) }));
+}
+
+/** Move a chat under a project (work.chat.move). Answers an error in words, or null. */
+export async function moveChat(chat: string, project: string): Promise<string | null> {
+  const r = await callT("work.chat.move", { chat, project });
+  return r.error ? r.error.message || "That did not go through." : null;
+}
+
+export function useChatProject(chat: string | undefined, startIn?: string | null) {
   const mock = allowsMock();
   const [projects, setProjects] = useState<ProjectRef[]>(mock ? SAMPLE : []);
-  const [holding, setHolding] = useState<string[]>(mock && startIn ? SAMPLE.filter((s) => s.name === startIn).map((s) => s.slug) : []);
+  const [name, setName] = useState<string | null>(mock ? startIn ?? null : null);
   const [problem, setProblem] = useState("");
   const load = useCallback(async () => {
-    if (mock || !thread) return;
-    const r = await callT<{ projects?: { slug?: string; name?: string; picks?: string[]; threads?: string[] }[] }>("projects.list", {});
-    const rows = r.data?.projects ?? [];
-    setProjects(rows.filter((x) => x.slug).map((x) => ({ slug: String(x.slug), name: String(x.name || x.slug) })));
-    setHolding(rows.filter((x) => x.slug && (x.picks ?? x.threads ?? []).includes(thread)).map((x) => String(x.slug)));
-  }, [mock, thread]);
+    if (mock || !chat) return;
+    setProjects(await listProjects());
+    const l = await callT<{ chats?: { chat?: string; id?: string; project_name?: string }[] } | { chat?: string; id?: string; project_name?: string }[]>("work.chat.list", {});
+    const rows = Array.isArray(l.data) ? l.data : (l.data as { chats?: { chat?: string; id?: string; project_name?: string }[] } | undefined)?.chats ?? [];
+    setName(rows.find((x) => (x.chat ?? x.id) === chat)?.project_name ?? null);
+  }, [mock, chat]);
   useEffect(() => { void load(); }, [load]);
-  /** Move the chat to a project, or out of its projects with null. Answers an error in words, or null. */
+  /** Move the chat to a project (a slug). Answers an error in words, or null. */
   const move = useCallback(async (to: string | null): Promise<string | null> => {
     setProblem("");
-    const plan = moveProject(holding, to);
+    if (!to) return "No project to move to.";
     if (!mock) {
-      if (!thread) return "Start the chat with a message first.";
-      if (plan.add) { const r = await callT("projects.add-threads", { project: plan.add, threads: [thread] }); if (r.error) { setProblem(r.error.message || "That did not go through."); return r.error.message || "That did not go through."; } }
-      for (const slug of plan.remove) { const r = await callT("projects.remove-threads", { project: slug, threads: [thread] }); if (r.error) { setProblem(r.error.message || "That did not go through."); return r.error.message || "That did not go through."; } }
+      if (!chat) return "Start the chat with a message first.";
+      const why = await moveChat(chat, to);
+      if (why) { setProblem(why); return why; }
     }
-    setHolding(to ? [to] : []);
+    setName(projects.find((x) => x.slug === to)?.name ?? null);
     return null;
-  }, [holding, mock, thread]);
-  const current = projects.find((x) => holding.includes(x.slug)) ?? null;
+  }, [mock, chat, projects]);
+  const current = projects.find((x) => x.name === name) ?? null;
   return { projects, current, move, problem, reload: load };
 }
