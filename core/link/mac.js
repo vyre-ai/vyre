@@ -721,7 +721,7 @@ export function macSide(ctx, seam = {}) {
   };
 
   ctx.tool("link.call", {
-    effect: "write", callers: [...PERSON_SURFACES, "module"],
+    effect: "write", callers: [...LEAF_SURFACES, "module"],
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
     // The box sees this Mac as the owner's device, so a model or an agent must never ride it: only the person's own surfaces and modules call it (reviewer-2 HD-3). A model that needs a box tool
