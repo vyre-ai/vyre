@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ADMIN_ONLY, BUILT_INS, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
+import { ADMIN_ONLY, BUILT_INS, canDuplicate, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
 import { bodyOf, catalogueOf, mockSource, projectsOf, roleOf, rolesOf, rolesSource, typesOf } from "./source.js";
 
 test("the built-ins are Admin, Member and Guest, Guest is temp on the wire, manager is not among them", () => {
@@ -85,11 +85,13 @@ test("a new role starts from a built-in; a duplicate keeps every setting under a
   const all = [...base, own];
   const d = duplicateRole(own, all);
   assert.equal(d.name, "Contractor copy");
-  assert.equal(d.from, "guest");
+  assert.equal(d.from, "member");
   assert.equal(d.tools.mail, true);
   assert.deepEqual(d.data.find((x) => x.id === "client")?.hidden, ["SSN"]);
   assert.equal(duplicateRole(own, [...all, d]).name, "Contractor copy 2");
-  assert.equal(duplicateRole(base[0], base).from, "admin", "copying the owner makes an admin-level role, never above it");
+  assert.equal(duplicateRole(base[0], base).from, "member", "a copy never has an Admin base");
+  assert.deepEqual(base.map(canDuplicate), [false, false, true, true]);
+  assert.equal(canDuplicate({ ...a, from: "admin" }), false);
   assert.equal(newRole("owner", "Boss", base).from, "admin");
   assert.equal(newRole("member", "Admin", base).id, "admin-2", "an id never equals a built-in's");
 });

@@ -4,7 +4,7 @@ import { Banner, Button, Card, Chip, ControlRow, Divider, EmptyState, ErrorState
 import { Footnote, Page, Sec } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
-import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, WHERE, builtInName, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
+import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, WHERE, builtInName, canDuplicate, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
 
 /** Settings, Roles: the space's roles with how many people hold each; open one to edit its four sections. Owner and admin only. */
@@ -88,10 +88,10 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
   return (
     <Page title={r.name} sub={sub} onBack={back}
       actions={<>
-        {locked ? <Button kind="primary" size="sm" label="Duplicate to change" onPress={duplicate} /> : <><Button kind="ghost" size="sm" label="Rename" onPress={() => { setName(r.name); setRenaming(true); }} /><Button kind="ghost" size="sm" label="Duplicate" onPress={duplicate} /></>}
+        {locked ? (canDuplicate(role) ? <Button kind="primary" size="sm" label="Duplicate to change" onPress={duplicate} /> : null) : <><Button kind="ghost" size="sm" label="Rename" onPress={() => { setName(r.name); setRenaming(true); }} />{canDuplicate(role) ? <Button kind="ghost" size="sm" label="Duplicate" onPress={duplicate} /> : null}</>}
       </>}>
       <Text tone="muted">{sees(r, names)}</Text>
-      {locked ? <Banner icon="shield"><Text>{`${role.name} is built in. Duplicate it to make a version you can change.`}</Text></Banner> : null}
+      {locked ? <Banner icon="shield"><Text>{canDuplicate(role) ? `${role.name} is built in. Duplicate it to make a version you can change.` : `${role.name} is built in and cannot be changed or copied.`}</Text></Banner> : null}
 
       <Sec title="1. Can do">
         <Card flush>{(world.catalogue?.can ?? CAN_DO.map(([k, t, l]) => [k, t, l, ADMIN_ONLY.includes(k) ? "admin" : "member"])).map(([k, title, line, needs], i) => {

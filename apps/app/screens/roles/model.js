@@ -164,12 +164,15 @@ export function newRole(from, name, roles, types = SAMPLE_TYPES) {
   return { id: slug(name, roles), name: name.trim(), builtin: false, from: from === OWNER.id ? "admin" : from, holders: 0, can: { ...start.can }, where: { kind: start.where.kind, projects: [...start.where.projects] }, data: start.data.map((d) => ({ ...d, hidden: [...d.hidden] })), tools: { ...start.tools } };
 }
 
-/** A copy of a role with a free name: "Associate copy", then "Associate copy 2". @param {Role} r @param {Role[]} roles @returns {Role} */
+/** A copy of a role with a free name: "Associate copy", then "Associate copy 2". The copy is always a Member-based role (the box refuses an Admin base), so Owner and Admin cannot be duplicated. @param {Role} r @param {Role[]} roles @returns {Role} */
 export function duplicateRole(r, roles) {
   let name = `${r.name} copy`;
   for (let i = 2; roles.some((x) => x.name.toLowerCase() === name.toLowerCase()); i++) name = `${r.name} copy ${i}`;
-  return { ...newRole(r.builtin ? r.id : r.from || "member", name, roles), can: { ...r.can }, where: { kind: r.where.kind, projects: [...r.where.projects] }, data: r.data.map((d) => ({ ...d, hidden: [...d.hidden] })), tools: { ...r.tools }, from: r.builtin ? (r.id === OWNER.id ? "admin" : r.id) : r.from };
+  return { ...newRole("member", name, roles), can: { ...r.can }, where: { kind: r.where.kind, projects: [...r.where.projects] }, data: r.data.map((d) => ({ ...d, hidden: [...d.hidden] })), tools: { ...r.tools }, from: "member" };
 }
+
+/** Whether a role can be duplicated: not Owner or Admin, and not a role that somehow has an Admin base. @param {Role} r */
+export const canDuplicate = (r) => r.id !== OWNER.id && r.id !== "admin" && r.from !== "admin";
 
 /** @param {string} name @param {Role[]} roles */
 function slug(name, roles) {
