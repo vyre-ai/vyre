@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
-import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources } from "./logic.js";
+import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources, askChoices } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -271,4 +271,10 @@ test("A record is created or updated: stored as two events with the field filter
 test("the Appointment reminder starter starts on created or updated, only when the time changes, and starts over", () => {
   assert.deepEqual(REMINDER_DRAFT.trigger, { kind: "changed", type: "appointment", field: "starts_at", again: "replace" });
   assert.equal(toDefinition(REMINDER_DRAFT).trigger.when_record_changes, "replace");
+});
+
+test("a question goes to a person or a role, never an agent", () => {
+  assert.ok(askChoices(O).length > 0 && askChoices(O).every(([v]) => !v.startsWith("agent:")));
+  assert.match(stepProblem({ id: "ask1", kind: "ask", to: "agent:refunds", title: "Ok?" }, O), /person or a team or role/);
+  assert.equal(stepProblem({ id: "ask1", kind: "ask", to: "role:manager", title: "Ok?" }, O), null);
 });
