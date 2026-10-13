@@ -11,7 +11,7 @@ import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
 import { ValueField } from "./ValueField";
 import { FormulaBox } from "./FormulaBox";
-import { OPERATORS, UNIT_CHOICES, approverChoices, condExpr, firstStageTasks, whoChoices, whoWords } from "./logic.js";
+import { OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -194,10 +194,25 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
         </>
       ) : null}
       {s.kind === "wait" ? (
-        <View className="flex-row items-end gap-s2">
-          <View className="w-24"><Field label="Wait" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" /></View>
-          <View className="min-w-0 flex-1"><Select label="For" value={s.unit ?? "hours"} options={UNIT_CHOICES} onChange={(unit) => set({ unit })} /></View>
-        </View>
+        <>
+          <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          {s.mode === "until" ? (
+            <>
+              <ValueField label="Date to wait for" value={s.field ?? ""} onChange={(field) => set({ field })} placeholder="Insert the date field, such as the appointment" draft={draft} stepId={s.id} options={options} />
+              <View className="flex-row items-end gap-s2">
+                {s.when === "at" ? null : <View className="w-24"><Field label="Amount" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" /></View>}
+                {s.when === "at" ? null : <View className="min-w-0 flex-1"><Select label="Unit" value={s.unit ?? "hours"} options={UNIT_CHOICES} onChange={(unit) => set({ unit })} /></View>}
+                <View className="min-w-0 flex-1"><Select label="When" value={s.when ?? "before"} options={WHEN_CHOICES} onChange={(when) => set({ when })} /></View>
+              </View>
+              <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
+            </>
+          ) : (
+            <View className="flex-row items-end gap-s2">
+              <View className="w-24"><Field label="Wait" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" /></View>
+              <View className="min-w-0 flex-1"><Select label="For" value={s.unit ?? "hours"} options={UNIT_CHOICES} onChange={(unit) => set({ unit })} /></View>
+            </View>
+          )}
+        </>
       ) : null}
       {s.kind === "formula" ? (
         <>
