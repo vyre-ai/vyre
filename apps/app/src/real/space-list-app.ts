@@ -2,7 +2,7 @@
 // Four doors: `onVaultOpened` (the sign-in flows call it right after the master password opens the personal vault), `listFound` (Settings, Servers opens), `recordPaired` / `recordJoined` / `recordLeft`
 // (the act the person already said yes to). Nothing reads in the background and nothing is cached past the screen: the counters are a number and a few ids, never the list.
 import type { Pairing } from "../api/pairing";
-import { makeListFlow } from "./space-list-flow.js";
+import { makeListFlow, memberTool } from "./space-list-flow.js";
 
 type Tool = (name: string, input?: Record<string, unknown>) => Promise<any>;
 
@@ -67,14 +67,14 @@ async function hintStore() {
 /** The one door the sign-in sources call to give this device its home hint (a pinned route to the server that holds the personal vault): github-signin after the escrow release, the kit's recovery entry, and the approving device's approval. Takes the object or its JSON text; false if it is not a pinned route. */
 export async function storeHomeHint(hint: unknown): Promise<boolean> { return (await hintStore()).store(hint); }
 
-async function flowFor(given?: Tool) {
+async function flowFor(given?: Tool, member = false) {
   const relay = await import("../api/relay");
   const { joinedTeams } = await import("./team-join");
   const kv = relay.keyedText;
   const num = async () => { try { const n = Number(await kv.get(SEEN)); return Number.isInteger(n) && n >= 0 ? n : 0; } catch { return 0; } };
   const ids = async () => { try { const j = JSON.parse((await kv.get(PENDING)) || "[]"); return Array.isArray(j) ? j.filter((x: unknown) => typeof x === "string") : []; } catch { return []; } };
   return makeListFlow({
-    tool: given ?? (await vaultTool()),
+    tool: member ? memberTool(given ?? (await vaultTool())) : given ?? (await vaultTool()),
     device: async () => ({ pairings: await relay.listPairings(), teams: joinedTeams() }),
     state: {
       seen: num,
@@ -93,7 +93,7 @@ async function flowFor(given?: Tool) {
 }
 
 /** The master password just opened the personal vault: read the list once and connect every pinned server this device lacks. `vault` is the tool the sign-in already holds for the open vault, when it has one. */
-export async function onVaultOpened(vault?: Tool) { return (await flowFor(vault)).opened(); }
+export async function onVaultOpened(vault?: Tool, o: { member?: boolean } = {}) { return (await flowFor(vault, o.member)).opened(); }
 
 /** Settings, Servers opens: read the list again. */
 export async function listFound() { return (await flowFor()).sync(); }
