@@ -295,11 +295,13 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
   if (flow.description !== undefined && typeof flow.description !== "string") out.push({ path: "description", message: "a description is text" });
+  // The group a Flow is listed under (presentation only, never a permission).
+  if (flow.group !== undefined && (typeof flow.group !== "string" || !flow.group.trim() || flow.group.length > 60)) out.push({ path: "group", message: "group is a short string (1 to 60 characters)" });
   if (!AUTHORSHIP.includes(flow.authorship)) out.push({ path: "authorship", message: `authorship is one of ${AUTHORSHIP.join(", ")}` });
   if (flow.caps !== undefined) {
     if (!Array.isArray(flow.caps)) out.push({ path: "caps", message: "caps are a list" });

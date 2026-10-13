@@ -4,9 +4,9 @@
 // Send an email is `call comms.send`, Wait for a yes is `ask`, Update a record is `update`.
 
 /** @typedef {{ name: string, label: string }} Named */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string }} Trigger */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, path?: string, raw?: any }} Trigger */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
-/** @typedef {{ name: string, group?: string, trigger: Trigger, steps: DraftStep[] }} Draft */
+/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ types: Named[], agents: Named[], templates: TemplateOpt[], roles: Named[], people: Named[] }} Options */
 
@@ -19,16 +19,15 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "manual", icon: "play", label: "Someone runs it", hint: "A person or an agent presses Run" },
 ]);
 
-/** The step choices. `soon` ones are shown and cannot be picked yet. */
+/** The step choices. A `soon` one is shown and cannot be picked yet (none today). */
 export const STEP_CHOICES = /** @type {const} */ ([
   { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your record types" },
   { kind: "project", icon: "projects", label: "Start a project", hint: "From a template, linked to a record" },
   { kind: "agent", icon: "agents", label: "Hand to an agent", hint: "With your instructions and the details" },
-  { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a role, the lead or an agent" },
+  { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent" },
   { kind: "email", icon: "mail", label: "Send an email", hint: "Through your space's sending service" },
   { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer" },
   { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record" },
-  { kind: "group", icon: "users", label: "Assign to a team group", hint: "Everyone in a group is asked", soon: true },
 ]);
 
 export const choiceOf = (/** @type {string} */ kind) => STEP_CHOICES.find((c) => c.kind === kind);
@@ -49,6 +48,7 @@ export function triggerPhrase(t, o) {
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
     case "schedule": return t.every ? `it is ${t.every.toLowerCase()}` : "it is time";
+    case "advanced": return "it starts in a way the builder cannot show yet";
     default: return "someone runs it";
   }
 }
@@ -59,7 +59,7 @@ export function whoWords(who, o) {
   if (who === "lead") return "the project lead";
   if (who === "owner") return "the owner";
   const [kind, id] = who.split(":");
-  if (kind === "role") return `the ${named(o.roles, id).toLowerCase()} role`;
+  if (kind === "role") return `the ${named(o.roles, id)} team`;
   if (kind === "agent") return `the ${named(o.agents, id)} agent`;
   if (kind === "person") return named(o.people, id);
   return who;
@@ -73,11 +73,12 @@ export function stepSummary(s, o, d) {
       const t = o.templates.find((x) => x.id === s.template);
       return `Start a project from the ${t ? t.name : "chosen"} template${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
     }
-    case "agent": return `Hand it to the ${named(o.agents, s.agent) || "chosen"} agent${s.instructions && s.instructions.trim() ? " with your instructions" : ""}${s.pass && s.pass.includes("project") ? " and the project" : ""}`;
+    case "agent": return `Hand it to the ${named(o.agents, s.agent) || "chosen"} agent${s.instructions && s.instructions.trim() ? " with your instructions" : ""}`;
     case "assign": return `Ask ${whoWords(s.to, o)} to ${s.title && s.title.trim() ? lc(s.title.trim()) : "do a task"}`;
     case "email": return `Email ${s.to && s.to.trim() ? s.to.trim() : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
+    case "advanced": return s.summary || `Advanced step (${s.raw?.kind || "other"})`;
     default: return choiceOf(s.kind)?.label || s.kind;
   }
 }
@@ -89,8 +90,6 @@ export function linkWords(ref, d, o) {
   const type = made && o ? named(o.types, made.type) : "";
   return type ? `the new ${type} record` : "the record made before";
 }
-/** @param {string[]} pass */
-export const passWords = (pass) => `pass ${pass.map((p) => (p === "project" ? "the project" : "the record's details")).join(" and ")}`;
 
 /** The whole Flow as one sentence: "When a record is created in RefundRequests, create a RefundRequests record, then hand it to the Refunds agent." @param {Draft} d @param {Options} o */
 export function flowSentence(d, o) {
@@ -157,6 +156,7 @@ export function stepDefinition(s, d) {
   const label = s.label || undefined;
   void d;
   switch (s.kind) {
+    case "advanced": return s.raw;
     case "create": return { id: s.id, kind: "create", type: s.type, set: s.copy === false ? {} : { title: { expr: "trigger.title" }, details: { expr: "trigger" } } };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: (s.name || "").trim() || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}) };
@@ -170,7 +170,7 @@ export function stepDefinition(s, d) {
 
 /** The stored Flow for a draft. @param {Draft} d */
 export function toDefinition(d) {
-  return { format: 1, name: slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), trigger: triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)) };
+  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.rest || {}) };
 }
 
 /** A fresh step with sensible choices from the others. @param {string} kind @param {Draft} d @param {Options} o @returns {DraftStep} */
@@ -183,7 +183,7 @@ export function newStep(kind, d, o) {
   switch (kind) {
     case "create": return { id, kind, type: d.trigger.type || "", copy: true };
     case "project": return { id, kind, template: o.templates[0]?.id || "", name: "", link };
-    case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link, pass: d.steps.some((s) => s.kind === "project") ? ["record", "project"] : ["record"] };
+    case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link };
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "email": return { id, kind, to: "", subject: "", body: "" };
     case "ask": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
@@ -193,7 +193,7 @@ export function newStep(kind, d, o) {
 
 /** Who a task can go to, as [value, label] for a Select. @param {Options} o @returns {[string, string][]} */
 export function whoChoices(o) {
-  return [...[{ name: "owner", label: "Owner" }, ...o.roles.filter((r) => r.name !== "owner")].map(/** @returns {[string, string]} */ (r) => [`role:${r.name}`, `Role: ${r.label}`]), ...o.agents.map(/** @returns {[string, string]} */ (a) => [`agent:${a.name}`, `Agent: ${a.label}`]), ...o.people.map(/** @returns {[string, string]} */ (p) => [`person:${p.name}`, p.label])];
+  return [...[{ name: "owner", label: "Owner" }, ...o.roles.filter((r) => r.name !== "owner")].map(/** @returns {[string, string]} */ (r) => [`role:${r.name}`, `A team or role: ${r.label}`]), ...o.agents.map(/** @returns {[string, string]} */ (a) => [`agent:${a.name}`, `Agent: ${a.label}`]), ...o.people.map(/** @returns {[string, string]} */ (p) => [`person:${p.name}`, p.label])];
 }
 
 /** Move a step up or down (dir -1 or 1). @template T @param {T[]} list @param {number} i @param {number} dir */
@@ -219,4 +219,72 @@ export function firstStageTasks(t, o) {
   const st = t && t.stages[0];
   if (!st) return null;
   return { stage: st.name, tasks: st.tasks.map((k) => ({ title: k.title, who: whoWords(k.doer.startsWith("teammate:") ? `agent:${k.doer.slice(9)}` : k.doer, o) })) };
+}
+
+const exprOf = (/** @type {any} */ v) => (v && typeof v === "object" && typeof v.expr === "string" ? v.expr : null);
+/** "trigger.record" is what started the Flow, "steps.<id>.record.id" a record an earlier step made. @param {any} v @returns {string | null} */
+const refOf = (v) => { const e = exprOf(v); if (e === "trigger.record") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.id$/i.exec(e); return m ? m[1] : null; };
+const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.keys(o).every((k) => allowed.includes(k));
+
+/** @param {any} t @returns {Trigger} */
+function triggerFrom(t) {
+  const raw = { kind: "advanced", raw: t };
+  if (!t || typeof t !== "object") return raw;
+  if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };
+  if (t.on === "stage" && keys(t, ["on", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
+  if (t.on === "event" && t.event === "record.created" && keys(t, ["on", "event", "where"])) {
+    const m = /^event\.type == "([^"]+)"$/.exec(t.where || "");
+    return m ? { kind: "created", type: m[1] } : raw;
+  }
+  if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
+  if (t.on === "time" && keys(t, ["on", "cron"])) {
+    const hit = Object.entries(EVERY).find(([, v]) => v.cron === t.cron);
+    return hit ? { kind: "schedule", every: hit[0] } : raw;
+  }
+  return raw;
+}
+
+/** @param {any} s @returns {DraftStep} */
+function stepFrom(s) {
+  const adv = /** @type {DraftStep} */ ({ id: s.id, kind: "advanced", raw: s, summary: s.label || undefined });
+  const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
+  switch (s.kind) {
+    case "create": {
+      const set = s.set || {};
+      const copy = exprOf(set.title) === "trigger.title" && exprOf(set.details) === "trigger" && Object.keys(set).length === 2;
+      return copy || !Object.keys(set).length ? { id: s.id, kind: "create", type: s.type, copy } : adv;
+    }
+    case "call": {
+      const i = s.input || {};
+      if (s.action === "work.start-project" && s.resource === "vyre://space/work" && typeof i.template === "string" && keys(i, ["template", "name", "client"])) {
+        const link = i.client === undefined ? "" : refOf(i.client);
+        const name = typeof i.name === "string" ? i.name : exprOf(i.name) === "trigger.name" ? "" : null;
+        return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
+      }
+      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && typeof i.to === "string") return { id: s.id, kind: "email", to: i.to, subject: i.subject || "", body: i.body || "" };
+      return adv;
+    }
+    case "agent": {
+      const rec = refOf(s.record);
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && typeof s.instructions === "string" && typeof s.title === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "label"])
+        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: s.title, instructions: s.instructions, record: rec } : adv;
+    }
+    case "assign": return typeof s.title === "string" && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output"]) ? { id: s.id, kind: "assign", to: who(s.to), title: s.title } : adv;
+    case "ask": return typeof s.title === "string" && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: s.title } : adv;
+    case "update": {
+      const rec = refOf(s.record), f = Object.keys(s.set || {});
+      return rec && f.length === 1 && typeof s.set[f[0]] === "string" && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: s.set[f[0]] } : adv;
+    }
+    default: return adv;
+  }
+}
+
+/**
+ * A stored Flow as a draft: every step the palette covers becomes an editable step, anything else (and a step with settings the palette cannot say) stays as it was, shown as an Advanced
+ * step. Saving writes the same steps back, so opening and saving a Flow never loses what the builder could not show. Keys the builder does not know ride in `rest`.
+ * @param {any} flow @returns {Draft}
+ */
+export function fromDefinition(flow) {
+  const { format: _f, name, label, authorship: _a, group, trigger, steps, ...rest } = flow;
+  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
 }

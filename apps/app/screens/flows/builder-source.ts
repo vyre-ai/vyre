@@ -43,9 +43,9 @@ export function useFlowOptions(): FlowOptions | null {
   return opts;
 }
 
-/** Save a stored Flow on the box. Resolves to the new Flow's id; throws the box's own words when it refuses. */
-export async function defineReal(flow: unknown): Promise<string> {
-  const r = await call<{ ok: boolean; id?: string; errors?: { path?: string; message: string }[] }>("flows.define", { flow });
+/** Save a stored Flow on the box (a new version when `id` is given). Resolves to the new Flow's id; throws the box's own words when it refuses. */
+export async function defineReal(flow: unknown, id?: string): Promise<string> {
+  const r = await call<{ ok: boolean; id?: string; errors?: { path?: string; message: string }[] }>("flows.define", { flow, ...(id ? { id } : {}) });
   if (r.error) throw new Error(r.error.message);
   const d = r.data;
   if (!d || !d.ok || !d.id) throw new Error((d?.errors || []).map((e) => e.message).join(" ") || "The box would not take that Flow.");

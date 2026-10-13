@@ -30,7 +30,7 @@ export function RealFlows() {
           const health = healthRow(f);
           return (
             <View key={f.id}>{i ? <Divider inset={68} /> : null}
-              <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name="flows" />} title={f.name} sub={<View className="gap-s1">{f.sentence ? <Text size="secondary" tone="muted" numberOfLines={2}>{f.sentence}</Text> : null}{!waiting && health.sub ? <Text size="secondary" tone="label" numberOfLines={1}>{health.sub}</Text> : null}</View>} chevron={waiting}
+              <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name="flows" />} title={f.sentence ? <Text strong numberOfLines={3}>{f.sentence}</Text> : f.name} sub={<View className="gap-s1">{f.sentence ? <Text size="secondary" tone="label" numberOfLines={1}>{f.name}</Text> : null}{!waiting && health.sub ? <Text size="secondary" tone="label" numberOfLines={1}>{health.sub}</Text> : null}</View>} chevron={waiting}
                 end={waiting ? <Chip tone="accent">Waiting for you</Chip> : (
                 <View className="flex-row items-center gap-s3">
                   {health.chip ? <Chip tone="err">{health.chip}</Chip> : null}

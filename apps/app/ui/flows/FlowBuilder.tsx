@@ -39,17 +39,18 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
 
   return (
     <View className="gap-s4">
-      <Card>
+      <Card hero>
         <View className="gap-s2">
-          <Text size="caption" tone="label" strong>In one sentence</Text>
-          <Text>{flowSentence(draft, options)}</Text>
+          <Text size="caption" tone="label" strong>This Flow, in one sentence</Text>
+          <Text size="page" strong>{flowSentence(draft, options)}</Text>
         </View>
       </Card>
 
       <View>
-        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => toggle("trigger")}
+        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => toggle("trigger")}
           last={!draft.steps.length && readOnly}>
-          <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />
+          {t.kind === "advanced" ? <Text tone="muted">This Flow starts in a way the builder cannot show yet. It is kept as it is.</Text> : null}
+          {t.kind === "advanced" ? null : <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />}
           {t.kind === "created" || t.kind === "stage" ? <Select label="Kind of record" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setTrig({ type })} /> : null}
           {t.kind === "stage" ? <Field label="Stage" value={t.stage ?? ""} onChangeText={(stage) => setTrig({ stage })} placeholder="For example Drafting" /> : null}
           {t.kind === "form" ? <Field label="Form name" value={t.path ?? ""} onChangeText={(path) => setTrig({ path })} placeholder="For example contact" help="Your site's form posts to this name." /> : null}
@@ -61,12 +62,12 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
           const c = choiceOf(s.kind);
           const problem = stepProblem(s, options);
           const links = sources(draft, i, options);
-          const hasProject = draft.steps.slice(0, i).some((x) => x.kind === "project");
-          const last = i === draft.steps.length - 1 && !adding && !!readOnly;
+                  const last = i === draft.steps.length - 1 && !adding && !!readOnly;
           return (
-            <StepCard key={s.id} lead={i === 0 ? "Then" : `Step ${i + 1}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? s.kind} summary={stepSummary(s, options, draft)} problem={problem} open={open === s.id} onToggle={() => toggle(s.id)} last={last}
+            <StepCard key={s.id} lead={i === 0 ? "Then" : `Step ${i + 1}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? "Advanced step"} summary={stepSummary(s, options, draft)} problem={problem} open={open === s.id} onToggle={() => toggle(s.id)} last={last}
               onUp={!readOnly && i > 0 ? () => set({ steps: moveStep(draft.steps, i, -1) }) : undefined} onDown={!readOnly && i < draft.steps.length - 1 ? () => set({ steps: moveStep(draft.steps, i, 1) }) : undefined}
               onRemove={readOnly ? undefined : () => { set({ steps: removeStep(draft.steps, s.id) }); setOpen(null); }}>
+              {s.kind === "advanced" ? <Text tone="muted">This step does something the builder cannot show yet. It is kept exactly as it is. Move it or remove it here, or change it as code on the Flow's page.</Text> : null}
               {s.kind === "create" ? (
                 <>
                   <Select label="Kind of record" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setStep(s.id, { type })} />
@@ -88,15 +89,14 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
                   <Field label="Your instructions" multiline lines={5} value={s.instructions ?? ""} onChangeText={(instructions) => setStep(s.id, { instructions })} placeholder="What to do with this case"
                     help="They add to the agent's own instructions, which say who to escalate to and which email alias to use outside." />
                   <Select label="The record to hand over" value={s.record ?? "trigger"} options={links} onChange={(record) => setStep(s.id, { record })} />
-                  <Row dense title="Pass the record's details" sub="Every field the agent is allowed to see." end={<Switch label="Pass the record's details" on={(s.pass ?? []).includes("record")} onChange={(on) => setStep(s.id, { pass: toggled(s.pass, "record", on) })} />} />
-                  {hasProject ? <Row dense title="Pass the project" sub="Its stages and tasks." end={<Switch label="Pass the project" on={(s.pass ?? []).includes("project")} onChange={(on) => setStep(s.id, { pass: toggled(s.pass, "project", on) })} />} /> : null}
+                  <Text size="caption" tone="label">The agent gets the record and its details.</Text>
                 </>
               ) : null}
               {s.kind === "assign" ? (
                 <>
-                  <Select label="Who gets the task" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
+                  <Select label="Who gets the task (a person, a team or role, or an agent)" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
-                  <View className="flex-row items-center gap-s2"><Chip icon="users">Team groups</Chip><Chip tone="accent">Coming</Chip></View>
+                  <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
                 </>
               ) : null}
               {s.kind === "email" ? (
@@ -147,11 +147,6 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
       </View>
     </View>
   );
-}
-
-function toggled(list: string[] | undefined, key: string, on: boolean): string[] {
-  const rest = (list ?? []).filter((x) => x !== key);
-  return on ? [...rest, key] : rest;
 }
 
 /** What a started project hands out, from the template's own first stage: it shows that the template, not the Flow, assigns the tasks. */

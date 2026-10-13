@@ -143,7 +143,7 @@ export { formErrors, formOrder, guessMapping, importIssues, importSummary, timel
 export { GroupedList } from "./components/GroupedList";
 export { FlowBuilder } from "./flows/FlowBuilder";
 export { StepCard } from "./flows/StepCard";
-export { flowSentence, toDefinition as flowDefinition, draftProblems as flowProblems, triggerPhrase, stepSummary as flowStepSummary } from "./flows/logic.js";
+export { flowSentence, fromDefinition as flowFromDefinition, toDefinition as flowDefinition, draftProblems as flowProblems, triggerPhrase, stepSummary as flowStepSummary } from "./flows/logic.js";
 export type { Draft as FlowDraft, DraftStep as FlowDraftStep, Options as FlowOptions } from "./flows/logic.js";
 export type { Group } from "./components/GroupedList";
 export { sectionsOf, addGroup, renameGroup, moveGroup, removeGroup, toggleGroup } from "./components/groups.js";

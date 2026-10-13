@@ -8,6 +8,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
+import { StoredFlowEditor } from "./BuilderScreens";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
@@ -27,6 +28,7 @@ export function RealFlow({ id }: { id: string }) {
   // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
+  const [def, setDef] = useState<unknown>(null);
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
@@ -51,7 +53,7 @@ export function RealFlow({ id }: { id: string }) {
         const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
         if (!live) return;
         setHealth(hl);
-        setG(graph); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        setG(graph); setDef(m.flow ?? null); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
     })();
@@ -102,6 +104,7 @@ export function RealFlow({ id }: { id: string }) {
   return (
     <Frame back="/u/flows" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
       {hb && hb.tone !== "quiet" ? <Banner tone={hb.tone}><Text>{hb.text}</Text></Banner> : null}
+      {def ? <Sec title="Steps"><StoredFlowEditor id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></Sec> : null}
       <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
       {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
       {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}

@@ -27,8 +27,8 @@ function SampleFlowsScreen() {
   ] : [];
   const row = (f: Item, i: number) => (
     <View key={f.id}>{i ? <Divider inset={68} /> : null}
-      <Row onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name={f.icon} />} title={f.name}
-        sub={<View className="gap-s1"><Text size="secondary" tone="muted" numberOfLines={3}>{f.sentence}</Text>{f.waiting ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text size="secondary" tone="accent" numberOfLines={1}>Waiting on you</Text></View> : null}</View>}
+      <Row onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name={f.icon} />} title={<Text strong numberOfLines={3}>{f.sentence}</Text>}
+        sub={<View className="gap-s1"><Text size="secondary" tone="label" numberOfLines={1}>{f.name}</Text>{f.waiting ? <View className="flex-row items-center gap-s2"><View className="rounded-full bg-accent" style={{ height: 6, width: 6 }} /><Text size="secondary" tone="accent" numberOfLines={1}>Waiting on you</Text></View> : null}</View>}
         chevron={f.waiting}
         end={f.waiting ? undefined : <Switch label={`${f.name} is ${off[f.id] ? "off" : "on"}`} on={!off[f.id]} onChange={(on) => setOn(f.id, on)} />} />
     </View>

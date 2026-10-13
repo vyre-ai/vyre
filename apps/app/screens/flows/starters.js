@@ -29,7 +29,7 @@ export const REFUND_DRAFT = {
   trigger: { kind: "created", type: "refund_requests" },
   steps: [
     { id: "create1", kind: "create", type: "refund_requests", copy: true },
-    { id: "agent2", kind: "agent", agent: "refunds", title: "Handle this refund request", record: "create1", pass: ["record"],
+    { id: "agent2", kind: "agent", agent: "refunds", title: "Handle this refund request", record: "create1",
       instructions: "Check the request against our refund policy. Refund up to $500 yourself and email the client from the support alias. Anything larger goes to the manager for a yes first. Close the record when it is paid." },
   ],
 };

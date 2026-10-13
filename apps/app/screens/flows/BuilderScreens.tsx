@@ -1,9 +1,9 @@
 // The Flow builder's pages: a new Flow, and a Flow made in the builder. A sample build keeps them in memory; a real one saves with flows.define (a version nobody has approved yet), then opens
 // the Flow's own page where its card is approved.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Field, FlowBuilder, LoadingState, Row, Select, Switch, Text, allowsMock, flowProblems, showToast, flowDefinition } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, FlowBuilder, LoadingState, Row, Select, Switch, Text, allowsMock, flowProblems, showToast, flowDefinition, flowFromDefinition } from "@vyre/ui";
 import type { FlowDraft, FlowOptions } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { useFlowsState } from "./store";
@@ -86,5 +86,30 @@ export function MadeFlowScreen({ id }: { id: string }) {
         ) : <Card><EmptyState title="Not run yet" body="It runs the next time its trigger happens." /></Card>}
       </Sec>
     </Frame>
+  );
+}
+
+/** A Flow stored on the box, opened in the builder. Saving writes a new version (the box asks for the person's yes again); steps the builder cannot show are kept as they were. */
+export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
+  const options = useFlowOptions();
+  const [draft, setDraft] = useState<FlowDraft>(() => flowFromDefinition(flow));
+  useEffect(() => { setDraft(flowFromDefinition(flow)); }, [flow]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  if (!options) return <LoadingState rows={3} />;
+  const problems = flowProblems(draft, options);
+  const save = async () => {
+    if (problems.length) return;
+    setBusy(true); setErr("");
+    try { await defineReal(flowDefinition(draft), id); showToast("Saved as a new version. Read the card and approve it to switch it on."); onSaved(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "That did not save."); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <FlowBuilder draft={draft} onChange={setDraft} options={options} />
+      {problems.length ? <Banner tone="warn" icon="warning"><View className="gap-s1">{problems.map((p) => <Text key={p}>{p}</Text>)}</View></Banner> : null}
+      {err ? <Banner tone="err">{err}</Banner> : null}
+      <View className="self-start"><Button kind="primary" label="Save changes" loading={busy} disabled={!!problems.length} onPress={save} /></View>
+    </>
   );
 }

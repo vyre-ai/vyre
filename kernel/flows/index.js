@@ -135,7 +135,7 @@ export function createFlows(o) {
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
     "flows.list": async () => {
       const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
-      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); return { ...r, ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); const group = await view(r.id).then((/** @type {any} */ v) => v.flow.group).catch(() => undefined); return { ...r, ...(group ? { group } : {}), ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
     },
     // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
     // The Vault's "Used by" (R031-70) and its scan for a secret value (R031-72): module-only reads of the stored definitions, every version of every Flow. The first answers names only; the second the

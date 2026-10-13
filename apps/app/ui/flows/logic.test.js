@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -49,6 +49,29 @@ test("removing a step repoints what used it, moving swaps neighbours", () => {
 test("a project step shows what its first stage hands out", () => {
   const t = firstStageTasks(O.templates[0], O);
   assert.equal(t.stage, "Kickoff");
-  assert.deepEqual(t.tasks.map((x) => x.who), ["the project lead", "the paralegal role", "the Research agent"]);
+  assert.deepEqual(t.tasks.map((x) => x.who), ["the project lead", "the Paralegal team", "the Research agent"]);
   assert.equal(stepSummary({ id: "p", kind: "project", template: "tpl_atp" }, O), "Start a project from the ATP template");
+});
+
+test("a stored Flow opens as a draft and saves back the same", () => {
+  for (const d of [REFUND_DRAFT, ATP_DRAFT]) {
+    const stored = toDefinition(d);
+    const back = fromDefinition(stored);
+    assert.equal(back.steps.some((s) => s.kind === "advanced"), false, "every step the palette wrote is understood");
+    assert.deepEqual(toDefinition(back), stored);
+  }
+});
+
+test("a step the palette cannot say is kept as it was", () => {
+  const stored = { ...toDefinition(REFUND_DRAFT), concurrency: 2, steps: [...toDefinition(REFUND_DRAFT).steps, { id: "look", kind: "find", type: "client", where: "record.x == 1" }] };
+  const d = fromDefinition(stored);
+  assert.equal(d.steps.at(-1).kind, "advanced");
+  assert.equal(stepSummary(d.steps.at(-1), O), "Advanced step (find)");
+  assert.deepEqual(toDefinition(d), stored);
+});
+
+test("a stored group rides along", () => {
+  const d = fromDefinition({ ...toDefinition(REFUND_DRAFT), group: "Money" });
+  assert.equal(d.group, "Money");
+  assert.equal(toDefinition(d).group, "Money");
 });

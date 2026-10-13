@@ -25,7 +25,7 @@ export async function listReal(): Promise<RealFlow[]> {
 }
 
 export const graphReal = (id: string) => ask<Graph>("flows.graph", { id });
-export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown; by?: unknown; flow?: { label?: string; name?: string } }>("flows.get", { id });
+export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown; by?: unknown; flow?: { label?: string; name?: string; [k: string]: unknown } }>("flows.get", { id });
 export const healthReal = (id: string) => ask<{ level: string; line: string }>("flows.health", { id });
 export const runsReal = (id: string) => ask<RunRow[]>("flows.runs", { id, limit: 20 });
 /** A run in plain words and its lines (flows.describe by run): what it did, where it stands, what is next. */
