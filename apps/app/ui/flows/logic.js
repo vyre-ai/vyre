@@ -266,7 +266,7 @@ export function stepDefinition(s, d) {
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: s.title, output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
-      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: val(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: val(s.replyTo) } : {}) } }
+      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: val(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: val(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: val(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: s.title };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: s.value || "" } };
@@ -449,7 +449,7 @@ function stepFrom(s) {
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
       if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unval(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unval(i.to), body: unval(i.body) };
-      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unval(i.replyTo) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unval(i.replyTo) }) };
+      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unval(i.replyTo) !== null) && (i.from === undefined || unval(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unval(i.replyTo) }), ...(i.from === undefined ? {} : { from: unval(i.from) }) };
       if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }

@@ -6,7 +6,7 @@ import { isRecordTrigger } from "./logic.js";
 
 /** @typedef {import("./logic.js").Draft} Draft */
 /** @typedef {import("./logic.js").Options} Options */
-/** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, note?: string }} Item */
+/** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, note?: string, address?: boolean }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
 /** @typedef {{ title: string, items: Item[] }} Group */
 
 export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)\}/gi;
@@ -43,6 +43,8 @@ export const HELPERS = /** @type {{ token: string, label: string, engine: boolea
 
 /** Sealed field names come as `sealed: true` on a field. @param {{ name: string, label: string, sealed?: boolean }} f */
 const sealedOf = (f) => f.sealed === true;
+/** Whether a field holds an email address: its type says so, or its name ends in email. @param {{ name: string, type?: string }} f */
+const isAddress = (f) => f.type === "email" || /(^|_)email$/i.test(f.name);
 
 /**
  * What a box can insert, in the order a person looks for it: each object in this Flow's context with its fields (the record that started the Flow, then the records earlier steps made),
@@ -54,14 +56,14 @@ export function insertList(d, stepId, o, opt = {}) {
   const t = d.trigger;
   const fieldsOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.fields || [];
   const labelOf = (/** @type {string} */ type) => o.types.find((x) => x.name === type)?.label || type;
-  const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}) });
+  const item = (/** @type {string} */ token, /** @type {string} */ label, /** @type {any} */ f) => /** @type {Item} */ ({ token, label, known: true, ...(f && sealedOf(f) ? { sealed: true, note: "Sent only where the step allows sealed values" } : {}), ...(f && isAddress(f) ? { address: true } : {}) });
   if (isRecordTrigger(t) && t.type) out.push({ title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldsOf(t.type).map((f) => item(`{after.${f.name}}`, f.label, f)) });
   else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, null)) });
   /** @type {Item[]} */ const steps = [];
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
     if (s.kind === "create" || s.kind === "upsert") {
-      out.push({ title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldsOf(s.type).map((f) => item(`{steps.${s.id}.record.${f.name}}`, f.label, f))] });
+      out.push({ title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null), ...fieldsOf(s.type).map((f) => item(`{steps.${s.id}.record.data.${f.name}}`, f.label, f))] });
     }
     if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null));
     if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null));
@@ -69,7 +71,9 @@ export function insertList(d, stepId, o, opt = {}) {
   }
   if (steps.length) out.push({ title: "Earlier steps", items: steps });
   const has = new Set(opt.engineHas || []);
-  out.push({ title: "Helpful values", items: HELPERS.map((h) => ({ token: h.token, label: h.label, known: h.engine || has.has(h.token), ...(h.engine || has.has(h.token) ? {} : { note: "Not available yet" }) })) });
+  // only helpers the engine resolves are offered: a token it cannot read would send an empty value
+  const helpers = HELPERS.filter((h) => h.engine || has.has(h.token)).map((h) => ({ token: h.token, label: h.label, known: true }));
+  if (helpers.length) out.push({ title: "Helpful values", items: helpers });
   return out;
 }
 
@@ -136,3 +140,6 @@ export function history(first) {
     undo() { if (past.length) now = /** @type {string} */ (past.pop()); return now; },
   };
 }
+
+/** Addresses a To, From, CC or Reply-To box can offer first: every email-type field of the objects in context, by its own label and object. @param {Group[]} groups @returns {Item[]} */
+export const addressPicks = (groups) => groups.flatMap((g) => g.items.filter((i) => i.address).map((i) => ({ ...i, label: `${i.label} (${g.title.replace(/ \(the record that started the Flow\)$/, "")})` })));

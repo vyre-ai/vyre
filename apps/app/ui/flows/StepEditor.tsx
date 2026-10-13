@@ -11,6 +11,7 @@ import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
 import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
+import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
 import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
@@ -135,9 +136,10 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
               {s.kind === "email" ? (
                 <>
                   <SendWith kind="email" s={s} set={set} options={options} />
-                  <ValueField label="To" value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or {email} from the form" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="From (optional)" value={s.from ?? ""} onChange={(from) => setStep(s.id, { from: from || undefined })} placeholder="The sending account's own address" draft={draft} stepId={s.id} options={options} note="Sends only if this address is on the sending account's domain. If it is not, the run stops and tells you." />
+                  <AddressField label="To" many value={s.to ?? ""} onChange={(to) => setStep(s.id, { to })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Subject" multiline={false} value={s.subject ?? ""} onChange={(subject) => setStep(s.id, { subject })} draft={draft} stepId={s.id} options={options} />
-                  <ValueField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or {client.email}" draft={draft} stepId={s.id} options={options} />
+                  <AddressField label="Reply-To (optional)" value={s.replyTo ?? ""} onChange={(replyTo) => setStep(s.id, { replyTo: replyTo || undefined })} placeholder="An address, or a value from an earlier step" draft={draft} stepId={s.id} options={options} />
                   <ComposeField label="Message" value={s.body ?? ""} onChange={(body) => setStep(s.id, { body })} draft={draft} stepId={s.id} options={options} />
                   <ComingNext />
                 </>

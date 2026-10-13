@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
+import { addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
 import { fromDefinition, toDefinition } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
@@ -32,16 +32,14 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   assert.ok(g[0].items.some((i) => i.token === "{email}"));
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
-  const help = g[g.length - 1];
-  assert.equal(help.title, "Helpful values");
-  assert.ok(help.items.every((i) => i.known === false && i.note === "Not available yet"));
+  assert.equal(g.some((x) => x.title === "Helpful values"), false);
 });
 
 test("only steps before this one are offered, and the engine can declare helpers", () => {
   const d = draft([email, { id: "later", kind: "formula", formula: "1" }]);
   assert.equal(insertList(d, "mail", O).some((g) => g.title === "Earlier steps"), false);
   const g = insertList(d, "mail", O, { engineHas: ["{now.date}"] });
-  assert.equal(g[g.length - 1].items.find((i) => i.token === "{now.date}").known, true);
+  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), ["{now.date}"]);
 });
 
 test("a record trigger lists its object's fields, and a sealed one carries a lock note", () => {
@@ -92,4 +90,19 @@ test("the email step keeps Reply-To through compile and decompile", () => {
   const bare = toDefinition(draft([{ ...email, replyTo: "" }])).steps[0];
   assert.equal("replyTo" in bare.input, false);
   assert.equal(fromDefinition(toDefinition(draft([{ ...email, replyTo: "" }]))).steps[0].kind, "email");
+});
+
+test("address boxes offer the email-type fields in context, labelled from the data", () => {
+  const o = { ...O, types: [{ name: "thing", label: "Thing", fields: [{ name: "contact", label: "Contact", type: "email" }, { name: "work_email", label: "Work email" }, { name: "note", label: "Note" }] }] };
+  const d = draft([{ id: "mk", kind: "create", type: "thing", fields: [] }, email], { kind: "created", type: "thing" });
+  const picks = addressPicks(insertList(d, "mail", o));
+  assert.deepEqual(picks.map((p) => p.token), ["{after.contact}", "{after.work_email}", "{steps.mk.record.data.contact}", "{steps.mk.record.data.work_email}"]);
+  assert.match(picks[0].label, /^Contact \(Thing\)$/);
+  assert.deepEqual(addressPicks(insertList(draft([email]), "mail", O)).map((p) => p.token), ["{email}"]);
+});
+
+test("the email step keeps From through compile and decompile", () => {
+  const def = toDefinition(draft([{ ...email, from: "{after.owner_email}" }]));
+  assert.deepEqual(Object.keys(def.steps[0].input), ["to", "subject", "body", "replyTo", "from"]);
+  assert.equal(fromDefinition(def).steps[0].from, "{after.owner_email}");
 });
