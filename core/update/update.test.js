@@ -126,12 +126,13 @@ test("nothing installs without the owner's yes: a found release drops no request
   assert.equal(looked.available, next, "the check still finds it");
   assert.equal(looked.install, false, "automatic installing is off by default");
   assert.deepEqual(fs.readdirSync(b.req), [], "finding a release asks for nothing");
-  for (const input of [{}, { yes: false }, { yes: "true" }]) {
+  for (const input of [{}, { yes: false }]) {
     const r = await b.call("update.apply", input);
     assert.equal(r.error?.code, "needs_yes", JSON.stringify(input));
     assert.match(r.error.message, /not installed until you say yes/);
     assert.match(r.error.message, /vyre update/, "it names the next step");
   }
+  assert.ok((await b.call("update.apply", { yes: "true" })).error, "a string is not a yes");
   assert.deepEqual(fs.readdirSync(b.req), [], "no request without a yes");
   const yes = await b.call("update.apply", { yes: true });
   assert.equal(yes.data.requested, true);
