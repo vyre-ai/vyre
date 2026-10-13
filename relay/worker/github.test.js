@@ -60,7 +60,7 @@ function world(t, { names = {}, user = { id: 4242, login: "alex-gh", name: "Alex
     return new Response(JSON.stringify({ data: { name, kind: "person", id: p.state.id, ops: p.ops } }), { status: 200 });
   };
   const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket, CODES: W.CodeSlot, GITHUB: W.GithubLinks },
-    env: { GITHUB_OAUTH_CLIENT_ID: "Iv1.test", GITHUB_OAUTH_CLIENT_SECRET: "s3cret-value", GITHUB_FETCH: github, NAMES_FETCH: namesFetch, NOW: () => clock.t } });
+    env: { GITHUB_OAUTH_CLIENT_ID: "Iv1.test", GITHUB_OAUTH_CLIENT_SECRET: "s3cret-value", GITHUB_FETCH: github, NAMES_FETCH: namesFetch, ESCROW_RELAY_SECRET: "x".repeat(40), ESCROW_FETCH: async (/** @type {string} */ u) => new Response(JSON.stringify(u.endsWith("/create") ? { pub: "P", eid: "E", token: { t: 1 } } : { ok: true })), NOW: () => clock.t } });
   t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
   const req = (/** @type {string} */ path, /** @type {any} */ o = {}) => worker.fetch(new Request(BASE + path, { ...o, redirect: "manual", headers: { "cf-connecting-ip": o.ip || "203.0.113.7", ...(o.headers || {}) } }), rt.env);
   const post = (/** @type {string} */ path, /** @type {any} */ body, /** @type {any} */ o = {}) => req(path, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...(o.origin ? { origin: o.origin } : {}) }, ip: o.ip });

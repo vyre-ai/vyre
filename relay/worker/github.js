@@ -16,6 +16,7 @@
 // Storage is one Durable Object (GithubLinks); a ticket is stored by its hash. The GitHub access token lives for the length of one callback, is revoked, and is never stored or logged.
 
 import * as C from "../../kernel/identity/chain.js";
+import { mac } from "../../escrow/worker/mac.js";
 
 export const GH_TAG_LINK = "vyre-gh-link-v1";
 export const GH_TAG_ACCOUNT = "vyre-gh-account-v1";
@@ -59,6 +60,16 @@ const store = (/** @type {any} */ env) => env.GITHUB.get(env.GITHUB.idFromName("
 async function ask(env, body) { const r = await store(env).fetch("https://github/op", { method: "POST", body: JSON.stringify({ ...body, now: now(env) }) }); return /** @type {any} */ (await r.json()); }
 /** One count in a window, in the object: false once `limit` is passed. @param {any} env @param {string} key @param {number} limit */
 async function allowed(env, key, limit) { return (await ask(env, { op: "hit", key, limit, windowMs: 60_000 })).ok === true; }
+/** A call to the escrow Worker: the relay's MAC over the body and the time, nothing else. The relay never holds what comes back except a public key and a one-use token. @param {any} env @param {string} op @param {object} body */
+async function escrow(env, op, body) {
+  if (!env.ESCROW_RELAY_SECRET) return { status: 503, body: null };
+  const rest = { ...body, ts: now(env) };
+  const f = typeof env.ESCROW_FETCH === "function" ? env.ESCROW_FETCH : globalThis.fetch.bind(globalThis);
+  try {
+    const r = await f(`${String(env.ESCROW_ORIGIN || "https://escrow.vyre.run").replace(/\/+$/, "")}/v1/escrow/${op}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...rest, m: await mac(env.ESCROW_RELAY_SECRET, op, rest) }) });
+    return { status: r.status, body: /** @type {any} */ (await r.json().catch(() => null)) };
+  } catch { return { status: 502, body: null }; }
+}
 const who = (/** @type {Request} */ r) => r.headers.get("cf-connecting-ip") || "unknown";
 
 /** CORS for the app's own origin only, matched exactly; a call with no Origin (a native client) needs none. @param {Request} request @param {any} env @param {Response} res */
@@ -90,7 +101,7 @@ export async function onGithub(request, url, env) {
   if (request.method !== "POST") return json(405, { error: "not a way in" });
   const origin = request.headers.get("origin");
   if (origin && !appOrigins(env).includes(origin)) return json(403, { error: "not from here" });
-  const run = path === "/me" ? me : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : null;
+  const run = path === "/me" ? me : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : path === "/enter" ? enter : null;
   if (!run) return json(404, { error: "no such call" });
   return withCors(request, env, await run(request, url, env));
 }
@@ -217,7 +228,10 @@ async function link(request, url, env) {
   if (!taken.rec) return json(401, { error: "that sign-in has run out; start again" });
   const put = await ask(env, { op: "link.put", link: { ghid: h.rec.ghid, login: h.rec.login, identity: c.state.id, name, since: now(env) } });
   if (!put.ok) return json(409, { error: put.code === "identity_linked" ? "this identity already has a GitHub linked; unlink it first" : "this GitHub account is already linked to another identity" });
-  return json(200, { ok: true, github: { login: h.rec.login }, since: now(env) });
+  // The escrow makes a new key pair for this link. The device adds its public half to the list as the relay's entry, then sends the escrow its bundle with the token.
+  const made = await escrow(env, "create", { ghid: h.rec.ghid, identity: c.state.id, name });
+  if (made.status !== 200 || !made.body) { await ask(env, { op: "link.del", identity: c.state.id }); return json(502, { error: "the escrow did not answer; nothing was linked" }); }
+  return json(200, { ok: true, github: { login: h.rec.login }, since: now(env), relay: { pub: made.body.pub, eid: made.body.eid }, escrow: { token: made.body.token, origin: String(env.ESCROW_ORIGIN || "https://escrow.vyre.run") } });
 }
 
 /** @param {Request} request @param {URL} _url @param {any} env */
@@ -236,7 +250,7 @@ async function account(request, url, env) {
   if (!b) return json(400, { error: "bad request" });
   if (!(await allowed(env, `write:${who(request)}`, GH_LIMITS.writePerMin))) return json(429, { error: "too many tries; wait a minute" });
   const name = String(b.name || ""), eid = String(b.eid || ""), action = String(b.action || ""), nonce = String(b.nonce || "");
-  if (!["status", "unlink"].includes(action) || !NONCE_RE.test(nonce)) return json(400, { error: "bad request" });
+  if (!["status", "unlink", "refresh"].includes(action) || !NONCE_RE.test(nonce)) return json(400, { error: "bad request" });
   const c = await chainOf(env, name, eid);
   if (!c.state) return json(c.code, { error: c.say });
   const msg = `${GH_TAG_ACCOUNT}\n${action}\n${c.state.id}\n${nonce}\n${Number(b.ts)}\n${url.host}`;
@@ -247,8 +261,33 @@ async function account(request, url, env) {
     const l = (await ask(env, { op: "link.byIdentity", identity: c.state.id })).link;
     return json(200, { linked: l ? { login: l.login, since: l.since } : null });
   }
+  const l = (await ask(env, { op: "link.byIdentity", identity: c.state.id })).link;
+  if (action === "refresh") {
+    const g = (await ask(env, { op: "link.byIdentity", identity: c.state.id })).link;
+    if (!g) return json(404, { error: "no GitHub is linked" });
+    const t = await escrow(env, "token", { ghid: g.ghid, identity: c.state.id });
+    return t.status === 200 && t.body ? json(200, { escrow: { token: t.body.token, origin: String(env.ESCROW_ORIGIN || "https://escrow.vyre.run") } }) : json(502, { error: "the escrow did not answer" });
+  }
   await ask(env, { op: "link.del", identity: c.state.id });
+  // The escrow purges the sealed key and the relay's key. The person's device removes the relay's entry from the list in its own signed op.
+  if (l) await escrow(env, "delete", { ghid: l.ghid, identity: c.state.id });
   return json(200, { ok: true });
+}
+
+/** A new device after GitHub sign-in: the escrow adds it to the identity's list as a limited device and answers the Secret Key and home hint sealed to that device's agreement key. @param {Request} request @param {URL} _url @param {any} env */
+async function enter(request, _url, env) {
+  const b = await readBody(request);
+  if (!b) return json(400, { error: "bad request" });
+  const h = await holding(env, b, who(request));
+  if (h.res) return h.res;
+  const l = (await ask(env, { op: "link.get", ghid: h.rec.ghid })).link;
+  if (!l) return json(404, { linked: false });
+  const d = b.device;
+  if (!d || typeof d !== "object") return json(400, { error: "bad request" });
+  const r = await escrow(env, "release", { ghid: h.rec.ghid, device: { eid: String(d.eid || ""), pub: String(d.pub || ""), agree: String(d.agree || "") } });
+  if (r.status !== 200 || !r.body) return json(r.status === 429 ? 429 : r.status === 503 || r.status === 502 ? 503 : 409, { error: r.body && r.body.error ? r.body.error : "could not sign in with GitHub" });
+  await ask(env, { op: "ticket.take", tid: h.tid });
+  return json(200, { name: l.name, sealed: r.body.sealed, lastRelease: r.body.lastRelease });
 }
 
 /**
