@@ -22,6 +22,7 @@ import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
+import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
 const str = { type: "string" };
@@ -114,6 +115,30 @@ export default {
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
       run: (input, meta) => { refuseProcess(input, meta); return hub.add(input); },
+    });
+
+    // A team member's own servers ("Your accounts"): kept in THEIR personal vault, for the person the kernel names for the call, never one the input names. A member's call arrives here with its token
+    // (a module hop inherits the turn), so vault.me.store.* resolves the same person; the owner has no personal vault and uses mcp.add.
+    const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input)));
+    ctx.tool("mcp.mine.list", {
+      effect: "read",
+      description: "The MCP servers you brought yourself (your own accounts): name and address, never a credential.",
+      input: obj({}),
+      run: async () => (await mine().list()).map(s => ({ name: s.name, type: s.type, url: s.url })),
+    });
+    ctx.tool("mcp.mine.add", {
+      effect: "write",
+      description: "Add an MCP server to your own accounts: a name and a remote server (type http or sse, an https url, optional headers such as an authorization token). It is kept in your own vault and reaches only your sessions.",
+      input: obj({ name: str, type: { type: "string", enum: ["http", "sse"] }, url: str, headers: { type: "object" } }, ["name", "type", "url"]),
+      callers: PEOPLE.filter(c => c !== "module"),
+      run: async ({ name, type, url, headers }) => { await mine().put(name, { type, url, ...(headers && typeof headers === "object" ? { headers } : {}) }); return { name }; },
+    });
+    ctx.tool("mcp.mine.remove", {
+      effect: "write",
+      description: "Remove one of your own MCP servers.",
+      input: obj({ name: str }, ["name"]),
+      callers: PEOPLE.filter(c => c !== "module"),
+      run: async ({ name }) => ({ removed: await mine().remove(name) }),
     });
 
     ctx.tool("mcp.update", {
