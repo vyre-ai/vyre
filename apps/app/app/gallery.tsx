@@ -25,6 +25,8 @@ import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
 import { RunSteps } from "../screens/flows/RunSteps";
+import { FlowBuilder } from "../ui/flows/FlowBuilder";
+import { SAMPLE_OPTIONS, REMINDER_DRAFT } from "../screens/flows/starters.js";
 import { dayTimeOf } from "../src/time/show.js";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
@@ -192,6 +194,7 @@ function Sample({ name }: { name: string }) {
       </View>
     );
   }
+  if (name === "flow-trigger") return <FlowBuilder draft={REMINDER_DRAFT} onChange={() => {}} options={SAMPLE_OPTIONS as any} />;
   if (name === "run-steps") {
     const t0 = Date.UTC(2026, 9, 13, 9, 0, 0);
     const painted = [{ id: "trigger", kind: "trigger", label: "A new appointment is booked" }, { id: "a", label: "Look up the client" }, { id: "b", label: "Text the client" }, { id: "c", label: "Wait until a day before" }, { id: "d", label: "Ask the partner to approve" }, { id: "e", label: "File the notes" }];
