@@ -4,6 +4,8 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, TextInput, View } from "react-native";
 import PdfDom from "./PdfDom";
+import DocxDom from "./DocxDom";
+import SheetDom from "./SheetDom";
 import { Banner } from "../components/Banner";
 import { Button, IconButton } from "../components/Button";
 import { Icon } from "../components/Icon";
@@ -12,7 +14,7 @@ import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
 import { MarkdownEditor, MarkdownView } from "./MarkdownDoc";
 import { CodeLines, DiffView, ImageZoom, JsonTree, OtherCard } from "./parts";
-import { canEdit, isTextKind, languageOf, LIMITS, mimeFor, viewerKind, type ViewKind } from "./kinds.js";
+import { canEdit, extOf, isTextKind, languageOf, LIMITS, mimeFor, viewerKind, type ViewKind } from "./kinds.js";
 import { lineDiff, diffStats } from "./diff.js";
 import { base64Of, bytesOfText, changedBy, editState, looksBinary, saveWords, textOfBytes } from "./viewer-model.js";
 import type { FileBody, FileSource, FileVersion } from "./source";
@@ -52,7 +54,7 @@ function download(name: string, bytes: ArrayLike<number>, mime: string) {
 }
 
 export function FileViewer(p: FileViewerProps) {
-  const { color } = useUiTheme();
+  const { color, resolved } = useUiTheme();
   const kind: ViewKind = p.kind ?? viewerKind(p.name);
   const [version, setVersion] = useState<number | undefined>();
   const [versions, setVersions] = useState<FileVersion[]>([]);
@@ -80,7 +82,7 @@ export function FileViewer(p: FileViewerProps) {
       const b = await p.source.load(v);
       const size = b.bytes?.length ?? b.text?.length ?? 0;
       if (LIMITS[kind] && size > LIMITS[kind]) { setBody(b); setState("failed"); setWhy("This file is too big to show here. Download it to open it."); return; }
-      const asText = isTextKind(kind) || kind === "html" || kind === "sheet";
+      const asText = isTextKind(kind) || kind === "html";
       let t = "";
       if (asText) {
         if (b.text !== undefined) t = b.text;
@@ -167,7 +169,13 @@ export function FileViewer(p: FileViewerProps) {
           : <OtherCard name={p.name} note="Open this page in Vyre on a computer to see it." onDownload={doDownload} />;
       case "audio": case "video":
         return Platform.OS === "web" && uri ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>{createMedia(kind, uri)}</View> : <OtherCard name={p.name} note="Play this on a computer, or download it." onDownload={doDownload} />;
-      default: return <OtherCard name={p.name} size={body?.bytes?.length} onDownload={doDownload} note={kind === "docx" || kind === "sheet" ? "Documents and spreadsheets open here in a later update. Download it for now." : undefined} />;
+      case "docx": return body?.base64 || body?.bytes ? <DocxDom base64={body.base64 ?? base64Of(body.bytes!)} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+      case "sheet": {
+        const ext = extOf(p.name);
+        if (ext === "xls") return <OtherCard name={p.name} size={body?.bytes?.length} note="Older .xls spreadsheets cannot be shown here. Download it, or save it as .xlsx." onDownload={doDownload} />;
+        return body?.base64 || body?.bytes ? <SheetDom base64={body.base64 ?? base64Of(body.bytes!)} kind={ext === "xlsx" ? "xlsx" : ext === "tsv" ? "tsv" : "csv"} dark={resolved.scheme === "dark"} dom={{ style: { flex: 1, width: "100%", height: "100%" } }} /> : null;
+      }
+      default: return <OtherCard name={p.name} size={body?.bytes?.length} onDownload={doDownload} />;
     }
   })();
 
