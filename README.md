@@ -11,7 +11,7 @@ Open source. Self-hosted. Any model.</p>
   <a href="https://vyre.run">Website</a> ·
   <a href="docs/get-started/install.md">Install</a> ·
   <a href="docs/index.md">Docs</a> ·
-  <a href="docs/architecture/overview.md">Architecture</a> ·
+  <a href="ARCHITECTURE.md">Architecture</a> ·
   <a href="docs/known-gaps.md">Known gaps</a>
 </p>
 
@@ -42,6 +42,8 @@ Vyre is the place where they can. It is one product for a team and its agents. Y
 - **Sites.** An agent builds a site, previews it at a private address, and puts it live with one yes from you. Domains show the DNS record to add and check themselves.
 - **Needs you.** One place for everything waiting on a person: approvals, a file or a date an agent asked for, and tasks that got stuck. Each card is typed, so a date ask has a date picker and a file ask has a file picker.
 - **Teams.** Members reach their own things on the team's server: their projects, chats, Flows, skills, vault and MCP servers. A Space-wide Google or Microsoft 365 key lets each member read their own mail, calendar and drive and only theirs. Roles, per-project seat levels and invites with a role are built in.
+
+New to the code, or pointing an AI agent at it? Start with [ARCHITECTURE.md](ARCHITECTURE.md): a map of the system and one page per feature. To see how a business would run on Vyre, an agent can follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md).
 
 ## How it works
 
