@@ -716,7 +716,7 @@ export function macSide(ctx, seam = {}) {
 
   /** Only Vyre's own modules reach the box through this Mac's paired-device identity: an added module is refused before anything is forwarded. */
   const firstPartyOnly = (/** @type {any} */ meta, /** @type {string} */ tool) => {
-    if (String((meta && meta.caller) || "").startsWith("module:") && !(meta && meta.firstParty)) throw Object.assign(new Error(`${tool} reaches the box as this Mac; only Vyre's own modules may use it`), { code: "denied" });
+    if (String((meta && meta.caller) || "").startsWith("module:") && !(meta && (meta.firstParty || meta.relayedByFirstParty === true))) throw Object.assign(new Error(`${tool} reaches the box as this Mac; only Vyre's own modules may use it`), { code: "denied" });
   };
 
   ctx.tool("link.call", {
