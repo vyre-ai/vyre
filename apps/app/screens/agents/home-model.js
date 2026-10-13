@@ -100,6 +100,7 @@ export function visibleAgents(rows, me) {
 export function rowActions(r, o = {}) {
   if (r.kind === "assistant") return [{ key: "chat", label: "Open chat" }, { key: "open", label: "Settings" }];
   const may = !!o.staff || (!!o.me && r.maker === o.me);
+  /** @type {{ key: string, label: string, to?: string }[]} */
   const out = [{ key: "open", label: "Open" }, { key: "new-chat", label: "New chat" }];
   if (o.chats) out.push({ key: "chats", label: o.chats === 1 ? "Chat with it" : `Chats with it (${o.chats})` });
   if (r.canPause) out.push({ key: "pause", label: r.status === "Paused" ? "Resume" : "Pause" });
