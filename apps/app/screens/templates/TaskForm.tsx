@@ -22,6 +22,7 @@ export function TaskForm({ body, si, ti, onChange, people, agents }: { body: Bod
   {t.checker ? <Field label="What the approver is told" value={E.noteOf(t, "approver")} onChangeText={(v: string) => onChange(E.setNote(body, si, ti, "approver", v))} multiline lines={2} /> : null}
   <View className="gap-s1">
     <Text size="caption" strong tone="label">Followers (optional)</Text>
+      <Text size="caption" tone="muted">A follower is told this task's title and what you write for followers; she gets no access to the task or the project from it.</Text>
     <View className="flex-row flex-wrap gap-s2">{(t.followers || []).map((f) => <Button key={f} kind="ghost" size="sm" icon="x" label={E.assigneeWords(f, people, agents)} onPress={() => onChange(E.removeFollower(body, si, ti, f))} />)}</View>
     <Select label="Add a follower" value="" options={doers.filter(([v]) => v !== "lead" && !(t.followers || []).includes(v))} placeholder="Choose someone" onChange={(v: string) => v && onChange(E.addFollower(body, si, ti, v))} />
   </View>

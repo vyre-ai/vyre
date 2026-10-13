@@ -11,6 +11,7 @@ import { treeOf, type Body } from "../templates/model";
 import { ChatsList } from "../chats/ChatsList";
 import { chatsFrom, chatsOrdered, sampleChats, type ChatRow } from "../chats/chats-model.js";
 import { useChatMenu } from "../chats/useChatMenu";
+import { playbookPath } from "../templates/board";
 
 /** A project's chats (work.chat.list for the project, by short name or record id): the same rows and the same row menu as the Chat list; the ones the person is in open, the others only show that they exist. */
 export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; name?: string }) {
@@ -18,8 +19,8 @@ export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; 
   const [rows, setRows] = useState<ChatRow[] | null>(null);
   const [n, setN] = useState(0);
   useEffect(() => {
-    // The sample world has no box: its chats are the sample ones filed under this project's name (or a few, so the page shows what a busy project looks like).
-    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const mine = all.filter((c) => c.project === name); setRows(mine.length ? mine : all.slice(0, 3)); return; }
+    // The sample world has no box: its chats are the sample ones filed under this project's name .
+    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const mine = all.filter((c) => c.project === name); setRows(mine); return; }
     void callT("work.chat.list", { project: refId, limit: 50 }).then((r) => setRows(r.error ? [] : chatsOrdered(chatsFrom(r.data))));
   }, [refId, n, name]);
   const { menu, sheets } = useChatMenu(rows ?? [], () => setN((x) => x + 1));
@@ -107,12 +108,12 @@ export function MemoryPane({ id }: { id: string }) {
 export function StagesPane({ snapshot, stage, template }: { snapshot: string; stage?: string; template?: string }) {
   const router = useRouter();
   let body: Body | null = null;
-  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Template"), stages: j.stages || [] }; } catch { body = null; }
+  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Playbook"), stages: j.stages || [] }; } catch { body = null; }
   if (!body) return <EmptyState title="No stages" body="This project's stages could not be read." />;
   const tree = treeOf(body);
   return (
     <View className="gap-s3">
-      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the template" onPress={() => router.push(`/u/templates/${template}` as never)} /></View> : null}
+      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the playbook" onPress={() => router.push(playbookPath(template) as never)} /></View> : null}
       <Card flush>
         {tree.map((l, i) => {
           const here = l.depth === 0 && stage && l.text.replace(/^\d+\.\s*/, "") === stage;

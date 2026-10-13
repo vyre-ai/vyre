@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, settle, ALEX } from "./testing/world.js";
+import { world, settle, ALEX, BOB } from "./testing/world.js";
 import { stagedCatalog } from "./testing/fixtures.js";
 import { snapshotOf, problems } from "../../lib/project-template.js";
 
@@ -95,4 +95,21 @@ test("the shape of followers and notes: actor strings, and plain text of at most
   bad((k) => { k.notes = { approver: 5 }; }, /notes is/, "notes");
   bad((k) => { k.notes = { other: "x" }; }, /notes is/, "notes");
   bad((k) => { k.notes = { followers: "x".repeat(4001) }; }, /at most 4000/, "notes");
+});
+
+test("a follower's note task gives her no read on the project or on the doer's task: what she can read is the same whether or not she follows", async () => {
+  const can = async (/** @type {() => Promise<any>} */ f) => { try { await f(); return true; } catch { return false; } };
+  const readsOf = async (/** @type {boolean} */ follows) => {
+    const w = await mk();
+    const t = tpl();
+    t.stages[0].tasks = [{ title: "Quiet", doer: "teammate:research", ...(follows ? { followers: ["person:per_bob"], notes: { followers: "FYI" } } : {}), output: { kind: "note" } }];
+    const r = await start(w, {}, t);
+    const bob = w.kernel.chainFor({ flow: "probe", space: w.cat.space, approver: BOB, tainted: false });
+    const main = (await w.kernel.allTasks()).find((/** @type {any} */ x) => x.title === "Quiet");
+    const note = (await w.kernel.allTasks()).find((/** @type {any} */ x) => x.title === "Following: Quiet");
+    assert.equal(Boolean(note), follows, follows ? "she is given a note task" : "no note task without a follower");
+    if (follows) assert.equal(note.helpers, undefined, "and the note task names no helper");
+    return { project: await can(() => w.kernel.records.get(bob, "project", r.id)), task: await can(() => w.kernel.tasksApi.get(bob, main.id)) };
+  };
+  assert.deepEqual(await readsOf(true), await readsOf(false));
 });
