@@ -807,8 +807,8 @@ export default {
      * @param {{ agent?: string, project?: string }} i
      */
     const instructionsOf = async (/** @type {{ agent?: string, project?: string, no_project_docs?: boolean }} */ i) => {
-      const got = async (/** @type {string} */ tool, /** @type {any} */ input) => { try { const r = await ctx.call(tool, input); return r && !r.error && r.data && typeof r.data.text === "string" ? r.data : null; } catch { return null; } };
-      const [mine, theirs] = await Promise.all([i.agent ? got("agents.instructions", { agent: i.agent }) : null, i.project && !i.no_project_docs ? got("projects.instructions", { project: i.project }) : null]);
+      const got = async (/** @type {() => Promise<any>} */ run) => { try { const r = await run(); return r && !r.error && r.data && typeof r.data.text === "string" ? r.data : null; } catch { return null; } };
+      const [mine, theirs] = await Promise.all([i.agent ? got(() => ctx.call("agents.instructions", { agent: i.agent })) : null, i.project && !i.no_project_docs ? got(() => ctx.call("projects.instructions", { project: i.project })) : null]);
       return { ...(mine ? { agent: { name: String(mine.name || i.agent), text: mine.text } } : {}), ...(theirs ? { project: { name: String(theirs.name || i.project), text: theirs.text } } : {}) };
     };
 
