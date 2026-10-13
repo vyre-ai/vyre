@@ -1,6 +1,6 @@
 name: lent-mac
 # A chat on a lent computer, on a hosted Mac (and Linux): the lender is the app's real daemon with its runner module, the agent is the fake Claude in the real sandbox (seatbelt on the Mac), the home is the lent
-# home with a real kernel. Placed with no yes, tools and a hook through the door, a send held at the home, the lid shutting and the fallback to the box, a crash with its own exit code; then the chaos scenarios
+# home with a real kernel. Placed with no yes, tools and a hook through the door, a send held at the home, the lid shutting and the fallback to the box, a crash with its own exit code; then the home sandbox and hardening tests (the macOS-only ones run only here), then the chaos scenarios
 # for the pipe, the door and the lid shutting mid-turn. Never a person's Mac (hosted-guard). Push to work/lent-mac, or by hand. Owner: link.
 on:
   workflow_dispatch:
@@ -37,6 +37,9 @@ jobs:
       - name: a chat on a computer run by the real daemon, and the runner's lent-chat tests
         shell: bash
         run: node --test --test-timeout=240000 core/runner/lent-daemon.test.js core/runner/lent-pipe-runner.test.js core/runner/lent-pipe.test.js core/runner/lent-wire.test.js 2>&1 | tee lent.txt
+      - name: the home sandbox and the hardening tests, including the macOS-only ones (seatbelt, Mach denies, profiles) that skip everywhere else
+        shell: bash
+        run: node --test --test-timeout=240000 core/runner/homesandbox.test.js core/runner/hardening.test.js 2>&1 | tee home.txt
       - name: the chaos scenarios for a chat's pipe, its door and the lid shutting mid-turn
         shell: bash
         run: node scripts/runner-chaos.mjs pipe door lidMidTurn 2>&1 | tee chaos.txt
@@ -47,3 +50,4 @@ jobs:
           path: |
             lent.txt
             chaos.txt
+            home.txt
