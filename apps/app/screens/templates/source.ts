@@ -13,7 +13,7 @@ export function templatesSource(call: Call) {
     list: async (): Promise<Row[]> => (await ask<{ templates?: Row[] }>("work.template.list")).templates ?? [],
     versions: async (template: string): Promise<Version[]> => (await ask<{ versions?: Version[] }>("work.template.list", { template })).versions ?? [],
     get: (template: string, version?: number): Promise<Version> => ask("work.template.get", { template, ...(version ? { version } : {}) }),
-    define: (body: unknown, template?: string, note?: string): Promise<Version> => ask("work.template.define", { body, ...(template ? { template } : {}), ...(note ? { note } : {}) }),
+    define: (body: unknown, template?: string, note?: string, replace?: boolean): Promise<Version> => ask("work.template.define", { body, ...(template ? { template } : {}), ...(note ? { note } : {}), ...(replace ? { replace: true } : {}) }),
     goLive: (template: string, version: number) => ask("work.template.golive", { template, version }),
     test: (template: string, version: number, sample?: Record<string, unknown>) => ask<{ ok: boolean; lines?: string[]; totals?: string; errors?: { path: string; message: string }[] }>("work.template.test", { template, version, ...(sample ? { sample } : {}) }),
     library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
