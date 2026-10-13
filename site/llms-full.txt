@@ -458,7 +458,7 @@ Practice management and CRM suites are built for one job and do it well. Vyre do
 - Later: a Vyre-hosted home for people without a server.
 
 ## Map your business onto Vyre
-To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to https://vyre.run/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. https://vyre.run/map/ has a short form that adds your firm's details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
+To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to https://vyre.run/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. https://vyre.run/map/ has a five-step guide that draws your business on Vyre and adds its details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
 
 ```
 Read https://vyre.run/agenthome.md and follow it to show me how my business would run on Vyre, the agentic command center for AI-native teams. Ask me what you need.

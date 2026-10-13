@@ -1161,3 +1161,5 @@ li > .chip-next, .ar-box > .chip-next, h3 > .chip-next { margin-bottom: 8px; dis
 /* The hero clips the bleed sideways only; below the devices it has room for their shadows to fade out. */
 .hero { overflow-x: clip; overflow-y: visible; padding-bottom: clamp(96px, 10.5vw, 150px); }
 .works { position: relative; z-index: 0; background: transparent; }
+
+.tlc .chip-next { display: flex; margin-top: 8px; }

@@ -13,7 +13,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Flows](https://vyre.run/flows/): triggers, approved versions, the replay-safe runner and holds for a person
 - [Agents](https://vyre.run/agents/): instructions, memory, access, and how a task wakes an agent that finishes, hands on or says stuck
 - [Start here, for AI agents](https://vyre.run/agenthome.md): the entry point for an agent: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up (HTML twin: https://vyre.run/agenthome/)
-- [Map your business](https://vyre.run/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
+- [Map your business](https://vyre.run/map/): answer five short steps, watch your business take shape and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [For professional services firms](https://vyre.run/for/): client journeys on Vyre by kind of firm
 - [Vyre for law firms](https://vyre.run/for/law-firms/): Inquiry, screening and conflict check, consultation, engagement letter signed, matter opened from a Playbook, deadlines from a trigger date, documents from the firm’s own templates, client updates, billing hand-off.

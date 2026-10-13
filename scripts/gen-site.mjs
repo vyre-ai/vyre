@@ -689,7 +689,7 @@ page({
 });
 
 // ---------- map your business (scripts/site/agent-prompt.mjs) ----------
-page({ ...MAP_META, body: mapBody({ MAP_URL, REPO, eyebrow }), ld: [crumbs([['Vyre', `${SITE}/`], ['Map your business', `${SITE}/map/`]])] });
+page({ ...MAP_META, body: mapBody({ MAP_URL, REPO, eyebrow, JS: `/map.js?v=${hash("map.js")}` }), ld: [crumbs([['Vyre', `${SITE}/`], ['Map your business', `${SITE}/map/`]])] });
 
 // ---------- agenthome: the agents' entry point, generated from docs/for-agents/START-HERE.md ----------
 const START_HERE = readFileSync(resolve(here, '..', 'docs', 'for-agents', 'START-HERE.md'), 'utf8');
@@ -1081,7 +1081,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
 ${PILLAR_LLMS(SITE).join('\n')}
 - [Start here, for AI agents](${SITE}/agenthome.md): the entry point for an agent: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up (HTML twin: ${SITE}/agenthome/)
-- [Map your business](${SITE}/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
+- [Map your business](${SITE}/map/): answer five short steps, watch your business take shape and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 ${IND.llms}
 - [Weekly update](${SITE}/updates/): one email a week at most with what changed in Vyre; sign up or leave in one click
@@ -1167,7 +1167,7 @@ ${COMPARE.fullBlock}
 - Later: a Vyre-hosted home for people without a server.
 
 ## Map your business onto Vyre
-To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to ${SITE}/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. ${SITE}/map/ has a short form that adds your firm's details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
+To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to ${SITE}/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. ${SITE}/map/ has a five-step guide that draws your business on Vyre and adds its details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
 
 \`\`\`
 ${PROMPT}
