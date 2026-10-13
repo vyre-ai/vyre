@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
+import { Linking } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, Button, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, Button, Chip, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
 import { RecordTimeline } from "./RecordTimeline";
 import { tool } from "../../src/real/box";
@@ -40,6 +41,11 @@ export function RecordScreen({ id }: { id: string }) {
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} />} />
+      <View className="flex-row flex-wrap items-center gap-s2 px-s4 pt-s2">
+        {factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>)}
+        {email ? <Button kind="secondary" size="sm" icon="mail" label="Email" onPress={() => void Linking.openURL(`mailto:${email}`)} /> : null}
+        {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
+      </View>
       {canSend && email ? <View className="flex-row px-s4 pt-s2"><Button kind="ghost" size="sm" label="Send for signature" onPress={() => router.push(`/u/module/appmods/documents-send?q=${encodeURIComponent(email)}` as never)} /></View> : null}
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} /></Appear>
