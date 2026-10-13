@@ -26,6 +26,9 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
   "memory.answer", "memory.ask", "memory.brief", "memory.card", "memory.context", "memory.decisions", "memory.facts", "memory.graph", "memory.prompt", "memory.relevant",
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
+  // Documents: reading a template and making a document from one. The handlers run on HER chain (lib/gateway-door.js), so the Drive and every record named are judged by what she may read and write; a
+  // record she cannot read is refused by name (documents.members.test.js). Sending for signature, the waiting list and reminders stay owner-only: they send as the Space's mail and list everyone's requests.
+  "documents.generate", "documents.template.get", "documents.template.list",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
@@ -95,8 +98,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.catalogue", "design.css", "design.css.propose", "design.css.status", "design.css.verify", "design.decide", "design.proposals", "design.propose",
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
-  "documents.generate", "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.waiting", "documents.template.add", "documents.template.get", "documents.template.list",
+  "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
+  "documents.signing.remind", "documents.signing.waiting", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
@@ -275,8 +278,8 @@ export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
 export const TOOL_GROUPS = Object.freeze({
   mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send"]),
   calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "connectors.calendar.today"]),
-  documents: Object.freeze(["documents.generate", "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
-    "documents.signing.waiting", "documents.template.add", "documents.template.get", "documents.template.list"]),
+  documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
+    "documents.signing.waiting", "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
     "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
   publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),
