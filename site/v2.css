@@ -990,7 +990,6 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .vmark circle.adrift { animation: adrift 7s ease-in-out infinite alternate; }
 @keyframes adrift { from { translate: 0 0; } to { translate: 1.6px -2.4px; } }
 /* Log in beside Set up Vyre; both live in the menu on a phone */
-@media (max-width: 1060px) and (min-width: 981px) { .star-pill span { display: none; } .star-pill { padding: 0 12px; } }
 
 /* 404 */
 .nf { padding: clamp(48px, 8vw, 104px) 0 clamp(64px, 9vw, 120px); }
@@ -1063,10 +1062,13 @@ section.sec#agent-guide { padding-top: clamp(32px, 4vw, 48px); }
   @media (prefers-reduced-motion: no-preference) {
     .ss img { animation: ss-run linear both; animation-timeline: --ss; animation-range: cover 8% cover 78%; }
     .ss.ss-p img { animation-range: cover 0% cover 100%; }
+    .ss.ss-rev img { animation-name: ss-run-rev; animation-range: cover 38% cover 100%; }
     .ss.ss-hero img { animation-timeline: scroll(root); animation-range: 0px 760px; }
     .ss.ss-hero.ss-p img { animation-range: 0px 1000px; }
   }
 }
+@keyframes ss-run-rev { from { transform: translateY(calc(-100% * (1 - var(--k)))); } to { transform: translateY(0); } }
+.ss.ss-rev img { transform: translateY(calc(-100% * (1 - var(--k)))); }
 @media (prefers-reduced-motion: reduce) { .ss img { transform: none !important; } }
 
 /* iPad Pro, landscape: aluminium edge, thin even black bezel, rounded corners, camera on the top bezel, buttons on the top edge. */
@@ -1151,3 +1153,11 @@ li > .chip-next, .ar-box > .chip-next, h3 > .chip-next { margin-bottom: 8px; dis
 
 /* the closed mega-menu panels are wider than a 1024 screen on the right: they must not make the page scroll sideways */
 .nav { overflow-x: clip; }
+
+/* Hero dot field and glow: fade out on every side, so there is no edge and no heavy block beside the headline. */
+.hero .stage::before { inset: -10% -6% -4% -8%; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 55%, transparent 100%); }
+.hero .stage canvas.field { -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.55) 12%, #000 30%), linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.55) 12%, #000 30%), linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+@media (max-width: 1023px) { .hero .stage canvas.field { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); } }
+/* The hero clips the bleed sideways only; below the devices it has room for their shadows to fade out. */
+.hero { overflow-x: clip; overflow-y: visible; padding-bottom: clamp(96px, 10.5vw, 150px); }
+.works { position: relative; z-index: 0; background: transparent; }
