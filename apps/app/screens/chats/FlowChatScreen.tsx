@@ -18,7 +18,7 @@ export default function FlowChatScreen() {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
   const [aim, setAim] = useState<Section | null>(null);
-  const { phone } = useUiTheme();
+  const { phone, color } = useUiTheme();
   const sections = useMemo(() => chat?.sections ?? [], [chat]);
   const folded = (s: Section) => (open.has(s.thread) ? false : shut.has(s.thread) ? true : s.collapsed);
   const flip = (s: Section) => {
@@ -46,7 +46,7 @@ export default function FlowChatScreen() {
               const h = wakeHeader(s.marker);
               const shown = !folded(s);
               return (
-                <View key={s.thread} style={i ? { borderTopWidth: 1, borderTopColor: "rgba(128,128,128,0.35)" } : undefined}>
+                <View key={s.thread} style={i ? { borderTopWidth: 1, borderTopColor: color.edge } : undefined}>
                   <Row dense chevron title={<Text strong numberOfLines={2}>{s.divider}</Text>} end={s.needsYou ? <Chip>Needs you</Chip> : undefined} accessibilityLabel={`${shown ? "Collapse" : "Expand"} ${s.divider}`} onPress={() => flip(s)} />
                   {shown ? (
                     <View className="gap-s2 px-s3 pb-s3">
