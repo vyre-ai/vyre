@@ -101,3 +101,20 @@ test("full path: an issuer who left the space before the accept seats nothing, a
   assert.deepEqual(asked.map(a => a.doer.id).sort(), [NEW, OWNER].sort(), "the joiner and the issuer are each told");
   assert.match(asked[0].note, /invite them again/);
 });
+
+test("full path: an issuer who is only a project lead seats the joiner while still lead, and nothing once the lead seat is taken away", async () => {
+  const LEAD = "per_lead";
+  const { hub, owner, ev, x, level, asked } = await viaKernel();
+  await hub.setSeatLevel(owner, { project: x.id, person: LEAD, level: "lead" });
+  const byLead = { ...ev.data, issuer: LEAD };
+  const ok = await hub.onInviteUsed(byLead);
+  assert.deepEqual(ok.seated, [x.id], "still lead: seated");
+  assert.equal(await level(x.id), "viewer");
+  // a second joiner, after the lead was made a contributor
+  await hub.setSeatLevel(owner, { project: x.id, person: LEAD, level: "contributor" });
+  const later = await hub.onInviteUsed({ ...byLead, by: "per_other" });
+  assert.deepEqual(later.seated, []);
+  assert.match(later.missed[0].why, /can no longer put people on it/);
+  assert.equal((await hub.seatOf(x.id, "per_other")).team, false);
+  assert.ok(asked.some(a => a.doer.id === "per_other") && asked.some(a => a.doer.id === LEAD), "joiner and issuer are told");
+});
