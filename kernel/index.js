@@ -144,9 +144,7 @@ export async function createKernel(cfg) {
    */
   /** Is this device (a `device` fact) still enrolled in this Space? The spaces module keeps the list (`cfg.deviceEnrolled`); with no port every device is (a build without the module). Any error is a no. */
   const enrolledHere = async (/** @type {string} */ space, /** @type {any} */ facts) => {
-    if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
-    // The owner's own tailnet node (path "wink": the daemon verified its login and node live) is no paired device with an enrolment list, so it is not asked; a paired `device:<id>` (path "relay") always is.
-    if (facts.path === "wink" && facts.person === ownerRef.id) return true;
+    if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string" || (facts.path === "wink" && facts.person === ownerRef.id)) return true; // the owner's own tailnet node (login verified live) has no enrolment list; a paired device:<id> is always asked
     try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
   };
   /** The one adoption path (the handle's call and the boot repair share it). The grants store serialises it and reads the owner it replaces itself, so two callers at once make one adoption. */

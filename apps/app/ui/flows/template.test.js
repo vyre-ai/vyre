@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
+import { aliasTable, toAliasText, toPathText, dateRefs, dateWords, dateToken, datePending, addressPicks, parseTemplate, tokensOf, insertList, renderPreview, openBrace, completeBrace, suggest, appendToken, smsCount, history, unknownTokens, tokenLabel } from "./template.js";
 import { fromDefinition, toDefinition } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
@@ -32,14 +32,16 @@ test("the insert list holds the form, earlier steps and the helper values", () =
   assert.ok(g[0].items.some((i) => i.token === "{email}"));
   const steps = g.find((x) => x.title === "Earlier steps");
   assert.deepEqual(steps.items.map((i) => i.token), ["{steps.find1.rows}", "{steps.calc.value}"]);
-  assert.ok(g[g.length - 1].items.every((i) => i.known === false && i.note === "Not available yet"));
+  const help = g[g.length - 1];
+  assert.deepEqual(help.items.map((i) => i.token), ["{today}", "{now}"]);
+  assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false && i.note === "Not available yet"));
 });
 
 test("only steps before this one are offered, and the engine can declare helpers", () => {
   const d = draft([email, { id: "later", kind: "formula", formula: "1" }]);
   assert.equal(insertList(d, "mail", O).some((g) => g.title === "Earlier steps"), false);
-  const g = insertList(d, "mail", O, { engineHas: ["{now.date}"] });
-  assert.deepEqual(g[g.length - 1].items.filter((i) => i.known).map((i) => i.token), ["{now.date}"]);
+  const g = insertList(d, "mail", O, { engineHas: ["{run.number}"] });
+  assert.deepEqual(g[g.length - 1].items.map((i) => i.token), ["{today}", "{now}", "{run.number}"]);
 });
 
 test("a record trigger lists its object's fields, and a sealed one carries a lock note", () => {
@@ -54,7 +56,7 @@ test("a record trigger lists its object's fields, and a sealed one carries a loc
 
 test("unknown tokens are flagged and the preview fills samples", () => {
   const g = insertList(draft([email]), "mail", O);
-  assert.deepEqual(unknownTokens("Hi {name} {bogus.x} {now.date}", g), ["{bogus.x}", "{now.date}"]);
+  assert.deepEqual(unknownTokens("Hi {name} {bogus.x} {run.number}", g), ["{bogus.x}", "{run.number}"]);
   assert.equal(tokenLabel("name", g), "Name");
   assert.equal(renderPreview("Hi {name}, {email}", { name: "Ana" }, g), "Hi Ana, [Email]");
   assert.equal(suggest(g, "mes")[0].token, "{message}");
@@ -108,20 +110,29 @@ test("the email step keeps From through compile and decompile", () => {
   assert.equal(fromDefinition(def).steps[0].from, "{after.owner_email}");
 });
 
-test("insert a date reads back in words and inserts the plain field for now", () => {
-  const o = { ...O, types: [{ name: "thing", label: "Thing", fields: [{ name: "starts_at", label: "Start" }, { name: "note", label: "Note" }, { name: "due", label: "Due", type: "date" }] }] };
+test("insert a date reads back in words, formats by the field's type, and an offset waits", () => {
+  const o = { ...O, types: [{ name: "thing", label: "Thing", fields: [{ name: "starts_at", label: "Start", kind: "datetime" }, { name: "note", label: "Note" }, { name: "due", label: "Due", kind: "date" }, { name: "seen_at", label: "Seen" }] }] };
   const g = insertList(draft([email], { kind: "created", type: "thing" }), "mail", o);
   const refs = dateRefs(g);
-  assert.deepEqual(refs.map((r) => r.token), ["{after.starts_at}", "{after.due}", ""]);
-  assert.equal(refs[2].label, "Now");
-  const d = { ref: refs[0].token, refLabel: refs[0].label, dir: "before", amount: 1, unit: "days", format: "weekday" };
-  assert.equal(dateWords(d), "Thing \u00b7 Start, minus 1 day, as weekday and date");
-  assert.equal(dateWords({ ...d, dir: "after", amount: 3 }), "Thing \u00b7 Start, plus 3 days, as weekday and date");
-  assert.equal(dateWords({ ...d, dir: "at", format: "datetime" }), "Thing \u00b7 Start, as date and time");
+  assert.deepEqual(refs.map((r) => r.token), ["{after.starts_at}", "{after.due}", "{after.seen_at}", "{today}", "{now}"]);
+  assert.deepEqual(refs.map((r) => r.dateKind), ["datetime", "date", undefined, "date", "datetime"]);
+  assert.ok(refs.every((r) => r.known !== false));
+  const d = { ref: refs[0].token, refLabel: refs[0].label, kind: refs[0].dateKind, dir: "before", amount: 1, unit: "days" };
+  assert.equal(dateWords(d), "Thing \u00b7 Start, minus 1 day, as date and time");
+  assert.equal(dateWords({ ...d, dir: "at", kind: "date" }), "Thing \u00b7 Start, as weekday and date");
+  assert.equal(dateWords({ ...d, dir: "after", amount: 3, kind: undefined }), "Thing \u00b7 Start, plus 3 days, as text");
   assert.equal(dateToken(d), "{after.starts_at}");
-  assert.match(datePending(d), /offset and format are Coming next/);
-  assert.equal(datePending(d, { engineDates: true }), null);
-  assert.match(datePending({ ...d, ref: "" }), /Now/);
+  assert.match(datePending(d), /offset .* Coming next/);
+  assert.equal(datePending({ ...d, dir: "at" }), null);
+  assert.match(datePending({ ...d, dir: "at", kind: undefined }), /not a date type/);
+});
+
+test("today and now are helpers the engine reads; the rest wait", () => {
+  const g = insertList(draft([email]), "mail", O);
+  const help = g[g.length - 1];
+  assert.deepEqual(help.items.map((i) => i.token), ["{today}", "{now}"]);
+  assert.ok(help.soon.length > 0 && help.soon.every((i) => i.known === false));
+  assert.deepEqual(unknownTokens("{today} {now} {run.number}", g), ["{run.number}"]);
 });
 
 test("link fields nest the target object's fields, up to three links", () => {
@@ -138,4 +149,27 @@ test("link fields nest the target object's fields, up to three links", () => {
   const kid = g[0].items.find((i) => i.token === "{after.kids.name}");
   assert.match(kid.note, /joined with commas/);
   assert.equal(tokenLabel("after.spouse.name", g), "Contact \u00b7 Spouse \u00b7 Name");
+});
+
+test("the owner reads friendly names and the engine gets its own paths, both ways", () => {
+  const o = { ...O, types: [{ name: "client", label: "Client", fields: [{ name: "name", label: "Name" }, { name: "email", label: "Email" }, { name: "spouse", label: "Spouse", kind: "link", to: "client" }] }] };
+  const d = draft([{ id: "mk", kind: "create", type: "client", fields: [] }, { id: "f1", kind: "find", type: "client" }, email], { kind: "created", type: "client" });
+  const g = insertList(d, "mail", o);
+  const t = aliasTable(g);
+  const has = (alias, path) => assert.ok(t.some((r) => r.alias === alias && r.path === path), `${alias} -> ${path}`);
+  has("{client.name}", "{after.name}");
+  has("{client.spouse.email}", "{after.spouse.email}");
+  has("{client_2.email}", "{steps.mk.record.data.email}");
+  has("{client_2.id}", "{steps.mk.record.id}");
+  has("{f1.rows}", "{steps.f1.rows}");
+  has("{today}", "{today}");
+  const stored = "Hi {after.name}, {steps.mk.record.data.email} {after.nothing} {steps.f1.rows}";
+  const shown = toAliasText(stored, t);
+  assert.equal(shown, "Hi {client.name}, {client_2.email} {after.nothing} {f1.rows}");
+  assert.equal(toPathText(shown, t), stored);
+  assert.equal(toPathText("{client.na", t), "{client.na");
+  const f = insertList(draft([email]), "mail", O);
+  assert.equal(toAliasText("{email} {name}", aliasTable(f)), "{form.email} {form.name}");
+  assert.equal(toPathText("{form.email}", aliasTable(f)), "{email}");
+  assert.ok(g.every((x) => x.items.every((i) => i.alias && !/steps\./.test(i.alias))));
 });
