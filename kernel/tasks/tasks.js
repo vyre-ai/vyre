@@ -307,7 +307,7 @@ export function createTasks(cfg) {
     const t = get_(id);
     if (t.state !== "needs_check") throw new KernelError("bad_state", "that task is not waiting for a check");
     if (same(agent, t.doer) || chain.hops.some((/** @type {any} */ h) => same(h.actor, t.doer))) throw new KernelError("not_allowed", "an agent cannot check its own work");
-    if (outward(t) || t.payload || t.stage) throw new KernelError("not_allowed", "an agent's approval is for the internal check only: a person says yes to anything that leaves or holds a stage");
+    if (outward(t) || t.stage) throw new KernelError("not_allowed", "an agent's approval is for the internal check only: a person says yes to anything that leaves or holds a stage");
     if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(t)))) throw new KernelError("not_found", "no such task");
     if (a.outcome === "rejected") {
       if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
