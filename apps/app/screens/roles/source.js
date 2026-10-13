@@ -71,7 +71,7 @@ export function rolesSource(call) {
     duplicate: async (/** @type {string} */ id) => {
       const src = roleOf((await ask("roles.get", { id }))?.role);
       const copy = duplicateRole(src, rolesOf(await ask("roles.list")));
-      return roleOf((await ask("roles.create", { role: { id: copy.id, label: copy.name, base: copy.from === "admin" ? "admin" : "member", ...bodyOf(copy) } }))?.role);
+      return roleOf((await ask("roles.create", { role: { id: copy.id, label: copy.name, base: "member", ...bodyOf(copy) } }))?.role);
     },
     save: async (/** @type {Role} */ role) => roleOf((await ask("roles.update", { id: role.id, role: { label: role.name, ...bodyOf(role) } }))?.role),
     remove: async (/** @type {string} */ id) => { await ask("roles.remove", { id }); },

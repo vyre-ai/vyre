@@ -8,15 +8,21 @@ const DAY = 86_400_000;
 /** How long a temp invite's access lasts once they join. */
 export const TEMP_DAYS = [["7", "1 week"], ["30", "30 days"], ["90", "3 months"]];
 
+/** The seat a project gives, Contributor unless chosen otherwise. */
+export const SEAT_DEFAULT = "contributor";
+export const SEAT_LEVELS = [["lead", "Lead"], ["contributor", "Contributor"], ["viewer", "Viewer"]];
+/** The seat of each chosen project as the invite sends it: { projectId: level }. @param {string[]} projects @param {Record<string, string>} [levels] */
+export const seatsOf = (projects, levels = {}) => Object.fromEntries(projects.map((p) => [p, SEAT_LEVELS.some(([k]) => k === levels[p]) ? levels[p] : SEAT_DEFAULT]));
+
 /** The roles the person may invite as, with the box's one-line meaning. @param {string} role */
 export const invitable = (role) => ROLES.filter((r) => assignable(/** @type {any} */ (role)).includes(r.id));
 
-/** The input of spaces.invites.create. A temp (Guest) invite ends: `days` from `now`. Projects, when chosen, go as `scope` (the invite tool's name for them). @param {{ space: string, role: string, to?: string, anyone?: boolean, days?: number, now?: number, projects?: string[] }} o */
+/** The input of spaces.invites.create. A temp (Guest) invite ends: `days` from `now`. Projects, when chosen, go as `scope` (the invite tool's name for them). @param {{ space: string, role: string, to?: string, anyone?: boolean, days?: number, now?: number, projects?: string[], levels?: Record<string, string> }} o */
 export function createInput(o) {
   const to = (o.to ?? "").trim().replace(/^@/, "");
   // A link anyone can use is a bearer: naming the person is the default, and "anyone with the link" has to be chosen (JL-2).
   if (!to && !o.anyone) throw new Error("name_required");
-  return { space: o.space, role: o.role, ...(to ? { to } : {}), ...(o.role === "temp" ? { expires: (o.now ?? Date.now()) + (o.days ?? 7) * DAY } : {}), ...(o.projects?.length ? { scope: o.projects } : {}) };
+  return { space: o.space, role: o.role, ...(to ? { to } : {}), ...(o.role === "temp" ? { expires: (o.now ?? Date.now()) + (o.days ?? 7) * DAY } : {}), ...(o.projects?.length ? { scope: o.projects, seats: seatsOf(o.projects, o.levels) } : {}) };
 }
 
 /** What a made invite says: the link to send, how long it lasts, and whether the inviter must confirm words before it works. @param {any} r */

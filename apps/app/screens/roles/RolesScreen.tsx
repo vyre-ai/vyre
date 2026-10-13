@@ -74,7 +74,9 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
   const [name, setName] = useState(role.name);
   useEffect(() => { if (!pending.current) setLocal(null); }, [role]);
   const r = local ?? role;
-  const locked = role.builtin;
+  // A role that starts from Admin (made before custom roles were limited to Member) cannot be edited: the box refuses an Admin base.
+  const oldAdmin = !role.builtin && role.from === "admin";
+  const locked = role.builtin || oldAdmin;
   const edit = (f: (x: Role) => Role) => {
     const next = f(r);
     setLocal(next); pending.current++;
@@ -88,10 +90,10 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
   return (
     <Page title={r.name} sub={sub} onBack={back}
       actions={<>
-        {locked ? (canDuplicate(role) ? <Button kind="primary" size="sm" label="Duplicate to change" onPress={duplicate} /> : null) : <><Button kind="ghost" size="sm" label="Rename" onPress={() => { setName(r.name); setRenaming(true); }} />{canDuplicate(role) ? <Button kind="ghost" size="sm" label="Duplicate" onPress={duplicate} /> : null}</>}
+        {oldAdmin ? <Button kind="primary" size="sm" label="Make a copy from Member" onPress={duplicate} /> : locked ? (canDuplicate(role) ? <Button kind="primary" size="sm" label="Duplicate to change" onPress={duplicate} /> : null) : <><Button kind="ghost" size="sm" label="Rename" onPress={() => { setName(r.name); setRenaming(true); }} />{canDuplicate(role) ? <Button kind="ghost" size="sm" label="Duplicate" onPress={duplicate} /> : null}</>}
       </>}>
       <Text tone="muted">{sees(r, names)}</Text>
-      {locked ? <Banner icon="shield"><Text>{canDuplicate(role) ? `${role.name} is built in. Duplicate it to make a version you can change.` : `${role.name} is built in and cannot be changed or copied.`}</Text></Banner> : null}
+      {oldAdmin ? <Banner tone="warn"><Text>{`${role.name} starts from Admin, which custom roles no longer can, so it cannot be edited. Make a new role from Member instead.`}</Text></Banner> : locked ? <Banner icon="shield"><Text>{canDuplicate(role) ? `${role.name} is built in. Duplicate it to make a version you can change.` : `${role.name} is built in and cannot be changed or copied.`}</Text></Banner> : null}
 
       <Sec title="1. Can do">
         <Card flush>{(world.catalogue?.can ?? CAN_DO.map(([k, t, l]) => [k, t, l, ADMIN_ONLY.includes(k) ? "admin" : "member"])).map(([k, title, line, needs], i) => {
@@ -138,7 +140,7 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
         <Card flush>{(world.catalogue?.tools ?? TOOLS).map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.tools[k]} locked={locked} onToggle={(v) => edit((x) => setTool(x, k, v))} /></View>)}</Card>
       </Sec>
 
-      {!locked ? (
+      {!role.builtin ? (
         <Sec title="Remove">
           <Card className="gap-s3">
             <Text tone="muted">{why || `Nobody holds ${role.name}, so it can go. This cannot be undone.`}</Text>
