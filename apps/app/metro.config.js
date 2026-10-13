@@ -11,6 +11,7 @@
 //   - ../../core/vault is watched so the Vault's Add sheet reads the providers catalog (providers.js) as it is.
 //   - `@vyre/perf/<file>` is ../../lib/perf/<file>: the DOM-free frame meter and its BAR, shared with
 //     the Deck's native-bar harness.
+//   - ../../core/vault is watched so the Vault's Add sheet reads the providers catalog (providers.js) as it is.
 // Only those folders are watched, not the whole repo. tsconfig.json has the same paths.
 
 import { createRequire } from "node:module";
