@@ -96,11 +96,11 @@ export function sees(r, projectNames = {}) {
     : r.where.kind === "seats" ? "The projects they are on"
     : r.where.kind === "own" ? "Only what they made"
     : r.where.projects.length ? `Only ${list(r.where.projects.map((p) => projectNames[p] ?? p))}` : "Only the projects you choose";
-  const reads = r.data.filter((d) => d.access !== "none");
-  const edits = reads.filter((d) => d.access === "edit").length;
-  const data = !r.data.length ? "" : !reads.length ? " No records." : edits === reads.length ? ` Edits ${list(reads.map((d) => d.name))}.` : ` ${reads.length} record ${reads.length === 1 ? "type" : "types"}, ${edits} editable.`;
+  const edits = r.data.filter((d) => d.access === "edit").map((d) => d.name);
+  const reads = r.data.filter((d) => d.access === "read").map((d) => d.name);
+  const data = !r.data.length ? "" : !edits.length && !reads.length ? " No records." : ` ${cap([edits.length ? `edits ${list(edits)}` : "", reads.length ? `reads ${list(reads)}` : ""].filter(Boolean).join(", "))}.`;
   const on = TOOLS.filter(([k]) => r.tools[k]).map(([, n]) => n.toLowerCase());
-  const tools = on.length ? ` ${cap(list(on))} on.` : " No mail, calendar or computers.";
+  const tools = on.length === TOOLS.length ? " All tools on." : on.length ? ` ${cap(list(on))} on.` : " No mail, calendar or computers.";
   return `${where}.${data}${tools}`;
 }
 

@@ -46,6 +46,9 @@ test("the sentence under a role says where, what data and which tools", () => {
   assert.equal(sees(setAccess(setAccess(setAccess(setAccess(none, "client", "none"), "project", "none"), "invoice", "none"), "document", "none")), "The projects they are on. No records. No mail, calendar or computers.");
   const chosen = setProject(setWhere(para, "chosen"), "smith", true);
   assert.ok(sees(chosen, { smith: "Smith estate" }).startsWith("Only Smith estate."));
+  assert.equal(sees(setAccess(setAccess(para, "invoice", "read"), "document", "read")), "The projects they are on. Edits Clients and Projects, reads Invoices and Documents. Documents and files on.");
+  assert.equal(sees(setAccess(setAccess(setAccess(setAccess(para, "client", "read"), "project", "read"), "invoice", "read"), "document", "read")), "The projects they are on. Reads Clients, Projects, Invoices and Documents. Documents and files on.");
+  assert.ok(sees(starting("admin") && { ...newRole("admin", "Partner", builtInRoles()) }).endsWith("All tools on."));
   assert.equal(sees(builtInRoles()[2]), BUILT_INS[1].line);
   assert.equal(list(["a", "b", "c"]), "a, b and c");
   assert.equal(holdersLine(1), "1 person");
