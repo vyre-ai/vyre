@@ -413,6 +413,38 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return { id: made.id, person, level, seated: true };
   }
 
+  /**
+   * An accepted invite that named projects: seat the joiner on each at the level the invite chose, by setSeatLevel (keep: a replay leaves a seat as it is). The issuer's authority is judged NOW, as
+   * the project's owner or a lead on it, or an owner or admin of the Space: an issuer demoted or removed since seats nothing, and says so. The membership itself is the kernel's and is never touched here.
+   * A seat that cannot be given is raised to the joiner and the issuer as one item, never dropped quietly.
+   * @param {{ by?: string, issuer?: string, seats?: { project: string, level?: string }[] } | null | undefined} d the invite.used facts
+   */
+  async function onInviteUsed(d) {
+    if (!d || typeof d.by !== "string" || !Array.isArray(d.seats) || !d.seats.length) return { seated: [], missed: [] };
+    const issuer = String(d.issuer || ""), member = issuer && typeof kernel.membership === "function" ? ((await kernel.membership(issuer).catch(() => null)) || {}).member === true : false;
+    const staff = member && await isStaff(issuer);
+    /** @type {string[]} */ const seated = []; /** @type {{ project: string, why: string }[]} */ const missed = [];
+    for (const s of d.seats) {
+      let why = "";
+      try {
+        const seat = member ? await seatOf(String(s.project), issuer) : null;
+        if (!member) why = "the person who invited you is no longer in the space";
+        else if (!staff && !(seat && (seat.owner || seat.level === "lead"))) why = "the person who invited you can no longer put people on it";
+        else if (await setSeatLevel(chain(), { project: String(s.project), person: d.by, level: s.level || "contributor", keep: true })) seated.push(String(s.project));
+        else why = "that project no longer exists";
+      } catch (/** @type {any} */ e) { why = String(e && e.message); }
+      if (why) missed.push({ project: String(s.project), why });
+    }
+    if (!missed.length) return { seated, missed };
+    const list = missed.map(m => `${m.project} (${m.why})`).join("; ");
+    log(`work: invite seats not given to ${d.by}: ${list}`);
+    const general = await personalProject();
+    for (const doer of [...new Set([d.by, issuer].filter(Boolean))]) {
+      try { await kernel.ask.request(chain(), { title: `Not added to ${missed.length === 1 ? "project " + missed[0].project : missed.length + " projects"}`, record: general.urn, doer: { kind: "person", id: String(doer), space: kernel.space }, output: { kind: "decision" }, source: "manual", note: `${d.by} joined, but was not put on: ${list}. Put them on the project yourself (the project's team), or invite them again.` }); } catch (/** @type {any} */ e) { log(`work: the not-added item was not raised for ${doer}: ${e && e.message}`); }
+    }
+    return { seated, missed };
+  }
+
   /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
   async function moveChat(chat, projectRef, by) {
     if (!by) throw Object.assign(new Error("a chat is moved by a person"), { code: "not_allowed" });
@@ -525,5 +557,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, setSeatLevel, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, setSeatLevel, onInviteUsed, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

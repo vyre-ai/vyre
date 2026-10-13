@@ -47,3 +47,57 @@ test("a project that is gone answers null, so the work module can say 'not added
   const { hub, owner } = await rig();
   assert.equal(await hub.setSeatLevel(owner, { project: "no-such-project", person: NEW, level: "contributor", keep: true }), null);
 });
+
+// ---- the full path: a real kernel invite with seats, accepted, its invite.used event handed to the hub ----
+import { createKernel } from "../../kernel/index.js";
+import { canonical, sha256 } from "../../kernel/core/canonical.js";
+
+const proofOf = (/** @type {string} */ action, /** @type {any} */ input, /** @type {string} */ resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
+async function viaKernel(/** @type {{ issuerIs?: "owner" | "gone" }} */ o = {}) {
+  const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) ? null : "wrong_proof") };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  await k.gateway.records.define(owner, { add_types: [...CORE_TYPES.filter((/** @type {any} */ t) => ["organization", "contact"].includes(t.name)), PROJECT, TEAM_MEMBER] });
+  const asked = /** @type {any[]} */ ([]);
+  let member = true;
+  const hub = createHub({ kernel: { space: SPACE, owner: OWNER, serviceChain: () => owner, records: k.gateway.records, membership: async (/** @type {string} */ p) => (p === OWNER ? { member, role: "owner" } : { member: true, role: "member" }), ask: { request: async (/** @type {any} */ _c, /** @type {any} */ r) => { asked.push(r); } } }, log: () => {} });
+  const x = await hub.createProject(owner, { name: "Project X" }), y = await hub.createProject(owner, { name: "Project Y" });
+  const g = k.gateway.grants;
+  const i = { role: "member", seats: [{ project: x.id, level: "viewer" }] };
+  const inv = await g.invites.create(owner, i, { presence: proofOf("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  const guest = k.chains.fromFacts({ kind: "invitee", person: NEW, vouched: true });
+  await g.invites.accept(guest, inv.id, { seen: { role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee }, proof: { op: "grant.accept", fields: { invite: inv.id, hash: inv.hash, person: NEW }, n: Math.random() } });
+  const ev = k.log.read({ type: "invite.used" }).at(-1);
+  const level = async (/** @type {string} */ p) => { const r = await hub.seatOf(p, NEW); return r && r.team ? r.level : null; };
+  return { hub, owner, ev, x, y, level, asked, gone: () => { member = false; } };
+}
+
+test("full path: a member invited on Project X as viewer accepts and has that seat and nothing else", async () => {
+  const { hub, ev, x, y, level, asked } = await viaKernel();
+  assert.deepEqual(ev.data.seats, [{ project: x.id, level: "viewer" }]);
+  const r = await hub.onInviteUsed(ev.data);
+  assert.deepEqual(r.seated, [x.id]);
+  assert.equal(await level(x.id), "viewer");
+  assert.equal(await level(y.id), null);
+  assert.equal(asked.length, 0, "nothing missed, nothing raised");
+});
+
+test("full path: the event delivered twice (a restart) gives one seat and keeps a level an admin raised in between", async () => {
+  const { hub, owner, ev, x, level } = await viaKernel();
+  await hub.onInviteUsed(ev.data);
+  await hub.setSeatLevel(owner, { project: x.id, person: NEW, level: "lead" });
+  await hub.onInviteUsed(ev.data);
+  assert.equal(await level(x.id), "lead", "the admin's edit stands");
+});
+
+test("full path: an issuer who left the space before the accept seats nothing, and both are told; the membership is untouched", async () => {
+  const { hub, ev, x, y, level, asked, gone } = await viaKernel();
+  gone();
+  const r = await hub.onInviteUsed(ev.data);
+  assert.deepEqual(r.seated, []);
+  assert.match(r.missed[0].why, /no longer in the space/);
+  assert.equal(await level(x.id), null);
+  assert.equal(await level(y.id), null);
+  assert.deepEqual(asked.map(a => a.doer.id).sort(), [NEW, OWNER].sort(), "the joiner and the issuer are each told");
+  assert.match(asked[0].note, /invite them again/);
+});

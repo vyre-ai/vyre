@@ -109,23 +109,6 @@ export default {
     const chatRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().chatRows(chain, spec);
     const shareRows = (/** @type {any} */ chain, /** @type {any} */ spec) => readersOf().shareRows(chain, spec);
     const personOf = personOfChain;
-    /** @param {any} d the invite.used facts: { by, issuer, seats } */
-    const onInviteUsed = async d => {
-      if (!d || typeof d.by !== "string" || !Array.isArray(d.seats)) return;
-      const k = kernelOf(), missed = [];
-      for (const s of d.seats) {
-        let ok = false, why = "";
-        try { ok = Boolean(await hubOf().setSeatLevel(k.serviceChain("work"), { project: String(s.project), person: d.by, level: s.level || "contributor", keep: true })); why = "that project no longer exists"; } catch (/** @type {any} */ e) { why = String(e && e.message); }
-        if (!ok) missed.push({ project: s.project, why });
-      }
-      if (!missed.length) return;
-      const list = missed.map(m => `${m.project} (${m.why})`).join("; ");
-      ctx.log(`work: invite seats not given to ${d.by}: ${list}`);
-      const general = await hubOf().personalProject();
-      for (const doer of [...new Set([d.by, d.issuer].filter(Boolean))]) {
-        try { await k.ask.request(k.serviceChain("work"), { title: `Not added to ${missed.length === 1 ? "project " + missed[0].project : missed.length + " projects"}`, record: general.urn, doer: { kind: "person", id: String(doer), space: k.space }, output: { kind: "decision" }, source: "manual", note: `${d.by} joined, but was not put on: ${list}. Put them on the project yourself (the project's team), or invite them again.` }); } catch (/** @type {any} */ e) { ctx.log(`work: the not-added item was not raised for ${doer}: ${e && e.message}`); }
-      }
-    };
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
       // a project made through the old project list (the CLI, the app) gets its record
@@ -140,7 +123,7 @@ export default {
       hear("chat.created", p => hubOf().onChatCreated(p));
       hear("chat.changed", p => hubOf().onChatChanged(p));
       // an accepted invite that named projects: the joiner is seated on each, at the level the invite chose, by the one seat-giving path (setSeatLevel, keep: a replay leaves an edited seat alone)
-      hear("invite.used", p => onInviteUsed(p && p.data));
+      hear("invite.used", p => hubOf().onInviteUsed(p && p.data));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => (p && p.space ? null : hubOf().onThreadRenamed(p)));
