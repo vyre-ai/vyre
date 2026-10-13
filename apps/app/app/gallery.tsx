@@ -324,6 +324,7 @@ export default function Gallery() {
   }
   if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "file-viewer") return <ThemeProvider><Page><View nativeID="fixture"><FileViewerFixture kind={q.kind} /></View></Page></ThemeProvider>;
+  if (q.f === "run-steps" || q.f === "flow-trigger") return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
