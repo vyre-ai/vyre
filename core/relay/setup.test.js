@@ -220,6 +220,8 @@ async function page(world) {
 }
 
 const settle = ms => new Promise(r => setTimeout(r, ms));
+/** Waits until a condition holds (up to 5 s), so a loaded box is not a failure. */
+const waitFor = async (fn) => { for (let i = 0; i < 100 && !fn(); i++) await settle(50); };
 
 test("setup: the page resolves the offer, sees the box's check words, and is admitted only with its own key", async t => {
   const w = await world(t);
@@ -348,7 +350,7 @@ test("setup: relay.setup.end drops the device, its presence key and its channel,
   assert.equal((await w.d.registry.call("relay.setup.end", {}, "cli")).error?.code, "no_such_tool");
   const r = await w.d.registry.call("relay.setup.end", { reason: "claimed" }, "module:onboard");
   assert.deepEqual(r.data, { ended: true });
-  await settle(100);
+  await waitFor(() => a.channel.closed);
   assert.equal(a.channel.closed, true, "the channel is closed");
   assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null, "the device row is gone");
   assert.equal((await w.d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.id === enrolled).length, 0, "and its presence key with it");
@@ -367,7 +369,7 @@ test("setup: a new install code discards the device of an earlier unclaimed sess
   const two = await page(w);
   const status = await two.begin();
   assert.equal(status.state, "waiting");
-  await settle(100);
+  await waitFor(() => a.channel.closed);
   assert.equal(a.channel.closed, true, "the earlier session's channel was closed");
   assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null);
   await assert.rejects(one.connect({ keys: a.keys, pair: false }), /closed/, "the old page is out");

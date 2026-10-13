@@ -361,7 +361,7 @@ test("push: an ask while a screen is in use waits until the hold after the last 
   // Long after the last use, a moment goes at once, as before.
   await sleep(hold + 50);
   d.events.emit("threads", "thread.watched", { watch: "w1", reason: "finished" }, { thread: "t-1" });
-  await until(() => svc.got.length === 3, "the watch at once", 1000);
+  await until(() => svc.got.length === 3, "the watch at once");
   assert.deepEqual(state(), { pending: [], timer: false });
 });
 
@@ -385,7 +385,7 @@ test("push: a held ask answered, or a held draft resolved, never pushes; planner
 
   // (d) A planner ring right after a use goes at once.
   d.events.emit("planner", "planner.fired", { firing: "f_1", item: "i_1", kind: "reminder", title: "Call kit", due: Date.now(), ring: 1 }, {});
-  await until(() => svc.got.length === 1, "the ring", 1000);
+  await until(async () => (await tags()).includes("planner-f_1"), "the ring");
   assert.deepEqual(await tags(), ["planner-f_1"]);
 
   // (e) A lesson is not "needs you": off by default, on only when switched on.
@@ -396,7 +396,7 @@ test("push: a held ask answered, or a held draft resolved, never pushes; planner
   assert.equal(svc.got.length, 1, "no lesson push by default");
   assert.equal((await deck("push.settings", { kinds: { lesson: true } })).data.kinds.lesson, true);
   d.events.emit("learn", "lesson.proposed", { lesson: 2 }, {});
-  await until(() => svc.got.length === 2, "the lesson once switched on", 1000);
+  await until(() => svc.got.length === 2, "the lesson once switched on");
   assert.deepEqual((await tags()).slice(1), ["lesson-2"]);
 
   // (f) The resolved moments never went out, and stop() leaves no timer behind.
