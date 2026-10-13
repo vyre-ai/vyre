@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(tests): the G01 walk gives the teammate a sign-in of her own (an item and a Claude account that serve her person alone) before her turn, so it runs on her account and never the home's; it also asserts she is refused with account_required before she has one.
 - ci(runner): lent-mac.yml also runs homesandbox.test.js and hardening.test.js on the hosted Mac, so the macOS-only sandbox tests (internet block, Mach denies, keychain, clipboard, Finder events, profiles, home profile) run in a workflow that has a Mac instead of skipping everywhere.
 - fix(runner): the sandboxed workspace reader could not start where the repo is outside its granted folders, because reader.js imports the credential file names from sessions/drivers; that folder is now read-only in the sandbox (S-1, S-1b, R-14 pass again).
 - fix(tests): the sidebar edit test names the places that exist now (Memory, Files; Build replaced Kits), and docs/reference/modules.md is regenerated with docs:ref.
