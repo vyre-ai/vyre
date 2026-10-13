@@ -80,7 +80,7 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
 
 const POP_ID = "composer-pop";
 /** The mark on a nested row: its kind (a project, an object, a file, a tag) or, for a top category, what it holds. */
-function nestIcon(r: NestRow): IconName {
+export function nestIcon(r: NestRow): IconName {
   if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
   const k = (r.pick as { kind?: string } | undefined)?.kind;
   return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" || k === "linked" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";

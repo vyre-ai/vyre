@@ -174,5 +174,6 @@ export { parseCsv, parseGrid, toCsv, tableToCsv, importableFields, coerceRow, ru
 export { FileViewer } from "./files/FileViewer";
 export { DocOverlay } from "./files/DocOverlay";
 export type { DocOverlayProps } from "./files/DocOverlay";
+export type { AssistProps } from "./files/MarkdownDoc";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";

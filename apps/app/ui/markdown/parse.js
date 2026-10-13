@@ -167,6 +167,9 @@ export function inline(s) {
           const url = raw.startsWith("<") && raw.includes(">") ? raw.slice(1, raw.indexOf(">")) : raw.split(/\s+/)[0];
           flush();
           const label = inline(s.slice(i + 1, close));
+          // A reference to something in the Space (lib/doc-refs.js: [@Sam](vyre://...)) is its own node; a screen that draws chips draws it, any other draws its label as plain words.
+          const ref = /^vyre:\/\/\S+$/.test(url) ? /^([@#])(.+)$/s.exec(plainOf(label)) : null;
+          if (ref) { out.push({ t: "ref", lead: ref[1], name: ref[2], urn: url, c: label }); i = end + 1; continue; }
           out.push(safeHref(url) ? { t: "a", href: url, c: label } : { t: "text", v: "" }, ...(safeHref(url) ? [] : label));
           i = end + 1; continue;
         }
