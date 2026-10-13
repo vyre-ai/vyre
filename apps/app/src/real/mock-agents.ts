@@ -51,7 +51,7 @@ const accounts = [
 const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
-  "agents.list": () => Object.keys(W).map(agentOf),
+  "agents.list": () => [...Object.keys(W).map(agentOf), ...["research", "scribe"].map((n) => ({ name: n, label: n[0].toUpperCase() + n.slice(1), kind: "agent", role: n }))],
   "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
   "sessions.models.get": () => ({ aliases: { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" } }),
   "watchers.list": () => [],
