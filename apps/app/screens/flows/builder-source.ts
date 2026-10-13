@@ -14,7 +14,7 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
 const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArray(d?.[key]) ? d[key] : []);
 
 export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string }[] }[], space?: string | null): Promise<FlowOptions> {
-  const [agents, tpls, roles] = await Promise.all([ask("agents.list"), ask("work.template.list"), ask("roles.list")]);
+  const [agents, tpls, roles, fl] = await Promise.all([ask("agents.list"), ask("work.template.list"), ask("roles.list"), ask("flows.list")]);
   // an agent may approve only if an owner or an admin made it: the agent's page says so (agents.docs.get made_by.staff); where that cannot be read it is not offered
   const staffOf = async (name: string) => { const d: any = await ask("agents.docs.get", { agent: name }); return d?.made_by?.staff === true; };
   const templates = await Promise.all(list(tpls, "templates").filter((t) => !t.archived && t.live !== null).map(async (t) => {
@@ -26,6 +26,7 @@ export async function realOptions(types: { name: string; label: string; fields?:
     types,
     agents: await Promise.all(list(agents, "agents").map(async (a) => ({ name: String(a.name), label: String(a.label || a.name), staff: await staffOf(String(a.name)) }))),
     templates,
+    flows: list(fl, "flows").filter((f) => f.active).map((f) => ({ name: String(f.name), label: String(f.label || f.name) })),
     roles: list(roles, "roles").map((r) => ({ name: String(r.name || r.id), label: String(r.label || r.name || r.id) })),
     people: [],
     // the tag picker's "a specific record": some records of an object, by the person's own read

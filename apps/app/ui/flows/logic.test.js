@@ -3,11 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
-import { FORMULA_HASH, FORMULA_SOURCE, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { previewExpr } from "./preview.js";
+import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
-  assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions.");
+  assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions, then 2 more steps.");
 });
 
 test("the ATP starter says what it does", () => {
@@ -168,4 +169,19 @@ test("every other step kind the engine has stores, checks and comes back", () =>
 
 test("the formula step is a Code step with a fixed source whose hash is the engine's", () => {
   assert.equal(FORMULA_HASH, sourceHash(FORMULA_SOURCE));
+});
+
+test("the palette is grouped and searchable", () => {
+  assert.deepEqual(searchChoices("").map((g) => g.name), ["Logic", "Records", "Calculate", "Send", "AI", "Work"]);
+  assert.deepEqual(searchChoices("else").flatMap((g) => g.items.map((i) => i.kind)), ["decide"]);
+  assert.deepEqual(searchChoices("sms").flatMap((g) => g.items.map((i) => i.kind)), ["sms"]);
+  assert.deepEqual(searchChoices("zzzz"), []);
+});
+
+test("a formula previews on sample data with the engine's own language", () => {
+  assert.deepEqual(previewExpr("round(trigger.amount * 1.2)"), { ok: true, value: 144, text: "144" });
+  assert.equal(previewExpr("trigger.amount > 500").value, false);
+  assert.equal(previewExpr("upper(trigger.name)").text, JSON.stringify("PAT LOPEZ"));
+  assert.equal(previewExpr("nope(1)").ok, false);
+  assert.equal(previewExpr("").ok, false);
 });

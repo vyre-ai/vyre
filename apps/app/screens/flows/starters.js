@@ -24,6 +24,7 @@ export const SAMPLE_OPTIONS = {
     ] },
     { id: "tpl_estate", name: "Estate plan", stages: [{ name: "Opening", tasks: [{ title: "Run the conflict check", doer: "role:paralegal" }] }, { name: "Closing", tasks: [] }] },
   ],
+  flows: [{ name: "send_welcome", label: "Send the welcome" }],
   roles: [{ name: "attorney", label: "Attorney" }, { name: "paralegal", label: "Paralegal" }, { name: "manager", label: "Manager" }],
   people: [{ name: "ana", label: "Ana Ruiz" }, { name: "chris", label: "Chris Park" }],
 };
@@ -36,6 +37,11 @@ export const REFUND_DRAFT = {
     { id: "create1", kind: "create", type: "refund_requests", fields: [{ field: "Client", value: "{name}" }, { field: "Email", value: "{email}" }, { field: "Amount", value: "{amount}" }, { field: "Reason", value: "{reason}" }] },
     { id: "agent2", kind: "agent", agent: "refunds", title: "Handle this refund request", record: "create1",
       instructions: "Check the request against our refund policy. Refund up to $500 yourself and email the client from the support alias. Anything larger goes to the manager for a yes first. Close the record when it is paid." },
+    { id: "decide3", kind: "decide", cond: { mode: "build", source: "trigger", field: "amount", op: ">", value: "500" },
+      then: [{ id: "ask4", kind: "ask", to: "role:manager", title: "Approve this refund over $500" }],
+      else: [{ id: "update5", kind: "update", type: "refund_requests", record: "create1", field: "Status", value: "Approved" }] },
+    { id: "wait6", kind: "wait", amount: 1, unit: "days" },
+    { id: "email7", kind: "email", to: "{email}", subject: "About your refund request", body: "Hello {name}, we have looked at your refund request and will be in touch." },
   ],
 };
 

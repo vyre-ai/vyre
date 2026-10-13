@@ -12,6 +12,8 @@
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
 /** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], flows?: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
+import { findStep, flat } from "./tree.js";
+
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
   { id: "stage", icon: "board", label: "A record enters a stage", hint: "For example a matter enters Drafting" },
@@ -21,20 +23,52 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "manual", icon: "play", label: "Someone runs it", hint: "A person or an agent presses Run" },
 ]);
 
-/** The step choices. A `soon` one is shown and cannot be picked yet (none today). */
-export const STEP_CHOICES = /** @type {const} */ ([
-  { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects" },
-  { kind: "project", icon: "projects", label: "Start a project", hint: "From a template, linked to a record" },
-  { kind: "agent", icon: "agents", label: "Hand to an agent", hint: "With your instructions and the details" },
-  { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent" },
-  { kind: "email", icon: "mail", label: "Send an email", hint: "Through your space's sending service" },
-  { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer" },
-  { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record" },
+/** The step palette, grouped. `soon` ones are shown and cannot be picked yet. Words are what a person searches for. */
+export const STEP_GROUPS = /** @type {const} */ ([
+  { name: "Logic", items: [
+    { kind: "decide", icon: "sort", label: "If / else", hint: "Do one thing when a condition holds, another when it does not", words: "if else branch condition when otherwise" },
+    { kind: "repeat", icon: "refresh", label: "For each", hint: "Do the same steps for every record in a list", words: "repeat loop each every list" },
+    { kind: "parallel", icon: "list", label: "Side by side", hint: "Do several things at once, then carry on", words: "parallel branch together same time" },
+    { kind: "wait", icon: "clock", label: "Wait", hint: "Pause for minutes, hours or days", words: "delay pause sleep timer later" },
+    { kind: "ask", icon: "hand", label: "Wait for someone's yes", hint: "The Flow pauses until they answer", words: "ask approve approval question decision" },
+  ] },
+  { name: "Records", items: [
+    { kind: "find", icon: "search", label: "Find records", hint: "Look records up in an object", words: "search lookup query fetch get" },
+    { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects", words: "add new insert" },
+    { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record", words: "change set edit write" },
+    { kind: "upsert", icon: "refresh", label: "Create or update", hint: "Update the record that matches, or make it", words: "upsert match merge" },
+    { kind: "remove", icon: "trash", label: "Remove a record", hint: "Take a record out", words: "delete" },
+    { kind: "stage", icon: "board", label: "Move to a stage", hint: "Put a record in another stage", words: "pipeline status move" },
+  ] },
+  { name: "Calculate", items: [
+    { kind: "formula", icon: "chart", label: "Formula", hint: "Work out a value, with a live preview", words: "math calculate sum total round percent expression" },
+  ] },
+  { name: "Send", items: [
+    { kind: "email", icon: "mail", label: "Send an email", hint: "Through your space's sending service", words: "mail message resend" },
+    { kind: "sms", icon: "phone", label: "Send a text", hint: "An SMS through your sending account", words: "sms text twilio message" },
+  ] },
+  { name: "AI", items: [
+    { kind: "agent", icon: "agents", label: "Hand to an agent", hint: "With your instructions and the details", words: "assistant ai robot" },
+    { kind: "classify", icon: "filter", label: "Sort into groups", hint: "An AI step reads text and picks one group", words: "classify categorize label" },
+    { kind: "extract", icon: "file", label: "Pull out facts", hint: "An AI step reads text and returns fields", words: "extract parse read" },
+  ] },
+  { name: "Work", items: [
+    { kind: "assign", icon: "task", label: "Assign a task", hint: "To a person, a team or role, or an agent", words: "todo give delegate" },
+    { kind: "project", icon: "projects", label: "Start a project", hint: "From a template, linked to a record", words: "template" },
+    { kind: "subflow", icon: "flows", label: "Run another flow", hint: "Use a flow you already made", words: "subflow call nested" },
+  ] },
 ]);
 
-import { findStep, flat } from "./tree.js";
+/** Every step choice, flat. */
+export const STEP_CHOICES = STEP_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.name })));
 
-export const choiceOf = (/** @type {string} */ kind) => STEP_CHOICES.find((c) => c.kind === kind);
+/** The palette for what a person typed: every choice whose name, hint or words contain each word. An empty search is the whole palette. @param {string} q */
+export function searchChoices(q) {
+  const words = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
+  return STEP_GROUPS.map((g) => ({ name: g.name, items: g.items.filter((i) => words.every((w) => `${i.label} ${i.hint} ${i.words}`.toLowerCase().includes(w))) })).filter((g) => g.items.length);
+}
+
+export const choiceOf = (/** @type {string} */ kind) => (kind === "parallel" ? STEP_CHOICES.find((c) => c.kind === "parallel") : STEP_CHOICES.find((c) => c.kind === kind));
 export const triggerOf = (/** @type {string} */ kind) => TRIGGERS.find((t) => t.id === kind);
 
 const named = (/** @type {Named[]} */ list, /** @type {string | undefined} */ id) => (list.find((x) => x.name === id)?.label) || id || "";
@@ -164,9 +198,9 @@ const EVERY = /** @type {Record<string, { cron: string }>} */ ({ "Every hour": {
 export const EVERY_CHOICES = Object.keys(EVERY);
 
 /** A text value the person typed: a whole value like {email} reads that field of what started the Flow, anything else is the text itself. @param {string} t */
-export const val = (t) => { const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim()); return m ? { expr: `trigger.${m[1]}` } : t; };
+export const val = (t) => { const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim()); return m ? { expr: /^(steps|event|row|item)\./.test(m[1]) ? m[1] : `trigger.${m[1]}` } : t; };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); const m = e && /^trigger\.([a-z0-9_.]+)$/i.exec(e); return m ? `{${m[1]}}` : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "stage";
@@ -436,3 +470,19 @@ export function condWords(c, t) {
   return c.field && String(c.value ?? "").trim() !== "" ? `${c.field} ${op} ${c.value}` : "a condition holds";
 }
 void fieldExpr;
+
+
+/** The values a box can insert from before this step: what started the Flow and what earlier steps made, as [token, words]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
+export function valueSources(d, stepId, o) {
+  /** @type {[string, string][]} */ const out = [];
+  const t = d.trigger;
+  if (t.kind === "created" || t.kind === "stage") for (const f of o.types.find((x) => x.name === t.type)?.fields || []) out.push([`{after.${f.name}}`, `${f.label} of the record that started it`]);
+  else if (t.kind === "form" || t.kind === "signup") for (const f of ["name", "email", "phone", "message"]) out.push([`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)} from the form`]);
+  for (const s of flat(d.steps)) {
+    if (s.id === stepId) break;
+    if (s.kind === "create" || s.kind === "upsert") out.push([`{steps.${s.id}.record.id}`, `The record made by ${s.id}`]);
+    if (s.kind === "find") out.push([`{steps.${s.id}.rows}`, `The records found by ${s.id}`]);
+    if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
+  }
+  return out;
+}
