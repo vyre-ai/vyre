@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
@@ -19,7 +19,7 @@ export function RealFlows() {
   const toggle = (f: RealFlow, on: boolean) =>
     setPausedReal(f.id, !on).then(() => setFlows((xs) => xs && xs.map((x) => (x.id === f.id ? { ...x, paused: on ? null : "paused" } : x)))).catch((e) => showToast(e instanceof Error ? e.message : "That did not work."));
   return (
-    <Frame title="Flows" sub="What happens on its own when something changes, and who is asked.">
+    <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps.">
       <PlaceTag of="showing" />
       <Card flush>
         {err ? <ErrorState title="Flows did not load" reason={err} retry={load} /> : null}
@@ -30,7 +30,7 @@ export function RealFlows() {
           const health = healthRow(f);
           return (
             <View key={f.id}>{i ? <Divider inset={68} /> : null}
-              <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name="flows" />} title={f.name} sub={waiting ? f.trigger || undefined : health.sub} chevron={waiting}
+              <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name="flows" />} title={f.name} sub={<View className="gap-s1">{f.sentence ? <Text size="secondary" tone="muted" numberOfLines={2}>{f.sentence}</Text> : null}{!waiting && health.sub ? <Text size="secondary" tone="label" numberOfLines={1}>{health.sub}</Text> : null}</View>} chevron={waiting}
                 end={waiting ? <Chip tone="accent">Waiting for you</Chip> : (
                 <View className="flex-row items-center gap-s3">
                   {health.chip ? <Chip tone="err">{health.chip}</Chip> : null}
@@ -41,7 +41,10 @@ export function RealFlows() {
           );
         })}
       </Card>
-      <View className="pt-s4"><Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} /></View>
+      <View className="flex-row flex-wrap gap-s3 pt-s4">
+        <Button kind="primary" size="lg" className={phone ? "w-full" : undefined} icon="plus" label="New flow" onPress={() => router.push("/u/flows/new" as never)} />
+        <Button kind="secondary" size="lg" className={phone ? "w-full" : undefined} icon="spark" label="Ask @Engineer to write one" onPress={() => router.push("/u/engineer" as never)} />
+      </View>
     </Frame>
   );
 }
