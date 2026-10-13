@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PROMPT, MAP_META, homeBlock, mapBody } from './site/agent-prompt.mjs';
+import { AGENTHOME_META, agentHomeBody } from './site/agenthome.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -662,6 +663,10 @@ page({
 // ---------- map your business (scripts/site/agent-prompt.mjs) ----------
 page({ ...MAP_META, body: mapBody({ MAP_URL, REPO, eyebrow }), ld: [crumbs([['Vyre', `${SITE}/`], ['Map your business', `${SITE}/map/`]])] });
 
+// ---------- agenthome: the agents' entry point, generated from docs/for-agents/START-HERE.md ----------
+const START_HERE = readFileSync(resolve(here, '..', 'docs', 'for-agents', 'START-HERE.md'), 'utf8');
+page({ ...AGENTHOME_META, body: agentHomeBody(START_HERE), ld: [crumbs([['Vyre', `${SITE}/`], ['For agents', `${SITE}/agenthome/`]])] });
+
 // ---------- architecture page ----------
 // The system in one designed view, drawn in HTML and CSS (classes ar-* in v2.css). Wording follows docs/architecture/overview.md.
 const node = (n, t, d) => `<li class="ar-node"><span class="ar-n">${n}</span><b>${t}</b><span>${d}</span></li>`;
@@ -1040,6 +1045,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Home](${SITE}/): what Vyre is and what it does
 - [Get started](${SITE}/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](${SITE}/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent\'s turn runs, the Gate
+- [Start here, for AI agents](${SITE}/agenthome.md): the entry point for an agent: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up (HTML twin: ${SITE}/agenthome/)
 - [Map your business](${SITE}/map/): pick your industry, team, records and tools and get a prompt that makes your own AI agent map your business onto Vyre
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
@@ -1056,7 +1062,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [sitemap.xml](${SITE}/sitemap.xml)
 - [GitHub](https://github.com/vyre-ai/vyre)
 - [Map your business onto Vyre](${MAP_URL}): a method an AI agent follows to turn a business into members, records, Flows, agents and Gate rules
-- [The prompt to give your AI agent](${REPO}/blob/main/docs/for-agents/PROMPT.md): one copy-paste prompt that links the docs, interviews the owner and maps the business onto Vyre
+- [The prompt to give your AI agent](${REPO}/blob/main/docs/for-agents/PROMPT.md): two lines that send an agent to ${SITE}/agenthome.md
 `;
 
 const FULL = `# Vyre, in full
@@ -1112,7 +1118,7 @@ ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 - Later: a Vyre-hosted home for people without a server.
 
 ## Map your business onto Vyre
-To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It is also at ${SITE}/map/, where a short form tailors it, and in the repository as docs/for-agents/PROMPT.md.
+To see how a business would run on Vyre, give this prompt to your AI agent (ChatGPT, Claude or any agent that can read links). It sends the agent to ${SITE}/agenthome.md, which holds the full instructions: what Vyre is, a map of the site and docs, the questions to ask, the mapping method and how to get started. ${SITE}/map/ has a short form that adds your firm's details to the prompt, and the repository has it as docs/for-agents/PROMPT.md.
 
 \`\`\`
 ${PROMPT}
@@ -1130,11 +1136,11 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Read any page and the machine-readable files: ${SITE}/llms.txt, ${SITE}/llms-full.txt, ${SITE}/sitemap.xml.
 - Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) the architecture (${SITE}/architecture/) and direction (${SITE}/direction/). Direction is not a promise of dates.
-- Follow https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md to show a user how their business would run on Vyre. The prompt that starts that conversation is https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md, and ${SITE}/map/ tailors it. When you have mapped the business, offer to set Vyre up for the user over Vyre's MCP (\`vyre mcp install\` in Claude Code, or a named key under Settings, Your AI keys). The user installs Vyre and approves each outward act.
+- Start at ${SITE}/agenthome.md (HTML twin: ${SITE}/agenthome/). It is the entry point for agents: what Vyre is, a map of the site and the docs, how to operate, the questions to ask, the method for mapping a business (https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md) and how to help set Vyre up today. The prompt that sends you there is https://github.com/vyre-ai/vyre/blob/main/docs/for-agents/PROMPT.md; ${SITE}/map/ tailors it. When you have mapped the business, offer to set Vyre up for the user over Vyre\'s MCP.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do
-- Do not run the install line, or anything with a pairing code in it, for the user. The code belongs to the user, works once, and is entered in their Vyre app.
+- Do not run an install line, or anything with a pairing code in it, unless the user hands you that one line for the server you created for them. The code belongs to the user, works once, and is entered in their Vyre app.
 - Do not ask the user to paste secrets, vault values, recovery codes or setup codes into a chat.
 - Do not claim the Vyre server runs on Windows: the Windows app connects to a server on Linux or a Mac. Planned work is labelled Next with its version on ${SITE}/direction/; check what is shipped against the docs and the code.
 
@@ -1155,13 +1161,15 @@ const AGENT_JSON = {
   url: `${SITE}/`,
   version: VERSION,
   license: 'Apache-2.0',
-  docs: { llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
-  install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user.' },
+  docs: { agenthome: `${SITE}/agenthome.md`, llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
+  install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and four words. An agent runs the install line only if the user hands it that one line, for a server the agent created for them.' },
+  entry_point: { url: `${SITE}/agenthome.md`, html: `${SITE}/agenthome/`, note: 'Start here: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up today.' },
   platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (the Vyre app)', 'Windows (the Vyre app)', 'iOS and Android (the app, sideloaded)'] },
 };
 
 const write = (p, s) => { mkdirSync(dirname(join(site, p)), { recursive: true }); writeFileSync(join(site, p), s); };
 write('llms.txt', LLMS);
+write('agenthome.md', START_HERE);
 write('llms-full.txt', FULL);
 write('agents.md', AGENTS);
 write('.well-known/agent.json', JSON.stringify(AGENT_JSON, null, 2) + '\n');
@@ -1184,7 +1192,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/map/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/map/', '0.7'], ['/agenthome/', '0.8'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

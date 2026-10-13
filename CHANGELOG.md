@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): the agent prompt is two lines and points at https://vyre.run/agenthome.md, served from docs/for-agents/START-HERE.md as raw Markdown and as readable HTML (/agenthome/): what Vyre is, a map of the site and docs, how to map a business, and a Get started path (pick a server, a provider token, create it, install, pair, build over MCP); /map/ appends the firm details to the same prompt.
 - docs(site): one prompt to give your AI agent (docs/for-agents/PROMPT.md, the home page block with a Copy button, and a new /map/ page whose form tailors it and sketches your business as members, record types, Playbooks and Flows); entry points no longer link known gaps, and what is planned reads as Next with its version.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).

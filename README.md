@@ -29,7 +29,7 @@ In an AI-native team, people set the direction and make the calls, and agents do
 
 Your people, your agents and the work they share live on a server you own and on the computers your people use. Where the outcome has to be exact, such as who sees a record, what a Flow does or what got sent, declared rules decide and a model does not. Open source, self-hosted, any model.
 
-**See your business on Vyre.** Give your AI agent [this prompt](docs/for-agents/PROMPT.md). It reads these docs, asks a few short questions, draws your business as an AI-native version of itself (members, records, Playbooks, Flows, agents, approvals), and can set Vyre up for you over Vyre's MCP. The same prompt, tailored by a short form, is at [vyre.run/map](https://vyre.run/map/).
+**See your business on Vyre.** Give your AI agent [this prompt](docs/for-agents/PROMPT.md). It sends the agent to [one page for agents](docs/for-agents/START-HERE.md), which tells it to read these docs, ask a few short questions, draw your business as an AI-native version of itself (members, records, Playbooks, Flows, agents, approvals), and offer to set Vyre up for you. The same prompt, tailored by a short form, is at [vyre.run/map](https://vyre.run/map/).
 
 ## What you get in 0.5
 

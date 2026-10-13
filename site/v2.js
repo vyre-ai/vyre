@@ -151,17 +151,13 @@
       }
     }
     function prompt(m) {
-      var L = ['', '', 'ABOUT MY BUSINESS (already answered; start from this and ask only what is missing)',
-        'Industry: ' + D.industries[ind.value].name, 'Team size: ' + size.value + ' people',
-        'Roles: ' + (join(m.roles) || 'not said yet'), 'What we track: ' + (join(sel.things) || 'not said yet'),
-        'Work we repeat: ' + (join(sel.work) || 'not said yet'), 'Tools we use: ' + (join(sel.tools) || 'not said yet'),
-        'Must never go out without a yes: ' + (join(m.nevers) || 'not said yet'), '',
-        'MY FIRST SKETCH (correct anything that is wrong for my firm)',
-        'Members: the owner, plus ' + (join(m.roles) || 'my team') + ', each a member with a role.',
-        'Record types: ' + (m.rec.map(function (r) { return r.name + ' (' + r.fields + (r.sealed ? '; sealed: ' + r.sealed : '') + ')'; }).join('; ') || 'to decide') + '.',
-        'Playbooks and Flows: ' + (m.wk.map(function (w) { return w.name + ' (' + w.d.trigger.toLowerCase() + ', approval: ' + w.d.gate.toLowerCase() + ')'; }).join('; ') || 'to decide') + '.',
-        'Tools to connect: ' + (join(sel.tools) || 'to decide') + '.'];
-      return base + L.join('\n');
+      var part = ['Industry: ' + D.industries[ind.value].name, 'a team of ' + size.value];
+      if (m.roles.length) part.push('roles: ' + join(m.roles));
+      if (sel.things.length) part.push('we track: ' + join(sel.things));
+      if (sel.work.length) part.push('repeated work: ' + join(sel.work));
+      if (sel.tools.length) part.push('tools: ' + join(sel.tools));
+      if (m.nevers.length) part.push('never goes out without a yes: ' + join(m.nevers));
+      return base + '\n\nAbout my business: ' + part.join('; ') + '.';
     }
     function update() { var m = model(); render(m); outEl.textContent = prompt(m); var l = doc.getElementById('out-lbl'); if (l) l.textContent = 'Prompt · tailored to your firm'; }
     setIndustry();

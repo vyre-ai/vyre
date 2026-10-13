@@ -6,6 +6,7 @@
   "version": "0.5.0",
   "license": "Apache-2.0",
   "docs": {
+    "agenthome": "https://vyre.run/agenthome.md",
     "llms": "https://vyre.run/llms.txt",
     "llms_full": "https://vyre.run/llms-full.txt",
     "agents": "https://vyre.run/agents.md",
@@ -13,7 +14,12 @@
   },
   "install": {
     "url": "https://vyre.run/start/",
-    "note": "The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user."
+    "note": "The Vyre app shows the user the install line and pairs the server with a code and four words. An agent runs the install line only if the user hands it that one line, for a server the agent created for them."
+  },
+  "entry_point": {
+    "url": "https://vyre.run/agenthome.md",
+    "html": "https://vyre.run/agenthome/",
+    "note": "Start here: what Vyre is, a map of the site and docs, how to map a business onto Vyre, and how to help set it up today."
   },
   "platforms": {
     "server": [

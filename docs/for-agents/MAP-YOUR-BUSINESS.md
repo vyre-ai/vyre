@@ -12,7 +12,7 @@ A business owner pointed you at this repository and asked how the business would
 
 Take every noun from the owner. Do not assume an industry, and do not invent people, record types or systems. If you do not know, ask.
 
-If the owner gave you [the prompt](PROMPT.md), this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
+If the owner gave you [the prompt](PROMPT.md), you were sent through [Start here](START-HERE.md), and this is the method it points to. You design on paper. Change nothing in a Space until the owner says to. Every outward act stays held for a person's yes, whatever you build.
 
 ## What to tell the owner Vyre is good at
 
