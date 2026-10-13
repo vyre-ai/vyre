@@ -203,3 +203,21 @@ test("the project lead can sign a stage off, and the line says so", async () => 
   assert.deepEqual(missing(b), []);
   assert.equal(nextLine(b, 0), "Then it waits for the project lead to sign it off, and moves to Done.");
 });
+
+test("followers are added and removed once each, and the approver's and followers' notes are kept as text", async () => {
+  const { addFollower, removeFollower, setNote, noteOf } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, {});
+  b = addFollower(b, 0, 0, "role:attorney");
+  b = addFollower(b, 0, 0, "person:per_bob");
+  b = addFollower(b, 0, 0, "role:attorney");
+  assert.deepEqual(b.stages[0].tasks[0].followers, ["role:attorney", "person:per_bob"]);
+  b = removeFollower(b, 0, 0, "role:attorney");
+  assert.deepEqual(b.stages[0].tasks[0].followers, ["person:per_bob"]);
+  assert.equal(removeFollower(b, 0, 0, "person:per_bob").stages[0].tasks[0].followers, undefined, "no followers: the field is gone");
+  b = setNote(b, 0, 0, "approver", "Check the dates.");
+  b = setNote(b, 0, 0, "followers", "Read along.");
+  assert.deepEqual(b.stages[0].tasks[0].notes, { approver: "Check the dates.", followers: "Read along." });
+  assert.equal(noteOf(b.stages[0].tasks[0], "approver"), "Check the dates.");
+  assert.deepEqual(setNote(b, 0, 0, "approver", "  ").stages[0].tasks[0].notes, { followers: "Read along." });
+  assert.equal(setNote(setNote(b, 0, 0, "approver", ""), 0, 0, "followers", "").stages[0].tasks[0].notes, undefined);
+});
