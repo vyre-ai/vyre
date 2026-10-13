@@ -73,3 +73,11 @@ test("an agent working in a project runs in the project's folder and is told bot
   assert.match(text, /Instructions for you, the agent "intake" \(its AGENTS\.md\):\n\nDraft replies\./, "the prompt carries the agent's AGENTS.md");
   assert.match(text, /Instructions for the project "[^"]+" \(its AGENTS\.md\):\n\nAlways cite the file number\./, "and the project's");
 });
+
+test("a project the person may not use puts none of its AGENTS.md in the prompt (no_project_docs), one they may use does", { timeout: 120_000 }, async t => {
+  const { d, project } = await world(t);
+  fs.writeFileSync(path.join(project.home, "AGENTS.md"), "Always cite the file number.\n");
+  const compose = async (/** @type {any} */ i) => (await d.registry.call("sessions.prompt.compose", { project: project.slug, ...i }, "module:vyre")).data.text;
+  assert.match(await compose({}), /Instructions for the project "[^"]+" \(its AGENTS\.md\):\n\nAlways cite the file number\./);
+  assert.ok(!(await compose({ no_project_docs: true })).includes("Always cite the file number."), "a project she cannot use injects nothing");
+});
