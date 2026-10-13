@@ -118,6 +118,7 @@ async function main() {
     // Node 22 and failed the check every time). Idle starts once vyred has been quiet for a few samples.
     if (!(await waitQuiet(child.pid))) log(`vyred was still busy ${QUIET_MAX_SECONDS}s after indexing; sampling anyway, and the budget says what it costs`);
     const idleStart = Date.now();
+    if (process.env.VYRE_PERF_IDLEPROF) child.kill("SIGHUP");
     log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
 
     const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);

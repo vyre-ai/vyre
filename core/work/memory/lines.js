@@ -55,7 +55,7 @@ export function createLines(db, redactors) {
     },
     /** @param {string} session @returns {{ record: string }|null} */
     meta(session) { const r = db.prepare("SELECT record FROM memory_engine_lines WHERE session = ? LIMIT 1").get(session); return r ? { record: String(r.record) } : null; },
-    all(/** @type {string} */ session) { return db.prepare("SELECT * FROM memory_engine_lines WHERE session = ? ORDER BY seq").all(session).map(r => ({ ...row(r), record: String(r.record) })); },
+    all(/** @type {string} */ session, /** @type {number} */ from = Number.MIN_SAFE_INTEGER, /** @type {number} */ to = Number.MAX_SAFE_INTEGER) { return db.prepare("SELECT * FROM memory_engine_lines WHERE session = ? AND seq BETWEEN ? AND ? ORDER BY seq").all(session, from, to).map(r => ({ ...row(r), record: String(r.record) })); },
     /** Erase a session's detail. @param {string} session */
     forget(session) { return Number(db.prepare("DELETE FROM memory_engine_lines WHERE session = ?").run(session).changes); },
   };

@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund
-      - name: trace
+      - name: idle profile
         run: |
-          VYRE_PERF_TRACE=/tmp/pt.txt node scripts/perf-check 2>&1 | grep -E "perf-check:|CPU \(|RSS \(" || true
-          sort -n /tmp/pt.txt.events | cut -c1-230 | tail -n +1 | awk '{ if ($2=="CPU") c++; print }' | grep -v "within.js" | tail -80
+          VYRE_PERF_IDLEPROF=/tmp/idle.cpuprofile node scripts/perf-check 2>&1 | grep -E "CPU \(|RSS \(" || true
+          node scripts/prof-tmp.mjs /tmp/idle.cpuprofile | cut -c1-400

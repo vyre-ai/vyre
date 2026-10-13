@@ -55,3 +55,13 @@ if (process.env.VYRE_PERF_TRACE) {
     };
   }
 }
+
+if (process.env.VYRE_PERF_IDLEPROF) {
+  const { Session } = await import("node:inspector");
+  process.on("SIGHUP", () => {
+    const s = new Session(); s.connect();
+    s.post("Profiler.enable", () => s.post("Profiler.setSamplingInterval", { interval: 200 }, () => s.post("Profiler.start", () => {
+      setTimeout(() => s.post("Profiler.stop", (err, { profile }) => { fs.writeFileSync(process.env.VYRE_PERF_IDLEPROF, JSON.stringify(profile)); }), 14000);
+    })));
+  });
+}
