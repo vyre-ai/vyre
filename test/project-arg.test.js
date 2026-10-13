@@ -27,6 +27,13 @@ const EXEMPT = {
   "work.team.context": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
   "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",
   "work.team.doing": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
+  "work.project.level": "person-only (agent-reach PERSON_ONLY): a project Lead's or staff's own act on the team's seats; `project` is a short name, id or address resolved and authorized under the caller's own kernel chain (setSeatLevel), and no agent reaches it",
+  "agents.context.link": "person-only (agent-reach PERSON_ONLY): the person's own act of linking a folder to an agent, judged against the person adding it; an assistant must not widen an agent's reach",
+  "agents.context.unlink": "person-only (agent-reach PERSON_ONLY): the person's own act of unlinking a folder from an agent",
+  "import.sessions.list": "`folders` are folders on the person's own computer to look in, not a project of the Space; the person's own view (agent-reach), and the tool checks who runs it (mayRun)",
+  "files.linked.ls": "person reach: `path` is a path inside a folder the caller linked, listed from the caller's own index as the caller; it is not a project folder of the Space",
+  "files.linked.read": "person reach: `path` is a path inside a folder the caller linked, fetched from its source as the caller; it is not a project folder of the Space",
+  "files.linked.versions": "person reach: `path` is a path inside a folder the caller linked, read as the caller; it is not a project folder of the Space",
   "files.drive.space.read": "`path` is a path in the Space's Drive, not a project folder: a model reads it only in a team chat's turn, as the member who spoke, and the Space's own `drive.read` decides per path",
 };
 /** Input names that can point at a project's files or its name, besides project, projects and cwd. A tool with one and no declaration is named in UNJUDGED until someone decides whether an agent's grant must cover it. */
