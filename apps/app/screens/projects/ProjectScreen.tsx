@@ -66,7 +66,7 @@ export default function ProjectScreen() {
     if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No context here" body="This project has no id Files can keep a folder under." />;
     if (r === "access") return slug ? <ProjectAccess slug={slug} /> : null;
     if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id Files can keep files under." />;
-    return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
+    return pid ? <MemoryPane id={pid} slug={slug} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;
   const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]} defaultOpen={r === "instructions"}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
