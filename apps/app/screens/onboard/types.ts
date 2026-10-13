@@ -22,6 +22,8 @@ export type Ctx = {
   /** The wire role: admin, member, temp (a Guest) or a custom role id. */
   inviteRole: string;
   inviteProjects: string[];
+  /** The seat level chosen per project id. */
+  inviteLevels: Record<string, string>;
   inviteDays: string;
 };
 export type ScreenProps = {
