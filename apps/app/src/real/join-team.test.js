@@ -39,3 +39,44 @@ test("install.ts joins from this app when it holds the name, and from the box ot
   assert.match(join, /openServerPeer: peer\.openServerPeer/);
   assert.match(join, /signPresence: \(req\) => yes\.signer\.signPresence/);
 });
+
+test("the inviter's confirmation checks the Space's own four words: right words (any case or spacing) reach the kernel, wrong, empty or another Space's are refused in words and nothing is sent; five wrong tries stop the invite", async () => {
+  const { confirmTeamInvite } = await import("./team-invite.js");
+  const { fingerprintWords, spaceFingerprint } = await import("./join-team.js");
+  const letters = "abcdefghij";
+  const words = Array.from({ length: 2048 }, (_, i) => "w" + String(i).padStart(4, "0").replace(/\d/g, (c) => letters[Number(c)]));
+  const space = { id: "spc_aaaaaaaaaaaa", payload: { rootPublic: "ROOTKEY" } };
+  const right = /** @type {string} */ (fingerprintWords(words, spaceFingerprint(space.id, "ROOTKEY")));
+  const other = /** @type {string} */ (fingerprintWords(words, spaceFingerprint("spc_bbbbbbbbbbbb", "OTHERKEY")));
+  assert.notEqual(right, other);
+  const sent = /** @type {any[]} */ ([]);
+  const d = /** @type {any} */ ({ wire: { call: async (/** @type {string} */ c, /** @type {any[]} */ a) => { sent.push([c, a]); return { ok: true }; } }, fetch: async () => ({}), base: "http://x", words, resolveSpace: async () => space });
+  for (const bad of [other, "", "apple apple apple apple", right.split(" ").slice(0, 3).join(" ")]) {
+    await assert.rejects(() => confirmTeamInvite(d, "inv_1", bad, "harlow"), (e) => e.code === "words_mismatch" && /not the words of this Space.*read the four words on their card again/i.test(e.message), `"${bad}" is refused`);
+  }
+  assert.deepEqual(sent, [], "nothing was sent after the refusals");
+  await confirmTeamInvite(d, "inv_1", `  ${right.toUpperCase()},  `, "harlow");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0], "grants.invites.confirm");
+  for (let n = 0; n < 5; n++) await assert.rejects(() => confirmTeamInvite(d, "inv_2", "wrong words here now", "harlow"), (e) => e.code === "words_mismatch");
+  await assert.rejects(() => confirmTeamInvite(d, "inv_2", right, "harlow"), (e) => e.code === "too_many_tries");
+  assert.equal(sent.length, 1);
+});
+
+test("the shipped invite screen checks the Space's words before EVERY confirm path (the team wire, the home's spaces tool, the phone's approval), and a wrong word is refused with nothing sent", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../../screens/devices/RealInvite.tsx", import.meta.url), "utf8");
+  const at = (/** @type {string} */ s) => { const i = src.indexOf(s); assert.ok(i >= 0, `missing: ${s}`); return i; };
+  assert.ok(at("checkInviteWordsFor(card.id, made.id, words.trim(), card.name)") < at("confirmTeamInviteWords(card.id"), "the check comes before the team wire");
+  assert.ok(at("checkInviteWordsFor(card.id") < at('tool("spaces.invites.confirm"'), "and before the home's tool (whose presence refusal the phone route answers)");
+  assert.equal((src.match(/spaces\.invites\.confirm/g) || []).length, 2, "the screen has no other confirm call (one in the comment, one in the call)");
+  const { checkInviteWords } = await import("./team-invite.js");
+  const { fingerprintWords, spaceFingerprint } = await import("./join-team.js");
+  const letters = "abcdefghij";
+  const words = Array.from({ length: 2048 }, (_, i) => "w" + String(i).padStart(4, "0").replace(/\d/g, (c) => letters[Number(c)]));
+  const space = { id: "spc_aaaaaaaaaaaa", payload: { rootPublic: "ROOTKEY" } };
+  const right = /** @type {string} */ (fingerprintWords(words, spaceFingerprint(space.id, "ROOTKEY")));
+  const d = /** @type {any} */ ({ fetch: async () => ({}), base: "http://x", wire: { call: async () => { throw new Error("nothing may be sent"); } }, words, resolveSpace: async () => space });
+  await assert.rejects(() => checkInviteWords(d, "inv_9", "apple apple apple apple", "harlow"), (e) => e.code === "words_mismatch");
+  await checkInviteWords(d, "inv_9", right, "harlow");
+});

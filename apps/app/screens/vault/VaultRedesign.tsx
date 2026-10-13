@@ -20,6 +20,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [q, setQ] = useState("");
   const [items, setItems] = useState<VItem[] | null>(null);
   const [locked, setLocked] = useState(false);
+  const [noAccount, setNoAccount] = useState(false);
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [del, setDel] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const load = useCallback(() => {
     setErr(""); setItems(null);
-    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
+    data.load(scope).then((r) => { setItems(r.items); setLocked(r.locked); setNoAccount(Boolean(r.noAccount)); }).catch((e) => setErr(String(e?.message || "The vault did not answer.")));
   }, [data, scope]);
   useEffect(load, [load]);
 
@@ -48,6 +49,22 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
   const fail = (e: unknown, fallback: string) => showToast(String((e as Error)?.message || fallback));
   const setShare = (fn: (xs: VItem[]) => VItem[]) => setItems((xs) => (xs ? fn(xs) : xs));
+
+  if (scope === "mine" && noAccount) {
+    return (
+      <Frame title="Vault" sub="Make your own vault.">
+        <Scoper scope={scope} onScope={setScope} />
+        <Card>
+          <View className="gap-s3 py-s4">
+            <View className="items-center gap-s2"><IconTile name="vault" /><Text size="title" strong>Make your own vault</Text>
+              <Text tone="label" className="text-center">It holds your AI sign-ins and your own connections. Only you can open it, with a master password you choose. This device keeps the key that goes with it.</Text></View>
+            <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Choose a master password (12 or more characters)" />
+            <Button kind="primary" label="Make my vault" disabled={busy || pw.length < 12} onPress={() => { setBusy(true); data.create(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not work.")).finally(() => setBusy(false)); }} />
+          </View>
+        </Card>
+      </Frame>
+    );
+  }
 
   if (scope === "mine" && locked) {
     return (
@@ -114,6 +131,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
                 onChange={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))}
                 onRemove={(w) => data.setAccess!(cur, w, null).then(() => { showToast(`${w} no longer has ${cur.name}.`); return data.access!(cur).then(setAcc); }).catch((e) => fail(e, "That did not work."))}
                 onAdd={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))} empty="Not shared with a person." /> : null}
+              {data.access ? <Text size="caption" tone="label">Sharing takes effect in the next update.</Text> : null}
             </View>
           ) : (
             <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}

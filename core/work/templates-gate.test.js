@@ -53,3 +53,32 @@ test("a template a member owns (made before this rule) still lists", async () =>
   const row = (await t.list(chain(ANA))).templates.find((/** @type {any} */ x) => x.template === made.template);
   assert.equal(row.live, 1);
 });
+
+test("a draft is saved in place with replace: the same version, the new body; a live version is never rewritten", async () => {
+  const t = world();
+  const made = await t.define(chain(ADMIN), { body: BODY("Draft one") });
+  const again = await t.define(chain(ADMIN), { template: made.template, body: { ...BODY("Draft one"), description: "second" }, replace: true });
+  assert.equal(again.version, 1, "no new version: autosave does not pile them up");
+  assert.equal((await t.get(chain(ADMIN), { template: made.template, version: 1 })).body.description, "second");
+  assert.equal((await t.list(chain(ADMIN), { template: made.template })).versions.length, 1);
+  await t.goLive(chain(ADMIN), { template: made.template, version: 1 });
+  const next = await t.define(chain(ADMIN), { template: made.template, body: { ...BODY("Draft one"), description: "third" }, replace: true });
+  assert.equal(next.version, 2, "the newest is live, so a replace makes a new draft instead");
+  assert.equal((await t.get(chain(ADMIN), { template: made.template, version: 1 })).body.description, "second", "the live version is untouched");
+});
+
+test("replace is the owner's or an admin's, like any change to a template", async () => {
+  const t = world();
+  const made = await t.define(chain(ADMIN), { body: BODY("Draft two") });
+  await assert.rejects(t.define(chain(ANA), { template: made.template, body: BODY("Draft two"), replace: true }), /owner or an admin/);
+});
+
+test("the Kit library lists each template's outline (stage names and task titles) beside its counts, so a screen can start from a Kit's tasks without installing it", () => {
+  const lib = world().library();
+  assert.ok(lib.length > 0, "the shipped Kits have project templates");
+  for (const e of lib) {
+    assert.equal(e.outline.length, e.stages, `${e.id}: one outline entry per stage`);
+    assert.equal(e.outline.reduce((n, s) => n + s.tasks.length, 0), e.tasks, `${e.id}: the task titles add up to its task count`);
+    assert.ok(e.outline.every((s) => typeof s.name === "string" && s.tasks.every((t) => typeof t === "string")));
+  }
+});

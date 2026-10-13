@@ -50,8 +50,8 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
   const shape = (/** @type {any} */ r, withBody = false) => ({ template: r.data.template, version: r.data.version, name: r.data.name, state: r.data.state, owner: r.data.owner && r.data.owner.actor ? r.data.owner.actor.id : null, ...(r.data.kit ? { kit: r.data.kit } : {}), ...(r.data.note ? { note: r.data.note } : {}), tags: parseTags(r.data.tags), urn: r.urn, ...(withBody ? { body: bodyOf(r) } : {}) });
   const asBody = (/** @type {any} */ b) => { if (typeof b === "string") { try { return JSON.parse(b); } catch { throw fail("bad_input", "the template is not valid JSON"); } } return b; };
 
-  /** A new draft version. `template` names an existing template to add a version to; without it the name makes the id. */
-  async function define(chain, { template, body, note, kit }) {
+  /** A new draft version. `template` names an existing template to add a version to; without it the name makes the id. `replace`: when the newest version is a draft, it is saved in place (a draft being written does not make a version per save); a live or retired newest version is never rewritten, a new draft is made instead. */
+  async function define(chain, { template, body, note, kit, replace }) {
     const person = personOf(chain);
     const b = asBody(body);
     const errors = problems(b, env());
@@ -63,6 +63,10 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     if (!have[0] && !isAdmin(person)) throw fail("not_allowed", "only the Space's owner or an admin makes a new template; ask one of them, or start a project from a template that is already live");
     const owner = have[0] ? have[0].data.owner : { actor: { kind: "person", id: person.id, space: person.space } };
     if (have[0] && have[0].data.owner && have[0].data.owner.actor && have[0].data.owner.actor.id !== person.id && !isAdmin(person)) throw fail("not_allowed", `only ${id}'s owner or an admin adds a version to it; propose the change instead (flows.propose { what: "template" })`);
+    if (replace && have[0] && have[0].data.state === "draft") {
+      const saved = await kernel().records.update(chain, TYPE, have[0].id, { name: b.name, body: JSON.stringify(b), tags: changeTags("", { add: b.tags || [] }), ...(note ? { note: String(note).slice(0, 500) } : {}) }, have[0].version);
+      return shape(saved);
+    }
     const rec = await kernel().records.create(chain, TYPE, { name: b.name, template: id, version: (have[0] ? have[0].data.version : 0) + 1, state: "draft", body: JSON.stringify(b), owner, ...(kit ? { kit: String(kit) } : {}), ...(note ? { note: String(note).slice(0, 500) } : {}), tags: changeTags("", { add: b.tags || [] }) });
     return shape(rec);
   }
@@ -190,7 +194,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       const dir = path.join(KITS_DIR, kit, "project-templates");
       if (!fs.existsSync(dir)) continue;
       for (const f of fs.readdirSync(dir).filter(x => x.endsWith(".json")).sort()) {
-        try { const body = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); out.push({ id: `${kit}/${f.replace(/\.json$/, "")}`, kit, name: body.name, description: body.description || "", stages: (body.stages || []).length, tasks: (body.stages || []).reduce((/** @type {number} */ n, /** @type {any} */ s) => n + (s.tasks || []).length, 0), body }); } catch { /* an unreadable file is not a template */ }
+        try { const body = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); out.push({ id: `${kit}/${f.replace(/\.json$/, "")}`, kit, name: body.name, description: body.description || "", stages: (body.stages || []).length, tasks: (body.stages || []).reduce((/** @type {number} */ n, /** @type {any} */ s) => n + (s.tasks || []).length, 0), outline: (body.stages || []).map((/** @type {any} */ s) => ({ name: String(s.name), tasks: (s.tasks || []).map((/** @type {any} */ k) => String(k.title)) })), body }); } catch { /* an unreadable file is not a template */ }
       }
     }
     return out;
@@ -262,7 +266,7 @@ export function registerTemplateTools({ ctx, templates: t, chainOf: chainOfHome 
     } });
   };
   const body = { type: ["object", "string"], description: "the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }" };
-  inSpace("work.template.define", { description: "Write a project template as a new draft version: stages, tasks, doers, checklists, needed yeses and agent roles. Test it with work.template.test, then work.template.golive.", input: obj({ template: { type: "string", description: "template id; omit for a new template" }, body, note: { type: "string" } }, ["body"]), callers: CALLERS, run: run((c, i) => t.define(c, i)) });
+  inSpace("work.template.define", { description: "Write a project template as a new draft version: stages, tasks, doers, checklists, needed yeses and agent roles. Test it with work.template.test, then work.template.golive.", input: obj({ template: { type: "string", description: "template id; omit for a new template" }, body, note: { type: "string" }, replace: { type: "boolean", description: "save over the newest version when it is a draft, instead of making a new version (for a draft being written)" } }, ["body"]), callers: CALLERS, run: run((c, i) => t.define(c, i)) });
   inSpace("work.template.list", { description: "The project templates of this Space (id, name, which version is live, owner), or the versions of one (template).", input: obj({ template: { type: "string" } }), callers: CALLERS, run: run((c, i) => t.list(c, i)) });
   inSpace("work.template.get", { description: "One version of a project template with its whole body (the live one by default).", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.get(c, i)) });
   inSpace("work.template.golive", { description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });

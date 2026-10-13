@@ -3,10 +3,12 @@
 import type { Call } from "./source";
 import { daysLeftOf, groupOf, valueField, type VItem } from "./redesign.js";
 import type { ListRow, UseRow } from "./real-model";
+import { kvGet, kvSet } from "../../src/state/member-key-kv";
+import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 
 export type Scope = "space" | "mine";
-export type Loaded = { items: VItem[]; locked: boolean };
+export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
 export type NewItem = { name: string; kind: string; value: string };
 
 export interface VaultData {
@@ -14,8 +16,9 @@ export interface VaultData {
   real: boolean;
   load(scope: Scope): Promise<Loaded>;
   read(scope: Scope, item: VItem): Promise<string>;
-  /** Mine only: open the member's own vault. */
+  /** Mine only: open the member's own vault, or make it (the Secret Key stays on this device). */
   unlock(password: string): Promise<void>;
+  create(password: string): Promise<void>;
   lock(): Promise<void>;
   add(scope: Scope, n: NewItem): Promise<void>;
   remove(scope: Scope, item: VItem): Promise<void>;
@@ -34,7 +37,7 @@ export function sampleData(): VaultData {
     real: false,
     load: async (scope) => ({ items: items.filter((v) => (scope === "mine") === (v.sp === "mine")), locked: false }),
     read: async (_s, v) => v.secret,
-    unlock: async () => {}, lock: async () => {},
+    unlock: async () => {}, create: async () => {}, lock: async () => {},
     add: async (scope, n) => { items.push({ id: `n${items.length}`, sp: scope === "mine" ? "mine" : "juniper", group: groupOf(n.kind, n.name), name: n.name, detail: "Added just now", secret: n.value, usedBy: [], shared: [] }); },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
@@ -61,6 +64,7 @@ export function realData(call: Call): VaultData {
     };
   };
   const fieldsOf: Record<string, string[]> = {};
+  const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
     real: true,
     async load(scope) {
@@ -69,6 +73,7 @@ export function realData(call: Call): VaultData {
         for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
         return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked) };
       }
+      if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
         const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number }[] }>("vault.me.list");
         return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
@@ -82,8 +87,9 @@ export function realData(call: Call): VaultData {
       const r = await ask<{ fields: Record<string, string> }>("vault.me.get", { name: item.id });
       return r.fields[valueField(Object.keys(r.fields))] ?? "";
     },
-    // The Secret Key is held by this person's devices; this build has no device store for it yet, so unlock says so instead of asking for something it cannot send.
-    async unlock(password) { await ask("vault.me.account.unlock", { password, secretKey: deviceSecretKey() }); },
+    // The Secret Key is held by this device (src/state/member-key.js), saved when the vault is made and sent with the password at each unlock.
+    async unlock(password) { await unlockMine(ask, deviceKeys, password); },
+    async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
     async add(scope, n) {
       if (scope === "space") await ask("vault.put", { name: n.name, kind: n.kind, fields: { value: n.value } });
@@ -103,6 +109,3 @@ export function realData(call: Call): VaultData {
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
   };
 }
-
-/** The member's Secret Key from this device. Not stored on a device in this build (wire-identity's export and import tools bring it), so it is empty and the server refuses the unlock in words. */
-function deviceSecretKey(): string { return ""; }
