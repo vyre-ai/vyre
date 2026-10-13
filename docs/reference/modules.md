@@ -77,7 +77,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 25 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 26 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
@@ -104,14 +104,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 161 | 58 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 175 | 58 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 36 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 78 | 0 | cli |
 
 ## about
@@ -809,8 +809,8 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [41](tools.md#relay), 14 of them only for other modules
-- Emits: [25 events](events.md#relay)
+- Tools: [42](tools.md#relay), 15 of them only for other modules
+- Emits: [26 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -1125,7 +1125,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [161](tools.md#vault), 23 of them only for other modules
+- Tools: [175](tools.md#vault), 23 of them only for other modules
 - Emits: [58 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true}`
@@ -1212,8 +1212,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Runs on: `box`, `local`
 - Requires: `relay`
 - Tools: [68](tools.md#wink), 14 of them only for other modules
-- Emits: [35 events](events.md#wink)
-- Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
+- Emits: [36 events](events.md#wink)
+- Listens for: `relay.code-asked`, `relay.signin-asked`, `relay.connected`, `name.claimed`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs daemon: `dataStores`
 - Needs kernel: `{"mints":[{"prefix":"member/*","actions":["member.act"]},{"prefix":"node/*","actions":["node.host"]},{"prefix":"storage/*","actions":["storage.hold"]}]}`
