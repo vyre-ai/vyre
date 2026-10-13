@@ -16,6 +16,7 @@ import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
 import { useSpaces } from "../../screens/shell/state";
+import { mockTools } from "./mock-templates";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -41,6 +42,7 @@ let override: ((name: string, input: Record<string, unknown>) => Promise<unknown
 export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+  if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (override) return (await override(name, given)) as T;
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
