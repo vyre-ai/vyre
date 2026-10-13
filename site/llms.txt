@@ -9,6 +9,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Architecture](https://vyre.run/architecture/): how Vyre is built, on one page: layers, how a call flows, how an agent's turn runs, the Gate
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
+- [Weekly update](https://vyre.run/updates/): one email a week at most with what changed in Vyre; sign up or leave in one click
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices

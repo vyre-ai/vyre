@@ -136,4 +136,23 @@
   doc.querySelectorAll('canvas.field').forEach(field);
   doc.querySelectorAll('canvas.markart').forEach(mark);
   var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(paintAll, 150); });
+
+  // Weekly update signup: the form works as a plain post; with script it sends the same fields and answers in place.
+  doc.querySelectorAll('form[data-upd]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!window.fetch) return;
+      e.preventDefault();
+      var msg = f.querySelector('.upd-msg'), btn = f.querySelector('button[type=submit]');
+      function val(n) { var el = f.querySelector('[name=' + n + ']'); return el ? el.value : ''; }
+      function say(t, c) { msg.textContent = t; msg.className = 'upd-msg' + (c ? ' ' + c : ''); }
+      var body = { name: val('name'), email: val('email'), website: val('website'), source: val('source'), consent: f.querySelector('[name=consent]').checked };
+      btn.disabled = true; say('Sending');
+      fetch(f.action, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+        .then(function (x) {
+          if (x.ok) { f.classList.add('done'); say('You are on the list. One email a week at most, and every email has a link to leave.', 'ok'); }
+          else { btn.disabled = false; say((x.j && x.j.error) || 'It did not save. Try again in a minute.', 'err'); }
+        }, function () { btn.disabled = false; say('It did not save. Check your connection and try again.', 'err'); });
+    });
+  });
 })();
