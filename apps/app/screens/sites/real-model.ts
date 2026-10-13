@@ -140,7 +140,7 @@ export function canonicalChoice(host: string): { apex: string; www: string } | n
 export const canonicalInput = (host: string, pick: Canonical): { canonical?: Canonical; www?: boolean } => (canonicalChoice(host) ? { canonical: pick, www: true } : {});
 
 /** The words for a version's row on History. */
-export type VersionRow = { id: string; version: number; stage: string; approvedBy: string; wentLive: string; address: string };
+export type VersionRow = { id: string; version: number; stage: string; approvedBy: string; approverId: string | null; wentLive: string; address: string };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** A moment as "13 Oct, 06:12" in the viewer's own clock. */
 export function whenText(at: number | null | undefined): string {
@@ -148,6 +148,15 @@ export function whenText(at: number | null | undefined): string {
   const d = new Date(at);
   return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+/** A person's name from records.actors (the app's one source of names), "You" for the viewer, "Someone" when the box has no name. A placeholder name that is only the id does not count. */
+export function approverName(actors: unknown, id: string, me: string | null): string {
+  if (me && id === me) return "You";
+  const x = actors as { actors?: unknown } | unknown[] | null;
+  const list = Array.isArray(x) ? x : Array.isArray((x as { actors?: unknown } | null)?.actors) ? ((x as { actors: unknown[] }).actors) : [];
+  const a = list.find((y) => (y as { id?: unknown } | null)?.id === id) as { name?: unknown } | undefined;
+  return typeof a?.name === "string" && a.name.trim() && !/^per_/.test(a.name) ? a.name.trim() : "Someone";
+}
+
 /** The History table: one row per version with who approved it, when it went live and where it answers. `who` turns an actor id into a name; `st` is each version's status when it has loaded. */
 export function versionRows(versions: Dep[], st: Record<string, Status | undefined>, who: (id: string) => string): VersionRow[] {
   return versions.map((v) => {
@@ -155,7 +164,7 @@ export function versionRows(versions: Dep[], st: Record<string, Status | undefin
     const by = s?.approved_by;
     return {
       id: v.id, version: v.version, stage: v.stage,
-      approvedBy: typeof by === "string" && by ? who(by) : s ? "Not approved" : "",
+      approvedBy: typeof by === "string" && by ? who(by) : s ? "Not approved" : "", approverId: typeof by === "string" && by ? by : null,
       wentLive: s?.published_at ? whenText(s.published_at) : s ? "Never live" : "",
       address: v.stage === "Production" ? (v.domains[0]?.host ?? v.url ?? "") : (v.url ?? "Not built yet"),
     };
