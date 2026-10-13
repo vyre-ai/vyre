@@ -24,7 +24,7 @@ export function UrlLinkView({ p }: ViewProps) {
   if (!href || p.mode === "compact") return <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={`Open ${linkLabel(href)}`} onPress={() => { void Linking.openURL(href); }} className="self-start">
-      <Text tone="accent" numberOfLines={1}>{linkLabel(href)}</Text>
+      <Text numberOfLines={1} className="hover:underline">{linkLabel(href)}</Text>
     </Pressable>
   );
 }
@@ -84,7 +84,7 @@ export function RatingView({ p }: ViewProps) {
   );
 }
 
-/** A link or a reference to another record: accent text at 16 with the target's small face or emblem in front, no filled chip. */
+/** A link or a reference to another record: ink text (violet is only for what needs you) with an underline on hover, at 16 with the target's small face or emblem in front, no filled chip. */
 export function LinkView({ p, env }: ViewProps) {
   if (isEmpty(p.value)) return <Empty />;
   const urn = urnOf(p.value), t = env.links?.[urn];
@@ -93,7 +93,7 @@ export function LinkView({ p, env }: ViewProps) {
   const body = (
     <View className="flex-row items-center gap-s2">
       <Avatar of={{ kind, id: urn || title, name: title }} size={16} />
-      <Text tone="accent" numberOfLines={1} className="min-w-0 flex-shrink">{title}</Text>
+      <Text numberOfLines={1} className="min-w-0 flex-shrink hover:underline">{title}</Text>
     </View>
   );
   const typed = t?.type && t.type !== p.definition.to ? <Text size="caption" tone="label">{t.type}</Text> : null;
@@ -131,9 +131,9 @@ export function PhoneView({ p }: ViewProps) {
 }
 
 export function EmailView({ p }: ViewProps) {
-  return isEmpty(p.value) ? <Empty /> : <Text tone="accent">{listOf(p.value).join(", ")}</Text>;
+  return isEmpty(p.value) ? <Empty /> : <Text className="hover:underline">{listOf(p.value).join(", ")}</Text>;
 }
 
 export function UrlView({ p }: ViewProps) {
-  return isEmpty(p.value) ? <Empty /> : <View className="flex-row items-center gap-s1"><Icon name="link" /><Text tone="accent">{listOf(p.value).join(", ")}</Text></View>;
+  return isEmpty(p.value) ? <Empty /> : <View className="flex-row items-center gap-s1"><Icon name="link" /><Text className="hover:underline">{listOf(p.value).join(", ")}</Text></View>;
 }

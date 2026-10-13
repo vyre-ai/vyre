@@ -44,7 +44,7 @@ export function GroupedList<T extends { group?: string }>({ groups, items, rende
                 <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${s.name}, ${open ? "collapse" : "expand"}`} onPress={() => setClosed({ ...closed, [s.name]: open })} className="min-h-control min-w-0 flex-1 flex-row items-center gap-s2">
                   <Icon name={open ? "chevron-down" : "chev-r"} size={16} tone="label" />
                   <Text strong>{s.name}</Text>
-                  <Chip className="self-center">{`${s.items.length}`}</Chip>
+                  <Chip>{`${s.items.length}`}</Chip>
                 </Pressable>
                 {onChange ? (
                   <Menu trigger={<IconButton icon="more" label={`${s.name}, more`} />} items={[
