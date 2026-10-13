@@ -693,8 +693,8 @@ export default {
           return r.data;
         };
         const a = must(i.agent);
-        // A person talks to an agent only if it is theirs or shared with them (Can use or Can edit); the owner and the admins always may.
-        if (isPerson(caller) && a.kind === "agent" && config && (await config.levelOf(meta0, a)) === "none") throw Object.assign(new Error(`${a.name} is not shared with you. Ask its owner for Can use.`), { code: "denied" });
+        // A person talks to an agent, the assistant included (it sees every project), only if it is theirs or shared with them (Can use or Can edit); the owner and the admins always may.
+        if (isPerson(caller) && config && (await config.levelOf(meta0, a)) === "none") throw Object.assign(new Error(`${a.name} is not shared with you. Ask its owner for Can use.`), { code: "denied" });
         const surface = i.surface || String(caller || "vyre");
         // whoever the call acts for (her own session's person included), so the gate judges her when the agent starts for her words
         const forPerson = (await personOf(meta0)) || undefined;

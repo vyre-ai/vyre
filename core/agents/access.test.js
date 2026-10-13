@@ -129,3 +129,12 @@ test("the instructions say who made the agent and who last changed them, and whe
   assert.deepEqual((await ada("agents.docs.get", { agent: "adas" })).data.made_by, { id: ADA, staff: true });
   void owner;
 });
+
+test("a member cannot ask the assistant (it sees every project) unless it is shared with her", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  const made = await owner("agents.create", { name: "juno", kind: "assistant" });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  const r = await ben("agents.ask", { agent: "juno", text: "list every project", wait: false });
+  assert.equal(r.error && r.error.code, "denied", JSON.stringify(r));
+  assert.match(String(r.error.message), /not shared with you/);
+});
