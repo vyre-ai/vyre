@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { View } from "react-native";
 import { callT } from "../../src/real/call-tool";
+import { MOCK } from "../../src/real/box";
 import { projectIdOf } from "../templates/model";
 import { newThingCall } from "./new.js";
 import { templates } from "../templates/templates";
@@ -27,7 +28,15 @@ export default function ProjectsScreen() {
   const choose = (key: string | null) => { if (key) setFrom(key); else void create("project"); };
   const start = async (name: string) => {
     setStarting(true);
-    try { const r = await templates.start(from!, name); setFrom(null); showToast(startWords(name, r)); open(projectIdOf(r.project)); } catch (e) { showToast(String((e as Error)?.message || e)); } finally { setStarting(false); }
+    try {
+      const r = await templates.start(from!, name);
+      setFrom(null); showToast(startWords(name, r));
+      if (MOCK) { // the sample build has no box to keep the project: make one in the sample store, pinned to the template as the box does
+        const b = (await templates.get(from!)).body!;
+        const made = await store.create("project", { title: name, template: from, template_stage: b.stages[0].name, template_snapshot: JSON.stringify({ name: b.name, ...(b.noun ? { noun: b.noun } : {}), stages: b.stages }) });
+        open(made.id);
+      } else open(projectIdOf(r.project));
+    } catch (e) { showToast(String((e as Error)?.message || e)); } finally { setStarting(false); }
   };
   const open = (id: string) => router.push(`/u/project/${id}` as never);
   const create = async (type: string) => {

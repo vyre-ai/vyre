@@ -40,3 +40,8 @@ test("a project's page names its kind from the template it started with, else Pr
   assert.equal(projectNoun({ template_snapshot: "not json" }), "Project");
   assert.equal(projectNoun({}), "Project");
 });
+
+test("only the owner and an admin are offered the buttons that make or copy a template", async () => {
+  const { mayMakeTemplates } = await import("./role.ts");
+  assert.deepEqual(["owner", "admin", "manager", "member", "temp", "", undefined, null].map(mayMakeTemplates), [true, true, false, false, false, false, false, false]);
+});
