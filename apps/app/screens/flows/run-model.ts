@@ -26,8 +26,8 @@ export function startRefusal(code: string | undefined, message: string): string 
 // A run read step by step: the run's ledger (flows.run, run.steps) laid over the painted steps, in the Flow's order. Pure; the screen supplies the clock's words.
 
 export type Tone = "accent" | "ok" | "warn" | "err" | "plain";
-export type Ledger = { status?: string; input?: unknown; output?: unknown; error?: { code?: string; message?: string }; tries?: number; started_at?: number; finished_at?: number; wait?: { kind?: string; until?: number; deadline?: number; task?: string }; verify?: { ok?: boolean; say?: string }; skipped_by?: string; substitute?: unknown; answered?: { by?: string }; attempts_log?: { at?: number; code?: string }[]; chosen?: { doer?: string; why?: string } };
-export type StepRow = { key: string; title: string; status: string; tone: Tone; took: string; inputs: [string, string][]; outputs: [string, string][]; error: string; wakes: string; by: string; tries: string[] };
+export type Ledger = { status?: string; input?: unknown; output?: unknown; error?: { code?: string; message?: string }; tries?: number; started_at?: number; finished_at?: number; wait?: { kind?: string; until?: number; deadline?: number; task?: string }; verify?: { ok?: boolean; say?: string }; skipped_by?: string; substitute?: unknown; answered?: { by?: string }; attempts_log?: { at?: number; code?: string }[]; chosen?: { doer?: string; why?: string }; task?: string };
+export type StepRow = { key: string; title: string; status: string; tone: Tone; took: string; inputs: [string, string][]; outputs: [string, string][]; error: string; wakes: string; by: string; tries: string[]; task: string };
 
 const SECRET_KEY = /secret|token|password|passwd|api[_-]?key|authorization|cookie|private/i;
 const PLACEHOLDER = /^\{\{[^}]+\}\}$/;
@@ -74,7 +74,7 @@ export function stepRows(painted: PaintedNode[], steps: Record<string, Ledger> |
   for (const n of painted) {
     if (n.kind === "trigger") continue;
     const mine = led.filter(([k]) => k.replace(/\?ask$/, "").replace(/[@!].*$/, "") === n.id);
-    if (!mine.length) { rows.push({ key: n.id, title: n.label, status: "Not reached", tone: "plain", took: "", inputs: [], outputs: [], error: "", wakes: "", by: "", tries: [] }); continue; }
+    if (!mine.length) { rows.push({ key: n.id, title: n.label, status: "Not reached", tone: "plain", took: "", inputs: [], outputs: [], error: "", wakes: "", by: "", tries: [], task: "" }); continue; }
     mine.forEach(([k, e], i) => {
       const ask = k.endsWith("?ask");
       const turn = k.includes("@") ? ` (turn ${mine.slice(0, i + 1).filter(([x]) => x.includes("@")).length})` : "";
@@ -93,7 +93,7 @@ export function stepRows(painted: PaintedNode[], steps: Record<string, Ledger> |
           break;
         default: if (e.tries) { const m = max[n.id]; status = `Retrying, try ${e.tries + 1}${m ? ` of ${m}` : ""}`; tone = "warn"; }
       }
-      rows.push({ key: k, title, status, tone, took: typeof e.started_at === "number" && typeof e.finished_at === "number" ? `Took ${took(e.finished_at - e.started_at)}` : "", inputs: pairs(e.input), outputs: e.status === "done" || e.status === "failed_handled" ? pairs(e.output) : [], error: e.status === "failed" || e.status === "failed_handled" ? errorWords(e.error ?? (e.output as { error?: Ledger["error"] } | undefined)?.error) : "", wakes, by: e.answered?.by || e.chosen?.doer || "", tries: (e.attempts_log ?? []).map((a, j) => `Try ${j + 1}${a.at ? ` at ${fmt(a.at)}` : ""} did not work${a.code ? ` (${a.code.replace(/_/g, " ")})` : ""}`) });
+      rows.push({ key: k, title, status, tone, took: typeof e.started_at === "number" && typeof e.finished_at === "number" ? `Took ${took(e.finished_at - e.started_at)}` : "", inputs: pairs(e.input), outputs: e.status === "done" || e.status === "failed_handled" ? pairs(e.output) : [], error: e.status === "failed" || e.status === "failed_handled" ? errorWords(e.error ?? (e.output as { error?: Ledger["error"] } | undefined)?.error) : "", wakes, by: e.answered?.by || e.chosen?.doer || "", task: e.task || e.wait?.task || "", tries: (e.attempts_log ?? []).map((a, j) => `Try ${j + 1}${a.at ? ` at ${fmt(a.at)}` : ""} did not work${a.code ? ` (${a.code.replace(/_/g, " ")})` : ""}`) });
     });
   }
   return rows;
@@ -126,3 +126,6 @@ export function runHeader(run: any, o: { fmt: (ms: number) => string; title: str
     recordId: typeof o.record === "string" && o.record ? o.record.split("/").pop() || "" : "",
   };
 }
+
+/** The agent's thread out of what tasks.get answered (the task's form.thread, written by agent-wake), or "". */
+export const threadOf = (t: any): string => { const x = t?.task ?? t; return typeof x?.form?.thread === "string" ? x.form.thread : ""; };
