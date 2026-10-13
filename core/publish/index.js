@@ -440,7 +440,7 @@ export default {
       presence: true,
       run: async (i, meta) => {
         const { space, person } = await whoIs(i, meta);
-        if ((extras.get(meta) || []).length) throw refuse("a person decides this, not a model", "model_cannot_approve");
+        if ((extras.get(meta) || []).length || (meta && meta.viaMcp)) throw refuse("a person decides this, not a model or a connected AI key: approve it on your Needs you card, in the chat, or on the Sites screen", "model_cannot_approve");
         const m = await member(space.id, person);
         if (!m) throw refuse("you are not a member of this space", "forbidden");
         const st = storeFor(space.id);

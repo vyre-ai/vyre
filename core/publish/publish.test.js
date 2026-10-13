@@ -99,7 +99,7 @@ async function boxRegistry(t, o = {}) {
   const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && (f.manifest.name === "publish" || (o.realBuilder && f.manifest.name === "builder"))), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: (/** @type {any} */ spec) => { const k = /** @type {any} */ (fakeKernelFor)(spec); return { ...k, chain: async (/** @type {any} */ meta) => { const c = await k.chain(meta); return c.hops[0] && c.hops[0].actor.kind === "person" ? { ...c, hops: [{ actor: { kind: "person", id: pf.actAs["*"] } }, ...c.hops.slice(1)] } : c; } }; } });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: (/** @type {any} */ spec) => { const k = /** @type {any} */ (fakeKernelFor)(spec); return { ...k, chain: async (/** @type {any} */ meta) => { const c = meta && meta.viaMcp ? { hops: [{ actor: { kind: "person", id: "x" } }] } : await k.chain(meta); return c.hops[0] && c.hops[0].actor.kind === "person" ? { ...c, hops: [{ actor: { kind: "person", id: pf.actAs["*"] } }, ...c.hops.slice(1)] } : c; } }; } });
   await reg.start(found, { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
   for (const name of ["publish", ...(o.realBuilder ? ["builder"] : []), ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
@@ -769,8 +769,7 @@ test("publish: a job's runs and its failure card are the project's people's, not
 test("publish: a model puts a site live end to end with one held yes, and cannot give it", async t => {
   const b = await boxRegistry(t);
   const juno = "mcp:agent:juno";
-  const harness = "harness";
-  for (const caller of [juno, harness]) {
+  for (const caller of [juno, "mcp:agent:kai"]) {
     const { deployment } = await b.ok("publish.create", { ...DRAFT, name: "site-" + caller.replace(/\W/g, "") }, caller);
     const id = deployment.id;
     await b.ok("publish.preview", { deployment: id }, caller);
@@ -808,4 +807,30 @@ test("publish: a model puts a site live end to end with one held yes, and cannot
     assert.ok((await b.call("publish.retire", { deployment: id }, caller)).error);
     assert.ok((await b.call("publish.domain.remove", { host }, caller)).error);
   }
+});
+
+test("publish: an MCP key reaches every step but the decision; a hosted key only reads and asks", async () => {
+  const { mcpPersonMay, hostedKeyMay } = await import("../modules/agent-reach.js");
+  for (const tool of ["publish.create", "publish.preview", "publish.plan", "publish.domain.add", "publish.domain.verify", "publish.domain.status", "publish.secret.grant", "publish.go", "publish.holds"]) assert.equal(mcpPersonMay(tool), true, `a local MCP key reaches ${tool}`);
+  assert.equal(mcpPersonMay("publish.decide"), false, "a local MCP key never decides");
+  for (const tool of ["publish.plan", "publish.status", "publish.list", "publish.holds", "publish.go", "publish.publish"]) assert.equal(hostedKeyMay(tool), true, `a hosted key reaches ${tool}`);
+  for (const tool of ["publish.decide", "publish.create", "publish.preview", "publish.domain.add", "publish.domain.status", "publish.secret.grant", "publish.edge"]) assert.equal(hostedKeyMay(tool), false, `a hosted key never reaches ${tool}`);
+});
+
+test("publish: a call on an MCP key does the steps, is held at go, and cannot decide", async t => {
+  const { markViaMcp } = await import("../modules/via-mcp.js");
+  const b = await boxRegistry(t);
+  const key = () => markViaMcp({}, "mcn_test");
+  const viaKey = async (/** @type {string} */ tool, /** @type {any} */ input) => b.reg.call(tool, input, "mcp", key());  // the daemon turns a vouched key into the owner's own chain (core/daemon/index.js): the fake kernel does the same for a marked call
+  const made = await viaKey("publish.create", DRAFT);
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const id = made.data.deployment.id;
+  assert.ok(!(await viaKey("publish.preview", { deployment: id })).error);
+  const add = await viaKey("publish.domain.add", { host: "key.example.com", deployment: id });
+  assert.ok(!add.error, JSON.stringify(add.error));
+  const held = await viaKey("publish.go", { deployment: id });
+  assert.equal(held.data && held.data.held, true, JSON.stringify(held));
+  const no = await viaKey("publish.decide", { task: held.data.task, approve: true });
+  assert.ok(no.error, "a key never decides");
+  assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Preview");
 });
