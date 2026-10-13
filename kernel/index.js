@@ -331,8 +331,8 @@ export async function createKernel(cfg) {
       chain: async (/** @type {any} */ meta) => {
         if (meta && typeof meta.token === "string") return surfaces.chainFor(meta.token);
         if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
-          // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in.
-          if (!(await enrolledHere(cfg.space, meta.kernelFacts))) return gateway.serviceChain(m.name);
+          // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in. The call came in on a device, so it is refused: it never falls back to the module's service chain (that has no person hop, and a door treats it as a module call).
+          if (!(await enrolledHere(cfg.space, meta.kernelFacts))) throw new KernelError("not_a_member", "This device is no longer part of this Space. Pair it again from the owner's Vyre to bring it back.");
           try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
         }
         await ready;
