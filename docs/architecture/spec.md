@@ -106,8 +106,11 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
 7. **The security floor cannot be configured away** (section 11).
 8. **Light by default.** Vyre runs all day on the user's own machines, so idle must cost almost
    nothing. Budgets, checked by `scripts/perf-check` and in CI:
-   - vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
-     once a minute when nothing is happening; work is driven by events and file-system notice.
+   - vyred idle: under 0.9% of one core (p95) and under 1.8% sustained, under 60 MB of heap
+     after a full GC, with no polling faster than once a minute when nothing is happening; work
+     is driven by events and file-system notice. Resident size is reported and gates only on the
+     Node the box ships (150 MB settled, 200 MB in the first 30 seconds), because other Node
+     versions keep a heap they have not collected yet.
    - Lumen hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
      shown and idle, under 2% CPU. It wakes in under 100 ms.
    - Vyre app web build in a background tab: no timers faster than a minute; the event stream only.
