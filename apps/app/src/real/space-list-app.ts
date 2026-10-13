@@ -54,9 +54,18 @@ export async function removeFromList(box: string): Promise<void> {
 async function vaultTool(): Promise<Tool> {
   const { tool } = await import("./box");
   const { loadPairing } = await import("../api/relay");
-  const home = await loadPairing();
-  return (name, input) => tool(name, input ?? {}, home ? { server: home.box } : {});
+  const home = (await loadPairing()) ?? (await hintStore()).load();
+  const at = await home;
+  return (name, input) => tool(name, input ?? {}, at ? { server: at.box } : {});
 }
+
+async function hintStore() {
+  const { makeHintStore } = await import("./home-hint.js");
+  return makeHintStore((await import("../api/relay")).keyedText);
+}
+
+/** The one door the sign-in sources call to give this device its home hint (a pinned route to the server that holds the personal vault): github-signin after the escrow release, the kit's recovery entry, and the approving device's approval. Takes the object or its JSON text; false if it is not a pinned route. */
+export async function storeHomeHint(hint: unknown): Promise<boolean> { return (await hintStore()).store(hint); }
 
 async function flowFor(given?: Tool) {
   const relay = await import("../api/relay");
