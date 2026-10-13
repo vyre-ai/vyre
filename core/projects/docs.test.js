@@ -78,3 +78,20 @@ test("an agent, a model or a guest caller is refused on every project instructio
   }
 });
 const d_call = (/** @type {any} */ owner, /** @type {string} */ n, /** @type {any} */ i, /** @type {string} */ as) => owner(n, i, as);
+
+test("a link planted in a project's folder leaks nothing: not through projects.docs.get, not into the chat brief, not through a note written", { timeout: 120_000 }, async t => {
+  const { owner, project } = await world(t);
+  const outside = fs.mkdtempSync(path.join(path.dirname(project.home), "outside-"));
+  fs.writeFileSync(path.join(outside, "secret.txt"), "TOP SECRET");
+  fs.symlinkSync(path.join(outside, "secret.txt"), path.join(project.home, "AGENTS.md"));
+  const got = await owner("projects.docs.get", { project: project.slug });
+  assert.equal(got.data.files["AGENTS.md"], "", JSON.stringify(got.data));
+  const brief = (await owner("projects.context", { project: project.slug })).data.text;
+  assert.ok(!/TOP SECRET/.test(brief), "the brief carries no secret");
+  fs.symlinkSync(outside, path.join(project.home, "context"));
+  const add = await owner("projects.refs.add", { project: project.slug, name: "planted", text: "x" });
+  assert.ok(add.error, "a linked context folder refuses the write");
+  assert.equal(fs.existsSync(path.join(outside, "planted.md")), false);
+  assert.deepEqual((await owner("projects.refs.list", { project: project.slug })).data.items, []);
+  fs.rmSync(outside, { recursive: true, force: true });
+});
