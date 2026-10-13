@@ -148,6 +148,7 @@ export function nextFor(error) {
   if (!error) return undefined;
   if (DOWN.has(error.code)) return "vyre up starts it, then try again";
   if (error.code === "no_such_tool") return "update Vyre, then vyre down and vyre up";
+  if (error.code === "planner_off") return "they come back in a later version";
   if (error.code === "presence_required") return "run it in your own terminal, where you can confirm it is you";
   if (error.code === "no_terminal") return "run it in your own terminal";
   if (error.code === "locked") return "vyre vault unlock";

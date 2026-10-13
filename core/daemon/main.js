@@ -28,6 +28,7 @@ process.on("SIGINT", quit);
 if (typeof process.send === "function") process.send({ vyred: "stop-handlers-installed" }, () => {});
 
 const { start } = await import("./index.js");
+const { MODULES_OFF } = await import("../modules/off.js");
 // On a Mac with vyre-core installed, the relay's keys (box, route and device) live in core, not in a
 // file at this login. Decided here, never inside start(), so an in-process test can't reach the
 // real core. createCoreKeys checks the socket is core's before every call.
@@ -36,6 +37,6 @@ if (process.platform === "darwin") {
   const { readCoreConfig } = await import("../../lib/vyre-core-client.js");
   if (readCoreConfig()) coreKeys = (await import("../../lib/vyre-core-keys.js")).createCoreKeys();
 }
-d = await start({ coreKeys, deviceIdentity: async () => { const r = await d.registry.call("spaces.identity.device", {}, "module:vyred"); return r && r.data ? r.data : null; } }).catch(e => { console.error(e.code === "windows_home" ? e.message : "vyred: " + e.message + (process.env.VYRE_DEBUG && e.stack ? "\n" + e.stack : "")); process.exit(e.code === "windows_home" ? 0 : 1); });
+d = await start({ coreKeys, modulesOff: MODULES_OFF, deviceIdentity: async () => { const r = await d.registry.call("spaces.identity.device", {}, "module:vyred"); return r && r.data ? r.data : null; } }).catch(e => { console.error(e.code === "windows_home" ? e.message : "vyred: " + e.message + (process.env.VYRE_DEBUG && e.stack ? "\n" + e.stack : "")); process.exit(e.code === "windows_home" ? 0 : 1); });
 // Asked to stop while starting: now that it has started, stop it.
 if (stopping) { await d.stop(); process.exit(0); }

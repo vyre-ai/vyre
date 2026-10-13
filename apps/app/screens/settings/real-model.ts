@@ -31,7 +31,6 @@ export const KIND_ROWS: [string, string, string][] = [
   ["ask", "Something needs you", "Asks, approvals and pairing requests."],
   ["draft", "A draft is ready", "A draft waits for your yes."],
   ["watch", "A watcher found something", "What your watchers were set to look for."],
-  ["planner", "Your day", "Things the planner puts in front of you."],
   ["goal", "A goal moved", "Progress and blocks on a goal."],
   ["proactive", "Suggestions", "Things an assistant noticed on its own."],
   ["lesson", "What Vyre learned", "A lesson was kept. Off until you turn it on."],

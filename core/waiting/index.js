@@ -78,6 +78,8 @@ export default {
     const read = async (tool, map) => {
       try {
         const r = await ctx.call(tool, {});
+        // The planner is off in some releases (core/modules/off.js): no such tool means nothing is ringing, not a source that failed.
+        if (r && r.error && r.error.code === "no_such_tool" && tool === "planner.ringing") return [];
         if (!r || r.error) return null;
         if (tool === "approvals.items") return r.data && typeof r.data === "object" ? Object.assign(map(r.data), { partial: Array.isArray(r.data.partial) ? r.data.partial.map(String) : [] }) : null;
         if (!Array.isArray(r.data)) return null;

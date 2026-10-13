@@ -93,7 +93,7 @@ function all(/** @type {string} */ space) {
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
-      ["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"],
+      // The Planner row (["Planner", "Agenda, alarms, todos, notes", "/u/planner", "cal"]) is off with the planner module (core/modules/off.js); put it back when that list is empty.
       ["Assistants", "Your assistants and agents", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [

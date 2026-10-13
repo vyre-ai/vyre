@@ -4,11 +4,19 @@
 // planner.add; `edit <id>` and `rm <id>` on each kind are planner.update and planner.delete. Times
 // print in the planner's zone, never this machine's, since the box keeps the time.
 
-import { call } from "../../daemon/client.js";
+import { call as callTool } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 const EXIT_FAILED = 1;
+
+/** The planner is off in some releases (core/modules/off.js): a vyred without its tools answers no_such_tool, and the person is told so plainly instead of "update Vyre". */
+const PLANNER_OFF = "the planner (reminders, to-dos, notes and the agenda) is off in this version";
+const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+  const r = await callTool(tool, input);
+  if (r && r.error && r.error.code === "no_such_tool" && tool.startsWith("planner.")) return { ...r, error: { ...r.error, code: "planner_off", message: PLANNER_OFF } };
+  return r;
+};
 
 // ---- Times in the planner's zone ------------------------------------------------------------
 

@@ -25,13 +25,13 @@ export default function CalendarScreen() {
   const [picked, setPicked] = useState<string | null>(null);
 
   const { from, to } = rangeOf(view, anchor);
-  // A repeating Event's occurrences in the window come from the box (planner.agenda). There is no other path: a refusal is shown as it is.
+  // A repeating Event's occurrences in the window come from the box (planner.agenda). There is no other path: a refusal is shown as it is, except a box with no planner (off in some releases, core/modules/off.js): it has no repeating-event reader, so the first-date items stand and nothing is said.
   const [occ, setOcc] = useState<Item[]>([]);
   const [occErr, setOccErr] = useState("");
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    tool("planner.agenda", { from: from.toISOString(), to: to.toISOString() }).then((a) => { if (live) { setOcc(occurrencesFrom(a)); setOccErr(""); } }).catch((e: Error) => { if (live) { setOcc([]); setOccErr(e.message || "The calendar could not read repeating events."); } });
+    tool("planner.agenda", { from: from.toISOString(), to: to.toISOString() }).then((a) => { if (live) { setOcc(occurrencesFrom(a)); setOccErr(""); } }).catch((e: Error & { code?: string }) => { if (live) { setOcc([]); setOccErr(e.code === "no_such_tool" || /no (such )?tool/i.test(e.message || "") ? "" : e.message || "The calendar could not read repeating events."); } });
     return () => { live = false; };
   }, [from.getTime(), to.getTime()]);
   const items: Item[] = useMemo(() => withOccurrences(world ? collect(world.types, world.byType) : [], occ), [world, occ]);

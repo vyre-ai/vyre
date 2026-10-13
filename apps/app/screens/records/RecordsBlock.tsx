@@ -65,8 +65,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
         <PinToSidebar id={`records-${type}${viewName ? `-${viewName}` : ""}`} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} href={`/u/records/${type}${viewName ? `?view=${encodeURIComponent(viewName)}` : ""}`} />
-        <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
-        <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
+        {/* The Reminders and Notes buttons are off with the planner module (core/modules/off.js): their types are the planner's. */}
       </View>
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
       {world.types.length > TABS_MAX
