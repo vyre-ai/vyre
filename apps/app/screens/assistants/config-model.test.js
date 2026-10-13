@@ -65,7 +65,7 @@ test("context: sizes and dates read plainly; a link shows its folder name", { sk
   assert.equal(m.sizeLine(900), "900 bytes");
   assert.equal(m.sizeLine(2048), "2 KB");
   assert.equal(m.sizeLine(5 * 1024 * 1024), "5 MB");
-  assert.deepEqual(m.linkLine("/Users/alex/Vyre/Files/Intake forms"), { title: "Intake forms", sub: "/Users/alex/Vyre/Files/Intake forms" });
+  assert.deepEqual(m.linkLine("/Users/alex/Vyre/Files/Intake forms"), { title: "Intake forms", sub: "Files / Intake forms" });
   assert.equal(m.contextName("../../etc/passwd"), "passwd", "an uploaded name is only a name");
   assert.equal(m.contextName("  "), "");
 });
