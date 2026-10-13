@@ -128,6 +128,7 @@ export function RealFlow({ id }: { id: string }) {
           <Card flush>
             {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
           </Card>
+          <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
         </Sec>
       ) : null}
