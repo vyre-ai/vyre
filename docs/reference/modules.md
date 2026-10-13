@@ -71,7 +71,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 25 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
@@ -79,6 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 25 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -99,7 +100,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 75 | 42 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 77 | 42 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
@@ -738,7 +739,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [24](tools.md#projects)
+- Tools: [25](tools.md#projects)
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
 - Needs kernel: `{"reach":true,"actions":["records.read"]}`
@@ -824,6 +825,18 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## roles
+
+A Space's roles as a person sees them: Owner, Admin, Member, Guest and custom roles built from Member or Admin. One tool per call, each under the caller's own chain; the kernel refuses anything wider than a role's base.
+
+- Folder: `core/roles`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#roles)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## rules
 
@@ -1066,7 +1079,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [75](tools.md#threads), 29 of them only for other modules
+- Tools: [77](tools.md#threads), 31 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`

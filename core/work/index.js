@@ -128,7 +128,11 @@ export default {
       hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
+        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => {
+          if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e);
+          // a team change (a person put on a project's team or taken off it): a session already running keeps the project folders it started with, so the switchboard judges the running ones again and stops a person's session under a project she is no longer on
+          if (e && typeof e.type === "string" && e.type.startsWith("team-member.")) await ctx.call("threads.seats.recheck", {}).catch(() => {});
+        }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
       // An upgraded box with agent project access from before reach became a kernel grant: ONE Needs-you item, once, so the person restores it (projects.access.restore, their own call). Nothing is
       // granted by the upgrade itself, so until then every agent is denied.

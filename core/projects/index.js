@@ -457,6 +457,14 @@ export default {
       ? !claim && /^mcp(?:$|[\s:])/.test(String(c || "")) && (c === "mcp" || Boolean(thread))
       : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
     const reachAgentOf = (c, claim) => claim !== undefined ? (claim ? String(claim) : null) : /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    // A team server keeps one project's folder from another's session with a group per project (core/spawner/project-groups.js). The first launch in a project hands its folder to its group; this does every
+    // project at once, for the owner on a quiet box, so a large volume is walked once and not at someone's first launch. Run it again and nothing changes.
+    ctx.tool("projects.sync", {
+      description: "On a team server, give every project's folder under /work to the project's own group now (otherwise each is done at its first launch). Safe to run again. Answers each project: its folders and how many were changed, or why one could not be.",
+      input: { type: "object", properties: {} },
+      callers: OWNER,
+      run: async () => { const r = await ctx.call("threads.projects.sync", {}); if (r.error) throw refuse(r.error.message, r.error.code || "unavailable"); return r.data; },   // the Switchboard holds the spawner's door
+    });
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
       input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },

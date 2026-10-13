@@ -30,7 +30,7 @@ import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from "../sessions/config.js";
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
-import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
+import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js"; import { accessTools, launchAccess, regroupSocket, socketGid } from "./project-access.js";
 import { prepareSandbox, sessionCliEnv, pickedFirst } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
@@ -984,9 +984,10 @@ export class Switchboard {
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
-      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
+      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
+    // Project folders on a team server (core/switchboard/project-access.js): this session's folder goes to its project's group, and an account's session joins only its person's projects' groups.
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
     if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
@@ -999,12 +1000,13 @@ export class Switchboard {
         throw Object.assign(new Error("Connect an AI account to start a session."), { code: "no_account" });
       }
     }
+    if (usesSpawner()) { at("project folder access"); o = await launchAccess(this, rec, o, id); }
     at("system prompt");
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     at("session socket and kernel session");
-    await this.openSocket(id, rec, o.kernelTurn || null);
+    await this.openSocket(id, rec, o.kernelTurn || null, o.accountRun || null);
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
     // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
     // under the same thread: there is nothing of its own to resume.
@@ -1131,25 +1133,25 @@ export class Switchboard {
    * sessions one (deps.threadSocket). One per live thread, kept across a fallback respawn, closed
    * when the thread stops. Only the thread's own processes get in (threadsock.js).
    */
-  async openSocket(id, rec, turn = null) {
+  async openSocket(id, rec, turn = null, run = null) {
     // No socket on this machine (or it is off): the kernel session is still opened, because the stream's own calls on the thread (forThread) need it; there is just no socket to stamp it on.
     // A chat turn whose session cannot be opened does not start: the person is told in words (the caller's refusal) instead of the turn running with no session and its reply dropped.
     const needed = (/** @type {boolean} */ ok) => { if (!ok && turn && turn.chat) throw Object.assign(new Error("The team's chat could not be opened for you just now. Send the message again in a minute."), { code: "no_session" }); };
     if (!this.deps.threadSocket) { needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
-    if (this.socks.has(id)) { if (turn) needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
+    if (this.socks.has(id)) { regroupSocket(this.socks.get(id), run, this.deps.log); if (turn) needed(await this.renewKernelSession(id, rec, turn, "launch")); return; }
     let opened = true;
     try {
       // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
       // The socket asks for the CURRENT one each call (`this.ksCur`), so a group chat's next turn, asked by another person, is stamped with that turn's own session.
       opened = await this.renewKernelSession(id, rec, turn, "launch");
-      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, ...(this.deps.kernelSession ? { kernelToken: () => { const k = this.ksCur.get(id); return k ? k.token() : undefined; } } : {}), pids: async () => {
+      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, gid: socketGid(run), ...(this.deps.kernelSession ? { kernelToken: () => { const k = this.ksCur.get(id); return k ? k.token() : undefined; } } : {}), pids: async () => {
         const st = this.live.get(id);
         const g = st && st.group;
         return { pids: [st && st.proc && st.proc.pid, g && g.pid].filter(Boolean), pgids: g && g.pgid ? [g.pgid] : [], sids: g && g.sid ? [g.sid] : [] };
       } });
       // vyred began stopping while this socket opened: stopAll has closed the others already, so this one closes now instead of keeping the process alive
       if (sock && this.closing) { await this.endKernelSession(id); await sock.close(); return; }
-      if (sock) this.socks.set(id, { ...sock, close: async () => { await this.endKernelSession(id, "its thread's socket closed"); await sock.close(); } });
+      if (sock) this.socks.set(id, { ...sock, gid: socketGid(run), close: async () => { await this.endKernelSession(id, "its thread's socket closed"); await sock.close(); } });
       else await this.endKernelSession(id);
     } catch (e) {
       this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
@@ -1266,7 +1268,7 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: pickedFirst(() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]), cfg.credentials) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { noLoginCopy: true } : {}), ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: pickedFirst(() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]), cfg.credentials) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { noLoginCopy: true } : {}), ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/"), projects: o.accountRun.projects || [] } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
       // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
       this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));
@@ -1531,7 +1533,7 @@ export class Switchboard {
     // A Mac has one user: a provider that keeps its login in HOME gets one folder per account there.
     const ar = o.accountRun;
     if (ar && ar.home) env.HOME = ar.home;
-    const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
+    const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/"), projects: ar.projects || [] } : null;
     // What a provider that is not Claude gets: the floor as a function (its file and shell methods
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
@@ -4117,6 +4119,7 @@ export default {
     // One Chat: a terminal session's SessionStart (the Harness says `thread.started` with a `session` and no thread of ours) is a run in a chat of the person's.
     const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session).then(chat => { if (chat) ctx.events.emit("thread.chat", { session: p.session, chat, cwd: p.cwd || null }); }); });
     // The rollover settings are read at most every few seconds per project; a change is seen at once.
+    const offAccess = accessTools(ctx, sb);   // the seat and sync tools, and a new project's folder handed to its group (core/switchboard/project-access.js)
     const offRollSettings = ctx.events.on("settings.changed", e => { if (e.payload && String(e.payload.key || "").startsWith("sessions.rollover")) sb.rollCfgs.clear(); });
     const offGithubCleanup = ctx.events.on("thread.status", e => {
       if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
@@ -5083,6 +5086,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { clearTimeout(resumeTimer); offRollSettings(); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offRollSettings(); offAccess(); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

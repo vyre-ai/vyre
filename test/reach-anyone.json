@@ -1141,6 +1141,10 @@
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local, module"
   },
+  "projects.sync": {
+   "module": "projects",
+   "reason": "callers is the owner's own surfaces (OWNER: cli, local, capsule, deck); a member and a model are refused. Safe to run again: it only hands folders to their groups"
+  },
   "projects.access.grant": {
    "module": "projects",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"

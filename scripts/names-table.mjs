@@ -26,7 +26,7 @@ export const AREAS = {
 /** today's module prefix to area (nomenclature.md section 1) */
 const PREFIX = {};
 for (const [area, list] of Object.entries({
-  memory: ["memory", "recall", "learn"], records: ["work", "projects", "goals", "tasks", "bridges", "sidebar", "records", "records-tools", "rules-tools", "tasks-tools"], team: ["team", "agents", "assistant"],
+  memory: ["memory", "recall", "learn"], records: ["work", "projects", "goals", "tasks", "bridges", "sidebar", "records", "records-tools", "rules-tools", "roles", "tasks-tools"], team: ["team", "agents", "assistant"],
   chat: ["threads", "sessions", "models", "providers", "ask", "spend", "undo", "stream", "transcripts", "switchboard", "space-sessions"], flows: ["flows", "watchers", "reflex"], time: ["planner"],
   mail: ["mail", "google", "comms", "gate", "approvals", "waiting", "quiet", "push"], files: ["files", "glass", "artifacts", "documents", "sync", "attachments", "context", "store"],
   vault: ["vault", "connectors", "mcp", "outside"], computer: ["chrome", "hands", "computer", "computers", "sight", "term"], publish: ["previews", "publish", "appmods", "names", "apps", "builder", "design"],
