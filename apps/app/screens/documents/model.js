@@ -15,13 +15,12 @@ export function madeRows(recs) {
   });
 }
 
-export const MADE_GROUPS = /** @type {[string, string][]} */ ([["draft", "Drafts"], ["out", "Out for signature"], ["signed", "Signed"]]);
+export const MADE_GROUPS = /** @type {[string, string][]} */ ([["draft", "Drafts"], ["signed", "Signed"]]);
 
-/** The title of the group a status falls in. @param {string | undefined} status */
+/** The title of the group a status falls in: Signed, else Drafts (what is out for signature is in Waiting, with its reminder; it stays here as a draft with a "Sent" note).  @param {string | undefined} status */
 export function madeGroupOf(status) {
   const s = String(status ?? "").toLowerCase();
   if (["signed", "completed"].includes(s)) return "Signed";
-  if (["sent", "out for signature", "waiting", "pending"].includes(s)) return "Out for signature";
   return "Drafts";
 }
 
@@ -51,4 +50,10 @@ export function appState(list) {
   if (!a) return { installed: false, running: false, word: "Not installed" };
   const running = a.state === "running";
   return { installed: true, running, word: running ? "Running" : "Installed, not running" };
+}
+
+/** The line under a made document: who it is for when the name says so (the part after the template's name), and when. @param {{ name: string, template: string, at: number }} r @param {string} ago */
+export function madeSub(r, ago) {
+  const who = r.template && r.name.startsWith(r.template) ? r.name.slice(r.template.length).replace(/^[\s,:-]+/, "") : "";
+  return [who, ago].filter(Boolean).join(", ");
 }
