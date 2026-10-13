@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
 import type { Draft, Group, Rules } from "@vyre/ui";
@@ -8,9 +8,17 @@ import { useKernelTypes } from "./kernel-types";
 import type { Def } from "./kernel-types";
 import { addStage, moveStage, renameStage } from "./logic.js";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
+import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
 
 // The roles a field can be hidden from (kernel/contracts/fields.d.ts hidden_from). The owner always sees every field.
 const ROLES: [string, string][] = [["admin", "Admins"], ["manager", "Managers"], ["member", "Members"], ["temp", "Temporary members"]];
+
+/** Copy text to the clipboard: the browser's on the web, the phone's otherwise. */
+async function copyText(text: string) {
+  if (Platform.OS === "web") { if (typeof navigator !== "undefined" && navigator.clipboard) await navigator.clipboard.writeText(text); return; }
+  const mod = await import("expo-clipboard");
+  await mod.setStringAsync(text);
+}
 
 /** One type: its name, its fields in groups, the field editor beside them (a sheet on a phone), its stages. Every change is one records.define. */
 export function TypeScreen() {
@@ -31,6 +39,8 @@ export function TypeScreen() {
   const groups: Group[] = def.groups ?? [];
   const rows = def.fields.filter((f) => f.kind !== "stage").map((f) => draftOf(f) as Draft & { name: string });
   const siblings = def.fields.map((f) => ({ name: f.name, label: f.label, kind: f.kind, options: f.options }));
+  const tokens = fieldTokens(def as any, defs as any);
+  const copy = (text: string, what: string) => { void copyText(text).then(() => showToast(`${what} copied.`), () => showToast("Copying did not work here. Select the text and copy it.")); };
   const open = (orig?: any, group = "") => {
     const draft = orig ? draftOf(orig) : { ...newDraft("text"), group };
     setEdit({ orig, draft, rules: { visible: parseRule(draft.visible_if), required: parseRule(draft.required_if) }, tried: false });
@@ -60,11 +70,12 @@ export function TypeScreen() {
         <View className="flex-row"><Button kind="primary" size="sm" label="Save" loading={working} disabled={working || !label.trim() || label === def.label} onPress={() => { save({ ...def, label: label.trim() } as Def); showToast("Name saved."); }} /></View>
       </Card>
       <SectionLabel>Fields</SectionLabel>
+      <View className="flex-row"><Button kind="ghost" size="sm" icon="copy" label="Copy all as a list" onPress={() => copy(tokenList(def as any, defs as any), "The list")} /></View>
       <GroupedList groups={groups} items={rows} itemNoun="fields"
         onChange={({ groups: g, items }) => save({ ...def, groups: g.length ? g : undefined, fields: regroup(def.fields, items) } as Def)}
         renderItems={(items, group) => (
           <View className="gap-s2">
-            <FieldRows fields={items} types={types} selected={edit?.orig?.name} onOpen={(n) => open(def.fields.find((f) => f.name === n))} onMove={(n, dir) => save({ ...def, fields: moveField(def.fields, n, dir) } as Def)} />
+            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} onOpen={(n) => open(def.fields.find((f) => f.name === n))} onMove={(n, dir) => save({ ...def, fields: moveField(def.fields, n, dir) } as Def)} />
             <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => open(undefined, group)} /></View>
           </View>
         )} />
