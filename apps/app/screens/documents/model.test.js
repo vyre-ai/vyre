@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { madeRows, madeGroupOf, MADE_GROUPS, fillsFor, signingTemplates, appState, asRecs } from "./model.js";
+import { madeSub, madeRows, madeGroupOf, MADE_GROUPS, fillsFor, signingTemplates, appState, asRecs } from "./model.js";
 
 const TYPES = [{ name: "contact", label: "Contact", fields: [{ name: "name", label: "Name" }, { name: "email", label: "Email" }] }, { name: "project", label: "Matter", fields: [{ name: "title", label: "Title" }] }];
 
@@ -17,11 +17,11 @@ test("a row with no name reads as its template or a plain word, never an id", ()
   assert.equal(madeRows([{ id: "x1", data: {} }])[0].name, "Document");
 });
 
-test("made documents fall in three groups by where they are", () => {
-  assert.deepEqual(MADE_GROUPS.map((g) => g[1]), ["Drafts", "Out for signature", "Signed"]);
+test("made documents fall in two groups, Drafts and Signed: what is out for signature is on the Waiting tab", () => {
+  assert.deepEqual(MADE_GROUPS.map((g) => g[1]), ["Drafts", "Signed"]);
   assert.equal(madeGroupOf("Draft"), "Drafts");
   assert.equal(madeGroupOf(undefined), "Drafts");
-  for (const s of ["Sent", "Out for signature", "Waiting"]) assert.equal(madeGroupOf(s), "Out for signature");
+  for (const s of ["Sent", "Out for signature", "Waiting"]) assert.equal(madeGroupOf(s), "Drafts");
   for (const s of ["Signed", "Completed"]) assert.equal(madeGroupOf(s), "Signed");
 });
 
@@ -49,4 +49,10 @@ test("records go to the list header as records of the made-document type", () =>
   const rows = madeRows([{ id: "a", data: { name: "A", status: "Draft", template: "T" } }]);
   assert.deepEqual(asRecs(rows)[0].data, { name: "A", status: "Draft", template: "T" });
   assert.equal(asRecs(rows)[0].id, "a");
+});
+
+test("the line under a document says who it is for and when, not the template again", () => {
+  assert.equal(madeSub({ name: "Engagement letter, Doe family", template: "Engagement letter", at: 0 }, "60 minutes ago"), "Doe family, 60 minutes ago");
+  assert.equal(madeSub({ name: "Will", template: "Will", at: 0 }, "2 days ago"), "2 days ago");
+  assert.equal(madeSub({ name: "Letter for Dana", template: "", at: 0 }, ""), "");
 });

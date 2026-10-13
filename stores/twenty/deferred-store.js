@@ -10,10 +10,13 @@ import { typesChanged } from "../../kernel/store/types-signal.js";
 
 /** The most definitions kept while the store is away; past it a define is refused in words, never dropped quietly. */
 export const MAX_DEFS = 500;
+/** How long one definition may take on the replay before it is logged and left behind (a hung call must not hold the store from joining). */
+export const DEFINE_TIMEOUT_MS = 60_000;
+const TIMED_OUT = Symbol("timed out");
 const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable", name: "StoreError" });
 
 /**
- * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
+ * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean, onProgress?: (words: string) => void, defineTimeoutMs?: number }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `onProgress(words)` is called as the replay goes ("Applying definitions (n of m)"; m grows when a define is queued mid-replay); `defineTimeoutMs` (default 60 s) is the most one replayed definition may take; past it the store stays unattached and the setup is tried again. `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
  * @returns {any} the store (a Proxy: it forwards to the real store once attached) with `attach(real)`, `bootDone()`, `attached()`, `kind: "twenty"`
  */
 export function createDeferredStore(o) {
@@ -23,6 +26,7 @@ export function createDeferredStore(o) {
   let booting = true;
   /** @type {any[]} definitions to play when the store attaches: a diff, or a function that is given the real store and defines on it (it reads what the store holds first, so it cannot be made before the store is there) */ const defs = [];
   let attaching = false;
+  /** @type {Promise<void> | null} a replayed definition that timed out and may still be running on the store */ let abandoned = null;
   const refuse = () => unavailable(o.reason());
   const waitMs = o.waitMs ?? 56_000;
   /** After boot, a caller that needs the store waits for it a bounded while (the first start is about a minute) rather than failing on the first second. True once attached. */
@@ -52,10 +56,38 @@ export function createDeferredStore(o) {
     async attach(store) {
       if (real || attaching) return;
       attaching = true;
+      const limit = o.defineTimeoutMs ?? DEFINE_TIMEOUT_MS;
+      const retrying = (/** @type {string} */ why) => { const words = `Applying definitions: retrying (${why})`; o.onProgress?.(words); return Object.assign(unavailable(words), { retrying: true }); };
       try {
-        // A define that arrives while this replay runs is pushed to the same queue, so take from the front until it is empty; `real` is set in the
-        // same turn as the last empty check (no await between), so nothing can be queued after the loop and lost.
-        while (defs.length) { const d = defs.shift(); if (typeof d === "function") { try { await d(store); } catch (e) { log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`); } } else await store.define(/** @type {any} */ (d)); }
+        // A definition left behind by the last try (it timed out) may still be running on the store. Nothing is applied beside it: wait for it a bounded while, else stay unattached.
+        if (abandoned) {
+          const gone = await Promise.race([abandoned.then(() => true), new Promise((r) => setTimeout(() => r(false), limit))]);
+          if (!gone) throw retrying("a definition from the last try is still running");
+          abandoned = null;
+        }
+        // The queue is kept whole until the replay has finished, so a try that fails is played again from the start (a definition is a diff against what the store holds, so playing
+        // one twice is harmless). A define that arrives while the replay runs is pushed to the same queue; `real` is set in the same turn as the last length check (no await between),
+        // so nothing can be queued after the loop and lost.
+        for (let i = 0; i < defs.length; i++) {
+          const d = defs[i]; const t0 = Date.now();
+          o.onProgress?.(`Applying definitions (${i + 1} of ${defs.length})`);
+          const run = Promise.resolve().then(() => typeof d === "function" ? d(store) : store.define(/** @type {any} */ (d)));
+          run.catch(() => {});   // a call left behind by the timeout may fail later; nobody waits for it
+          /** @type {any} */ let timer;
+          const late = new Promise((r) => { timer = setTimeout(() => r(TIMED_OUT), limit); });
+          try {
+            const got = await Promise.race([run, late]);
+            if (got === TIMED_OUT) {
+              // Never skipped: a definition that did not answer may be the one that seals a field or shapes access, and the store would take plain values for it. The store stays out and the whole setup is tried again.
+              abandoned = run.then(() => {}, () => {});
+              throw retrying(`a definition did not answer in ${Math.round(limit / 1000)} s`);
+            } else log(`definition ${i + 1} applied in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+          } catch (e) {
+            if (typeof d === "function" && !(/** @type {any} */ (e)?.retrying)) log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`);
+            else throw e;   // a diff that fails stops the attach: the caller retries the whole setup
+          } finally { clearTimeout(timer); }
+        }
+        defs.length = 0;
         if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
         if (self) typesChanged(self);   // the replay put definitions onto the real store behind the gateway

@@ -66,7 +66,7 @@ export function Context({ name }: { name: string }) {
           <Card flush>
             {files.map((f, i) => (
               <View key={f.name}>{i ? <Divider /> : null}
-                <Row title={f.name} sub={sizeLine(f.size)} end={<IconButton icon="trash" label={`Remove ${f.name}`} onPress={() => config.removeContext(name, f.name).then(q.reload).catch((e) => showToast(say(e)))} />} />
+                <Row title={f.name} sub={sizeLine(f.size)} end={<IconButton icon="x" label={`Remove ${f.name} from the context`} onPress={() => config.removeContext(name, f.name).then(q.reload).catch((e) => showToast(say(e)))} />} />
               </View>
             ))}
           </Card>
@@ -118,7 +118,7 @@ export function Models({ name }: { name: string }) {
   return (
     <>
       <Sec title="Which AI account it runs on">
-        <Banner>{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
+        <Banner icon="info">{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
         {rows.length ? (
           <Card flush>
             <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={92} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
@@ -135,7 +135,7 @@ export function Models({ name }: { name: string }) {
               )} />
           </Card>
         ) : <Card><Text tone="muted">{`No order of its own. In flows, ${name} runs on the Space's default. Add a sign-in to choose.`}</Text></Card>}
-        {ack ? <Banner>{ACK_WORDS}</Banner> : null}
+        {ack ? <Banner tone="warn" icon="warning">{ACK_WORDS}</Banner> : null}
         <View className="flex-row flex-wrap gap-s2">
           <Button size="sm" kind="secondary" label="Add a sign-in" onPress={() => setAdding(true)} />
           <Button size="sm" label="Save the plan" disabled={busy || !dirty} onPress={save} />
@@ -207,7 +207,7 @@ export function Used({ name }: { name: string }) {
             {v.data.assigned.map((it, i) => <View key={it}>{i ? <Divider /> : null}<Row title={it} sub="Noted for the agent. No access." end={<IconButton icon="x" label={`Remove the note for ${it}`} onPress={() => void flip(it, false)} />} /></View>)}
           </Card>
         ) : null}
-        <View className="flex-row"><Button size="sm" kind="ghost" label="Note an item" onPress={() => setPicking("note")} /></View>
+        <View className="flex-row"><Button size="sm" kind="secondary" label="Note an item" onPress={() => setPicking("note")} /></View>
       </Sec>
       <Sheet open={picking !== null} onClose={() => setPicking(null)} title={picking === "login" ? "Lend a login" : "Note an item"}>
         {picking === "login" ? (

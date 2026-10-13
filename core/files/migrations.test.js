@@ -29,7 +29,7 @@ test("one ordered list: mentions first, shared links next, and both tables exist
   assert.equal(all[MENTION_MIGRATIONS.length], LINK_MIGRATIONS[0]);
   const db = fresh();
   migrate(db, "files", all);
-  assert.deepEqual(tables(db).sort(), ["files_links", "files_mention_grants"]);
+  for (const t of ["files_links", "files_mention_grants", "files_linked", "files_linked_index", "files_linked_sync"]) assert.ok(tables(db).includes(t), t);
 });
 
 test("a box that already ran mentions as version 1 keeps it and gets shared links as the next step", () => {
@@ -39,14 +39,14 @@ test("a box that already ran mentions as version 1 keeps it and gets shared link
   migrate(db, "files", filesMigrations());
   assert.ok(tables(db).includes("files_links"));
   assert.equal(Number(db.prepare("SELECT COUNT(*) n FROM files_mention_grants").get().n), 1, "the grants it had are untouched");
-  assert.deepEqual(db.prepare("SELECT version FROM _migrations WHERE module = 'files' ORDER BY version").all().map((/** @type {any} */ r) => Number(r.version)), [1, 2]);
+  assert.deepEqual(db.prepare("SELECT version FROM _migrations WHERE module = 'files' ORDER BY version").all().map((/** @type {any} */ r) => Number(r.version)).slice(0, 2), [1, 2], "mentions stays version 1 and shared links is version 2; later parts come after");
 });
 
 test("running the list twice changes nothing", () => {
   const db = fresh();
   migrate(db, "files", filesMigrations());
   migrate(db, "files", filesMigrations());
-  assert.equal(Number(db.prepare("SELECT COUNT(*) n FROM _migrations WHERE module = 'files'").get().n), 2);
+  assert.equal(Number(db.prepare("SELECT COUNT(*) n FROM _migrations WHERE module = 'files'").get().n), filesMigrations().length);
 });
 
 test("both parts of the module migrate that list and no list of their own", () => {

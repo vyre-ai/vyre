@@ -148,3 +148,34 @@ test("the chat's own AIs (by name) lead the one Agents group", () => {
   const t = atTree({ people: [{ name: "Claude", family: "assistant" }, { name: "kit", family: "assistant" }], teams: [], ais: ["claude"] });
   assert.deepEqual(t.map((n) => [n.label, n.kids.map((k) => k.label)]), [["Agents", ["Claude", "kit"]]]);
 });
+
+test("Files > Linked > <folder> > <file>: linked files nest under Files with a pick of their own kind, and no whole-folder pick", () => {
+  const linked = [{ id: "lnk_1", name: "Client-docs", files: [{ path: "Contracts/retainer.md" }, { path: "notes.txt" }] }, { id: "lnk_2", name: "Archive", files: [] }];
+  const t = hashTree({ world, titleOf, templates, files, names, linked });
+  const filesNode = t.find((n) => n.key === "files");
+  const node = filesNode.kids.find((n) => n.label === "Linked");
+  assert.ok(node && Array.isArray(node.kids), "a Linked branch under Files");
+  assert.deepEqual(node.kids.map((n) => n.label), ["Client-docs"], "a linked folder with nothing indexed is not offered");
+  assert.equal(node.pick, undefined);
+  const folder = node.kids[0];
+  assert.equal(folder.pick, undefined, "the server has no whole-folder reference for a linked folder");
+  const contracts = folder.kids.find((n) => n.label === "Contracts");
+  assert.ok(Array.isArray(contracts.kids));
+  const file = contracts.kids[0];
+  assert.deepEqual(file.pick, { pick: "retainer.md", urn: "lnk_1:Contracts/retainer.md", kind: "linked" });
+  assert.deepEqual(folder.kids.find((n) => n.label === "notes.txt").pick, { pick: "notes.txt", urn: "lnk_1:notes.txt", kind: "linked" });
+});
+
+test("searching # finds a linked file across categories, with its path", () => {
+  const linked = [{ id: "lnk_1", name: "Client-docs", files: [{ path: "Contracts/retainer.md" }] }];
+  const t = hashTree({ world, titleOf, templates, files, names, linked });
+  const rows = nestRows(t, [], "retainer");
+  assert.deepEqual(rows.map((r) => [r.label, r.group, r.path]), [["retainer.md", "Files", "Linked › Client-docs › Contracts › retainer.md"]]);
+});
+
+test("without linked folders the Files tree is what it was", () => {
+  const a = hashTree({ world, titleOf, templates, files, names });
+  const b = hashTree({ world, titleOf, templates, files, names, linked: [] });
+  assert.deepEqual(a, b);
+  assert.ok(!a.find((n) => n.key === "files").kids.some((n) => n.label === "Linked"));
+});

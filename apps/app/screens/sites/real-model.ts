@@ -110,6 +110,6 @@ export type JobRun = { at: number; ok: boolean; code?: number; seconds?: number;
 export function jobLine(r: JobRun, now = Date.now()): string {
   const secs = r.seconds != null ? `${Math.round(r.seconds)} s` : "";
   const ago = (() => { const m = Math.max(0, Math.round((now - r.at) / 60000)); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; })();
-  const what = r.ok ? `Ran${secs ? ` in ${secs}` : ""}` : `Failed${r.code != null ? ` (exit ${r.code})` : ""}${r.message ? `: ${r.message}` : ""}`;
+  const what = r.ok ? `Ran${secs ? ` in ${secs}` : ""}` : "Failed";
   return `${what}, ${ago}`;
 }

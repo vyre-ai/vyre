@@ -33,10 +33,12 @@ import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
 import { connector } from "./connect.js";
 import { drive } from "./drive.js";
+import { driveSeam, strip } from "./drive-seam.js";
 import { scopeFor, requireOwner, emailProblem } from "./member-scope.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const str = { type: "string" };
+const METHODS_DRIVE = ["GET", "POST", "PATCH"];
 const int = { type: "integer" };
 const emails = { anyOf: [str, { type: "array", items: str }], description: "an address, a comma list, or a list" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -513,6 +515,24 @@ export default {
         try { return { status: 200, body: await request(acct, { api: mail ? "gmail" : "calendar", scope, method, path, ...(i.query ? { query: i.query } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.headers ? { headers: i.headers } : {}) }) }; }
         catch (e) { const st = /** @type {any} */ (e)?.status; if (Number.isInteger(st)) return { status: st, body: {} }; throw e; }
       }),
+    });
+
+    // Files > Linked reads and writes a person's Google Drive through here, as THAT person (drive-seam.js): the owner's own sign-in, or the firm key acting as the member's attested work email.
+    // The person is named by the files module, the only caller, which has already read it from the kernel's chain for the call; a model or a person's surface cannot reach this tool.
+    const driveAs = driveSeam({ all: () => accounts.all(), owner: () => ctx.kernel && ctx.kernel.owner, memberOf, request });
+    ctx.tool("google.drive.linked", {
+      internal: true,
+      description: "One Google Drive v3 call (files, changes, upload) made as one person for a linked folder: { person, method, path, query?, body?, bodyB64?, raw? } -> { status, body | bytesB64 | message }. A Google refusal comes back as its status. Files module only.",
+      input: obj({ person: str, method: { type: "string", enum: METHODS_DRIVE }, path: str, query: { type: "object" }, body: {}, bodyB64: str, raw: { type: "boolean" } }, ["person", "path"]),
+      run: async (i, meta) => {
+        try {
+          if (!meta || meta.caller !== "module:files") throw fail("only the files module reaches Drive through here", "denied");
+          return creds.scrubAll(await driveAs.run(String(i.person), i));
+        } catch (e) {
+          const err = /** @type {any} */ (e);
+          throw Object.assign(new Error(strip(creds.scrub(String(err?.message || err)))), { code: typeof err?.code === "string" ? err.code : "failed" });
+        }
+      },
     });
 
     ctx.tool("google.release", {

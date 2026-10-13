@@ -126,3 +126,38 @@ test("Enter continues a list, ends it on an empty item, and leaves other lines a
   assert.equal(continueList("plain", 5), null);
   assert.deepEqual(continueList("  - a", 5), { text: "  - a\n  - ", at: 10 });
 });
+
+import { neutralise, cleanCss } from "./neutralise.js";
+
+/** A tiny DOM with just what neutralise touches, so the test needs no browser. */
+function fake(tree) {
+  const all = [];
+  const mk = (tag, attrs = {}, text = "") => { const el = { tagName: tag.toUpperCase(), attrs: Object.entries(attrs).map(([name, value]) => ({ name, value })), textContent: text, gone: false,
+    get attributes() { return this.attrs; }, removeAttribute(n) { this.attrs = this.attrs.filter(a => a.name !== n); }, setAttribute(n, v) { const a = this.attrs.find(x => x.name === n); if (a) a.value = v; else this.attrs.push({ name: n, value: v }); },
+    getAttribute(n) { return this.attrs.find(a => a.name === n)?.value ?? null; }, remove() { this.gone = true; } }; all.push(el); return el; };
+  const els = tree(mk);
+  return { els, all, querySelectorAll(sel) { const tags = sel === "*" ? null : sel.split(",").map(s => s.toUpperCase()); return all.filter(e => !e.gone && (!tags || tags.includes(e.tagName))); } };
+}
+
+test("a hostile document is made inert: javascript and data links go, scripts and handlers go, an inline image stays", () => {
+  const d = fake(mk => ({
+    js: mk("a", { href: "javascript:alert(1)" }), js2: mk("a", { href: " JaVa\tScRiPt:alert(1)" }), data: mk("a", { href: "data:text/html;base64,PHNjcmlwdD4=" }), vb: mk("a", { href: "vbscript:x" }),
+    ok: mk("a", { href: "https://example.com/x" }), mail: mk("a", { href: "mailto:a@b.co" }), rel: mk("a", { href: "/relative" }),
+    img: mk("img", { src: "data:image/png;base64,iVBORw0KGgo=", onerror: "alert(1)" }), badimg: mk("img", { src: "https://track.example/p.gif" }), svg: mk("img", { src: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" }),
+    script: mk("script", {}, "alert(1)"), frame: mk("iframe", { src: "https://x" }), form: mk("form", { action: "https://x" }), obj: mk("object", { data: "x" }), base: mk("base", { href: "https://evil" }),
+    div: mk("div", { onclick: "alert(1)", onmouseover: "x", id: "k" }), style: mk("style", {}, "@import url(https://evil/x.css); p{background:url(https://evil/t.png)} q{background:url(data:image/png;base64,AAAA)}"),
+  }));
+  neutralise(d);
+  const e = d.els;
+  for (const k of ["js", "js2", "data", "vb", "rel"]) assert.equal(e[k].getAttribute("href"), null, k);
+  assert.equal(e.ok.getAttribute("href"), "https://example.com/x"); assert.equal(e.mail.getAttribute("href"), "mailto:a@b.co");
+  assert.equal(e.ok.getAttribute("rel"), "noopener noreferrer"); assert.equal(e.ok.getAttribute("target"), "_blank");
+  assert.equal(e.js.getAttribute("target"), null, "a link with no target is not made openable");
+  assert.equal(e.img.getAttribute("src"), "data:image/png;base64,iVBORw0KGgo="); assert.equal(e.img.getAttribute("onerror"), null);
+  assert.equal(e.badimg.getAttribute("src"), null, "a remote image is a tracker");
+  assert.equal(e.svg.getAttribute("src"), null, "an svg is not an inline image here");
+  for (const k of ["script", "frame", "form", "obj", "base"]) assert.equal(e[k].gone, true, k);
+  assert.equal(e.div.getAttribute("onclick"), null); assert.equal(e.div.getAttribute("onmouseover"), null); assert.equal(e.div.getAttribute("id"), "k");
+  assert.ok(!/@import/.test(e.style.textContent) && !/evil/.test(e.style.textContent) && /data:image\/png/.test(e.style.textContent));
+  assert.equal(cleanCss("a{b:url('https://x/y.png')}"), "a{b:none}");
+});

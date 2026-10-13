@@ -8,7 +8,7 @@ import { useSidebar } from "../shell/sidebar";
 import { tool } from "../../src/real/box";
 import { FileViewerSheet } from "../drive/FileViewerSheet";
 import { aliasesFor, whenWords } from "../records/documents-model.js";
-import { MADE_GROUPS, appState, asRecs, fillsFor, madeGroupOf, madeRows, signingTemplates } from "./model.js";
+import { MADE_GROUPS, madeSub, appState, asRecs, fillsFor, madeGroupOf, madeRows, signingTemplates } from "./model.js";
 
 type Tab = "made" | "waiting" | "templates" | "setup";
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -90,7 +90,7 @@ export function DocumentsHome() {
   };
   const remind = (n: number) => tool("documents.signing.remind", { submission: n }).then(() => showToast("Reminder sent.")).catch((e) => showToast(say(e)));
 
-  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
+  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Word templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
   return (
     <Page title="Documents" top sub={undefined}>
       <Segmented<Tab> label="Documents" value={tab} onChange={setTab} options={tabs} />
@@ -105,11 +105,11 @@ export function DocumentsHome() {
                   {its.map((r, i) => (
                     <View key={r.id}>
                       {i ? <View className="h-px bg-edge" /> : null}
-                      <Row dense title={r.name} sub={[r.template, whenWords(r.at, Date.now())].filter(Boolean).join(", ")} onPress={() => r.file ? setOpen(r.file) : undefined}
-                        end={<View className="flex-row items-center gap-s2"><Chip>{r.status}</Chip>
+                      <Row dense title={r.name} sub={madeSub(r, whenWords(r.at, Date.now()))} onPress={() => r.file ? setOpen(r.file) : undefined}
+                        end={<View className="flex-row items-center gap-s2">{r.status === "Sent" ? <Chip>Out for signature</Chip> : null}
                           <Menu trigger={<IconButton icon="more" label={`${r.name}, more`} />} items={[
                             ...(r.file ? [{ label: "Open", onPress: () => setOpen(r.file) }] : []),
-                            ...(admin && madeGroupOf(r.status) === "Drafts" ? [{ label: "Send for signature", onPress: () => setSend({ name: r.name, template: "", email: "", problem: "" }) }] : []),
+                            ...(admin && r.status === "Draft" ? [{ label: "Send for signature", onPress: () => setSend({ name: r.name, template: "", email: "", problem: "" }) }] : []),
                           ]} /></View>} />
                     </View>
                   ))}
@@ -169,6 +169,7 @@ export function DocumentsHome() {
             <Select label="Made for" value={make.type} options={[["", "Pick an object"], ...types.filter((t: any) => (world?.byType[t.name] ?? []).length).map((t: any) => [t.name, t.label] as [string, string])]} onChange={(type) => setMake({ ...make, type, record: "" })} />
             {make.type ? <Select label="Record" value={make.record} options={[["", "Pick one"], ...(world?.byType[make.type] ?? []).map((r: any) => [r.id, String(Object.values(r.data ?? {}).find((v) => typeof v === "string") ?? r.id)] as [string, string])]} onChange={(record) => setMake({ ...make, record })} /> : null}
             <Segmented<"docx" | "pdf"> label="Format" value={make.format} onChange={(format) => setMake({ ...make, format })} options={[["docx", "Word"], ["pdf", "PDF"]]} />
+            {!make.record ? <Text size="caption" tone="label">Pick who it is for to make it.</Text> : null}
             {make.problem ? <Banner tone="warn">{make.problem}</Banner> : null}
             {make.made ? <Banner><Text strong>Made and filed</Text><Text size="caption" tone="muted">{make.made}</Text></Banner> : null}
             <View className="flex-row gap-s2"><Button kind="primary" label="Make it" loading={busy === "make"} disabled={!make.record} onPress={generate} />{make.made ? <Button kind="secondary" label="Open it" onPress={() => { setOpen(make.made); setMake(null); }} /> : null}<Button kind="ghost" label={make.made ? "Done" : "Cancel"} onPress={() => setMake(null)} /></View>
