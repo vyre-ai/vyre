@@ -1,6 +1,6 @@
 // The template studio's visual editor, pure (no React, no calls): every change a person makes to a template is a function from one body to the next, so the screen only binds fields to these and a test
 // can say what each one does. Nothing here talks to the box; the box checks the saved draft again (work.template.define).
-import type { Body, Stage, Task } from "./model.ts";
+import type { Body, Noun, Stage, Task } from "./model.ts";
 
 export const PAGES: [string, string][] = [["", "The usual (stages)"], ["stages", "Stages"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["timeline", "Timeline"], ["team", "Team"]];
 export const OUTPUTS: [string, string][] = [["note", "A note"], ["decision", "A yes or no"], ["file", "A file"], ["record", "A record"]];
@@ -19,6 +19,17 @@ const dropEmpty = <T extends object>(o: T): T => Object.fromEntries(Object.entri
 export const blank = (): Body => ({ name: "", stages: [{ name: "Start", tasks: [{ title: "", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] });
 
 export const setName = (b: Body, name: string): Body => ({ ...b, name });
+/** The plural of a word a person names their projects: "Matter" to "Matters", "Policy" to "Policies", "Branch" to "Branches". */
+export const pluralOf = (one: string): string => (/[^aeiou]y$/i.test(one) ? `${one.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/i.test(one) ? `${one}es` : `${one}s`);
+/** What this template's projects are called ("Matter", "Matters"). The plural follows the singular unless it was given by hand; an empty singular takes the name away. */
+export const setNoun = (b: Body, one: string, many?: string): Body => {
+  const { noun: old, ...rest } = b;
+  if (!one.trim()) return rest as Body;
+  const kept = old && old.many !== pluralOf(old.one) ? old.many : undefined; // a plural set by hand stays
+  return { ...rest, noun: { one: one.trim(), many: (many ?? kept ?? pluralOf(one.trim())).trim() } } as Body;
+};
+/** The words a screen uses for one of this template's projects; "Project" when the template does not say. */
+export const nounOf = (b: Body | null | undefined): Noun => b?.noun?.one ? b.noun : { one: "Project", many: "Projects" };
 export const setDescription = (b: Body, description: string): Body => dropEmpty({ ...b, description });
 /** The page a project of this template opens on; "" is the usual one. */
 export const setOpensOn = (b: Body, page: string): Body => { const { opens_on: _o, ...rest } = b as Body & { opens_on?: string }; return (page ? { ...rest, opens_on: page } : rest) as Body; };
@@ -67,6 +78,7 @@ export const ownerChoices = (b: Body): [string, string][] => [["", "No one in pa
 export function missing(b: Body): string[] {
   const out: string[] = [];
   if (!b.name.trim()) out.push("Give the template a name.");
+  if (b.noun && !b.noun.many.trim()) out.push(`Say what several ${b.noun.one.toLowerCase()} projects are called, such as "${pluralOf(b.noun.one)}".`);
   if (b.stages.length < 2) out.push("A template has at least two stages: where it starts and where it ends.");
   b.stages.forEach((s, i) => {
     if (!s.name.trim()) out.push(`Stage ${i + 1} needs a name.`);

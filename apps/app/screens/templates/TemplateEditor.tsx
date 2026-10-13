@@ -21,7 +21,10 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
   return (
     <View className="gap-s4">
       <Sec title="The template">
-        <Field name="Name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
+        <Field name="Template name" value={body.name} onChangeText={(v: string) => onChange(E.setName(body, v))} placeholder="Estate plan" />
+        <Field name="What one project of it is called" value={body.noun?.one || ""} onChangeText={(v: string) => onChange(E.setNoun(body, v))} placeholder="Matter" />
+        {body.noun ? <Field name="What several are called" value={body.noun.many} onChangeText={(v: string) => onChange(E.setNoun(body, body.noun!.one, v))} placeholder="Matters" /> : null}
+        <Text size="caption" tone="muted">{body.noun ? `The app says "New ${body.noun.one.toLowerCase()}" and "${body.noun.many}" wherever it names these. Leave it empty to call them projects.` : "A firm might say Matter, an agency Campaign. Leave it empty to call them projects."}</Text>
         <Field name="What it is for" value={body.description || ""} onChangeText={(v: string) => onChange(E.setDescription(body, v))} multiline lines={2} />
         <Select label="A project of this template opens on" value={open} options={E.PAGES} onChange={(v: string) => onChange(E.setOpensOn(body, v))} />
       </Sec>
