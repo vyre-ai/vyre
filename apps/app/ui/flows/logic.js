@@ -208,10 +208,45 @@ export function draftProblems(d, o) {
 const EVERY = /** @type {Record<string, { cron: string }>} */ ({ "Every hour": { cron: "0 * * * *" }, "Every day": { cron: "0 9 * * *" }, "Every Monday": { cron: "0 9 * * 1" } });
 export const EVERY_CHOICES = Object.keys(EVERY);
 
-/** A text value the person typed: a whole value like {email} reads that field of what started the Flow, anything else is the text itself. @param {string} t */
-export const val = (t) => { const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim()); return m ? { expr: /^(steps|event|row|item)\./.test(m[1]) ? m[1] : `trigger.${m[1]}` } : t; };
+/** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
+const tokenExpr = (t) => (/^(steps|event|row|item)\./.test(t) ? t : `trigger.${t}`);
+/** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
+const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
+/** The text a string literal holds, read the way the engine reads it. @param {string} p */
+const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
+const TOKEN = /\{([a-z0-9_.]+)\}/gi;
+/**
+ * A text value the person typed. A whole value like {email} reads that field of what started the Flow. Text with tokens inside, like "Hello {name}, ...", becomes one expression that joins the
+ * pieces (`"Hello " + text(trigger.name) + ", ..."`), so the braces are filled in when the step runs; a missing value reads as empty. Text with no token is the text itself.
+ * @param {string} t
+ */
+export const val = (t) => {
+  const s = String(t ?? "");
+  const m = /^\{([a-z0-9_.]+)\}$/i.exec(s.trim());
+  if (m) return { expr: tokenExpr(m[1]) };
+  if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return t; }
+  TOKEN.lastIndex = 0;
+  const parts = [];
+  let at = 0;
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(s.slice(at, x.index))); parts.push(`text(${tokenExpr(x[1])})`); at = x.index + x[0].length; }
+  if (at < s.length) parts.push(lit(s.slice(at)));
+  return { expr: parts.join(" + ") };
+};
+const TEMPLATE_PART = /"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\)/g;
+/** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
+function templateText(e) {
+  if (!/^(?:"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\))(?: \+ (?:"(?:[^"\\]|\\.)*"|text\([a-z0-9_.]+\)))*$/.test(e) || !e.includes("text(")) return null;
+  let out = "";
+  for (const p of e.match(TEMPLATE_PART) || []) {
+    if (p.startsWith("text(")) {
+      const n = p.slice(5, -1), m = /^trigger\.([a-z0-9_.]+)$/i.exec(n);
+      if (m) out += `{${m[1]}}`; else if (/^(?:steps|event|row|item)\./.test(n)) out += `{${n}}`; else return null;
+    } else out += unlit(p);
+  }
+  return out;
+}
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : typeof v === "string" ? v : null; };
+const unval = (v) => { const e = exprOf(v); const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -269,7 +304,7 @@ export function stepDefinition(s, d) {
       ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: val(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: val(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: val(s.from) } : {}) } }
       : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: s.title };
-    case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: s.value || "" } };
+    case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || "") } };
     default: throw new Error(`no step kind ${s.kind}`);
   }
 }
@@ -463,7 +498,7 @@ function stepFrom(s) {
     case "ask": return typeof s.title === "string" && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: s.title } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
-      return rec && f.length === 1 && typeof s.set[f[0]] === "string" && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: s.set[f[0]] } : adv;
+      return rec && f.length === 1 && unval(s.set[f[0]]) !== null && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]) } : adv;
     }
     default: return adv;
   }
