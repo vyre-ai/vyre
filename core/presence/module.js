@@ -410,9 +410,19 @@ export default {
 
     ctx.tool("presence.person.status", {
       effect: "read",
-      description: "Whether this request is signed in as the person (a person session), and until when.",
+      description: "Whether this request is signed in as the person (a person session), and until when. With a session: its id and kind, and the person it acts as and their role here (the caller's own).",
       input: obj({}),
-      run: async (_, meta) => ({ signed: Boolean(meta.person), ...(meta.person ? { id: meta.person.id, kind: meta.person.kind } : {}) }),
+      run: async (_, meta) => {
+        // `id` is the session's. The person this session acts as and their role here are the caller's own (the facts the daemon built for this device), never anyone else's.
+        let who = {};
+        const person = meta && meta.kernelFacts && typeof meta.kernelFacts.person === "string" ? meta.kernelFacts.person : null;
+        if (meta.person && person) {
+          let role = ctx.kernel && ctx.kernel.owner === person ? "owner" : null;
+          if (!role && ctx.kernel && typeof ctx.kernel.space === "string") { const m = /** @type {any} */ (await ctx.call("spaces.membership", { person, space: ctx.kernel.space }).catch(() => null)); role = m && m.data && typeof m.data.role === "string" ? m.data.role : null; }
+          who = { person, ...(role ? { role } : {}) };
+        }
+        return { signed: Boolean(meta.person), ...(meta.person ? { id: meta.person.id, kind: meta.person.kind, ...who } : {}) };
+      },
     });
 
     ctx.tool("presence.person.sessions", {

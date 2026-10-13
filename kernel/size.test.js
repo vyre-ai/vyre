@@ -32,7 +32,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9613 (seats +7 and roles-core +2 together on 9604, merged on the stage 13 Oct 2026).
 // 9615 (invite-seats, 13 Oct 2026, lead ruling: an invite carries its project seats; +2: the shape check and the seats kept beside custom, which invite.used carries to the work module).
 // 9633 (records-ux, 13 Oct 2026, [kernel +19: field groups, presentation only] on 9614: `group` on a field and `groups` on a type are checked when the type is defined in gateway/records.js checkShape, rc1-d signed).
-const CAP = 9633;
+// [kernel +57: agent as internal checker (rc1-d, 13 Oct): an agent may check another agent's internal work, only while its maker is an owner or admin read live; includes one import of lib/roles/staff.js] (flows-ux)
+// 9690 on the stage tip 9633: 9633 + 57.
+const CAP = 9690;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

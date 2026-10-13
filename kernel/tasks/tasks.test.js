@@ -34,7 +34,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue", "assistant"];
-  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "records.read", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "records.read", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send", ...((over.agentDecide || []).includes(a) ? ["tasks.decide"] : [])]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -52,7 +52,7 @@ function rig(over = {}) {
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
   const tasks = createTasks({
-    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}),
+    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}),
     members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
@@ -95,7 +95,8 @@ test("request: only the allowed fields; the kernel writes state, outcome, payloa
 
 test("request: the checker is a person, never the doer; a role expands to the humans who hold it; a send always has one", async () => {
   const r = rig();
-  await assert.rejects(() => r.tasks.request(owner(), draftTask({ checker: actor("agent", "research") })), { code: "same_actor" }, "an assistant is not a checker");
+  // (changed with rc1-d's ruling: an agent may check another agent's internal work, never a send, never its own task)
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ checker: actor("agent", "research") })), { code: "not_allowed" }, "an agent is never the checker of a send");
   await assert.rejects(() => r.tasks.request(owner(), draftTask({ doer: actor("person", ALICE), checker: actor("person", ALICE) })), { code: "same_actor" });
   const viaRole = await r.tasks.request(owner(), draftTask({ checker: { role: "attorney" } }));
   assert.deepEqual(viaRole.checker, { role: "attorney" });
@@ -818,4 +819,58 @@ test("who reads a task: only the chain's PERSON counts, never a later hop; an as
   assert.equal(await mayReadTask(withAssistant, { doer: actor("person", BOB) }, ctx), false, "Bob's is not");
   assert.equal(await mayReadTask(withAssistant, { doer: actor("person", BOB) }, { ...ctx, checkers: [actor("person", ALICE)] }), true, "one she checks is");
   assert.equal(await mayReadTask(chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { doer: actor("person", BOB) }, ctx), true, "a chain with no person is not judged");
+});
+
+
+// ---- an agent as checker (rc1-d, 13 Oct) ----
+// research was made by alice, who is an admin; roles are read live
+const roles = { per_alice: "admin" };
+const staffRig = () => { roles.per_alice = "admin"; return rig({ agentDecide: ["research"], agentMaker: () => ALICE, roleOf: a => roles[a.id] ?? null }); };
+const internal = (over = {}) => ({ title: "Draft notes", doer: actor("agent", "intake"), checker: actor("agent", "research"), output: { kind: "decision" }, ...over });
+
+test("agent checker: it passes the internal check under its own chain, and the card says an agent approved", async () => {
+  const r = staffRig();
+  const t = await r.tasks.request(owner(), internal());
+  await r.tasks.start(asIntake(), t.id);
+  const w = await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
+  assert.equal(w.state, "needs_check");
+  const done = await r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" });
+  assert.equal(done.state, "done");
+  assert.deepEqual(done.approved_by, { kind: "agent", id: "research", space: SPACE });
+});
+
+test("agent checker: it is never its own doer, nor a send's checker, nor a stage's, and a person checker still works", async () => {
+  const r = staffRig();
+  await assert.rejects(() => r.tasks.request(owner(), internal({ checker: actor("agent", "intake") })), { code: "same_actor" }, "not the doer");
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ checker: actor("agent", "research") })), { code: "not_allowed" }, "not a send");
+  await assert.rejects(() => r.tasks.request(owner(), internal({ stage: "Drafting" })), { code: "not_allowed" }, "not a stage hold");
+  const t = await r.tasks.request(owner(), internal());
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
+  await assert.rejects(() => r.tasks.decide(agentChain("rogue"), t.id, { outcome: "approved" }), { code: "chain_not_person" }, "only the named agent");
+  await assert.rejects(() => r.tasks.decide(asIntake(), t.id, { outcome: "approved" }), { code: "chain_not_person" }, "the doer cannot check itself");
+  const rej = await r.tasks.decide(agentChain("research"), t.id, { outcome: "rejected", reason: "missing a section" });
+  assert.equal(rej.state, "ready");
+  const mine = await r.tasks.request(owner(), { title: "mine", doer: actor("person", ALICE), checker: actor("person", BOB), output: { kind: "decision" } });
+  await r.tasks.start(alice(), mine.id);
+  const w = await r.tasks.complete(alice(), mine.id, { answer: "yes", reason: "ok" });
+  const ok = await r.tasks.decide(bob(), mine.id, { outcome: "approved", proof: r.proof(bob(), BOB, w) });
+  assert.equal(ok.state, "done");
+});
+
+test("agent checker: only while the person who made it is an owner or an admin, read live, and never when that cannot be told", async () => {
+  const r = staffRig();
+  const t = await r.tasks.request(owner(), internal());
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, { answer: "yes", reason: "ok" });
+  roles.per_alice = "member"; // the maker is demoted: the agent stops approving, though the task already names it
+  await assert.rejects(() => r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" }), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.request(owner(), internal()), { code: "not_allowed" }, "and cannot be named as a checker either");
+  roles.per_alice = "admin";
+  assert.equal((await r.tasks.decide(agentChain("research"), t.id, { outcome: "approved" })).state, "done", "promoted again, it approves");
+  // no way to ask who made it, or no maker: refused
+  const none = rig({ agentDecide: ["research"] });
+  await assert.rejects(() => none.tasks.request(owner(), internal()), { code: "not_allowed" });
+  const nomaker = rig({ agentDecide: ["research"], agentMaker: () => null, roleOf: () => "admin" });
+  await assert.rejects(() => nomaker.tasks.request(owner(), internal()), { code: "not_allowed" });
 });

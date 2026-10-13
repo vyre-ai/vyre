@@ -6,6 +6,7 @@
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson, actsAsPerson } from "../core/chain.js";
+import { isStaffRole } from "../../lib/roles/staff.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
@@ -274,10 +275,12 @@ export function createTasks(cfg) {
     if (t.doer.kind === "agent") return chain.hops.length >= 2 && same(chain.hops[0].actor, t.assigned_by);
     return true;
   };
+  // A role is resolved to the PEOPLE who hold it. A checker named directly is a person or, for an internal check only, an agent (rc1-d, 13 Oct): never the doer, and never for a send or a stage hold (see request).
   const checkersOf = (/** @type {any} */ t) => {
     const c = t.checker;
-    const list = !c ? [] : c.role ? roleHolders(c.role) : [c];
-    return list.filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
+    if (!c) return [];
+    if (c.role) return roleHolders(c.role).filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
+    return [c].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent") && !same(a, t.doer));
   };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
@@ -290,6 +293,53 @@ export function createTasks(cfg) {
         note(chain, "task.readied", put(t, { state: "ready" }), { why: "dependencies met" });
       }
     }
+  };
+
+  /**
+   * May this agent check work: only while the person who made it is an owner or an admin, read live each time (a demoted maker's agent stops approving), and never when that cannot be told:
+   * no way to ask, no maker, or no role. rc1-d term 6, until "made by" is everywhere.
+   * @param {string} agentId
+   */
+  const agentMakerIsStaff = async (agentId) => {
+    if (typeof cfg.agentMaker !== "function") return false;
+    const maker = await Promise.resolve(cfg.agentMaker(agentId)).catch(() => null);
+    if (typeof maker !== "string" || !maker) return false;
+    const role = await Promise.resolve((cfg.makerRole || cfg.members.roleOf)({ kind: "person", id: maker, space: cfg.space })).catch(() => null);
+    return isStaffRole(role);
+  };
+  /**
+   * An agent checks another agent's work, under its own chain and reach (rc1-d, 13 Oct): only when the task names it as its checker, never the doer or anything running under the doer, only an
+   * internal output (nothing outward, no payload, no stage), and only a record it can read. The audit says an agent approved. No presence proof: nothing an agent approves leaves.
+   */
+  const agentDecide = async (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) => {
+    const agent = acting(chain);
+    const t0 = get_(id);
+    // Only the agent a task names as its checker may decide it; for every other agent this stays a person's act.
+    if (!t0.checker || t0.checker.kind !== "agent" || !same(t0.checker, agent)) throw new KernelError("chain_not_person", "only a person on their own can decide this task");
+    const d = await gate(chain, "tasks.decide", urnOf(cfg.space, id));
+    const t = get_(id);
+    if (t.state !== "needs_check") throw new KernelError("bad_state", "that task is not waiting for a check");
+    if (same(agent, t.doer) || chain.hops.some((/** @type {any} */ h) => same(h.actor, t.doer))) throw new KernelError("not_allowed", "an agent cannot check its own work");
+    if (outward(t) || t.stage) throw new KernelError("not_allowed", "an agent's approval is for the internal check only: a person says yes to anything that leaves or holds a stage");
+    if (!(await agentMakerIsStaff(agent.id))) throw new KernelError("not_allowed", "this agent may not check work: the person who made it is not an owner or an admin");
+    if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(t)))) throw new KernelError("not_found", "no such task");
+    if (a.outcome === "rejected") {
+      if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
+      rule(t, "ready", "checker");
+      const { payload: _p, ...rest } = t;
+      stage(id, freeze({ ...rest, state: "ready", outcome: "rejected", updated_at: clock() }));
+      note(chain, "task.rejected", tasks.get(id), { reason: a.reason.slice(0, 400), by: { kind: "agent", id: agent.id } }, d.decision);
+      bodies.delete(id);
+      return tasks.get(id);
+    }
+    if (a.outcome !== "approved") throw new KernelError("bad_input", "decide approves or rejects");
+    rule(t, "done", "agent_checker_approval");
+    const body = bodies.get(id);
+    const answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
+    const n = put(t, { state: "done", outcome: "approved", approved_by: freeze({ kind: "agent", id: agent.id, space: cfg.space }), ...(answer !== undefined ? { answer } : {}) });
+    note(chain, "task.approved", n, { approved_by: { kind: "agent", id: agent.id }, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
+    promote(chain);
+    return n;
   };
 
   /** @type {any} */ let api;
@@ -317,6 +367,9 @@ export function createTasks(cfg) {
       const out = spec.output.kind === "sent";
       if (!checker && out) checker = cfg.approver ? cfg.approver(chain) : undefined;
       if (out && !checker) throw new KernelError("no_checker", "a send needs a checker and none could be assigned");
+      // An agent may check another agent's internal work, and nothing that leaves or holds a stage: a send, a presence-gated act and a stage hold always wait for a person's yes.
+      if (checker && checker.kind === "agent" && !(await agentMakerIsStaff(checker.id))) throw new KernelError("not_allowed", "this agent may not check work: the person who made it is not an owner or an admin");
+      if (checker && checker.kind === "agent" && (out || spec.stage || spec.required)) throw new KernelError("not_allowed", "an agent cannot be the checker of a send or of a stage's task: a person says yes to those");
       const probe = { doer, checker };
       const persons = checkersOf(/** @type {any} */ probe);
       if (checker && !persons.length) throw new KernelError(checker.role ? "no_checker" : "same_actor", checker.role ? "no person holds that role" : "the checker must be a person other than the doer");
@@ -468,6 +521,7 @@ export function createTasks(cfg) {
 
     async _decideOnce(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      if (acting(chain).kind === "agent") return agentDecide(chain, id, a);
       if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own can decide a task");
       const person = chain.hops[0].actor;
       const d = await gate(chain, "tasks.decide", urnOf(cfg.space, id));

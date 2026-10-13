@@ -154,3 +154,13 @@ test("authorship and work: who made it is said, and a non-admin author is marked
   assert.deepEqual(rows.map((r) => [r.kind, r.sub]), [["todo", "Working on it"], ["approve", "Waiting for it to approve"]]);
   assert.match(m.NO_WORK("rex"), /rex/);
 });
+
+test("agent docs api: the shared instructions editor loads and saves an agent's two files through the docs tools", { skip: !strip }, async () => {
+  const { agentDocsApi } = await import("./config-source.ts");
+  const b = box({ "agents.docs.get": { data: { files: { "AGENTS.md": "Be kind.", "CLAUDE.md": "Plain words." }, made_by: null, edited_by: null } } });
+  const a = agentDocsApi(b.call, "rex");
+  assert.equal(a.id, "agent:rex");
+  assert.deepEqual(await a.docs(), { "AGENTS.md": "Be kind.", "CLAUDE.md": "Plain words." });
+  await a.saveDoc("CLAUDE.md", "Shorter.");
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input.file ?? null]), [["agents.docs.get", null], ["agents.docs.set", "CLAUDE.md"]]);
+});

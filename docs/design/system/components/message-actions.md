@@ -2,7 +2,7 @@
 title: Message actions
 summary: The per-message actions as one quiet icon row with a menu for the rare ones, and the transcript keyboard that drives it.
 audience: builders
-owner: composer-ux
+owner: app-design
 status: draft
 ---
 

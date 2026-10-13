@@ -210,3 +210,29 @@ test("the vault door is the list note only: any other vault name is refused befo
   await assert.rejects(() => t("records.list", { name: ITEM }), (e) => /** @type {any} */ (e).code === "not_the_list");
   assert.deepEqual(seen, [`vault.reveal:${ITEM}`]);
 });
+
+test("a member's list lives in their personal store: the same four vault calls become vault.me.store.get and put on the key vyre-space-list", async () => {
+  const { memberTool } = await import("./space-list-flow.js");
+  /** @type {Array<[string, any]>} */ const calls = [];
+  let stored = /** @type {any} */ (null);
+  const t = memberTool(async (n, i) => { calls.push([n, i]); if (n === "vault.me.store.get") return stored; if (n === "vault.me.store.put") { stored = i.value; return { key: i.key, stored: true }; } throw new Error(n); });
+  await assert.rejects(() => t("vault.item", { name: ITEM }), (e) => /** @type {any} */ (e).code === "not_found");
+  await t("vault.put", { name: ITEM, kind: "note", fields: { [FIELD]: "T1" } });
+  assert.equal(calls.at(-1)?.[1].key, "vyre-space-list");
+  assert.equal((await t("vault.item", { name: ITEM })).name, ITEM);
+  assert.deepEqual(await t("vault.reveal", { name: ITEM, field: FIELD }), { value: "T1" });
+  await t("vault.update", { name: ITEM, fields: { [FIELD]: "T2" } });
+  assert.equal(stored, "T2");
+});
+
+test("a member's whole flow runs over the member store: a fresh device lists the servers, and a locked store changes nothing", async () => {
+  const { memberTool } = await import("./space-list-flow.js");
+  let stored = /** @type {any} */ (list(2, [srv("a")]));
+  let locked = false;
+  const raw = async (/** @type {string} */ n, /** @type {any} */ i) => { if (locked) throw Object.assign(new Error("locked"), { code: "locked" }); if (n === "vault.me.store.get") return stored; stored = i.value; return {}; };
+
+  const f2 = makeListFlow({ tool: memberTool(raw), device: async () => ({ pairings: [], teams: [] }), state: { seen: async () => 0, setSeen: async () => {}, pending: async () => [], setPending: async () => {} }, pairByChain: async () => { throw new Error("x"); }, onPaired: async () => {} });
+  assert.deepEqual((await f2.sync()).found.map((e) => e.box), [KEY("a")]);
+  locked = true;
+  assert.equal((await f2.sync()).unavailable, "locked");
+});

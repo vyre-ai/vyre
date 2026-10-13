@@ -46,7 +46,7 @@ test("the rows carry it too: chats (the block list), projects, a project's files
   assert.ok(/tagOf=\{\(sid\) => tagFor\(cards, sid \|\| showing, showing\)\}/.test(read("screens/projects/ProjectsScreen.tsx")) && /tagOf && tagOf\(spaceId\(i\)\)/.test(read("ui/tasks/ProjectsList.tsx")), "projects: each row says its own space, so a mixed list is right");
   assert.ok(/tag: tagFor\(cards, spaceOfUrn\(r\.urn\) \|\| showing, showing\)/.test(read("screens/records/RecordsBlock.tsx")) && /<SpaceTag text=\{String\(r\.tag\)\} \/>/.test(read("ui/blocks/TypedTable.tsx")), "records rows carry the tag of the space their address names");
   assert.ok(/spaceTag\(world, t\.space\) \? <SpaceTag/.test(read("ui/tasks/NowView.tsx")) && /waitTag \? <SpaceTag/.test(read("screens/now/WaitingOnYou.tsx")) && /spaceName: spaceTag\(w, task\.space\)/.test(read("ui/tasks/model.js")), "Now: a task card, a running task, a done task and a waiting ask each say where they live");
-  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/settings/RealAgents.tsx", "screens/drive/RealDrive.tsx", "screens/drive/SpaceDrive.tsx", "screens/find/FindPanel.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
+  for (const f of ["screens/projects/ProjectPanes.tsx", "screens/vault/RealVault.tsx", "screens/agents/AgentsHome.tsx", "screens/drive/RealDrive.tsx", "screens/drive/SpaceDrive.tsx", "screens/find/FindPanel.tsx"]) assert.ok(/<SpaceTag text=/.test(read(f)), `${f} tags its rows`);
 });
 
 test("a record's address names its space, so a mixed list tags each row right", () => {

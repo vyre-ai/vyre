@@ -21,6 +21,9 @@ export interface VaultData {
   remove(scope: Scope, item: VItem): Promise<void>;
   /** Space: what happened to an item (vault.uses). */
   events(scope: Scope, item: VItem): Promise<Event[]>;
+  /** Space: who the item is shared with and who could be picked (vault.access.get), and share or unshare (vault.access.set). */
+  access?(item: VItem): Promise<{ rows: { who: string; level: "use" | "edit" }[]; people: { id: string; name: string }[] }>;
+  setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
 }
@@ -92,6 +95,11 @@ export function realData(call: Call): VaultData {
       const r = await ask<{ uses?: UseRow[] }>("vault.uses", { item: item.id, limit: 20 });
       return (r.uses ?? []).map((u, i) => ({ id: `u${i}`, item: item.id, who: u.who, what: `${u.action}${u.ok ? "" : " (refused)"}`, when: when(u.at) }));
     },
+    async access(item) {
+      const r = await ask<{ access: { subject: string; level: "use" | "edit" }[]; people: { id: string; name: string }[] }>("vault.access.get", { name: item.id });
+      return { rows: r.access.map((a) => ({ who: a.subject, level: a.level })), people: r.people };
+    },
+    async setAccess(item, who, level) { await ask("vault.access.set", { name: item.id, kind: "person", subject: who, level }); },
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
   };
 }

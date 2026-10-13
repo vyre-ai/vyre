@@ -28,6 +28,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<NewItem | null>(null);
+  const [acc, setAcc] = useState<{ rows: { who: string; level: Level }[]; people: { id: string; name: string }[] }>({ rows: [], people: [] });
 
   const load = useCallback(() => {
     setErr(""); setItems(null);
@@ -40,6 +41,8 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   useEffect(() => {
     setEvents([]);
     if (cur) data.events(scope, cur).then(setEvents).catch(() => setEvents([]));
+    setAcc({ rows: [], people: [] });
+    if (cur && data.access && scope === "space") data.access(cur).then(setAcc).catch(() => {});
   }, [cur?.id, scope, data]);
   const sum = summaryOf(items ? visible(items, scope) : []);
   const audit = (item: VItem) => (what: "reveal" | "copy") => setLocal((l) => [{ id: `n${l.length}`, item: item.id, who: "you", what: what === "reveal" ? "Revealed the value" : "Copied the value", when: "Just now" }, ...l]);
@@ -107,7 +110,10 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           {data.real ? (
             <View className="gap-s2">
               {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.name} dense title={u.name} sub="Can use, without seeing it" end={data.revokeModule ? <Button kind="holdText" size="sm" label="Remove" onPress={() => data.revokeModule!(cur, u.name).then(() => { showToast(`${u.name} no longer has ${cur.name}.`); load(); }).catch((e) => fail(e, "That did not work."))} /> : undefined} />)}</Card> : <Text tone="muted">Only you.</Text>}
-              <Text size="caption" tone="label">Sharing with people (Can use, Can edit) comes with the next update.</Text>
+              {data.access ? <AccessList rows={acc.rows} candidates={acc.people.map((p) => p.id)} of={who}
+                onChange={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))}
+                onRemove={(w) => data.setAccess!(cur, w, null).then(() => { showToast(`${w} no longer has ${cur.name}.`); return data.access!(cur).then(setAcc); }).catch((e) => fail(e, "That did not work."))}
+                onAdd={(w, l: Level) => data.setAccess!(cur, w, l).then(() => data.access!(cur).then(setAcc)).catch((e) => fail(e, "That did not work."))} empty="Not shared with a person." /> : null}
             </View>
           ) : (
             <AccessList rows={cur.shared} candidates={SAMPLE_PEOPLE} of={who}
