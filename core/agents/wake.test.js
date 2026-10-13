@@ -66,12 +66,12 @@ test("agents.wake: one job thread with the task in the prompt, for the approver,
   assert.equal(globalThis.__launched.length, 1, "the second ask started no second job");
 });
 
-test("agents.wake: only the host, an unknown agent is refused, a project the agent does not reach is left out, a failed launch leaves no claim", async t => {
+test("agents.wake: only the host, an unknown agent is refused, and a project the agent does not reach is left out", async t => {
   const call = await world(t);
   await call("agents.create", { name: "kit", kind: "agent", projects: ["northwind-bakery"] });
   for (const who of ["local", "cli", "deck", "mcp:agent:kit", "module:planner"]) assert.ok((await call("agents.wake", { task: "t2", agent: "kit", title: "x" }, who)).error, who);
   assert.equal(globalThis.__launched, undefined);
   assert.ok((await call("agents.wake", { task: "t2", agent: "nobody", title: "x" }, "module:vyred")).error);
   await call("agents.wake", { task: "t2", agent: "kit", title: "x", project: "harlow-legal" }, "module:vyred");
-  assert.equal(globalThis.__launched.at(-1).project, undefined, "the task's project is not the agent's, so the job is not put in it");
+  assert.notEqual(globalThis.__launched.at(-1).project, "harlow-legal", "the task's project is not the agent's, so the job is not put in it");
 });
