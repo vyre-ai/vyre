@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Banner, Button, ChoiceList, CodeDisplay, CodeField, Field, FlowStep, MatchWords, Stack, Switch, Text, showToast } from "@vyre/ui";
 import { MOCK } from "../../src/real/box";
 import { DEMO, SIGNIN_WORDS, afterGithub, nameFromLogin } from "./flow-model.js";
-import { continueWithGithub } from "./real-github";
+import { enterWithGithub, signInWithGithub } from "./real-github";
 import { claimNewName, dropKit, holdKit, kitText, nameExists, nameState, readKit, recoverWithKit, requestSignIn, saveKit } from "./real-identity";
 import type { ScreenProps } from "./types";
 
@@ -15,11 +15,17 @@ export function IdChoice({ set, go, back, steps }: ScreenProps) {
   // GitHub fills in the name and picture. A person already linked goes on to the master password; a new one picks a name.
   const github = async () => {
     setBusy(true); setSay("");
-    const r = await continueWithGithub({ signin: pick === "signin" });
-    setBusy(false);
-    if (!r.ok) { setSay(r.say); return; }
+    const r = await signInWithGithub({ signin: pick === "signin" });
+    if (!r.ok) { setBusy(false); setSay(r.say); return; }
     const u = r.user;
-    set({ github: u, avatar: u.avatarUrl, name: u.linkedName || nameFromLogin(u.login) });
+    set({ github: u, githubSession: r.session, avatar: u.avatarUrl, name: u.linkedName || nameFromLogin(u.login) });
+    // A name already linked to this GitHub account: this device is added to it, then the master password opens the vault.
+    if (u.linkedName) {
+      const e = await enterWithGithub(r.session, u.linkedName);
+      setBusy(false);
+      if (!e.ok) { setSay(e.say); return; }
+      set({ githubSession: null });
+    } else setBusy(false);
     go(afterGithub(u));
   };
   return (

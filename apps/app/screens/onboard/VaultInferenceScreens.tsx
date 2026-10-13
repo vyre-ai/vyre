@@ -4,6 +4,7 @@ import { Banner, Button, Card, CodeDisplay, IconTile, Row, Divider, Field, FlowS
 import { MOCK } from "../../src/real/box";
 import { DEMO } from "./flow-model.js";
 import { createVault, openVault } from "./real-vault";
+import { linkGithub } from "./real-github";
 import { claudeConnected, finishSignIn, followSignIn, saveKey, startSignIn, type Flow, type Step } from "./real-inference";
 import type { AiState, ScreenProps } from "./types";
 
@@ -64,6 +65,11 @@ export function MasterConfirm({ ctx, set, go, back, steps }: ScreenProps) {
     if (!r.ok) { setSay(r.say); return; }
     // The password is not needed again: the prototype keeps it only to pretend to check it on the next screen.
     if (!MOCK) set({ master: "" });
+    // A new person who came in with GitHub: tie it to the name now that the vault has its Secret Key. Linking can wait for Settings if it fails, so it never blocks the flow.
+    if (ctx.github && !ctx.reset) {
+      const l = await linkGithub(ctx.githubSession ?? null, ctx.github);
+      if (!l.ok) showToast(l.say);
+    }
     go("inf.pick");
   };
   return (

@@ -24,7 +24,7 @@ export const GH_LIMITS = Object.freeze({
   /** a start (state, cookie) lives this long */
   stateMs: 10 * 60_000,
   /** a ticket lives this long, single use for a link */
-  ticketMs: 5 * 60_000,
+  ticketMs: 30 * 60_000,
   /** a challenge nonce */
   nonceMs: 2 * 60_000,
   /** how far a signed request's time may be from ours */

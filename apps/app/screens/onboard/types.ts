@@ -12,6 +12,8 @@ export type Ctx = {
   name: string;
   /** Who GitHub said this is, after Continue with GitHub. It proves who the person is; it never opens the vault. */
   github?: GithubUser;
+  /** The one-use GitHub ticket and its verifier, kept in memory only until the name is linked or the flow ends. */
+  githubSession?: { ticket: string; cv: string } | null;
   /** The avatar to show: GitHub's, until the person picks another. */
   avatar?: string;
   master: string;
