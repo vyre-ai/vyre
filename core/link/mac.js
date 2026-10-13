@@ -38,7 +38,7 @@ import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
-import { agentClaim, callerKind } from "../modules/index.js";
+import { agentClaim, callerKind, ownerDevice } from "../modules/index.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
 const PEOPLE = new Set(["cli", "local", "capsule", "deck"]);
@@ -728,6 +728,8 @@ export function macSide(ctx, seam = {}) {
     // asks through its own tools, which the box gates by the model's own caller.
     run: async ({ tool, input }, meta) => {
       firstPartyOnly(meta, "link.call");
+      // "deck" in callers also admits any paired device or tailnet node (callerAllowed), and this call forwards as THIS Mac's session: such a caller needs the person's own session first, as a reach-person tool asks
+      if (ownerDevice(String((meta && meta.caller) || "")) && !(meta && meta.person)) throw Object.assign(new Error("link.call is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
       // A module hop made for a model (meta.origin) is a model's call: it never rides this Mac's paired-device identity to the box.
       if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("this call is the person's own; a module acting for a model session may not use it, so ask the person to do it"), { code: "denied" });
       const r = await remote(tool, input || {}, meta && meta.caller);

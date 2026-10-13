@@ -22,9 +22,9 @@ test("HD-3: link.call is refused for every model and agent caller before anythin
   // a bare "mobile" is a label any caller can send, not a person (the one list, lib/person-surfaces.js): refused; the phone arrives as its paired device, which link.call does not take either
   const mobile = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "mobile");
   assert.ok(mobile.error && mobile.error.code !== "no_link" && mobile.error.code !== "unpaired", `mobile: refused for what it is, got ${mobile.error ? mobile.error.code : "OK"}`);
-  // link.call forwards as this Mac's session and is not a person-session tool, so a device or tailnet caller (which has no person session here) is refused too: only the four surfaces and modules
-  for (const caller of ["device:abcdefghijklmnop", "tailnet"]) {
-    const r = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, caller);
-    assert.ok(r.error && r.error.code !== "no_link" && r.error.code !== "unpaired", `${caller}: refused for what it is, got ${r.error ? r.error.code : "OK"}`);
-  }
+  // link.call forwards as this Mac's session, so a paired device needs the person's own session first (reach person), and the bare class words are no caller at all
+  const dev = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "device:abcdefghijklmnop");
+  assert.equal(dev.error && dev.error.code, "person_session_required", `a device without a person session is refused: ${JSON.stringify(dev).slice(0, 200)}`);
+  const tail = await d.registry.call("link.call", { tool: "artifacts.share", input: {} }, "tailnet");
+  assert.ok(tail.error && tail.error.code !== "no_link" && tail.error.code !== "unpaired", `tailnet: refused for what it is, got ${tail.error ? tail.error.code : "OK"}`);
 });
