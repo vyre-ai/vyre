@@ -366,14 +366,14 @@ ${c.rows.map(([q, a, b]) => `  - ${q}. ${c.name}: ${a} Vyre: ${b}`).join('\n')}`
   const catPage = (x) => GROUPS.find((g) => g.key === x.group);
 
   const modeIntro = (x) => ({
-    whole: `Vyre can do most of what a team uses ${x.name} for in this role, so a team that only used it for this can drop the tool or a seat.`,
+    whole: `If your team uses ${x.name} only for ${x.role}, Vyre covers that role, so you can drop the tool. If you use ${x.name} for more, run them side by side and connect them.`,
     part: `Vyre does these parts of the job natively, so a team can drop a seat or a step. ${x.name} stays the better fit for what it was built for.`,
     with: `Vyre does not replace ${x.name}. These are the parts of the work Vyre does around it.`,
   })[x.mode];
   const modeHead = (x) => x.mode === 'with' ? ['Where Vyre fits.', 'What Vyre does <b>around it.</b>'] : ['Where Vyre replaces it.', 'What Vyre does <b>natively.</b>'];
 
   const productFaq = (x) => [
-    [`Does Vyre replace ${x.name}?`, { whole: `For many uses, yes. ${x.keep}`, part: `For some parts of the job, yes. ${x.keep}`, with: `No. ${x.keep}` }[x.mode]],
+    [`Does Vyre replace ${x.name}?`, { whole: `If you use it only for ${x.role}, yes. Otherwise use both.`, part: `For some parts of the job, yes. ${x.keep}`, with: `No. ${x.keep}` }[x.mode]],
     [`How does Vyre work with ${x.name}?`, x.api === false
       ? `${NOAPI} ${NEXT}`
       : `${x.apiNote} In Vyre, ${TODAY.charAt(0).toLowerCase()}${TODAY.slice(1)} ${NEXT} Integrations work where the vendor provides an API.`],

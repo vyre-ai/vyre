@@ -116,6 +116,7 @@ export const PRODUCTS = [
     whyLine: 'The board stays readable. The work behind it is done by people and agents in one Space.', why: ['place', 'agents', 'fewer'],
   }),
   p('airtable', 'work', 'Airtable', {
+    role: 'lists and boards',
     what: 'Relational databases with views, forms and automations.', who: 'Teams that keep structured data in tables and build their own apps on it.',
     strong: [['Spreadsheet feel, database power', 'Linked tables that non-developers can shape.'], ['Views and forms', 'Grid, kanban, calendar and gallery over one table.'], ['Interfaces', 'Custom screens for the people who use the data.']],
     apiNote: 'Airtable publishes a web API.',
@@ -124,6 +125,7 @@ export const PRODUCTS = [
     whyLine: 'The table is the same idea. In Vyre the agents and the approvals sit next to it.', why: ['place', 'server', 'fewer'], mode: 'whole',
   }),
   p('trello', 'work', 'Trello', {
+    role: 'a simple board',
     what: 'Kanban boards with cards and lists.', who: 'Small teams that want a simple board and little setup.',
     strong: [['Simple to start', 'A board and cards, with no setup.'], ['Easy to share', 'Clients and teammates grasp it quickly.'], ['Power-Ups', 'Extra features can be added to a board.']],
     apiNote: 'Trello publishes a REST API.',
@@ -150,6 +152,7 @@ export const PRODUCTS = [
     whyLine: 'Keep the system of record. Add a place where agents do the preparation and a person approves.', why: ['agents', 'approved', 'rules'], mode: 'with',
   }),
   p('pipedrive', 'crm', 'Pipedrive', {
+    role: 'a simple pipeline',
     what: 'A sales CRM built around the pipeline.', who: 'Sales teams that want a pipeline of deals and clear next activities.',
     strong: [['Pipeline first', 'Deals move across visible stages.'], ['Easy to adopt', 'Sales teams pick it up quickly.'], ['Activity reminders', 'Next steps stay in front of the rep.']],
     apiNote: 'Pipedrive publishes an API.',
@@ -250,6 +253,7 @@ export const PRODUCTS = [
     whyLine: 'The proposal is filled from the record and the send is approved before it leaves.', why: ['place', 'approved', 'fewer'],
   }),
   p('dropbox-sign', 'docs', 'Dropbox Sign', {
+    role: 'routine document signing',
     what: 'Electronic signatures from Dropbox.', who: 'Teams that want a simple way to send and sign documents.',
     strong: [['Simple to use', 'Send a document and collect a signature.'], ['Part of Dropbox', 'It sits beside the files many teams already keep there.'], ['Templates', 'Reuse a document for repeated signing.']],
     apiNote: 'Dropbox Sign publishes an API.',
