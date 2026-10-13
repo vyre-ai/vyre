@@ -8,6 +8,8 @@ import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 import { killTree } from "./proctree.js";
 
 const READER = path.join(path.dirname(fileURLToPath(import.meta.url)), "reader.js");
+// reader.js imports the credential file names, so the folder that holds them is readable in the sandbox too (it is code, nothing in it is a secret).
+const CREDFILES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "sessions", "drivers");
 
 export const LIMITS = { maxBytes: 100 * 1024 * 1024, maxFiles: 20000, maxTotal: 512 * 1024 * 1024, deadlineMs: 120_000 };
 
@@ -20,8 +22,8 @@ export function sandboxReader(o) {
   const lim = { ...LIMITS, ...(o.limits || {}) };
   return (req, onFile) => new Promise((resolve, reject) => {
     let launcher;
-    if (o.platform === "win32") { launcher = ensureLauncher(path.join(o.base, "bin")); prepareWin({ launcher, space: o.space, workspace: o.work, readOnly: [path.dirname(node), path.dirname(READER)] }); }
-    const p = plan({ platform: o.platform, space: o.space, launcher, workspace: o.work, command: node, args: [READER], readOnly: [path.dirname(node), path.dirname(READER)], proxy: { port: 1, socket: "" }, home: o.home, env: {} });
+    if (o.platform === "win32") { launcher = ensureLauncher(path.join(o.base, "bin")); prepareWin({ launcher, space: o.space, workspace: o.work, readOnly: [path.dirname(node), path.dirname(READER), CREDFILES_DIR] }); }
+    const p = plan({ platform: o.platform, space: o.space, launcher, workspace: o.work, command: node, args: [READER], readOnly: [path.dirname(node), path.dirname(READER), CREDFILES_DIR], proxy: { port: 1, socket: "" }, home: o.home, env: {} });
     const child = launch(p);
     let err = "", buf = Buffer.alloc(0), received = 0, truncated = false, done = false, chain = Promise.resolve();
     // The sandbox starts the reader through a second process of its own (the namespace's init), which dies with the first only if the first lives long enough to arrange it. Ending just the one Vyre started, at the
