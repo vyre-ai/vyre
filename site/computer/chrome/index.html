@@ -1,0 +1,173 @@
+<!doctype html>
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre for Chrome: install and what it does</title>
+  <meta name="description" content="Vyre for Chrome works in your own signed-in Chrome. Install it standalone for Claude Code or native inside Vyre, with step-by-step setup and the Vault fill extension.">
+  <link rel="canonical" href="https://vyre.run/computer/chrome/">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/computer/chrome/">
+  <meta property="og:title" content="Vyre for Chrome: install and what it does">
+  <meta property="og:description" content="Vyre for Chrome works in your own signed-in Chrome. Install it standalone for Claude Code or native inside Vyre, with step-by-step setup and the Vault fill extension.">
+  <meta property="og:image" content="https://vyre.run/og/computer-chrome.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Your own Chrome, driven by your agents.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Vyre for Chrome: install and what it does">
+  <meta name="twitter:description" content="Vyre for Chrome works in your own signed-in Chrome. Install it standalone for Claude Code or native inside Vyre, with step-by-step setup and the Vault fill extension.">
+  <meta name="twitter:image" content="https://vyre.run/og/computer-chrome.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vyre","item":"https://vyre.run/"},{"@type":"ListItem","position":2,"name":"Computer","item":"https://vyre.run/computer/"},{"@type":"ListItem","position":3,"name":"Vyre for Chrome","item":"https://vyre.run/computer/chrome/"}]}]}</script>
+  <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
+  <link rel="stylesheet" href="/v2.css?v=1c5492772b">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/computer/" aria-current="page">Computer</a><a href="/architecture/">Architecture</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / <a href="/computer/">Computer</a> / Vyre for Chrome</p>
+    <p class="eyebrow">Vyre for Chrome.</p>
+    <h1 class="display">Your own Chrome, <b>driven by your agents.</b></h1>
+    <p class="lead">Vyre for Chrome works in the Chrome you already have open, signed in as you. It reads a page in one call, fills forms, runs a whole workflow build as a single batch and reads DevTools. A send, a post or a payment is held until you approve it, and Esc stops everything.</p>
+    <div class="btn-row"><a class="btn btn-fill" href="#standalone">Install for Claude Code</a><a class="btn" href="#native">Install inside Vyre</a><a class="btn" href="#vault">Vault fill extension</a></div>
+  </div>
+</section>
+
+<section class="sec" id="does" aria-labelledby="does-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">What it does today.</p>
+      <h2 id="does-h" class="h2">One extension, <b>a set of tools.</b></h2>
+      <p class="lead">The tools are the same in both versions. In Claude Code they are named <code>chrome_snapshot</code>, <code>chrome_act</code> and so on. In Vyre the names carry dots, such as <code>chrome.snapshot</code>.</p>
+    </div>
+    <div class="cp-cards rv">
+      <div class="piece cp-piece"><h3>Read and act</h3><p><code>chrome_snapshot</code> reads the page, its dialogs and every frame in one call. <code>chrome_act</code> and <code>chrome_fill</code> click, type and fill, finding each control by role, name and identifier on a fresh look. <code>chrome_tabs</code> reuses the tab you have open instead of opening one per step.</p></div>
+      <div class="piece cp-piece"><h3>Do a whole job in one trip</h3><p><code>chrome_batch</code> runs a list of steps inside the browser with no round trip between them, and stops at the first failure and says which step. <code>chrome_recipe</code> replays a flow that already worked as one call. <code>chrome_ghl</code> builds GoHighLevel workflows end to end, with waits, retries and verified saves.</p></div>
+      <div class="piece cp-piece"><h3>Use the site’s own API</h3><p><code>chrome_api</code> learns the page’s own calls and runs them from inside the page with your login. A read tries this first. <code>chrome_op</code> teaches a site an operation once, such as <code>readProfile(slug)</code>, and calls it by name after that.</p></div>
+      <div class="piece cp-piece"><h3>Look inside the page</h3><p><code>chrome_inspect</code>, <code>chrome_sources</code>, <code>chrome_console</code> and <code>chrome_net</code> read the DOM, scripts, console and network. <code>chrome_eval</code> runs a script that may read with your login and cannot write with it. <code>chrome_screenshot</code> and <code>chrome_point</code> are the last rung.</p></div>
+      <div class="piece cp-piece"><h3>Stay in control</h3><p><code>chrome_plan</code> shows the plan first. <code>chrome_approve</code> asks once for a job with many changes. <code>chrome_send</code> is where you approve a held send. <code>chrome_stop</code> and <code>chrome_resume</code> mirror Esc. <code>chrome_login</code> hands a sign-in page to you.</p></div>
+      <div class="piece cp-piece"><h3>Safe by default</h3><p>Passwords, cookies, tokens and session ids are masked before the model sees them. Banks, password managers and sign-in pages are never read or touched. A page with a visible password field never runs a script. Every session writes a masked trace on your computer only.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="standalone" aria-labelledby="standalone-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Way one.</p>
+      <h2 id="standalone-h" class="h2">Standalone, <b>for Claude Code.</b></h2>
+      <p class="lead">An MCP server plus a Chrome extension. No Vyre server is needed. It is the same code that runs inside Vyre. The package and the command are called <code>vyre-chrome</code>.</p>
+    </div>
+    <div class="cp-need rv"><p class="lbl">You need</p><p>A Mac or a Windows PC, Chrome 116 or newer, Node 22 or newer (nvm and Homebrew installs are fine), and Claude Code. CI also runs it on Linux.</p></div>
+    <ol class="steps rv">
+      <li><b>Build the package from the repository.</b> One command makes the release folder.<div class="term"><span class="pr" aria-hidden="true">$</span><code>git clone --depth 1 https://github.com/vyre-ai/vyre</code><button type="button" data-copy="git clone --depth 1 https://github.com/vyre-ai/vyre" aria-label="Copy the command">Copy</button></div><div class="term"><span class="pr" aria-hidden="true">$</span><code>node vyre/local/hands-chrome-mac/standalone/build-release.mjs --out ~/vyre-chrome-release</code><button type="button" data-copy="node vyre/local/hands-chrome-mac/standalone/build-release.mjs --out ~/vyre-chrome-release" aria-label="Copy the command">Copy</button></div></li>
+      <li><b>Register the connector with Chrome.</b> The launcher finds Node itself, so it works even when your shell has no <code>node</code>. On Windows run <code>vyre-chrome.cmd install</code>.<div class="term"><span class="pr" aria-hidden="true">$</span><code>cd ~/vyre-chrome-release/vyre-chrome && ./vyre-chrome install</code><button type="button" data-copy="cd ~/vyre-chrome-release/vyre-chrome &amp;&amp; ./vyre-chrome install" aria-label="Copy the command">Copy</button></div>Install copies the package to a read-only folder at <code>~/.vyre-chrome/app</code>, puts the <code>vyre-chrome</code> command in <code>~/.local/bin</code>, and prints two things you need next: the extension folder and the exact <code>claude mcp add</code> line for your machine.</li>
+      <li><b>Load the extension.</b> Open <code>chrome://extensions</code>, turn on Developer mode, press Load unpacked and choose the folder install printed (<code>~/.vyre-chrome/app/extension</code>). Its id must read <code>jichfmdmnhaphgemkiehddkfcecpncib</code>. The connector only talks to that id. Install waits up to a minute and says “Connected” when the extension answers. If Chrome was already open, it may need one quit and reopen.</li>
+      <li><b>Add it to Claude Code, once.</b> Copy the line install printed. It has this shape:<pre class="cp-pre"><code>claude mcp add vyre-chrome -- "&lt;node&gt;" "$HOME/.vyre-chrome/app/standalone/cli.mjs" mcp</code></pre></li>
+      <li><b>Check it.</b> Start Claude Code and ask it to run <code>chrome_status</code>. It should say connected. <code>vyre-chrome doctor</code> checks the whole path from a terminal and names the one fix.</li>
+    </ol>
+    <div class="cp-two rv">
+      <div class="note"><p class="lbl" style="margin-bottom:8px">Who approves what</p><p style="margin:0">There is no Gate in the standalone version. Claude Code’s own permissions are the approval. Allow the read and act tools if you want it to work without asking. Never put <code>chrome_send</code> or <code>chrome_resume</code> in an allow list: they are where you approve. If your Claude Code can show a question from a tool, the server asks you itself, showing the site, the button and the field values, and a no sends nothing.</p></div>
+      <div class="note"><p class="lbl" style="margin-bottom:8px">Settings and removal</p><p style="margin:0"><code>vyre-chrome config learn on|off</code> sets site learning (on by default). <code>vyre-chrome config confirm-sends on|off</code> sets the questions. <code>vyre-chrome logs off</code> stops the trace. <code>vyre-chrome uninstall</code> removes the connector, <code>--purge</code> also deletes the logs. Then remove the extension in <code>chrome://extensions</code>. Browsers: Chrome, Chromium, Brave, Edge, and on a Mac Dia and Arc.</p></div>
+    </div>
+    <p class="cp-foot rv">The full README, including the GoHighLevel playbook, is in <a href="https://github.com/vyre-ai/vyre/blob/main/local/hands-chrome-mac/standalone/README.md">local/hands-chrome-mac/standalone</a>. Chrome shows two bars you cannot hide: a warning about developer-mode extensions at start, and “started debugging this browser” while a tab is being driven.</p>
+  </div>
+</section>
+
+<section class="sec" id="native" aria-labelledby="native-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Way two.</p>
+      <h2 id="native-h" class="h2">Native, <b>inside Vyre.</b></h2>
+      <p class="lead">The Vyre Computer extension, with the Gate, Needs you and your agents’ grants around it. This is the way to give a named agent your Chrome.</p>
+    </div>
+    <ol class="steps rv">
+      <li><b>Run Vyre on your Mac.</b> The Mac app with a home, or a Mac server. The two Chrome versions do not run side by side: the standalone server refuses to start while Vyre is running, so use one or the other.</li>
+      <li><b>Register the connector.</b> Run the Chrome setup once:<div class="term"><span class="pr" aria-hidden="true">$</span><code>vyre call chrome.install '{}'</code><button type="button" data-copy="vyre call chrome.install '{}'" aria-label="Copy the command">Copy</button></div>It registers the connector with each supported browser it finds and prints the steps you do in the browser.</li>
+      <li><b>Load the extension.</b> In <code>chrome://extensions</code> turn on Developer mode, press Load unpacked and choose the folder Vyre printed (the extension is <code>local/hands-chrome-mac/extension</code> in the repository). Click its toolbar icon: it says whether it is connected and, if not, why.</li>
+      <li><b>Let an agent use it.</b> You hold the grant yourself. A named agent holds one you give it. Before its first action it must post its plan, and a refusal says so: <code>plan_first</code>.</li>
+    </ol>
+    <div class="cp-two rv">
+      <div class="note"><p class="lbl" style="margin-bottom:8px">What native adds</p><p style="margin:0">A held send becomes a card in Needs you, of kind <code>act</code>, with the site, the control and the field values. A panel shows the plan and its steps as they run, and you can interject by typing or voice, retext a step that has not started, or pause. Chrome raises a notification when it needs you. Site learning shows in Memory under Sites, where you can see and forget any of it.</p></div>
+      <div class="note"><p class="lbl" style="margin-bottom:8px">The same on both</p><p style="margin:0">The tools, the extension code, the URL floor, the redaction, the script guard, the stop and the trace. Only the approval differs: the Gate in Vyre, <code>chrome_send</code> and Claude Code’s permissions in the standalone version.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="vault" aria-labelledby="vault-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">The sign-in half.</p>
+      <h2 id="vault-h" class="h2">The Vault fill extension, <b>so no one types a password.</b></h2>
+      <p class="lead">Vyre for Chrome never types a password. You do, or this extension does, from your own Vault. It fills logins, cards and addresses and answers passkey requests in Chrome, Arc, Edge and Brave, and fills logins in Firefox. It talks to one address only, your Vyre fill listener, and never sends page content.</p>
+    </div>
+    <ol class="steps rv">
+      <li><b>Turn on the fill listener.</b> Set <code>vault.fill</code> in <code>config.json</code>, for example <code>{ "host": "127.0.0.1", "port": 7788 }</code>, then restart Vyre. On a server, put it behind your own address.</li>
+      <li><b>Load the extension.</b> In <code>chrome://extensions</code> (or <code>arc://</code>, <code>edge://</code>, <code>brave://extensions</code>) turn on Developer mode, press Load unpacked and choose <code>modules/vault-extension</code>. For Firefox 121 or later, run <code>node modules/vault-extension/build.mjs</code> and load <code>dist/firefox</code> from <code>about:debugging</code>.</li>
+      <li><b>Pair it.</b> Run <code>vyre vault pair</code>. It prints an 8-character code that works once, for 5 minutes. Enter the address and the code in the extension’s popup. <code>vyre vault devices</code> lists paired browsers and revoking one ends it at once.</li>
+      <li><b>Use it.</b> Open the popup on a login page, unlock with Touch ID through the Mac app (or a passphrase on a machine without it), and press Fill. One proof opens a fill window of 30 minutes that does not extend with use. Cmd+Shift+L fills the page’s login from the keyboard. Only logins whose hosts include the page’s exact origin are offered.</li>
+    </ol>
+    <p class="cp-foot rv">It can also offer to save an API key a page shows you once, after you tap Save, and to save a login you just used. Detail is in <a href="https://github.com/vyre-ai/vyre/blob/main/modules/vault-extension/README.md">modules/vault-extension</a>.</p>
+  </div>
+</section>
+
+<section class="sec" id="one" aria-labelledby="one-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Next.</p>
+      <h2 id="one-h" class="h2">Three pieces become one, <b><span class="ar-chip">Next &middot; 0.5.2</span></b></h2>
+      <p class="lead">Today the password extension, the Chrome control extension and the standalone server are separate. The 0.5.2 plan merges them into one extension for Chrome first, then Edge, Brave and Arc. It signs in like a device of yours, shows up in Devices and stops working when you remove it there. Chats can then ask to use that Chrome, with Esc and the toolbar as the stop, and a Vyre chat can open in Chrome’s side panel. See <a href="https://github.com/vyre-ai/vyre/blob/main/roadmap/0.5.2.md">the 0.5.2 plan</a>, items 15 to 19.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec cp-conn" aria-labelledby="conn-h"><div class="wrap">
+    <div class="note rv"><p class="lbl" id="conn-h" style="margin-bottom:10px">Connects to</p>
+    <ul class="cp-links"><li><a href="/computer/"><b>Vyre Computer</b></a><span>The three places an agent can work, and where it is going.</span></li><li><a href="/computer/architecture/"><b>Chrome control, architecture</b></a><span>How it drives a site, remembers it, holds sends and stops on Esc.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/connectors.md"><b>Connectors, in the docs</b></a><span>Teach a site once and make it a Connection a Flow can call.</span></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/vault.md"><b>The Vault, in the docs</b></a><span>Logins agents use without seeing them, and autofill in the browser.</span></li><li><a href="/architecture/"><b>Vyre architecture</b></a><span>The Gate and Needs you that hold a send.</span></li></ul></div>
+  </div></section>
+
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Read how it <b>works.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/computer/architecture/">The architecture of Chrome control</a><a class="btn" href="/computer/">Back to Vyre Computer</a></div></div></section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/computer/">Computer</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
+  </div>
+</footer>
+</body>
+</html>

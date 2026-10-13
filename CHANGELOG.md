@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): vyre.run gets a Vyre Computer section: /computer/ (three places an agent works, the interface-first ladder, how it plugs into the Vault, Agents, Flows, Needs you and the Gate, a device-pool diagram, what is Next), /computer/chrome/ (standalone and native install steps, the Vault fill extension) and /computer/architecture/ (API-first control, site memory, plans, holds, Esc, logs, with animated control-loop and hold-and-approve diagrams). Pages live in scripts/site/computer.mjs; nav, sitemap, llms.txt and llms-full.txt register them.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
 - docs: the README shows the app in sharp animated WebP and 2x screenshots instead of 256-colour GIFs; unused old README images removed.

@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { computerPages, COMPUTER_LLMS, COMPUTER_FULL } from './site/computer.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -68,13 +69,14 @@ const MAP_URL = `${REPO}/blob/main/docs/for-agents/MAP-YOUR-BUSINESS.md`;
 const NAV = [
   ['Product', '/#product'],
   ['Devices', '/#devices'],
+  ['Computer', '/computer/'],
   ['Architecture', '/architecture/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
 function nav(slug) {
   const links = NAV.map(([t, h]) => {
-    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/')) ? ' aria-current="page"' : '';
+    const cur = ((slug === 'direction' && h === '/direction/') || (slug === 'architecture' && h === '/architecture/') || (slug.startsWith('computer') && h === '/computer/')) ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
   }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
@@ -99,7 +101,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/computer/">Computer</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -121,7 +123,7 @@ const faqLd = (faq) => ({ '@type': 'FAQPage', mainEntity: faq.map(([q, a]) => ({
 
 function page({ slug, path, title, desc, body, ld = [], ogTitle, ogSub, type = 'website' }) {
   const url = SITE + path;
-  const og = `${SITE}/og/${slug || 'home'}.png`;
+  const og = `${SITE}/og/${(slug || 'home').replace(/\//g, '-')}.png`;
   const graph = { '@context': 'https://schema.org', '@graph': [ORG, ...ld] };
   const html = `<!doctype html>
 <!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
@@ -869,6 +871,9 @@ page({
   body: ARCH, ld: [crumbs([['Vyre', `${SITE}/`], ['Architecture', `${SITE}/architecture/`]])],
 });
 
+// ---------- Vyre Computer (scripts/site/computer.mjs) ----------
+for (const spec of computerPages({ SITE, REPO, MAP_URL, eyebrow, crumbs, term })) page(spec);
+
 // ---------- start page ----------
 const part = (n, id, h, inner) => `<section class="part rv" id="${id}" aria-labelledby="${id}-h"><span class="n">${n}</span><div><h2 id="${id}-h">${h}</h2>${inner}</div></section>`;
 const START = `
@@ -1052,6 +1057,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 
+${COMPUTER_LLMS(SITE)}
 ## Machine-readable
 - [llms-full.txt](${SITE}/llms-full.txt): the same content in full
 - [agents.md](${SITE}/agents.md): guidance for AI agents that install or operate Vyre
@@ -1081,6 +1087,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Everything that leaves your server (an email, a payment, a deletion, a published page) waits at the Gate for a person to approve the exact words. An agent can ask and cannot approve.
 - Architecture: see ${SITE}/architecture/ and https://github.com/vyre-ai/vyre/blob/main/ARCHITECTURE.md.
 
+${COMPUTER_FULL(SITE, REPO)}
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
@@ -1186,7 +1193,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/computer/', '0.8'], ['/computer/chrome/', '0.7'], ['/computer/architecture/', '0.7'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
@@ -1209,7 +1216,7 @@ canvas{position:absolute;right:40px;top:75px;width:480px;height:480px}
 </style><body><div class="l"><div class="brand"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg><svg width="80" height="34" viewBox="-2 3 62 26" fill="none"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
 <div class="lbl">vyre.run${p.path === '/' ? '' : p.path.replace(/\/$/, '')}</div><h1>${esc(p.ogTitle)}</h1><p>${esc(p.ogSub)}</p></div><canvas class="markart" data-accent="on"></canvas><div class="bar"></div>
 <script src="file://${join(site, 'v2.js')}"></script></body>`;
-    writeFileSync(join(ogDir, `${p.slug}.html`), html);
+    writeFileSync(join(ogDir, `${p.slug.replace(/\//g, '-')}.html`), html);
   }
 }
 console.log(`gen-site: ${pages.length} pages, version ${VERSION}`);
