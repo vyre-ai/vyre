@@ -7,6 +7,7 @@
 //   files.linked.list    { space? }                          -> { links: [{ id, name, path, provider, source, linked_by, at }] }
 //   files.linked.unlink  { space?, id }                      -> { unlinked: true }      only who linked it, or the Space owner; the source is never touched; the index of it goes too
 //   files.linked.sync    { space?, id, full? }               -> { status, count, at, error? }   bring the CALLER'S index of this folder up to date, as the caller (linked-index.js)
+//   (open, edit and write back: linked-read.js: ls, read, write, rename, delete, versions)
 //   files.linked.status  { space?, id }                      -> { link, sync: null | { status, count, at, error? } }
 //   files.linked.search  { space?, q, id?, limit? }          -> { hits: [{ link, link_name, path, name, mime, size, modified, snippet }] }   the caller's own index only
 import crypto from "node:crypto";
@@ -15,11 +16,14 @@ import { linkedDir } from "../../lib/files/layout.js";
 import { assertProvider } from "./linked-provider.js";
 import { linkedIndex } from "./linked-index.js";
 import { filesMigrations } from "./migrations.js";
+import { registerLinkedIO } from "./linked-read.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+/** A model working a team chat's turn may read what the asking member can read; writing stays the person's. */
+const READ_CALLERS = [...CALLERS, "mcp"];
 export const LINK_NAME = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
 
 export const LINKED_MIGRATIONS = [
@@ -48,7 +52,7 @@ export function registerLinked(ctx, o) {
   const view = (/** @type {any} */ r) => ({ id: r.id, name: r.name, path: linkedDir(r.name), provider: r.provider, source: JSON.parse(r.source), linked_by: r.linked_by, at: r.at });
 
   const t = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {any} */ extra, /** @type {(i: any, d: any, who: string) => Promise<any>} */ run) =>
-    ctx.tool(name, { description, input, callers: CALLERS, ...extra, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
+    ctx.tool(name, { description, input, callers: extra.readCallers || /^files\.linked\.(list|status|search|ls|read|versions)$/.test(name) ? READ_CALLERS : CALLERS, ...extra, readCallers: undefined, run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const d = await door.open(i || {}, meta || {}); return run(i || {}, d, personOf(d.chain)); } });
 
   t("files.linked.link", "Link a folder from a source (Google Drive first) so it appears live at Linked/<name> in this Space: { space?, name, provider, source }. `source` is what the provider needs to find the folder (Drive: { folder }). Nothing is copied; each person sees it through their own account.",
     obj({ space: str, name: str, provider: str, source: { type: "object" } }, ["name", "provider", "source"]),
@@ -100,6 +104,8 @@ export function registerLinked(ctx, o) {
       const hits = index().search(who, String(i.q ?? ""), { limit: i.limit, ...(i.id ? { link: String(i.id) } : {}) }).filter((/** @type {any} */ h) => names.has(h.link));
       return { hits: hits.map((/** @type {any} */ h) => ({ link: h.link, link_name: names.get(h.link), path: `${linkedDir(names.get(h.link))}/${h.path}`, name: h.name, mime: h.mime, size: h.size, modified: h.modified, snippet: h.snippet })) };
     });
+
+  registerLinkedIO({ t, linkOf, asLink, index, providers, view });
 
   /** The scheduler's pass: every (link, person) pair that has synced once, one after another; a failing pair records its error and the rest go on. Answers how many it ran. */
   async function syncKnown() {

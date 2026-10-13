@@ -149,3 +149,81 @@ test("the files module migrates one list for mentions, shared links, linked fold
   const names = db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'files_%'").all().map(x => x.name);
   for (const t of ["files_mention_grants", "files_links", "files_linked", "files_linked_index", "files_linked_sync"]) assert.ok(names.includes(t), t);
 });
+
+const b64 = (/** @type {string} */ t) => Buffer.from(t).toString("base64");
+async function opened() {
+  const r = rig({ providers: [fakeProvider({ id: "fake", files: { "a/plan.md": "the launch plan", "a/deep/x.txt": "x", "b.txt": "budget numbers" } })] });
+  const l = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
+  return { r, l, p: r.linked.providers.get("fake") };
+}
+
+test("ls lists a folder from the person's index (syncing the first time) with folders implied by deeper paths", async () => {
+  const { r, l } = await opened();
+  const top = await r.run("files.linked.ls", { id: l.id });
+  assert.deepEqual(top.entries.map(e => [e.name, e.dir, e.path]), [["a", true, "Linked/Docs/a"], ["b.txt", false, "Linked/Docs/b.txt"]]);
+  const a = await r.run("files.linked.ls", { id: l.id, path: "a" });
+  assert.deepEqual(a.entries.map(e => e.name), ["deep", "plan.md"]);
+  assert.equal(await code(r.run("files.linked.ls", { id: l.id, path: "../x" })), "bad_input");
+});
+
+test("read fetches the content when it is opened, as the person, and answers its revision", async () => {
+  const { r, l, p } = await opened();
+  const f = await r.run("files.linked.read", { id: l.id, path: "b.txt" });
+  assert.equal(Buffer.from(f.base64, "base64").toString(), "budget numbers");
+  assert.equal(f.name, "b.txt"); assert.equal(f.size, 14); assert.ok(f.rev);
+  const reads = p.calls.filter(c => c[0] === "read");
+  assert.ok(reads.length >= 1);
+  assert.equal(reads.at(-1)[1], "per_alex");
+  assert.equal(await code(r.run("files.linked.read", { id: l.id, path: "nope.txt" })), "not_found");
+});
+
+test("a file edited at the source is read as it is now, not as it was indexed", async () => {
+  const { r, l, p } = await opened();
+  await r.run("files.linked.sync", { id: l.id });
+  p.external.put("b.txt", "budget changed");
+  const f = await r.run("files.linked.read", { id: l.id, path: "b.txt" });
+  assert.equal(Buffer.from(f.base64, "base64").toString(), "budget changed");
+});
+
+test("write goes back to the source with the revision it was opened at, then the index follows", async () => {
+  const { r, l, p } = await opened();
+  const f = await r.run("files.linked.read", { id: l.id, path: "b.txt" });
+  const w = await r.run("files.linked.write", { id: l.id, path: "b.txt", base64: b64("budget v2"), base_rev: f.rev });
+  assert.equal(w.path, "Linked/Docs/b.txt"); assert.notEqual(w.rev, f.rev);
+  assert.deepEqual(p.calls.filter(c => c[0] === "write").at(-1).slice(1), ["per_alex", "b.txt", f.rev]);
+  assert.equal((await r.run("files.linked.search", { q: "v2" })).hits.length, 1, "the edit is searchable at once");
+});
+
+test("a stale write is refused with conflict and nothing is overwritten", async () => {
+  const { r, l, p } = await opened();
+  const f = await r.run("files.linked.read", { id: l.id, path: "b.txt" });
+  p.external.put("b.txt", "someone else");
+  assert.equal(await code(r.run("files.linked.write", { id: l.id, path: "b.txt", base64: b64("mine"), base_rev: f.rev })), "conflict");
+  assert.equal(Buffer.from(p.store.get([...p.store.values()].find(x => x.path === "b.txt").id).bytes).toString(), "someone else");
+});
+
+test("write is bounded: bad base64, too large and an escaping path are refused before the source is asked", async () => {
+  const { r, l, p } = await opened();
+  p.calls.length = 0;
+  assert.equal(await code(r.run("files.linked.write", { id: l.id, path: "b.txt", base64: "***" })), "bad_input");
+  assert.equal(await code(r.run("files.linked.write", { id: l.id, path: "../b.txt", base64: b64("x") })), "bad_input");
+  assert.equal(await code(r.run("files.linked.write", { id: l.id, path: "big.bin", base64: "A".repeat(12 * 1024 * 1024) })), "too_large");
+  assert.equal(p.calls.filter(c => c[0] === "write").length, 0);
+});
+
+test("rename, delete and versions go to the source as the person; the index follows", async () => {
+  const { r, l, p } = await opened();
+  await r.run("files.linked.rename", { id: l.id, path: "b.txt", to: "a/budget.txt" });
+  assert.deepEqual((await r.run("files.linked.ls", { id: l.id, path: "a" })).entries.map(e => e.name), ["deep", "budget.txt", "plan.md"]);
+  const v = await r.run("files.linked.versions", { id: l.id, path: "a/budget.txt" });
+  assert.ok(v.versions.length >= 1);
+  await r.run("files.linked.delete", { id: l.id, path: "a/budget.txt" });
+  assert.equal(await code(r.run("files.linked.read", { id: l.id, path: "a/budget.txt" })), "not_found");
+  assert.deepEqual(p.calls.filter(c => ["rename", "delete", "versions"].includes(c[0])).map(c => [c[0], c[1]]), [["rename", "per_alex"], ["versions", "per_alex"], ["delete", "per_alex"]]);
+});
+
+test("writing, renaming and deleting reach outside the Space, so each carries presence for a person and is held for an assistant", () => {
+  const r = rig();
+  for (const n of ["write", "rename", "delete"]) { assert.ok(r.tools.get(`files.linked.${n}`).presence, n); }
+  assert.equal(r.tools.get("files.linked.read").presence, undefined);
+});

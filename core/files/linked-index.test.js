@@ -113,3 +113,12 @@ test("search can be limited to one linked folder, and a query of only punctuatio
   assert.equal(r.idx.search("per_alex", "retainer", { link: "lnk_other" }).length, 0);
   assert.deepEqual(r.idx.search("per_alex", '"*(('), []);
 });
+
+test("a folder entry is kept as a folder (dir), so a listing can tell it from a file", async () => {
+  const r = rig({});
+  r.p.list = async () => ({ entries: [{ id: "d1", path: "Sub", name: "Sub", mime: "x/dir", size: 0, modified: 1, rev: "1", dir: true }], next: "1", full: true });
+  await r.idx.sync(link, "per_alex");
+  assert.deepEqual(r.idx.children(link.id, "per_alex", "").map(c => [c.name, c.dir]), [["Sub", true]]);
+  assert.equal(r.idx.entryAt(link.id, "per_alex", "Sub").entry, "d1");
+  assert.equal(r.idx.entryAt(link.id, "per_alex", "nope"), null);
+});

@@ -50,7 +50,7 @@ function rootOf(link) {
 /** @param {any} f @param {string} path */
 function entryOf(f, path) {
   const native = Object.prototype.hasOwnProperty.call(NATIVE_EXPORT, f.mimeType);
-  return { id: String(f.id), path, name: String(f.name), mime: f.mimeType === FOLDER ? FOLDER : native ? NATIVE_EXPORT[f.mimeType] : String(f.mimeType || ""), size: Number(f.size || 0), modified: Date.parse(f.modifiedTime) || 0, rev: String(f.version ?? "0"), ...(native ? { indexable: true } : {}) };
+  return { id: String(f.id), path, name: String(f.name), mime: f.mimeType === FOLDER ? FOLDER : native ? NATIVE_EXPORT[f.mimeType] : String(f.mimeType || ""), size: Number(f.size || 0), ...(f.mimeType === FOLDER ? { dir: true } : {}), modified: Date.parse(f.modifiedTime) || 0, rev: String(f.version ?? "0"), ...(native ? { indexable: true } : {}) };
 }
 
 /** @param {{ client: { request: (person: string, req: any) => Promise<any> } }} d */
