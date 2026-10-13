@@ -178,7 +178,9 @@
       "deployment.restarted",
       "deployment.job-ran",
       "deployment.rolled-back",
-      "deployment.retired"
+      "deployment.retired",
+      "deployment.held",
+      "deployment.decided"
     ]
   },
   "shows": {

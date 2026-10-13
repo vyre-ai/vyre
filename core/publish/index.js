@@ -375,11 +375,21 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return { plan: await b.pub.plan(b.chain, i.deployment) }; },
     });
 
+    /** A held act remembers the chat it was asked in (the session the daemon vouched), so the card can sit in that chat as well as on Now, and tells the apps to look again. @param {any} b @param {any} r @param {any} meta */
+    const noteHold = async (b, r, meta) => {
+      if (!r || !r.held) return;
+      const st = storeFor(b.space.id);
+      const h = await st.get("holds", r.task);
+      const thread = meta && typeof meta.thread === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(meta.thread) ? meta.thread : null;
+      if (h && thread) await st.put("holds", r.task, { ...h, thread });
+      ctx.events.emit("deployment.held", { deployment: h ? h.deployment : null, space: b.space.id, task: r.task });
+    };
+
     /** The three held acts share one shape. @param {"approve" | "publish" | "rollback"} act */
     const heldTool = act => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const b = await begin(i, meta, await warmDecider(String((await whoIs(i, meta)).space.id), i.task));
       const r = await b.pub[act](b.chain, i.deployment, i.task ? { task: i.task } : {});
-      if (r.held) return { held: true, task: r.task, plan: r.plan };
+      if (r.held) { await noteHold(b, r, meta); return { held: true, task: r.task, plan: r.plan }; }
       return { deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
     };
     ctx.tool("publish.approve", {
@@ -421,6 +431,7 @@ export default {
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
         const held = await b.pub.goLive(b.chain, made.id, {});
+        await noteHold(b, held, meta);
         // until the public door (names.status listening) is on, the address a yes makes live is reachable on the person's own devices only: say so, in the same answer as the yes
         const door = await call("names.status", {}).catch(() => ({ data: null }));
         const open = Boolean(door.data && door.data.listening === true);
@@ -454,6 +465,7 @@ export default {
         if (!i.approve) {
           await st.put("tasks", task.id, { ...task, state: "done", outcome, decided_by: chain, decided_at: Date.now() });
           await st.delete("holds", task.id);
+          ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
           return { task: task.id, outcome };
         }
         const p = publisherFor(space);
@@ -464,9 +476,11 @@ export default {
             const s = (task.plan || {}).secret || {};
             const r = await p.pub.grantSecret(chain, hold.deployment, { ref: s.ref, name: s.name, use: s.use, task: task.id });
             await restartForGrant(space, r.deployment, s.use);
+            ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
             return { ...out, deployment: shown(r.deployment) };
           }
           const r = await serial(p, () => p.pub[hold.action](chain, hold.deployment, { task: task.id }));
+          ctx.events.emit("deployment.decided", { deployment: hold.deployment, space: space.id, task: task.id, outcome });
           return { ...out, deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
         } catch (e) {
           // The act did not complete (for example this person may not approve it): the request stays open for someone who may.
@@ -554,7 +568,7 @@ export default {
           if (t.state !== "needs_check") continue;
           const h = await st.get("holds", t.id);
           if (!h) continue;
-          out.push({ task: t.id, action: h.action, title: t.title, deployment: h.deployment, plan: t.plan, plan_hash: t.payload_hash, requested_by: t.requested_by, at: h.created_at });
+          out.push({ task: t.id, action: h.action, title: t.title, deployment: h.deployment, thread: h.thread ?? null, plan: t.plan, plan_hash: t.payload_hash, requested_by: t.requested_by, at: h.created_at });
         }
         return { holds: out.sort((x, y) => x.at - y.at) };
       },
@@ -579,7 +593,7 @@ export default {
         const sp = (await whoIs(i, meta)).space.id;
         const b = await begin(i, meta, await warmDecider(sp, i.task));
         const r = await b.pub.grantSecret(b.chain, i.deployment, { ref: i.ref, name: i.name, use: i.use, task: i.task });
-        if (r.held) return { held: true, task: r.task, plan: r.plan };
+        if (r.held) { await noteHold(b, r, meta); return { held: true, task: r.task, plan: r.plan }; }
         await restartForGrant(b.space, r.deployment, i.use);
         return { deployment: shown(r.deployment) };
       },

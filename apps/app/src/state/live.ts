@@ -21,7 +21,7 @@ export const SURFACE: string = Platform.OS === "web" ? "web" : Platform.OS;
 
 const NEEDS_KEY = "needs";
 const CHATS_KEY = "chats";
-const NEEDS_EVENTS = /^(ask\.(raised|answered|cancelled)|gate\.(held|released|failed|revised|rejected))$/;
+const NEEDS_EVENTS = /^(ask\.(raised|answered|cancelled)|gate\.(held|released|failed|revised|rejected)|deployment\.(held|decided))$/;
 const THREAD_EVENTS = /^thread\.(started|finished|stopped|state)$|^lease\.changed$/;
 
 let ctx: NeedsContext = {};
@@ -46,11 +46,13 @@ function read(): Promise<void> {
     return reading;
   }
   reading = (async () => {
-    const [held, asks, threads, projects] = await Promise.all([
+    const [held, asks, threads, projects, holds] = await Promise.all([
       call("gate.held"),
       call("threads.asks"),
       call("threads.list"),
       ctx.projects ? Promise.resolve({ data: null }) : call("projects.list"),
+      // Publishing acts waiting for a yes. A box with no Publish, or a person who cannot see sites, simply has none.
+      call("publish.holds"),
     ]);
     if (!threads.error) {
       ctx = contextFrom(toThreads(threads.data), projects.data);
@@ -60,7 +62,7 @@ function read(): Promise<void> {
     }
     // Keep what shows when a read fails: the cache or the last read stands until one works.
     if (held.error || asks.error) return;
-    const list = merge(held.data, asks.data, ctx);
+    const list = merge(held.data, asks.data, ctx, holds.error ? null : (holds.data as { holds?: unknown } | null)?.holds);
     setNeeds(list, "box");
     answers.prune(list.map((n) => n.id));
     void viewCache.set(NEEDS_KEY, list);
@@ -153,7 +155,8 @@ export const answers = createAnswers({
 /** Paint from the cache, read the box, follow its events. Once per app. */
 export function startLive(): void {
   // The sample world (EXPO_PUBLIC_VYRE_MOCK=1) has no box to read from: its screens draw from the sample store, and a read here would only log 404s.
-  if (MOCK) return;
+  // The sample world has no box, so a screenshot run seeds the list itself through this handle (it is only there in the sample world).
+  if (MOCK) { if (typeof window !== "undefined") (window as unknown as { __needs?: unknown }).__needs = needsStore; return; }
   if (started) return;
   started = true;
   void viewCache.get(NEEDS_KEY).then((v) => {
