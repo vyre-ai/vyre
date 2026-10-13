@@ -137,7 +137,7 @@ export class PeopleVaults {
     const s = this.slot(id);
     this.expire(s);
     const r = s.vault.accountStatus();
-    return { account: r.account, unlocked: r.unlocked };
+    return { account: r.account, unlocked: r.unlocked, ...(r.acct ? { acct: r.acct } : {}) };
   }
 
   /** Ends the lease when it has been idle too long. @param {{ vault: Vault, last: number }} s */
