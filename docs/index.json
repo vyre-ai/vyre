@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":350,"tool":1704,"event":538,"config":302,"env":304,"screen":0,"concept":39},
+  "counts": {"command":350,"tool":1708,"event":538,"config":302,"env":304,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2242,6 +2242,10 @@
     {"kind":"tool","name":"vault.me.list","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmelist","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.me.put","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmeput","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.me.remove","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmeremove","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.me.store.get","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmestoreget","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.me.store.list","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmestorelist","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.me.store.put","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmestoreput","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.me.store.remove","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmestoreremove","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.me.update","definedIn":"core/vault/tools/me.js","page":"reference/tools.md#vaultmeupdate","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.member-added","definedIn":"core/vault/shared.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":238,"anchor":"7-contract-fit"}]},
     {"kind":"event","name":"vault.member-removed","definedIn":"core/vault/shared.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":239,"anchor":"7-contract-fit"}]},

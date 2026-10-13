@@ -68,9 +68,9 @@ test("an item file moved into another person's folder does not open", async t =>
   await people.create(BOB, { password: PW });
   const b = await people.create(EVE, { password: PW });
   await people.put(BOB, { name: "x", kind: "secret", fields: { token: "bobs" } });
-  const find = (/** @type {string} */ id) => { const out = []; (function w(/** @type {string} */ d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) w(p); else if (p.includes("me-items")) out.push(p); } })(path.join(home, "people", id)); return out; };
+  const find = (/** @type {string} */ id) => { const out = []; (function w(/** @type {string} */ d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) w(p); else if (p.includes("me-items")) out.push(p); } })(people.folder(id)); return out; };
   const [src] = find(BOB);
-  const dst = path.join(path.dirname(find(BOB)[0]).replace(BOB, EVE), path.basename(src));
+  const dst = path.join(people.folder(EVE), "me-items", path.basename(src));
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.copyFileSync(src, dst);
   assert.deepEqual((await people.list(EVE)).items, [], "a foreign item is skipped, not read");
@@ -105,7 +105,7 @@ test("update and remove; bad names and values are refused", async t => {
 });
 
 test("personalStore: JSON values under a key for one person; locked without a lease; another person never sees them", async t => {
-  const { people } = rig(t);
+  const { people, home } = rig(t);
   await people.create(BOB, { password: PW });
   await people.create(EVE, { password: PW });
   const bob = people.personalStore(BOB, "spc_x"), eve = people.personalStore(EVE, "spc_x");
@@ -121,4 +121,29 @@ test("personalStore: JSON values under a key for one person; locked without a le
   people.lock(BOB);
   await assert.rejects(bob.list(), /locked/);
   assert.throws(() => people.personalStore("../x"), /person/);
+  for (const bad of ["../x", "per_/../x", "per_..", "x", "", "per_" + "a".repeat(80)]) assert.throws(() => people.folder(bad), /person/, bad);
+  assert.notEqual(people.folder("per_AbC"), people.folder("per_abc"), "case does not merge two people");
+  assert.ok(path.resolve(people.folder(BOB)).startsWith(path.resolve(home)), "inside the root");
+});
+
+test("a removed member's vault is erased: the next person with the same name starts empty, and the owner's backup folder holds none of it", async t => {
+  const { people, home } = rig(t);
+  await people.create(BOB, { password: PW });
+  await people.put(BOB, { name: "x", kind: "secret", fields: { token: "v" } });
+  const folder = people.folder(BOB);
+  assert.ok(fs.existsSync(folder));
+  people.destroy(BOB);
+  assert.ok(!fs.existsSync(folder));
+  assert.equal(people.status(BOB).account, false, "a new person with the same id has no account");
+  assert.deepEqual(fs.readdirSync(home), ["people"], "nothing else under the people root");
+});
+
+test("one person's wrong guesses do not throttle another", async t => {
+  const { people } = rig(t);
+  const a = await people.create(BOB, { password: PW });
+  const b = await people.create(EVE, { password: PW });
+  people.lock(BOB); people.lock(EVE);
+  for (let i = 0; i < 6; i++) await people.unlock(BOB, { password: "wrong wrong wrong wrong", secretKey: a.secretKey }).catch(() => {});
+  await assert.rejects(people.unlock(BOB, { password: PW, secretKey: a.secretKey }), /wait|try again|too many|seconds/i, "Bob is throttled");
+  assert.equal((await people.unlock(EVE, { password: PW, secretKey: b.secretKey })).unlocked, true, "Eve is not");
 });

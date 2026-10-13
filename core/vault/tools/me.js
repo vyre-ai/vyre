@@ -22,6 +22,8 @@ export async function memberOf(kernel, meta) {
   if (!kernel || typeof kernel.chain !== "function" || !kernel.owner) throw refuse();
   let c;
   try { c = await kernel.chain(meta || {}); } catch { throw refuse(); }
+  // An agent's turn is not the person at the keyboard: a chain with an agent in it is refused (default deny).
+  if ((c && Array.isArray(c.hops) ? c.hops : []).some((/** @type {any} */ h) => h && h.actor && h.actor.kind === "agent")) throw refuse();
   const ids = new Set((c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)));
   if (ids.size !== 1) throw refuse();
   const [id] = [...ids];
@@ -31,7 +33,8 @@ export async function memberOf(kernel, meta) {
 
 /** The names this file registers: the member gate lets exactly these through. */
 export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "vault.me.account.reset", "vault.me.account.lock", "vault.me.account.status",
-  "vault.me.put", "vault.me.get", "vault.me.list", "vault.me.update", "vault.me.remove"];
+  "vault.me.put", "vault.me.get", "vault.me.list", "vault.me.update", "vault.me.remove",
+  "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -57,5 +60,12 @@ export function register({ ctx, people, tool }) {
     presence("Read an item of your own vault", ({ name }) => `Show ${String(name).slice(0, 64)} from your own vault`));
   tool("vault.me.list", PERSON_SURFACES, "The names and kinds in your own vault. Never a value.", obj({ filter: str }), mine((id, i) => people.list(id, i)));
   tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)));
+  // The JSON store other modules use for a member's own entries (people.js personalStore): the mcp module and the space list call these with the member's inherited token.
+  const store = (/** @type {string} */ id) => people.personalStore(id);
+  const value = { description: "any JSON value up to 64 KB" };
+  tool("vault.me.store.get", PERSON_SURFACES, "Read one entry of your own store (a JSON value under a key), or null.", obj({ key: str }, ["key"]), mine((id, i) => store(id).get(i.key)));
+  tool("vault.me.store.put", PERSON_SURFACES, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), mine(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
+  tool("vault.me.store.list", PERSON_SURFACES, "Every entry of your own store.", obj({}), mine(id => store(id).list()));
+  tool("vault.me.store.remove", PERSON_SURFACES, "Delete one entry of your own store.", obj({ key: str }, ["key"]), mine(async (id, i) => ({ removed: await store(id).remove(i.key) })));
   tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
 }

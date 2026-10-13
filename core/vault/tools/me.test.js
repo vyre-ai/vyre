@@ -83,9 +83,22 @@ test("the owner, a call with no person, two people in one chain, and a broken ch
   assert.equal((await call("vault.me.list", {}, null)).error.code, "denied", "no person");
   assert.equal((await call("vault.me.list", {}, BOB, { hops: [hop("person", BOB), hop("person", EVE)] })).error.code, "denied", "two people");
   assert.equal((await call("vault.me.list", {}, BOB, { hops: [hop("person", BOB), hop("person", OWNER)] })).error.code, "denied", "a member behind the owner");
-  assert.equal((await call("vault.me.list", {}, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "locked", "a member's agent chain resolves to the member and finds the vault locked");
+  assert.equal((await call("vault.me.list", {}, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "denied", "a member's agent turn is not the person at the keyboard");
   assert.equal(await memberOf({ owner: OWNER, chain: async () => { throw new Error("x"); } }, {}).catch(e => e.code), "denied", "an unreadable chain");
   assert.equal(await memberOf(null, {}).catch(e => e.code), "denied", "no kernel");
   // a model's labels are not callers of any vault.me tool
   for (const n of ME_TOOLS) for (const c of ["mcp", "harness", "module"]) assert.ok(!reg.get(n).callers.includes(c), `${n} is not callable by ${c}`);
+});
+
+test("vault.me.store.*: a member's JSON entries; another member and the owner do not see them", async t => {
+  const { call } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  assert.equal((await call("vault.me.store.put", { key: "mcp/gh", value: { url: "https://x.example", token: "t" } }, BOB)).data.stored, true);
+  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/gh" }, BOB)).data, { url: "https://x.example", token: "t" });
+  assert.deepEqual((await call("vault.me.store.list", {}, BOB)).data.map((/** @type {any} */ e) => e.key), ["mcp/gh"]);
+  assert.equal((await call("vault.me.store.get", { key: "mcp/gh", person: BOB }, EVE)).data, null);
+  assert.deepEqual((await call("vault.me.store.list", {}, EVE)).data, []);
+  assert.equal((await call("vault.me.store.get", { key: "mcp/gh" }, OWNER)).error.code, "denied");
+  assert.equal((await call("vault.me.store.remove", { key: "mcp/gh" }, BOB)).data.removed, true);
 });

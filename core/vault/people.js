@@ -16,7 +16,7 @@ import { Vault, MIGRATIONS, ensureMacColumns } from "./vault.js";
 import { ensureDir } from "./store.js";
 import { sealItemV2, openItemV2 } from "./crypto.js";
 
-export const PERSON_ID = /^per_[A-Za-z0-9]{10,64}$/;
+export const PERSON_ID = /^per_[A-Za-z0-9_-]{1,64}$/;
 const NAME = /^[A-Za-z0-9._-]{1,128}$/;
 const KIND = /^[a-z][a-z0-9-]{0,31}$/;
 const FIELD = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -39,7 +39,15 @@ export class PeopleVaults {
   /** Throws unless this is a person id; the id becomes a folder name. @param {string} id */
   static check(id) { if (typeof id !== "string" || !PERSON_ID.test(id)) throw new Error("not a person id"); return id; }
 
-  folder(/** @type {string} */ id) { return path.join(this.dir, "people", PeopleVaults.check(id)); }
+  /** The person's folder: named by a hash of the id (no id forms a path; case-folding disks cannot make two people one folder), and checked to lie under the vaults root. @param {string} id */
+  folder(id) {
+    const root = path.join(this.dir, "people");
+    const f = path.join(root, crypto.createHash("sha256").update("vyre-person-vault\0" + PeopleVaults.check(id)).digest("hex").slice(0, 40));
+    ensureDir(root);
+    const real = fs.existsSync(f) ? fs.realpathSync(f) : f;
+    if (path.dirname(real) !== fs.realpathSync(root)) throw new Error("not a person folder");
+    return f;
+  }
 
   /** @param {string} id */
   slot(id) {
@@ -113,6 +121,15 @@ export class PeopleVaults {
     s.vault.lockAccount("person:" + id);
     s.last = 0;
     return { locked: true };
+  }
+
+  /** A member who is removed: the vault is locked and its folder erased, so a later person with the same name starts empty. @param {string} id */
+  destroy(id) {
+    const f = this.folder(id);
+    const s = this.open.get(id);
+    if (s) { try { s.vault.lockAccount("removed"); } catch {} try { s.db.close(); } catch {} this.open.delete(id); }
+    fs.rmSync(f, { recursive: true, force: true });
+    return { removed: true };
   }
 
   /** @param {string} id */

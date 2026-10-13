@@ -512,6 +512,12 @@ export default {
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     meTools.register({ ctx, people, tool });
+    // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
+    try {
+      const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
+      ctx.events.on("member.removed", (/** @type {any} */ e) => { try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
+    } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.
     if (typeof ctx.provide === "function") ctx.provide("personalStore", (/** @type {string} */ person, /** @type {string} */ space) => people.personalStore(person, space));
     historyTools.register({ ctx, vault, tool });
