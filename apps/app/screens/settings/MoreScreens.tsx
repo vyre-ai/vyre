@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock, showToast } from "@vyre/ui";
 import { RealNotifications, RealUpdates } from "./RealMore";
 import { RealAbout } from "./RealAccount";
+import { AboutCard } from "./AboutCard";
 import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
@@ -40,7 +41,8 @@ function SampleUpdatesScreen() {
 
 function SampleAboutScreen() {
   return (
-    <Page title="About Vyre" sub={`Version ${VERSION}.`} back="/u/settings">
+    <Page title="About Vyre" back="/u/settings">
+      <AboutCard version={VERSION} />
       <Group title="Open-source credits">
         <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
       </Group>

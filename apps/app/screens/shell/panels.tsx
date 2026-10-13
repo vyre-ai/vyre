@@ -17,6 +17,7 @@ import { BUILD_SECTIONS } from "../build/sections.js";
 import { FilesTreePanel } from "../drive/FilesTreePanel";
 import { VaultPanel } from "../vault/VaultPanel";
 import { VAULT_PANEL_MIN } from "../vault/vault-nav";
+import { SETTINGS_ITEMS } from "./settings-items.js";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -66,25 +67,7 @@ function FlowsLoader() {
 const BUILD: PanelItem[] = BUILD_SECTIONS.map(([id, label, icon, href]) => ({ id, label, href, icon: icon as PanelItem["icon"] }));
 
 /** The sections of Settings: what the owner moved under it (sidebar-ia). */
-const SETTINGS: PanelItem[] = [
-  { id: "spaces", label: "Space", href: "/u/spaces", icon: "space", group: "Space" },
-  { id: "roles", label: "People and roles", href: "/u/settings/roles", icon: "users", group: "Space" },
-  { id: "connections", label: "Connections", href: "/u/connections", icon: "link", group: "Space" },
-  { id: "rules", label: "Rules", href: "/u/settings/rules", icon: "list", group: "Space" },
-  { id: "tags", label: "Tags", href: "/u/tags", icon: "hash", group: "Space" },
-  { id: "memory", label: "Memory", href: "/u/memory", icon: "memory", group: "Space" },
-  { id: "sites", label: "Sites and publishing", href: "/u/sites", icon: "globe", group: "Space" },
-  { id: "vault", label: "Vault", href: "/u/vault", icon: "vault", group: "Security" },
-  { id: "devices", label: "Devices", href: "/u/settings/devices", icon: "devices", group: "Security" },
-  { id: "permissions", label: "Permissions", href: "/u/settings/permissions", icon: "shield", group: "Security" },
-  { id: "privacy", label: "Privacy", href: "/u/settings/privacy", icon: "eye", group: "Security" },
-  { id: "system", label: "Servers", href: "/u/settings/system", icon: "server", group: "System" },
-  { id: "updates", label: "Updates", href: "/u/settings/updates", icon: "refresh", group: "System" },
-  { id: "backups", label: "Backups", href: "/u/settings/backups", icon: "storage", group: "System" },
-  { id: "account", label: "Account", href: "/u/settings/account", icon: "person", group: "You" },
-  { id: "appearance", label: "Appearance", href: "/u/appearance", icon: "wink", group: "You" },
-  { id: "notifications", label: "Notifications", href: "/u/settings/notifications", icon: "bell", group: "You" },
-];
+const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
 
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
