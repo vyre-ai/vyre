@@ -155,26 +155,73 @@ export function parse(src) {
 
 const str = (/** @type {any} */ v) => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
 /** The pure functions an expression may call. */
+// ---- Times: reading a time in a zone, moving it by a signed amount, and printing it. No imports (the app keeps a byte-for-byte copy of this file); lib/time does the same sums for the rest of Vyre. ----
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** @param {any} v @returns {number | null} a time in milliseconds: a number, a number in a string, or a date text; null when it is none of those */
+function toTime(v) {
+  const ms = typeof v === "number" ? v : typeof v === "string" && v.trim() ? (/^-?\d+(?:\.\d+)?$/.test(v.trim()) ? Number(v) : Date.parse(v)) : NaN;
+  return Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? ms : null;
+}
+/** @param {any} zone */
+const zoneOf = zone => { const z = typeof zone === "string" && zone ? zone : "UTC"; try { new Intl.DateTimeFormat("en-US", { timeZone: z }); return z; } catch { return "UTC"; } };
+/** The wall clock in a zone at an instant. @param {number} ms @param {string} tz */
+function wall(ms, tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(Math.floor(ms / 1000) * 1000)).map(x => [x.type, Number(x.value)]));
+  return { y: p.year, mo: p.month, d: p.day, h: p.hour % 24, mi: p.minute, s: p.second };
+}
+/** The zone's offset from UTC at an instant, in ms. @param {number} ms @param {string} tz */
+const offsetAt = (ms, tz) => { const w = wall(ms, tz); return Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - Math.floor(ms / 1000) * 1000; };
+/** The instant a wall clock shows in a zone. A time that happens twice (clocks go back) is the first; one the clocks skip (they go forward) is moved on by the gap. */
+function instant(w, tz) {
+  const asUtc = Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s);
+  const before = offsetAt(asUtc - 86_400_000, tz), after = offsetAt(asUtc + 86_400_000, tz);
+  const fits = [before, after].map(o => asUtc - o).filter(t => offsetAt(t, tz) === asUtc - t);
+  return fits.length ? Math.min(...fits) : asUtc - before;
+}
+/** Move a time by a signed amount of minutes, hours, days, weeks or months. Minutes and hours are exact; days, weeks and months keep the wall clock in the zone (a daylight saving change does not move "9:00 am"), and a month end stays inside the month (31 Jan plus 1 month is 28 or 29 Feb). @param {number} ms @param {number} amount @param {string} unit @param {string} tz @returns {number | null} */
+function moved(ms, amount, unit, tz) {
+  const u = String(unit).toLowerCase().replace(/s$/, "");
+  if (!Number.isFinite(amount) || !Number.isInteger(amount)) return null;
+  if (u === "minute") return ms + amount * 60_000;
+  if (u === "hour") return ms + amount * 3_600_000;
+  const w = wall(ms, tz);
+  if (u === "day" || u === "week") { const t = new Date(Date.UTC(w.y, w.mo - 1, w.d + amount * (u === "week" ? 7 : 1))); return instant({ ...w, y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate() }, tz); }
+  if (u === "month") {
+    const idx = w.y * 12 + (w.mo - 1) + amount, y = Math.floor(idx / 12), mo = (idx % 12 + 12) % 12 + 1;
+    return instant({ ...w, y, mo, d: Math.min(w.d, new Date(Date.UTC(y, mo, 0)).getUTCDate()) }, tz);
+  }
+  return null;
+}
+const two = (/** @type {number} */ n) => String(n).padStart(2, "0");
 /**
- * A time as people read it, in a zone: "Tue 14 Oct, 2:00 pm" (with the time) or "Tue 14 Oct". The value is a time in milliseconds, a number in a string, or a date text; anything else comes
- * back as its own text so nothing is lost. An unknown zone reads as UTC.
- * @param {any} v @param {any} zone @param {boolean} withTime
+ * A time printed in a zone, optionally after moving it. Named formats: date "14 Oct 2026", time "2:00 pm", datetime "14 Oct 2026, 2:00 pm", weekday "Wed 14 Oct", weekdaytime "Wed 14 Oct, 2:00 pm", iso "2026-10-14T14:00:00-07:00".
+ * Something that is not a time comes back as its own text (a missing value as empty) so nothing is lost. An unknown zone reads as UTC and an unknown format as datetime.
+ * @param {any} v @param {any} zone @param {any} format @param {any} [amount] @param {any} [unit]
  */
-function when(v, zone, withTime) {
+function show(v, zone, format, amount, unit) {
   if (v === null || v === undefined || v === "") return "";
-  const ms = typeof v === "number" ? v : typeof v === "string" ? (/^-?\d+(?:\.\d+)?$/.test(v.trim()) ? Number(v) : Date.parse(v)) : NaN;
-  if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return str(v);
-  const fmt = (/** @type {string} */ tz) => new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(ms));
-  /** @type {Intl.DateTimeFormatPart[]} */ let parts;
-  try { parts = fmt(typeof zone === "string" && zone ? zone : "UTC"); } catch { parts = fmt("UTC"); }
-  const p = (/** @type {string} */ t) => parts.find(x => x.type === t)?.value ?? "";
-  const day = `${p("weekday")} ${p("day")} ${p("month")}`;
-  return withTime ? `${day}, ${p("hour")}:${p("minute")} ${p("dayPeriod").toLowerCase()}` : day;
+  let ms = toTime(v);
+  if (ms === null) return str(v);
+  const tz = zoneOf(zone);
+  if (amount !== undefined && amount !== null) { const m = moved(ms, Number(amount), unit, tz); if (m === null) return str(v); ms = m; }
+  const w = wall(ms, tz), dow = DAYS[new Date(Date.UTC(w.y, w.mo - 1, w.d)).getUTCDay()];
+  const date = `${w.d} ${MONTHS[w.mo - 1]} ${w.y}`, short = `${dow} ${w.d} ${MONTHS[w.mo - 1]}`, time = `${w.h % 12 || 12}:${two(w.mi)} ${w.h < 12 ? "am" : "pm"}`;
+  switch (format) {
+    case "date": return date;
+    case "time": return time;
+    case "weekday": return short;
+    case "weekdaytime": return `${short}, ${time}`;
+    case "iso": { const o = Math.round((Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - Math.floor(ms / 1000) * 1000) / 60_000); return `${w.y}-${two(w.mo)}-${two(w.d)}T${two(w.h)}:${two(w.mi)}:${two(w.s)}${o === 0 ? "Z" : `${o < 0 ? "-" : "+"}${two(Math.floor(Math.abs(o) / 60))}:${two(Math.abs(o) % 60)}`}`; }
+    default: return `${date}, ${time}`;
+  }
 }
 
 export const FUNCTIONS = Object.freeze({
-  date: (/** @type {any} */ v, /** @type {any} */ zone) => when(v, zone, false),
-  datetime: (/** @type {any} */ v, /** @type {any} */ zone) => when(v, zone, true),
+  date: (/** @type {any} */ v, /** @type {any} */ zone) => show(v, zone, "weekday"),
+  datetime: (/** @type {any} */ v, /** @type {any} */ zone) => show(v, zone, "weekdaytime"),
+  addtime: (/** @type {any} */ v, /** @type {any} */ amount, /** @type {any} */ unit, /** @type {any} */ zone) => { const ms = toTime(v); return ms === null ? null : moved(ms, Number(amount), unit, zoneOf(zone)); },
+  format: (/** @type {any} */ v, /** @type {any} */ format, /** @type {any} */ zone, /** @type {any} */ amount, /** @type {any} */ unit) => show(v, zone, format, amount, unit),
   len: (/** @type {any} */ v) => (Array.isArray(v) || typeof v === "string" ? v.length : v && typeof v === "object" ? Object.keys(v).length : 0),
   lower: (/** @type {any} */ v) => str(v).toLowerCase(),
   upper: (/** @type {any} */ v) => str(v).toUpperCase(),
