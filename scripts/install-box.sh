@@ -15,7 +15,7 @@
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
-# when the image can be pulled, VYRE_STORE (auto, the default: each space on Records when this server has room; or sqlite: the small built-in store, 2 GB is enough),
+# when the image can be pulled, VYRE_STORE (auto or unset: every space is on Records; there is no without-Records choice for a person),
 # and VYRE_CODE: the one-time setup code the Vyre app makes when a server is added, for the
 # install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... VYRE_STORE=auto sh` (the variable goes on sh, the reader
 # of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
@@ -151,6 +151,25 @@ rule() {
   fi
 }
 
+# show_space_code: the code that sets this server's space up from the app, from the same command a person runs later (`vyre space up`), so the installer and the command can never differ.
+# Goes the way `vyre up` went (through sudo when this account cannot reach Docker), waits for the box to be able to make a code (a first start can take a moment), and prints nothing and
+# returns 1 when it cannot, so finish says the older line instead. The last line says how to get the code again.
+show_space_code() {
+  [ "$DRY" = 0 ] || return 1
+  # Only to a terminal: an install run by cloud-init, CI or a log collector writes its output to a file others may read, and the code would sit there after the person has it. VYRE_SPACE_CODE_PIPED=1 is for the tests.
+  if ! [ -t 1 ] && [ "${VYRE_SPACE_CODE_PIPED:-0}" != 1 ]; then say "  Get your space code on the server: ${BOLD}vyre space up${RESET}"; return 0; fi
+  n=0
+  while [ "$n" -lt "${VYRE_SPACE_TRIES:-15}" ]; do
+    sc=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" space up 2>/dev/null || true)
+    case "$sc" in
+      *"Your space code:"*) printf '%s\n' "$sc"; say "  Get it again any time: ${BOLD}vyre space up${RESET}"; return 0 ;;
+      *"already set up"*) return 1 ;;
+    esac
+    n=$((n + 1)); sleep 1
+  done
+  return 1
+}
+
 # finish: what just happened and the one next step. It ends on that step, with no sign-off.
 finish() {
   say ""
@@ -164,17 +183,19 @@ finish() {
     say "  $BOLD${BONE}Vyre is running on this server.$RESET"
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
+    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
+    RECORDS_NOTE="  Records is still setting up and can take several minutes; the app shows when it is ready."
     if [ "$LINK_ONLY" = 1 ]; then
       say "  Whether it is paired went to stdout for the program that asked."
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
+    elif [ -n "$CODE" ]; then
+      say "  Go back to the Vyre app to finish."
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
     else
-      if [ -n "$CODE" ]; then
-        say "  Go back to the Vyre app to finish."
-      else
-        say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
-      fi
+      # The space code is the last thing on the screen, so the Records note goes before it.
+      if [ "$STORE_CHOICE" != sqlite ]; then say "$RECORDS_NOTE"; fi
+      show_space_code || say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
     fi
-    # "Running" means the server answers. Records takes several minutes more on a first start (its types are set up one module at a time), and the app says when it is ready.
-    if [ "$STORE_CHOICE" != sqlite ]; then say "  Records is still setting up and can take several minutes; the app shows when it is ready."; fi
   fi
   say ""
 }
@@ -870,26 +891,35 @@ SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
 SPACE_MEM_TINY_MB=${VYRE_SPACE_MEM_TINY_MB:-2521}
 TINY_BELOW_MB=6144
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
-# preflight: say plainly what this server can host. A box too small for Twenty runs on the small built-in store, which is a choice the person
-# should hear before installing, not after. Reads MemAvailable and the free disk under $DIR; never fails the install.
+# preflight: say plainly what this server can host. Records is always on, so a server too small for it is turned away here, before anything is laid out, with the numbers Vyre needs.
+# Reads MemTotal and MemAvailable (VYRE_MEMINFO is for the tests) and the free disk under $DIR.
+MIN_MEM_MB=${VYRE_MIN_MEM_MB:-3500}
+NEEDS_WORDS="Vyre needs at least 4 GB of memory, 8 GB recommended."
 preflight() {
   mem=""; disk=""
-  if [ -r /proc/meminfo ]; then mem=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  mi=${VYRE_MEMINFO:-/proc/meminfo}
+  if [ -r "$mi" ]; then mem=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' "$mi"); fi
   d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
   [ -d "$d" ] || d=/
   disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
-  if [ -z "$mem" ]; then say "  Memory could not be read here. Vyre uses Records if there is room, and the small built-in store if not."; return 0; fi
-  # the same rule the daemon uses: a machine under 6 GB is measured against the tiny profile's need, not the small one's
-  total=""; if [ -r /proc/meminfo ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo); fi
+  if [ -z "$mem" ]; then say "  Memory could not be read here. $NEEDS_WORDS"; return 0; fi
+  total=""; if [ -r "$mi" ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' "$mi"); fi
+  if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$MIN_MEM_MB" ]; then
+    say "  This server has $((total / 1024)).$(( (total % 1024) * 10 / 1024 )) GB of memory. $NEEDS_WORDS"
+    [ "$DRY" = 1 ] || die "this server has too little memory for Vyre. $NEEDS_WORDS Use a larger server, then run this again."
+    return 0
+  fi
+  # a machine under 6 GB is measured against the tiny profile's need, not the small one's (the same rule the daemon uses)
   SPACE_MEM_MB_USED=$SPACE_MEM_MB
   if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$TINY_BELOW_MB" ]; then SPACE_MEM_MB_USED=$SPACE_MEM_TINY_MB; fi
   fit=$(( (mem - 300) / (SPACE_MEM_MB_USED - 300) )); [ "$fit" -ge 0 ] || fit=0
   if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Records needs $SPACE_DISK_MB MB. Vyre will use the small built-in store."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Records needs $SPACE_DISK_MB MB."
+    [ "$DRY" = 1 ] || die "there is not enough disk for Records ($disk MB free, $SPACE_DISK_MB MB needed). Free some disk space or use a larger server, then run this again."
   elif [ "$fit" -ge 1 ]; then
     say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space$([ "$fit" = 1 ] || printf s) with Records (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
   else
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. Records needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB. That is more than this server has, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free, and Records needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB. $NEEDS_WORDS Close what else runs here or use a larger server."
   fi
 }
 
@@ -1074,7 +1104,12 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
-  case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
+  # Records is always on. The built-in store stays only for the CI install proof (VYRE_PROOF_BUILTIN_STORE=1), never as a person's choice.
+  case "${VYRE_STORE:-auto}" in
+    auto) ;;
+    sqlite) [ "${VYRE_PROOF_BUILTIN_STORE:-0}" = 1 ] || die "Vyre always uses Records, so VYRE_STORE=sqlite is not a choice any more. Run the install line again without VYRE_STORE (or with VYRE_STORE=auto)." ;;
+    *) die "VYRE_STORE is auto (Records), not ${VYRE_STORE}. Run the install line again without it." ;;
+  esac
   # kept in our own variable and taken out of the environment: this script runs as root on most servers (a fresh droplet logs in as root), and a root run of the vyre command refuses any VYRE_ setting it inherits (its root_guard)
   STORE_CHOICE=${VYRE_STORE:-auto}; unset VYRE_STORE
   early_one_install

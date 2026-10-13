@@ -11,7 +11,7 @@ export const noteLines = (notes: UpdateStatus["notes"] | null | undefined): stri
 export function updateLine(s: UpdateStatus): string {
   if (s.error) return `The last look failed: ${s.error}`;
   if (s.pending) return "An update is being installed.";
-  return s.available ? `Vyre ${s.available} is out. You are on ${s.current}.` : "You are up to date.";
+  return s.available ? `Update available: version ${s.available}. You are on ${s.current}.` : "You are up to date.";
 }
 /** "Checked 3 minutes ago", never a made-up time. */
 export function checkedLine(at: number | null, now: number): string {
@@ -24,7 +24,7 @@ export function howLine(s: UpdateStatus): string {
   if (s.canApply) return "";
   return s.command ? `To update, run ${s.command} on your home.` : "Update from the app that installed Vyre.";
 }
-export const autoLine = (auto: string): string => (auto === "notify" ? "Vyre tells you when an update is out. It never installs one by itself." : auto === "off" ? "Update checks are off." : auto === "install" ? "Vyre installs signed updates by itself." : `Update mode: ${auto}.`);
+export const autoLine = (auto: string): string => (auto === "notify" ? "Vyre tells you when an update is out. It never installs one without your yes." : auto === "off" ? "Update checks are off." : auto === "install" ? "Vyre installs signed updates by itself." : `Update mode: ${auto}.`);
 
 /** The kinds a person can switch, in words. `notice` says a guard was loosened as asked, and nobody switches it off. */
 export const KIND_ROWS: [string, string, string][] = [
