@@ -21,8 +21,8 @@ export function register({ vault, tool }) {
     obj({ password }, ["password"]),
     async (input, { caller }) => {
       const { secretKey, ...r } = await vault.createAccount(input, caller);
-      // The Secret Key stays in this device's own store. Only a terminal (the CLI kit) is given it; an app is not, since nothing in an app needs it and it should not cross a wire.
-      return { ...r, ...(caller === "cli" ? { secretKey } : {}), advice: "Keep the recovery secret on your recovery kit. With it, a forgotten password can be replaced. Without it and the password, the personal vault cannot be opened again." };
+      // The Secret Key stays in this device's own store. Only the owner's own terminal or local surface is given it; an app is not, since nothing in an app needs it and it should not cross a wire.
+      return { ...r, ...(PEOPLE.includes(caller) ? { secretKey } : {}), advice: "Keep the recovery secret on your recovery kit. With it, a forgotten password can be replaced. Without it and the password, the personal vault cannot be opened again." };
     },
     presence("Set a password for your personal vault", () => "Set a password for your personal vault and make its recovery secret"));
 

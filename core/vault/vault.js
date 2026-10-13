@@ -764,6 +764,7 @@ export class Vault {
     const auk = accountUnlockKey({ password, secretKey: sk, acct: rec.acct, salt, params });
     sk.fill(0);
     // The new Secret Key is stored before the account file, as in createAccount: a crash never leaves an account whose Secret Key is nowhere (the kit still resets it).
+    await this.secretKeys.remove?.();
     await this.secretKeys.put(secretKey);
     writeJsonFile(this.dir, ACCOUNT, { ...rec, ...params, salt: salt.toString("base64"), personal: { kv: Number(rec.personal.kv), ...wrapVaultKey(auk, pvk, vkAad(PERSONAL, Number(rec.personal.kv), rec.acct)) } });
     fs.rmSync(path.join(this.dir, TOUCHID), { force: true });

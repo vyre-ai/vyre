@@ -6,6 +6,6 @@
   "core/spaces/index.js": 2600,
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2047,
-  "core/vault/vault.js": 2037
+  "core/vault/vault.js": 2097
  }
 }
