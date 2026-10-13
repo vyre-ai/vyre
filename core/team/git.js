@@ -1,5 +1,5 @@
 // @ts-check
-// git — the mechanical half of code isolation (ADR 0031 section 8): finding a project's repo,
+// git - the mechanical half of code isolation (ADR 0031 section 8): finding a project's repo,
 // giving a worktree-isolated teammate its own worktree and branch, and merging the project's
 // branch into it before each request. Vyred runs every one of these, never the model, and never
 // `git init`s on the person's behalf (team.add refuses isolation: worktree outside a real repo).
@@ -12,7 +12,7 @@
 //
 // On top of that, and nothing the repo says to run (e2e and reviewer, slice A, HIGH): a teammate
 // writes the repo's shared .git to commit, so it can pull in config from elsewhere (include,
-// includeIf) or name an alias — neither is a driver git-safe.js can override by name, so checkout
+// includeIf) or name an alias - neither is a driver git-safe.js can override by name, so checkout
 // and merge refuse to run at all while the repo's own config has one, and say which (unsafeConfig).
 //
 // Revs and paths go after --end-of-options. Branch names come only from `symbolic-ref` on the
@@ -20,7 +20,7 @@
 // its NAME pattern, so neither can start with "-" anyway.
 //
 // git itself is the only repo content this file ever executes. The project's own test command
-// (detectTestCommand, below) is a string it merely guesses at — nothing here runs it. Running it
+// (detectTestCommand, below) is a string it merely guesses at - nothing here runs it. Running it
 // would mean vyred executing a teammate's own package.json scripts.test/conftest.py/build.rs as
 // vyred, outside every permission floor (reviewer, slice B, HIGH); only the integrator's own
 // teammate session may run it, under its own floor and uid (core/team/index.js's finalizeMerge).
@@ -35,13 +35,13 @@ const GIT_MS = 15_000;
  * Whoever made a merge vyred ran: vyred, not whoever last committed. Global config is off, so git
  * would otherwise refuse to guess. `-c` options, not env: lib/git-safe.js's own environment is
  * deliberately narrow (it strips every GIT_* key before rebuilding it from scratch), and that is
- * a line worth keeping bright rather than punching a caller-supplied hole in for one identity —
+ * a line worth keeping bright rather than punching a caller-supplied hole in for one identity -
  * these two config keys cover both GIT_AUTHOR_* and GIT_COMMITTER_* at once anyway. Must come
  * before the subcommand name in `args` (global git options, not merge/reset/commit options).
  *
  * Also forces signing and signature-checking off (reviewer LOW): the old local OFF list did this
  * before the git-safe move dropped it, since lib/git-safe.js's own gpg.program=false already makes
- * a real signature impossible to produce or check either way — but a teammate can still write
+ * a real signature impossible to produce or check either way - but a teammate can still write
  * commit.gpgSign=true or merge.verifySignatures=true into the shared .git/config, and gpg.program
  * being neutered then just means every vyred merge fails outright ("gpg failed to sign", or a
  * signature check with no way to pass), a cheap denial of service the command line can prevent
@@ -96,7 +96,7 @@ export async function repoRoot(dir) {
  * The branch currently checked out at `dir`, or null (detached HEAD, an empty repo with no commit
  * yet). Reads the full ref and strips the `refs/heads/` prefix ourselves, rather than asking git
  * for `--short`: git's own shortening is ambiguity-aware, so a tag sharing the branch's short name
- * makes `--short` hand back `"heads/<name>"` instead of `"<name>"` to disambiguate — exactly the
+ * makes `--short` hand back `"heads/<name>"` instead of `"<name>"` to disambiguate - exactly the
  * tag-hijack shape (reviewer, slice A, MEDIUM), just leaking through here instead of a merge.
  */
 export async function currentBranch(dir) {
@@ -114,7 +114,7 @@ export const branchOf = role => `team/${role}`;
  * A branch name, fully qualified as `refs/heads/<name>`, for every place vyred hands a branch or
  * base name to git as a revision. A bare name is ambiguous: gitrevisions' own disambiguation order
  * checks `refs/tags/<name>` *before* `refs/heads/<name>`, so a teammate's Bash (a worktree is not
- * a security boundary) can plant a tag named like the base branch — "main", say — and have every
+ * a security boundary) can plant a tag named like the base branch - "main", say - and have every
  * merge and every diff range vyred computes quietly run against that tag's commit instead of the
  * real branch tip (reviewer, slice A, MEDIUM). Never applied to a plain sha or to "HEAD".
  */
@@ -160,7 +160,7 @@ export async function ensureWorktree(repo, role, base) {
   // The re-add case (an existing branch) takes the bare `branch`, not `B(branch)`: unlike merge,
   // rev-parse and the rest of this file, `worktree add <dir> <name>` resolves a bare name through
   // its own branch dwim (refs/heads/<name> first, to check the branch out) before it is ever
-  // treated as a generic revision, so a same-named tag can't hijack it here either way — but a
+  // treated as a generic revision, so a same-named tag can't hijack it here either way - but a
   // fully qualified refs/heads/<name> defeats that dwim outright and checks out a detached HEAD
   // instead (reviewer, slice A, MEDIUM, reproduced): isOwnWorktree then finds no branch at all,
   // and every request to a re-added teammate fails as "not its own worktree any more".
@@ -199,7 +199,7 @@ export async function shaRange(repo, branch, base) {
 }
 
 /**
- * The commit a ref currently names, or null. `ref` is used exactly as given — "HEAD", or a sha —
+ * The commit a ref currently names, or null. `ref` is used exactly as given - "HEAD", or a sha -
  * so a caller naming a branch must qualify it itself with `B()`; this does not do it for them.
  */
 export async function headSha(dir, ref) {
@@ -212,7 +212,7 @@ export async function headSha(dir, ref) {
  * merge"), discarding whatever it held from a previous attempt. Vyred's own act. No
  * `--end-of-options`: unlike the parse-options commands elsewhere in this file, `git reset`'s own
  * argument parser refuses that flag outright ("must come before non-option arguments") whatever
- * position it is given, so it cannot be added here — safe anyway, since `sha` is never raw
+ * position it is given, so it cannot be added here - safe anyway, since `sha` is never raw
  * caller-controlled text: it is always a hash `headSha()` itself already read with `--verify`.
  */
 export async function resetTo(worktreeDir, sha) {
@@ -229,7 +229,7 @@ export async function resetTo(worktreeDir, sha) {
  * clean up before it ever sees it.
  */
 export function mergeBranchIn(worktreeDir, branch) {
-  // --no-ff: a fast-forwardable merge (the common case — a teammate's branch with nothing new
+  // --no-ff: a fast-forwardable merge (the common case - a teammate's branch with nothing new
   // from main since it forked) would otherwise silently move the ref with no merge commit at
   // all, so the result vyred reports ("Merged <branch> into <base>, a..b") and what team.merge
   // actually checks in (a real commit whose message names the merge) would both be a fiction.
@@ -248,7 +248,7 @@ export async function stillConflicted(worktreeDir) {
  * compare-and-swap (section 8), so a `ref` moved by anything else since vyred last read it (a
  * teammate's own Bash can write the shared .git; a worktree is not a security boundary) fails
  * this instead of being silently overwritten. `fromSha` must be a value vyred itself recorded,
- * never read fresh from the ref it is about to swap — that would defeat the whole check.
+ * never read fresh from the ref it is about to swap - that would defeat the whole check.
  */
 export async function compareAndSwap(repo, ref, fromSha, toSha) {
   return (await git(repo, ["update-ref", `refs/heads/${ref}`, toSha, fromSha])).ok;
@@ -259,7 +259,7 @@ export async function compareAndSwap(repo, ref, fromSha, toSha) {
  * tests are needed, and a merge needs only a clean merge. A string only, never run by anything in
  * this file: `npm test`, `pytest` and the rest execute repo content on vyred's own say-so (a
  * teammate's own package.json scripts.test, conftest.py, a Cargo build script) the moment vyred
- * runs them itself, as vyred, outside every permission floor (reviewer, slice B, HIGH — this file
+ * runs them itself, as vyred, outside every permission floor (reviewer, slice B, HIGH - this file
  * used to run it with a local `runTests`; removed rather than left unused, so the HIGH can't come
  * back by a future call site reaching for it). Only the integrator's own teammate session may run
  * this, under its own floor and uid, in core/team/index.js's finalizeMerge; vyred only checks the

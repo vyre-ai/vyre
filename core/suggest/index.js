@@ -31,7 +31,7 @@ const BIAS = { agent: 4, project: 3, thread: 2, person: 1 };
 
 const str = { type: "string" };
 const one = (/** @type {unknown} */ s) => String(s ?? "").replace(/\s+/g, " ").trim();
-const cut = (/** @type {string} */ s, n = 200) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cut = (/** @type {string} */ s, n = 200) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const folder = (/** @type {unknown} */ p) => String(p || "").split("/").filter(Boolean).pop() || "";
 const list = (/** @type {any} */ d, /** @type {string} */ key) => (Array.isArray(d) ? d : d && Array.isArray(d[key]) ? d[key] : []);
 

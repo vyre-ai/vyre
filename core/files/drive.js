@@ -638,7 +638,7 @@ export function drive(ctx, { role, guard: g, roots }) {
           // searching the whole share, as before.
           //
           // Compared against the share's own configured (not yet realpath-resolved) path, the
-          // same domain scope.folders itself lives in — a project's granted folder is never
+          // same domain scope.folders itself lives in - a project's granted folder is never
           // realpath-resolved either, so comparing against shareReal directly could miss a match
           // behind a symlinked temp dir. Each winning raw folder is then resolved the same way
           // folder() resolved the share itself (the module-level real(), not this loop's own
@@ -854,7 +854,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         const scope = await reach(ctx, meta && meta.caller, meta);
         // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
         // not enough when the share is broader than the grant (a share of /work, a grant of only
-        // /work/harlow-site) — every path under that share, including a sibling project's,
+        // /work/harlow-site) - every path under that share, including a sibling project's,
         // passed. The requested path itself must sit inside the grant.
         if (!scope.all && !within(want, scope.folders)) return { local: null };
         const m = load();

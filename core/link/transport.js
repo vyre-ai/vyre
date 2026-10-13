@@ -1,5 +1,5 @@
 // @ts-check
-// transport — how the Mac's vyred talks to the box's vyred over the tailnet.
+// transport - how the Mac's vyred talks to the box's vyred over the tailnet.
 //
 // The Mac is a client of the box's tailnet listener (ADR 0002): HTTPS to the box's address, no
 // Origin, identified on the box by `tailscale whois` of the Mac's WireGuard address. This file

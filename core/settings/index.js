@@ -51,7 +51,7 @@ export const GROUPS = [
 ];
 
 /** What a secret setting's value reads as to anyone but the person. */
-export const MASK = "•••• set";
+export const MASK = "\u2022\u2022\u2022\u2022 set";
 
 /**
  * A secret setting's value as a caller who isn't the person sees it: an object keeps its names

@@ -1,5 +1,5 @@
 // @ts-check
-// environment — what every agent Vyre starts is told about the place it works, on every model and driver (team/0.3/DESIGN-agent-environment.md).
+// environment - what every agent Vyre starts is told about the place it works, on every model and driver (team/0.3/DESIGN-agent-environment.md).
 //
 // One builder over live reads. Every name, type, field, count and state in the text comes from a read of this install; the only fixed words are one teaching sentence per
 // family of tools, and a family's sentence appears only when that family is reachable by this agent. A source that does not answer drops its line, never guesses.

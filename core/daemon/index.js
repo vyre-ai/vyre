@@ -1,5 +1,5 @@
 // @ts-check
-// vyred — the one process per machine that runs every Vyre service.
+// vyred - the one process per machine that runs every Vyre service.
 //
 // It opens the store, starts the modules this machine's role calls for, and serves the API on
 // a unix socket in VYRE_HOME. Surfaces, the Harness hooks and the CLI all talk to it here and

@@ -1,5 +1,5 @@
 // @ts-check
-// search — find the turns that answer a question, by their words and by their meaning.
+// search - find the turns that answer a question, by their words and by their meaning.
 //
 // Two ways into the candidate pool. FTS5 finds turns that share words with the question, first
 // as typed (strict) and then any of its words (loose). The dense index (dense.js) finds turns
@@ -80,7 +80,7 @@ function underAny(/** @type {string[]} */ cwds, /** @type {string[]} */ sessions
 function match(db, expr, { role, cwds, sessions, limit }) {
   const where = underAny(cwds, sessions);
   const sql = `SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, t.rank AS rank,
-      snippet(recall_turns, 4, '«', '»', '…', 16) AS snippet,
+      snippet(recall_turns, 4, '«', '»', '\u2026', 16) AS snippet,
       s.name, s.title, s.cwd
     FROM recall_turns t JOIN recall_sessions s ON s.id = t.session
     WHERE recall_turns MATCH ?${role ? " AND t.role = ?" : ""}${where.sql}
@@ -122,12 +122,12 @@ export const DENSE_K = 200;
  * SHIPPED all-role index at dense_weight 0.2-0.3 it does not: rrf_k pushes a keyword rank down
  * faster than a dense rank at the SAME rrf_k when dense_weight < 1, so at 60 a candidate ranked
  * ~5th by keyword but 1st by dense could already outscore the true top keyword answer sitting
- * alone at rank 0 (score 0.8 vs 0.94 at k=60, worked out in the sweep) — the exact shape of the
+ * alone at rank 0 (score 0.8 vs 0.94 at k=60, worked out in the sweep) - the exact shape of the
  * "kw wins" failures a differential pass over real queries turned up (recall.md). A smaller k
  * sharpens the top of BOTH lists relative to their tails, so a lone strong keyword match is no
  * longer outrun by a weaker one riding dense agreement. Swept 5/8/10/12/20/30/45 x dense_weight
  * 0.15-0.35 on the real corpus, cross-checked against the fictional set every time: rrf_k 10 at
- * dense_weight 0.25 (unchanged) was the best point found — real hybrid MRR 0.549 -> 0.597,
+ * dense_weight 0.25 (unchanged) was the best point found - real hybrid MRR 0.549 -> 0.597,
  * recall 0.887 -> 0.897, fictional hybrid MRR/recall unchanged at 0.881/0.821 (no regression),
  * nonsense false-positive rate unchanged at 1/30 (the floor is untouched by rrf_k). This is the
  * first change in this pass that clears keyword's own MRR (0.572) outright. See recall.md.
@@ -139,7 +139,7 @@ export const RRF = 10;
  * MRR/recall@10 were 0.58/0.866 at 0.05, 0.57/0.876 at 0.1, 0.549/0.887 at 0.25 (kept), against
  * keyword's 0.572/0.866. Lower weights get closer to (0.05: past) keyword's MRR on the real
  * corpus, but every weight under 0.25 also drops the FICTIONAL set's hybrid MRR from 0.881 to
- * 0.81 (still above the pre-this-branch 0.845, but a real step down from 0.25's own 0.881) —
+ * 0.81 (still above the pre-this-branch 0.845, but a real step down from 0.25's own 0.881) -
  * apparently a rank-ordering threshold in that small a corpus, not a smooth tradeoff. Kept at
  * 0.25 because the fictional set is the one measurement here that must not regress; re-checked
  * against the retuned rrf_k (10) above and still the best point. See team/archive/work-journals/recall.md.

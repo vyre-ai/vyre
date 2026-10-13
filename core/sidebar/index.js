@@ -123,7 +123,7 @@ export default {
 
     const doEdit = async (/** @type {string} */ person, /** @type {any} */ i) => {
       const sp = spaceArg(i);
-      // reset: back to the team's order (or the built-in places) — the person's own list is dropped
+      // reset: back to the team's order (or the built-in places) - the person's own list is dropped
       if (i && i.op === "reset") {
         write(`mine:${person}`, null);
         ctx.events.emit("sidebar.changed", { scope: "mine", op: "reset" });

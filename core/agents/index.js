@@ -1,5 +1,5 @@
 // @ts-check
-// agents — the assistant and the agents you make (docs/SPEC.md section 10).
+// agents - the assistant and the agents you make (docs/SPEC.md section 10).
 //
 // An agent is a record, not a process. Its work happens in ordinary headless Claude Code
 // threads run by the switchboard, so everything true of a thread (one keyboard, questions

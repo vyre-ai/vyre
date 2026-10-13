@@ -14,7 +14,7 @@
 import crypto from "node:crypto";
 
 /** The question as a key: lower case, words only, so "What's my wife's name?" matches "whats my wifes name". */
-export const questionKey = (/** @type {string} */ q) => String(q || "").toLowerCase().replace(/['’`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+export const questionKey = (/** @type {string} */ q) => String(q || "").toLowerCase().replace(/['\u2019`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
 /** An answer's id: the question, the answer and what it stands on, so it is stable across asks. */
 export const answerId = (/** @type {string} */ q, /** @type {string} */ answer, /** @type {string[]} */ refs) =>

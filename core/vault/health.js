@@ -86,7 +86,7 @@ export function estimateBits(pw) {
   return Math.max(0, Math.round(bits * 10) / 10);
 }
 
-/** "mail.google.co.uk" → "google.co.uk"; "api.github.com" → "github.com". Good enough for a list lookup. */
+/** "mail.google.co.uk" -> "google.co.uk"; "api.github.com" -> "github.com". Good enough for a list lookup. */
 export function registrable(host) {
   const parts = String(host || "").toLowerCase().replace(/\.$/, "").split(".").filter(Boolean);
   if (parts.length <= 2) return parts.join(".");

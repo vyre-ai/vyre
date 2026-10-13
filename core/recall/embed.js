@@ -1,5 +1,5 @@
 // @ts-check
-// embed — text to vector, on this machine, so search can rank by meaning and not only by words.
+// embed - text to vector, on this machine, so search can rank by meaning and not only by words.
 //
 // One model: all-MiniLM-L6-v2, 384 dimensions, int8 ONNX on the CPU through transformers.js.
 // Nothing leaves the machine; the corpus is people's work.

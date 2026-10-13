@@ -72,20 +72,20 @@ export function parseAsk(text) {
   try { const j = JSON.parse(m[0]); return j && typeof j === "object" ? j : null; } catch { return null; }
 }
 
-const norm = s => String(s || "").toLowerCase().replace(/[‘’`]/g, "'");
+const norm = s => String(s || "").toLowerCase().replace(/[\u2018\u2019`]/g, "'");
 /** The words of an answer that must be in its sources: names, numbers, paths, identifiers, quoted words. */
 export function mustAppear(answer) {
   const a = String(answer || "");
   const out = new Set();
-  for (const m of a.matchAll(/["“]([^"”]{2,60})["”]/g)) out.add(m[1]);
+  for (const m of a.matchAll(/["\u201c]([^"\u201d]{2,60})["\u201d]/g)) out.add(m[1]);
   for (const sentence of a.split(/(?<=[.!?])\s+/)) {
-    const toks = sentence.split(/\s+/).map(w => w.replace(/^[("'“‘\[]+|[)"'”’\],;:!?]+$|\.$/g, "")).filter(Boolean);
+    const toks = sentence.split(/\s+/).map(w => w.replace(/^[("'\u201c\u2018\[]+|[)"'\u201d\u2019\],;:!?]+$|\.$/g, "")).filter(Boolean);
     let run = [], start = -1;
     const flush = () => { if (run.length && !(start === 0 && run.length === 1)) out.add(run.join(" ")); run = []; };
     toks.forEach((w, i) => {
       // A number, a path, an identifier: a digit, a slash or underscore, or a dot or dash inside it.
       if (/\d|[/_]|\w[.-]\w/.test(w)) out.add(w);
-      if (/^[A-Z][a-zA-Z'’-]+$/.test(w)) { if (!run.length) start = i; run.push(w.replace(/['’]s$/, "")); } else flush();
+      if (/^[A-Z][a-zA-Z'\u2019-]+$/.test(w)) { if (!run.length) start = i; run.push(w.replace(/['\u2019]s$/, "")); } else flush();
     });
     flush();
   }

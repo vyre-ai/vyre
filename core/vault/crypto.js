@@ -1,5 +1,5 @@
 // @ts-check
-// crypto — every primitive the Vault uses, from node:crypto and nothing else.
+// crypto - every primitive the Vault uses, from node:crypto and nothing else.
 //
 // The reasoning for each choice is in docs/adr/0001-vault-crypto.md and, for v2, in
 // docs/adr/0006-vault-next.md decision 1. In short: a device key opens the agent vault's key

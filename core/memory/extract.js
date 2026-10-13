@@ -1,5 +1,5 @@
 // @ts-check
-// extract — what one turn names: people and organisations, email addresses, domains, repos, and
+// extract - what one turn names: people and organisations, email addresses, domains, repos, and
 // the few phrasings that say how they relate ("Dana Reyes (dana@...)", "Sam Okafor at ...").
 //
 // Pure: text in, things out. No database, no clock, no model. The prototype ran this over
@@ -25,9 +25,9 @@ const REPO = [
 ];
 // A capitalised word, then up to three more joined by spaces or " & ". Spaces only: a name
 // never runs across a line break, and a heading followed by a paragraph is not one name.
-const WORD = "[A-Z][a-z]+(?:[A-Z][a-z]+)?(?:['’-][A-Z]?[a-z]+)?";
+const WORD = "[A-Z][a-z]+(?:[A-Z][a-z]+)?(?:['\u2019-][A-Z]?[a-z]+)?";
 const RUN = new RegExp(`${WORD}(?:[ \\t]+(?:&[ \\t]+)?${WORD}){0,3}`, "g");
-const SKIP_BACK = new Set([" ", "\t", "*", "_", "#", ">", '"', "'", "“", "‘", "(", "[", "`", "-"]);
+const SKIP_BACK = new Set([" ", "\t", "*", "_", "#", ">", '"', "'", "\u201c", "\u2018", "(", "[", "`", "-"]);
 const SENTENCE_END = new Set([".", "!", "?", ":", ";", "\n", "|"]);
 
 /** Is the text at `i` the start of a sentence, a line or a list item? */
@@ -74,7 +74,7 @@ function names(text) {
     const kept = ws.slice(a, b);
     const real = kept.filter(x => x.w !== "&");
     if (real.length < 2) continue;
-    const lower = real.map(x => x.w.toLowerCase().replace(/['’].*$/, ""));
+    const lower = real.map(x => x.w.toLowerCase().replace(/['\u2019].*$/, ""));
     if (lower.some(w => HEADINGS.has(w))) continue;
     if (lower.some(w => TOOL_WORDS.has(w))) continue;
     const start = kept[0].at, last = kept[kept.length - 1];

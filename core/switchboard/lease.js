@@ -1,5 +1,5 @@
 // @ts-check
-// lease — one surface types into a thread at a time (security floor, rule 4).
+// lease - one surface types into a thread at a time (security floor, rule 4).
 //
 // Why: a Claude Code transcript is an append-only file. Two writers on one session append in
 // turn, and the file becomes something neither side wrote; nothing downstream can merge it. The

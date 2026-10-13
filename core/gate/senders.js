@@ -30,7 +30,7 @@ const MAX_BYTES = 2_000_000;
  *   fetch?: typeof fetch }} SendDeps
  */
 
-const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const isStr = v => typeof v === "string";
 const noBreak = (v, what) => { if (/[\r\n]/.test(v)) throw new Error(`${what} cannot contain a line break`); };
 

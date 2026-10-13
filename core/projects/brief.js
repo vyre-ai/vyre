@@ -1,5 +1,5 @@
 // @ts-check
-// brief — what a thread should know the moment it starts inside a project.
+// brief - what a thread should know the moment it starts inside a project.
 //
 // When a thread opens in a project it should already know what the project is, who is involved,
 // what the other threads have been doing and what the project's memory holds, without anyone
@@ -35,7 +35,7 @@ export function ago(t, now = Date.now()) {
 /** A thread's label on one short line. An unnamed thread is labelled by its first message, which can be a paragraph. */
 export function label(t, max = 80) {
   const s = String((t && (t.name || t.title)) || "(untitled)").replace(/\s+/g, " ").trim();
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  return s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
 }
 
 /** One memory fact as a line, whatever shape the memory module returns it in. */
@@ -73,14 +73,14 @@ export function compose({ project, threads = [], facts = [], instructions = "", 
   const fl = facts.map(factLine).filter(Boolean).slice(0, FACTS);
   if (fl.length) {
     lines.push("From this project's memory (facts found in its threads, not verified):");
-    for (const f of fl) lines.push(`- ${String(f).length > 160 ? String(f).slice(0, 159) + "…" : f}`);
+    for (const f of fl) lines.push(`- ${String(f).length > 160 ? String(f).slice(0, 159) + "\u2026" : f}`);
   }
   let text = lines.join("\n");
   // Over the cap, cut at a line break so Claude never sees half a name or address.
   const cap = LIMIT + (hasDocs || hasContext ? 900 : 0);
   if (text.length > cap) {
     const cut = text.lastIndexOf("\n", cap - 2);
-    text = (cut > 0 ? text.slice(0, cut) : text.slice(0, cap - 2)) + "\n…";
+    text = (cut > 0 ? text.slice(0, cut) : text.slice(0, cap - 2)) + "\n\u2026";
   }
   return text;
 }

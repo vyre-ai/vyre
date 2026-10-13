@@ -1,5 +1,5 @@
 // @ts-check
-// curator — the only writer of Memory.
+// curator - the only writer of Memory.
 //
 // Sessions read; the curator writes. That rule is not about locking. A session that writes its
 // own memory can convince itself of something false and then cite it back as established fact;

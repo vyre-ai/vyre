@@ -1,5 +1,5 @@
 // @ts-check
-// team — project teammates (docs/adr/0031-teammates.md): a named, persistent agent per role per
+// team - project teammates (docs/adr/0031-teammates.md): a named, persistent agent per role per
 // project, a notes file that is its memory of record, and one serial inbox that every session,
 // person and other teammate of the project summons it through.
 //
@@ -22,7 +22,7 @@
 // team.default.get/set, team.project-has-any and team.project-append are the pieces core/team owns
 // so sessions can wire every project session's tool set and append at session start without
 // core/team ever touching a session directly (the module boundary). Not wired into a real
-// session yet — that part is sessions' (core/sessions/switchboard), queued behind their rc.2
+// session yet - that part is sessions' (core/sessions/switchboard), queued behind their rc.2
 // work per the lead.
 
 import fs from "node:fs";
@@ -143,7 +143,7 @@ export const agentName = (role, slug) => `${role}-${slug}`.slice(0, 31).replace(
 /** A free-text label (a caller's name, a thread id) made safe inside an XML-ish attribute: no quote, no angle bracket. */
 export const attr = s => String(s == null ? "" : s).replace(/[<>"&\n\r]/g, "").slice(0, 200);
 /** Neutralise anything that could be read as one of our own wrapper tags, inside text a teammate or a requester wrote: the opening "<" is dropped and a zero-width space is spliced into the tag name, so nothing that reads it sees a real tag, open or closed. */
-export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([a-z-]+)/gi, (_, slash, name) => `${slash}vyre-${name}​`);
+export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([a-z-]+)/gi, (_, slash, name) => `${slash}vyre-${name}\u200b`);
 
 /** What a teammate's thread is told about itself, before its role instructions. */
 /** What a teammate's thread is told about itself, before its role instructions. Never carries a
@@ -185,7 +185,7 @@ export function preamble(tm) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project_name || tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
     tm.role === INTEGRATOR_ROLE
-      ? "A merge request's own worktree may already have a real conflict in it once you see it: read both sides and fix it with your own tools. If this project has its own test command, vyred never runs it (that would mean vyred running your teammates' own code as itself) — you run it yourself, with Bash, in this worktree, and report the exit code. Call team.merge (not team.done) to check and finish: with a conflict still there, or a test command set but not yet run and reported, it refuses and says which; once nothing remains, pass {\"tests\": {\"exit_code\": <the number the command actually exited with>}} if a test command is set. Never make up an exit code you did not see. Fix more and call it again if refused. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
+      ? "A merge request's own worktree may already have a real conflict in it once you see it: read both sides and fix it with your own tools. If this project has its own test command, vyred never runs it (that would mean vyred running your teammates' own code as itself) \u2014 you run it yourself, with Bash, in this worktree, and report the exit code. Call team.merge (not team.done) to check and finish: with a conflict still there, or a test command set but not yet run and reported, it refuses and says which; once nothing remains, pass {\"tests\": {\"exit_code\": <the number the command actually exited with>}} if a test command is set. Never make up an exit code you did not see. Fix more and call it again if refused. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
       : "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
     "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
   if (tm.filler_character) lines.push("", `You are ${tm.filler}, filling this role. Your own character:`, String(tm.filler_character));
@@ -202,7 +202,7 @@ const ROTATE_RESULT_CAP = 500;
  * A rotated teammate's notes and last results, for the first USER turn of its fresh session, not
  * the system prompt (e2e review, be21345a MEDIUM): this is the teammate's own past writing, which
  * may itself have read anything (web pages, files, other tools' output) before it wrote it, so it
- * is untrusted data like any request's text — nonce'd tags (unguessable, chosen here) plus
+ * is untrusted data like any request's text - nonce'd tags (unguessable, chosen here) plus
  * neutralize() as a second line of defense, and capped, since notes and old results can be long.
  * @param {string} notes @param {{ id: string, state: string, result: string|null }[]} recent
  */
@@ -308,10 +308,10 @@ export default {
       const rest = here.length - shown.length;
       const list = shown.map(tm => {
         const brief = tm.brief || "no brief set";
-        return `${tm.role} (${brief.length > APPEND_BRIEF_MAX ? brief.slice(0, APPEND_BRIEF_MAX - 1) + "…" : brief})`;
+        return `${tm.role} (${brief.length > APPEND_BRIEF_MAX ? brief.slice(0, APPEND_BRIEF_MAX - 1) + "\u2026" : brief})`;
       }).join(", ") + (rest > 0 ? `, and ${rest} more` : "");
       const text = `This project has teammates: ${list}. Send work in their area to them with team_ask and carry on; their results come back to you. Use a subagent only for a one-off lookup or a burst that needs no memory. If the same kind of work keeps coming up and no teammate fits, call team_propose.`;
-      return text.length > APPEND_MAX ? text.slice(0, APPEND_MAX - 1) + "…" : text;
+      return text.length > APPEND_MAX ? text.slice(0, APPEND_MAX - 1) + "\u2026" : text;
     };
     const reqById = id => shapeR(db.prepare("SELECT * FROM team_requests WHERE id = ?").get(id));
     const mustR = id => { const r = reqById(id); if (!r) throw Object.assign(new Error(`no request ${id}; use the id team.ask gave back`), { code: "not_found" }); return r; };
@@ -387,7 +387,7 @@ export default {
      * surface (the daemon downgrades a forged cli/local/deck/capsule label from under a Claude
      * session to plain "mcp", never to a person kind, so this is not the same check as "has
      * neither a thread nor an agent": a bare mcp caller with neither has none of these either,
-     * and must be refused, not handed the run of `input.project` — e2e review round 3).
+     * and must be refused, not handed the run of `input.project` - e2e review round 3).
      */
     /** threads.get answers { thread: <record>, asks, events }, not the record flat; null on any failure. */
     const threadRecord = async thread => { const t = await use("threads.get", { thread }).catch(() => null); return t && t.thread ? t.thread : null; };
@@ -544,14 +544,14 @@ export default {
      * caught, not trusted), merge the teammate's branch in, and only then, when there is nothing
      * left for a session to check, fast-forward main with a compare-and-swap against that same
      * recorded tip. Vyred never runs the project's own test command itself (reviewer, slice B,
-     * HIGH: that command executes repo content — a teammate's own package.json scripts.test,
-     * conftest.py, a Cargo build script — the moment anything runs it, and vyred running it would
+     * HIGH: that command executes repo content - a teammate's own package.json scripts.test,
+     * conftest.py, a Cargo build script - the moment anything runs it, and vyred running it would
      * be vyred running a teammate's code as itself, outside every permission floor). So a clean
      * merge with a test_command set is never finished here either: it always falls through to the
      * integrator's own session (below, `needsTests`), the same as a real conflict, and only that
      * session's own Bash may run the command, under its own floor and uid, reporting the exit
      * code back through team.merge's `tests` input (finalizeMerge). Vyred's part stays only the
-     * merge, the compare-and-swap, and checking the reported exit code is 0 — never running it.
+     * merge, the compare-and-swap, and checking the reported exit code is 0 - never running it.
      */
     const attemptMerge = async (integrator, req) => {
       const branch = branchFromMergeText(req.text);
@@ -570,13 +570,13 @@ export default {
         detail: `merging ${branch} into ${info.base} conflicts:\n${merged.stderr}`.slice(0, 4000) };
       if (integrator.test_command) {
         return { done: false, needsTests: true, branch, mainSha: recorded, info,
-          detail: `merged ${branch} into ${info.base} cleanly. This project's own test command is set: run it yourself now, in this worktree — vyred never runs it for you:\n${integrator.test_command}\nThen call team.merge with {"tests": {"exit_code": <the command's real exit code>}}.` };
+          detail: `merged ${branch} into ${info.base} cleanly. This project's own test command is set: run it yourself now, in this worktree \u2014 vyred never runs it for you:\n${integrator.test_command}\nThen call team.merge with {"tests": {"exit_code": <the command's real exit code>}}.` };
       }
       const newSha = await headSha(info.dir, "HEAD");
       if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD after a clean merge" };
       if (!(await compareAndSwap(info.repo, info.base, recorded, newSha))) {
         // Someone or something moved `base` since vyred last recorded it (the person's own commit,
-        // or — a worktree is not a security boundary — a teammate's Bash). Resync and let the next
+        // or - a worktree is not a security boundary - a teammate's Bash). Resync and let the next
         // attempt (the automatic one, or team.merge) try again from the real, current tip, rather
         // than overwrite whatever is there now.
         const fresh = await headSha(info.repo, B(info.base));
@@ -592,7 +592,7 @@ export default {
      * once it has run the project's own test command itself and has an exit code to report (its
      * own worktree state, left exactly as it made it: never reset or re-merged here, unlike
      * attemptMerge's first, automatic try). Checks directly that no conflict markers remain, and
-     * — when a test_command is set — that `tests.exit_code` was actually given and is 0; vyred
+     * - when a test_command is set - that `tests.exit_code` was actually given and is 0; vyred
      * takes that report on trust the same way team.done's own result is trusted, and never runs
      * the command itself to double-check (see attemptMerge's own comment). Logs which session
      * attested it (the integrator's own thread id) and the exit code into the merge's own result.
@@ -611,7 +611,7 @@ export default {
       let attested = null;
       if (integrator.test_command) {
         if (!tests || typeof tests.exit_code !== "number") {
-          return { done: false, detail: `this project's own test command is set (${integrator.test_command}); run it yourself in this worktree and call team.merge again with {"tests": {"exit_code": <the command's real exit code>}} — vyred never runs it for you` };
+          return { done: false, detail: `this project's own test command is set (${integrator.test_command}); run it yourself in this worktree and call team.merge again with {"tests": {"exit_code": <the command's real exit code>}} \u2014 vyred never runs it for you` };
         }
         if (tests.exit_code !== 0) {
           return { done: false, detail: `you reported ${integrator.test_command} exited ${tests.exit_code} (not 0); fix it and call team.merge again` };
@@ -659,7 +659,7 @@ export default {
      * Close a request's record (state, result) and tell its caller. Never frees its teammate for
      * the next one: team.done/team.fail call this mid-turn (they are a tool call the teammate's
      * own turn is still inside), so a request being "closed" and its teammate being "free to
-     * start the next one" are different moments — see release() below, and why.
+     * start the next one" are different moments - see release() below, and why.
      */
     const finish = async (req, status, { result = null, result_refs = [] } = {}) => {
       const fresh = reqById(req.id);
@@ -692,7 +692,7 @@ export default {
      * When a worktree-isolated teammate finishes a request with new commits on its branch, queue
      * a merge to the project's integrator: "merge team/<role> <from>..<to>, from request <id>"
      * (ADR 0031 section 8). Skipped when there is no integrator, no new commits, or one is
-     * already queued or running for this branch — a request never piles up behind itself.
+     * already queued or running for this branch - a request never piles up behind itself.
      */
     const queueMergeIfNeeded = async (tm, fromRequest) => {
       if (!tm || tm.isolation !== "worktree" || tm.role === INTEGRATOR_ROLE) return;
@@ -750,7 +750,7 @@ export default {
           // The integrator's own merge is tried mechanically, by vyred, before its session is
           // ever started: a clean merge with no test_command needs no reasoning at all, so no
           // slot and no turn are spent on it. A real conflict, or a test_command that needs
-          // running (vyred never runs it itself — reviewer, slice B, HIGH; see attemptMerge's own
+          // running (vyred never runs it itself - reviewer, slice B, HIGH; see attemptMerge's own
           // comment), reaches its session instead (below, the ordinary dispatch, with the detail
           // in the wrapped prompt), and even then its worktree is left exactly as this attempt
           // left it, ready for it to work on.
@@ -1499,7 +1499,7 @@ export default {
         const result = await finalizeMerge(tm, r, i.tests);
         if (!result.done) throw Object.assign(new Error(result.fatal || result.detail || "the merge is not ready yet"), { code: result.fatal ? "bad_input" : "denied" });
         // "checked by the integrator", plainly, wherever a person reads this (reviewer, slice B):
-        // the exit code is that teammate's own word, not vyred's — vyred only checked it was
+        // the exit code is that teammate's own word, not vyred's - vyred only checked it was
         // reported and was 0 before moving the person's own base branch by compare-and-swap.
         return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}.${result.attested ? ` Tests passed (checked by the integrator; ${result.testCommand}, thread ${result.attested.thread}).` : ""}` });
       },

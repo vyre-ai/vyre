@@ -1,5 +1,5 @@
 // @ts-check
-// timer-hook — loaded into vyred via `node --import` so scripts/perf-check can see every
+// timer-hook - loaded into vyred via `node --import` so scripts/perf-check can see every
 // recurring timer the process registers, including ones buried in a dependency it never
 // imports itself. Wrapping the globals is the only way to be sure nothing is missed.
 //
@@ -9,12 +9,12 @@
 // different treatment and only the caller knows when its idle sampling window began:
 //
 //   - setInterval fires on its own forever once registered, so ANY setInterval call anywhere
-//     in the process's life is a standing recurring timer for as long as the process runs —
+//     in the process's life is a standing recurring timer for as long as the process runs -
 //     core/watchers/index.js registers one at startup (TICK_MS = 15_000) that is still ticking
 //     during idle, which is exactly the kind of thing this exists to catch.
 //   - setTimeout is one-shot by construction. A debounce (core/memory/index.js's `soon`, 250ms)
-//     re-arms the same period many times while events are still arriving — e.g. once per
-//     transcript indexed during startup — which LOOKS like a tight poll loop by call count
+//     re-arms the same period many times while events are still arriving - e.g. once per
+//     transcript indexed during startup - which LOOKS like a tight poll loop by call count
 //     alone but stops dead once things go quiet. Counting all-time setTimeout calls flagged
 //     that debounce as a fake "250ms poll" purely because startup indexed hundreds of sessions
 //     in a burst. So setTimeout is only worth flagging by how often it recurs DURING the idle

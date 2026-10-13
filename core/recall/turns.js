@@ -1,5 +1,5 @@
 // @ts-check
-// turns — reading a past span of a session word for word, and finding turns by what they touched.
+// turns - reading a past span of a session word for word, and finding turns by what they touched.
 //
 // recall_turns holds every turn's text as the transcript said it (redacted, and cut at CLIP
 // characters for the index), so a span is a read of rows in order, with no model and no summary.
@@ -217,7 +217,7 @@ export function keysFor(db, filters) {
 export function label(t, width = 80) {
   const when = t.ts ? new Date(t.ts).toISOString().slice(0, 16).replace("T", " ") : "";
   const text = String(t.text).replace(/\s+/g, " ").trim();
-  return `${pointer(t.session, t.seq)} ${t.role === "user" ? "person" : "assistant"}${when ? " " + when : ""}: ${text.length > width ? text.slice(0, width - 1) + "…" : text}`;
+  return `${pointer(t.session, t.seq)} ${t.role === "user" ? "person" : "assistant"}${when ? " " + when : ""}: ${text.length > width ? text.slice(0, width - 1) + "\u2026" : text}`;
 }
 
 /** A session id as a pointer carries it: its first 8 characters, which `resolve` takes as a prefix. @param {string} id */

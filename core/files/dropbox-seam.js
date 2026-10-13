@@ -32,7 +32,7 @@ export function strip(s, token) {
 }
 
 /** JSON for a header: Dropbox wants plain ASCII there, so every other character goes as \uXXXX. @param {unknown} v */
-export const headerJson = v => JSON.stringify(v ?? {}).replace(/[\u007f-￿]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+export const headerJson = v => JSON.stringify(v ?? {}).replace(/[\u007f-\uffff]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 
 /**
  * @param {{ tokenFor: (person: string) => Promise<string>, fetch?: typeof fetch, timeoutMs?: number }} d

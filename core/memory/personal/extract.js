@@ -547,7 +547,7 @@ function vehicleOf(gr) {
 function readable(text, who) {
   let t = String(text);
   // Each pass only when its character is there: most turns have no curly quotes and no code.
-  if (/[‘’ʼ“”]/.test(t)) t = t.replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"');
+  if (/[\u2018\u2019\u02bc\u201c\u201d]/.test(t)) t = t.replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u201c\u201d]/g, '"');
   if (t.includes("`")) t = t.replace(/```[\s\S]*?(?:```|$)/g, "\n").replace(/`[^`\n]*`/g, " ");
   if (t.includes('"""')) t = t.replace(/"""[\s\S]*?(?:"""|$)/g, "\n");
   // Quoted words are someone else's, or copy being written: a pasted email in "...", a draft in

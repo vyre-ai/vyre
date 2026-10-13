@@ -29,7 +29,7 @@ const STOP = new Set(("a an the to of in on for and or but so it its this that t
 
 /** A correction's words, order and filler dropped: the same thing said twice has one key. */
 export function wordsKey(text) {
-  const words = String(text || "").toLowerCase().replace(/[‘’]/g, "'").replace(/[^a-z0-9' ]+/g, " ").split(/\s+/)
+  const words = String(text || "").toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^a-z0-9' ]+/g, " ").split(/\s+/)
     .filter(w => w && !STOP.has(w) && w.length > 1);
   const set = [...new Set(words)].sort();
   return set.length ? "p:" + short(set.join(" ")) : null;

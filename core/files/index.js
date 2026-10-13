@@ -76,10 +76,10 @@ export function openReal(real) {
  * openReal, plus the residual O_NOFOLLOW alone does not close (e2e's follow-up on e8560b79):
  * O_NOFOLLOW refuses the final component turning into a symlink, but not one of ITS ancestors
  * being renamed out and a new directory dropped in its place between describe()'s stat and this
- * open — the path string still resolves, through the swapped-in parent, to a different real
+ * open - the path string still resolves, through the swapped-in parent, to a different real
  * file that was never checked against scope or the guard. fstat after opening and comparing
  * dev/ino to describe()'s own stat catches that: the swap either lands a different inode (dev
- * or ino differs) or the original file was itself replaced (same path, new inode) — either way
+ * or ino differs) or the original file was itself replaced (same path, new inode) - either way
  * this refuses rather than silently reading whatever is there now.
  * @param {{ real: string, dev: number, ino: number }} d describe()'s own result
  * @returns {number} the open fd, already checked; the caller still owns closing it

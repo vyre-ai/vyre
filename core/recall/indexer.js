@@ -1,5 +1,5 @@
 // @ts-check
-// indexer — transcripts into Recall's tables (core/recall/schema.js), and vectors beside them.
+// indexer - transcripts into Recall's tables (core/recall/schema.js), and vectors beside them.
 //
 // APPEND-ONLY. A transcript only ever grows, so a changed one is almost always the old turns
 // plus new ones, and only the new ones are written. The prototype deleted and re-inserted every

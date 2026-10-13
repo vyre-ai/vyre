@@ -1,5 +1,5 @@
 // @ts-check
-// gate — the module: outbound control and approvals (docs/SPEC.md sections 7.7 and 11).
+// gate - the module: outbound control and approvals (docs/SPEC.md sections 7.7 and 11).
 //
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.

@@ -1,5 +1,5 @@
 // @ts-check
-// markers — how the three layers of memory find each other (team/0.3/DESIGN-memory-layers.md).
+// markers - how the three layers of memory find each other (team/0.3/DESIGN-memory-layers.md).
 //
 // Identity, Spaces, Projects: each layer owns its facts and nothing learned in one Space is copied into another. A higher layer holds MARKERS that point down: a Space's memory
 // has one per project in it, the person's identity memory one per Space and per project. A marker names where memory is and what it takes to read it; it grants nothing and

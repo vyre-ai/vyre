@@ -1,5 +1,5 @@
 // @ts-check
-// adopt — type into a Claude Code session the Switchboard did not start.
+// adopt - type into a Claude Code session the Switchboard did not start.
 //
 // A session started in a terminal has a transcript and nothing else here. Sending to it from the
 // Capsule or Chat means resuming it headless (`--resume`), which is safe only if no other process

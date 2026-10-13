@@ -1,5 +1,5 @@
 // @ts-check
-// lexicon — the generic words the curator needs to tell a name from everything else.
+// lexicon - the generic words the curator needs to tell a name from everything else.
 //
 // Nothing here names a person or a business anyone works with. These are the words that open
 // sentences, head sections of an answer, name a type of business, or name a product almost

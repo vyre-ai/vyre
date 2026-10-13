@@ -26,13 +26,13 @@ const CUT = 200;
 /** @param {unknown} v @param {number} [n] */
 export const cut = (v, n = CUT) => {
   const s = String(v ?? "").replace(/\s+/g, " ").trim();
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
 };
 
 /** A string for an ask: secrets redacted, then capped. Whitespace is kept, a diff needs it. */
 export const clip = (v, n) => {
   const s = typeof v === "string" ? redact(v).text : "";
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
 };
 
 /** Caps from the chat contract (ADR 0024). */
@@ -61,7 +61,7 @@ export function questionsOf(input) {
 function scrub(v, depth = 0) {
   if (typeof v === "string") return clip(v, CAPS.detail);
   if (v === null || typeof v !== "object") return v;
-  if (depth >= 4) return "…";
+  if (depth >= 4) return "\u2026";
   if (Array.isArray(v)) return v.slice(0, 50).map(x => scrub(x, depth + 1));
   return Object.fromEntries(Object.entries(v).slice(0, 50).map(([k, x]) => [k, scrub(x, depth + 1)]));
 }

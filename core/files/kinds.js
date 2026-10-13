@@ -1,5 +1,5 @@
 // @ts-check
-// kinds — what sort of file a path is, from its extension alone.
+// kinds - what sort of file a path is, from its extension alone.
 //
 // Search results carry a kind so a surface can filter and pick an icon without opening
 // anything, and preview uses it to decide between text, a thumbnail or nothing. The extension

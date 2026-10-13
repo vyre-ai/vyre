@@ -186,7 +186,7 @@ export function parseReads(text) {
 
 // ------------------------------------------------------------------ checking a fact
 
-const norm = s => String(s || "").toLowerCase().replace(/[‘’ʼ`´]/g, "'").replace(/[“”]/g, '"').replace(/[^\p{L}\p{N}'@.+#-]+/gu, " ")
+const norm = s => String(s || "").toLowerCase().replace(/[\u2018\u2019\u02bc`´]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/[^\p{L}\p{N}'@.+#-]+/gu, " ")
   .split(" ").map(w => w.replace(/^['.@#+-]+|['.-]+$/g, "")).filter(Boolean).join(" ");
 const words = s => norm(s).split(" ").filter(Boolean);
 /** Every word of the value is in the text (any case): the model may not invent it. */

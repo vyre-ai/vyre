@@ -1,5 +1,5 @@
 // @ts-check
-// gc-hook — loaded into vyred via `node --expose-gc --import` so scripts/perf-check can read what
+// gc-hook - loaded into vyred via `node --expose-gc --import` so scripts/perf-check can read what
 // vyred really holds once idle. RSS alone can't tell a live heap from pages V8 and the allocator
 // kept after the startup indexing pass, and how much they keep depends on the host: the same
 // commit read 185 or 255 MB on two GitHub runners. So on SIGUSR2 this runs a full GC, then writes

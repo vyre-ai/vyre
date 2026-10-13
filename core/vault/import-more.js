@@ -777,7 +777,7 @@ const XML_ENTITIES = new Map([["lt", "<"], ["gt", ">"], ["amp", "&"], ["quot", '
  * @returns {El} the root element
  */
 export function readXML(src, { maxDepth = 256, maxNodes = 2_000_000 } = {}) {
-  src = src.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  src = src.replace(/^\ufeff/, "").replace(/\r\n?/g, "\n");
   /** @type {El} */
   const doc = { name: "", attrs: {}, children: [], text: "" };
   const stack = [doc];

@@ -37,7 +37,7 @@ export const CLASSES = Object.freeze({
 export const hintOf = v => { const c = compact(v); return c.length >= 8 ? `last4 ${c.slice(-4)}` : undefined; };
 
 const DW = "(?:zero|oh|nought|one|two|three|four|five|six|seven|eight|nine)";
-const RUN = new RegExp(`(?<![0-9a-z])(?:[0-9０-９][\\s\\-.]?){8,18}[0-9０-９](?![0-9a-z])|(?<![a-z])(?:${DW}[\\s,.\\-]*){8,18}${DW}(?![a-z])|\\b\\d{2}-\\d{7}\\b|\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\\b`, "gi");
+const RUN = new RegExp(`(?<![0-9a-z])(?:[0-9\uff10-\uff19][\\s\\-.]?){8,18}[0-9\uff10-\uff19](?![0-9a-z])|(?<![a-z])(?:${DW}[\\s,.\\-]*){8,18}${DW}(?![a-z])|\\b\\d{2}-\\d{7}\\b|\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\\b`, "gi");
 
 /** Classify one candidate run, or null. A 9-digit run is an SSN only as 9 together or grouped 3-2-4, so a ZIP+4 is not one. */
 function classify(run, before) {

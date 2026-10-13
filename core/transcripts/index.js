@@ -1,5 +1,5 @@
 // @ts-check
-// transcripts — the ONE place in Vyre that reads Claude Code's transcript files.
+// transcripts - the ONE place in Vyre that reads Claude Code's transcript files.
 //
 // Vyre touches Claude Code only through public surfaces, with this as the single exception
 // (docs/SPEC.md, principle 1). The file format is not a published contract and can change under
@@ -849,7 +849,7 @@ export function toolSummary(/** @type {string} */ tool, /** @type {any} */ input
   const i = input && typeof input === "object" ? input : {};
   const one = (/** @type {unknown} */ v, n = 200) => {
     const s = String(v ?? "").replace(/\s+/g, " ").trim();
-    return s.length > n ? s.slice(0, n - 1) + "…" : s;
+    return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
   };
   let s;
   if (tool === "Bash") s = one(i.command);

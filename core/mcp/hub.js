@@ -363,7 +363,7 @@ function normalizePolicy(t) {
 // ---- the hub ----
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
-const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
 // A module's own call (the kernel's own "module:<name>" label, ctx.call - never a caller-
 // forgeable claim the way an agent's own caller string is) is scoped like the person too, same

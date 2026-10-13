@@ -166,7 +166,7 @@ export class DockerDriver {
    * docker-socket-proxy) filters which Engine *endpoints* are reachable, not the *bodies* of the
    * requests it lets through. A create body could still ask for Privileged, a docker.sock bind,
    * host network or PID, extra capabilities or host devices, and the proxy would forward every
-   * one of them. So none of those is ever read from `spec`, or from anything else — they are
+   * one of them. So none of those is ever read from `spec`, or from anything else - they are
    * hard-coded off here, the one place a create body is built.
    */
   async create(spec) {
@@ -181,7 +181,7 @@ export class DockerDriver {
     // Our labels win over anything passed in, so a computer is always recognisably ours.
     // run.vyre=1 is a fixed marker the box's compose stack filters on, independent of whatever
     // computers.labelPrefix is configured to (the box also expects that set to
-    // "run.vyre.computers" so the prefix-based labels below read run.vyre.computers.computer=…).
+    // "run.vyre.computers" so the prefix-based labels below read run.vyre.computers.computer=...).
     const labels = { ...(spec.labels || {}), [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" };
     const network = spec.network || this.network;
     const body = {
@@ -289,7 +289,7 @@ export class DockerDriver {
 
   /**
    * One CPU/RAM/network sample (vitals, ADR 0014 part 9's follow-on: docker stats?stream=false
-   * gives one pair of counters an interval apart already, so a single request is enough — no
+   * gives one pair of counters an interval apart already, so a single request is enough - no
    * polling loop, no streaming connection held open). Null fields when the container is not
    * running (docker answers 200 with zeroed counters while stopped; this returns null instead
    * of reporting 0% of nothing).
@@ -321,7 +321,7 @@ function stateOf(s) {
 /**
  * Pure: one Engine `/stats?stream=false` body to vitals' shape. cpu is the standard Docker CPU%
  * formula (the delta between the two samples the Engine already took, over the delta of the
- * whole system's, times the online CPUs) — never a second request. Anything missing or
+ * whole system's, times the online CPUs) - never a second request. Anything missing or
  * non-finite comes back null rather than a misleading 0.
  * @param {any} s
  */

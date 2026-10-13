@@ -1,5 +1,5 @@
 // @ts-check
-// dense — every stored vector in memory, so search can find a turn by meaning alone.
+// dense - every stored vector in memory, so search can find a turn by meaning alone.
 //
 // Re-ranking keyword candidates can never surface a turn that shares no word with the question:
 // "making it easier for blind visitors" does not contain "accessibility". Measured on a real
@@ -23,7 +23,7 @@ const breathe = () => new Promise(r => setImmediate(r));
  * Chunk vectors cost ~1.5KB each (DIM*4 bytes plus four Int32 columns and a role byte); with no
  * cap a large corpus grows this in-memory index without bound, which is the one thing "Light by
  * default" (docs/SPEC.md section 2, principle 8) does not allow a cache to do. 50,000 chunks is
- * about 78MB — comfortably inside vyred's 150MB idle budget alongside everything else it holds —
+ * about 78MB - comfortably inside vyred's 150MB idle budget alongside everything else it holds -
  * and far past what a normal corpus reaches today (37,000 chunks measured at ~57MB). Past the
  * cap, the oldest sessions drop out of the dense index first; full-text search still covers them,
  * same as it already covers any turn whose vector has not been computed yet.

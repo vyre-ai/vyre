@@ -30,13 +30,13 @@ export const CAPS = Object.freeze({ short: 200, text: 2000, body: 8000, quote: 6
 
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
-const BIDI = /[‎‏‪-‮⁦-⁩؜]/g;
-const INVISIBLE = /[​-‍⁠﻿­]/g;
+const BIDI = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/g;
+const INVISIBLE = /[\u200b-\u200d\u2060\ufeff­]/g;
 
 /** Plain words: control, bidirectional and invisible characters out, capped. @param {unknown} s @param {number} [max] */
 export function clean(s, max = CAPS.short) {
   const t = String(s ?? "").replace(CONTROL, "").replace(BIDI, "").replace(INVISIBLE, "");
-  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+  return t.length > max ? t.slice(0, max - 1) + "\u2026" : t;
 }
 
 /** Free text from a doer or a model as a quote: no markdown links, no HTML, no URLs. @param {unknown} s @param {string} label @returns {QuotedBlock|null} */

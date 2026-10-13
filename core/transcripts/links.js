@@ -1,5 +1,5 @@
 // @ts-check
-// links — what a turn touched, found without a model: a tool call's file, a commit's hash, a url.
+// links - what a turn touched, found without a model: a tool call's file, a commit's hash, a url.
 //
 // transcripts.read() keeps only what people said, so the tool calls between two text turns would
 // otherwise leave no trace in the index. A link is a plain lookup key (kind, ref) hung on a turn,

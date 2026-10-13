@@ -1,5 +1,5 @@
 // @ts-check
-// mac — the Mac's half of the link: pairing with the box, calling its tools, and following its
+// mac - the Mac's half of the link: pairing with the box, calling its tools, and following its
 // events.
 //
 // The Mac keeps working when the box is away (floor rule 9). Every call to the box fails fast

@@ -245,7 +245,7 @@ function clip(/** @type {unknown} */ v, n = BLOCK_TEXT, tail = false) {
 }
 const one = (/** @type {unknown} */ v, n = 160) => {
   const s = redact(String(v ?? "")).text.replace(/\s+/g, " ").trim();
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
 };
 const ofPath = (/** @type {any} */ i) => one(i && (i.file_path || i.notebook_path || i.path), 300);
 const lines = (/** @type {unknown} */ s) => (typeof s === "string" && s ? s.split("\n") : []);

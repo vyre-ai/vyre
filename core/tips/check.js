@@ -51,7 +51,7 @@ function tipProblems(t) {
   if (typeof t.text !== "string" || !t.text.trim()) p.push("text is required");
   else {
     if (t.text.length > MAX_TEXT) p.push(`text is ${t.text.length} characters; at most ${MAX_TEXT}`);
-    if (/—/.test(t.text)) p.push("text has an em dash; use a comma, a colon or two sentences");
+    if (/\u2014/.test(t.text)) p.push("text has an em dash; use a comma, a colon or two sentences");
     if (/§/.test(t.text)) p.push("text has a section sign; write \"Section\"");
   }
   if (!Array.isArray(t.surfaces) || !t.surfaces.length || t.surfaces.some((/** @type {any} */ s) => !SURFACES.includes(s))) p.push(`surfaces must be a list of ${SURFACES.join(", ")}`);

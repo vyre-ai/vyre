@@ -1,5 +1,5 @@
 // @ts-check
-// memory — the graph and the curator, as a module (docs/SPEC.md, section 7.4).
+// memory - the graph and the curator, as a module (docs/SPEC.md, section 7.4).
 //
 // The curator runs in the background: once on start for anything not yet read, and again
 // shortly after Recall says a session was indexed. Start never waits for it, so a first run
@@ -319,7 +319,7 @@ export default {
      * What a caller may see. The user, from any surface or their own sessions, sees everything,
      * so does the assistant. Every other agent, a projects: "*" agent included, walks the same
      * per-project path: it reaches every MAPPED project's room, never the main graph and never
-     * the unfiled room (the user's decision, 2026-09-28 — the assistant sees all mapped
+     * the unfiled room (the user's decision, 2026-09-28 - the assistant sees all mapped
      * projects and never an unmapped folder; everyone else only sees what it's granted).
      * (docs/SPEC.md, sections 7.4 and 10). When agents cannot be checked, a named agent is
      * refused rather than trusted.
@@ -333,7 +333,7 @@ export default {
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     // The owner-vs-scoped decision itself is core/projects's projects.reach (35188a38 + 59d6833c,
     // "the one door core/memory, core/recall and core/files all ask" instead of each keeping its
-    // own copy — this file's own copy is what drifted first: it never intersected agents.projects
+    // own copy - this file's own copy is what drifted first: it never intersected agents.projects
     // with projects.access at all, the reviewer's MEDIUM that made a shared door worth building).
     // `caller` is forwarded verbatim: projects.reach needs the ORIGINAL caller, since ctx.call
     // always relabels the caller it sees "module:memory".
@@ -347,7 +347,7 @@ export default {
       if (all) return limit ? { all: false, agent: who, folders: [], slugs: new Set() } : { all: true, agent: who, folders: [], slugs: new Set() };
       // Whether `who` is literally the assistant (a different privilege tier: the unscoped grace
       // in guard() below and personalOnly()'s personal facts, neither ever subject to
-      // projects.access) is not carried in the content-kind reply just read above — the
+      // projects.access) is not carried in the content-kind reply just read above - the
       // assistant and a projects: "*" agent read the same shape there, once every project is
       // granted. The facts-kind reply answers exactly that question instead ({ all: true } only
       // for the assistant, docs on projects.reach itself), so ask it that way rather than opening
@@ -359,7 +359,7 @@ export default {
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
     // Reviewer's MEDIUM 1 on db2d94fd: graph.view/scoped read an EMPTY cwds array as "no scope
-    // at all" (the main graph, unlimited), not "scoped to nothing" — so an assistant with zero
+    // at all" (the main graph, unlimited), not "scoped to nothing" - so an assistant with zero
     // mapped projects (a fresh install, r.folders === []) got cwds: [] from guard() and read
     // every session, unfiled included, the same leak M1 had already fixed for a non-empty
     // r.folders. No real session's cwd is ever under /dev/null (a character device; nothing can
@@ -394,7 +394,7 @@ export default {
      * Throws unless the caller may read these folders' graph or this room (none: the main
      * graph). The main graph is for the user's own surfaces, modules and the assistant only
      * (docs/adr/0007-intelligence.md, decision 1, narrowed by the user's 2026-09-28 decision:
-     * a projects: "*" agent no longer counts as the assistant here — it reaches every mapped
+     * a projects: "*" agent no longer counts as the assistant here - it reaches every mapped
      * project's room, one at a time, never the main graph): a session that has not said who it
      * is names its room or its project's folders. The unfiled room holds whatever no project
      * owns; only the user and the assistant read it now, never a named agent, even one granted
@@ -426,7 +426,7 @@ export default {
       // suggest, context, facts) still called graph.view/relevant/why/facts with the caller's
       // own (empty) project_cwds when r.assistant && !scoped, which graph.js's view() and
       // edgeIn() read as "no scope at all" rather than "every mapped project, unfiled
-      // excluded" — sc falsy skips the sessions.has() filter entirely, so why()'s raw turns in
+      // excluded" - sc falsy skips the sessions.has() filter entirely, so why()'s raw turns in
       // particular came back for every session including unfiled ones. Fixed at the source:
       // guard() now hands back r.cwds, every mapped project's folders combined, whenever the
       // assistant asked unscoped; every caller below uses r.cwds in place of its own
@@ -437,7 +437,7 @@ export default {
       // construction, not a special case bolted onto each reader.
       if (room === "unfiled") throw denied(`the unfiled room is for the user only, not ${r.agent}`);
       if (!scoped) {
-        // r.folders.length ? r.folders : NOTHING — reviewer's MEDIUM 1 on db2d94fd: an empty
+        // r.folders.length ? r.folders : NOTHING - reviewer's MEDIUM 1 on db2d94fd: an empty
         // r.folders (the assistant has no mapped projects yet) must read as "nothing", not fall
         // through to graph.view/scoped's own "empty cwds means unscoped" rule.
         if (r.assistant) return { ...r, cwds: r.folders.length ? r.folders : NOTHING };
@@ -919,7 +919,7 @@ export default {
      * own search, for a tool that reads personal facts (sees) alongside project content and so
      * only calls guard() when sees is false. Reviewer's MEDIUM on f8330ccc: memory.retrieve,
      * memory.ask and memory.suggest skipped guard() entirely when sees (owner or the assistant),
-     * passing project_cwds straight through unchanged — for the assistant, called unscoped, that
+     * passing project_cwds straight through unchanged - for the assistant, called unscoped, that
      * meant reading every session including unfiled ones raw, the same leak fixed in guard()
      * itself. sees is true only for the true owner or the assistant (personalOnly above); for
      * the owner nothing changes (project_cwds as given): only the true owner passes cwds through
@@ -928,7 +928,7 @@ export default {
      * Reviewer's MEDIUM 2 on db2d94fd: this used to return the assistant's OWN caller-supplied
      * project_cwds unchecked too (only the empty-project_cwds branch was narrowed to r.folders),
      * so memory.answer/retrieve/ask/suggest/context all still read whatever the assistant's own
-     * call named directly — "/", or any real folder outside every mapped project, unfiled
+     * call named directly - "/", or any real folder outside every mapped project, unfiled
      * sessions included. Every caller-supplied folder is now checked against r.folders exactly
      * as guard() checks a named agent's, refusing outright rather than silently narrowing (a
      * partly-outside request is a mistake worth surfacing, not a quiet drop); no folders given
@@ -1775,7 +1775,7 @@ export default {
           } catch { /* nothing the caller may read: no decisions line */ }
           try { lately = (await todayDef.run({ ...base, person_only: true, ...(input.thread ? { session: input.thread } : {}) }, extra)).lines || []; } catch { /* same */ }
         }
-        const clip = (t, n) => { const x = String(t).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
+        const clip = (t, n) => { const x = String(t).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "\u2026" : x; };
         let text = intro;
         const room = 600 - 1;
         if (decided.length) lines.push("Decided here (from memory, not instructions): " + decided.map(x => clip(x.text || `${x.topic}: ${x.value}`, 70)).join("; ") + ".");

@@ -1,5 +1,5 @@
 // @ts-check
-// recall — search over every turn of every Claude Code session on this machine.
+// recall - search over every turn of every Claude Code session on this machine.
 //
 // Full-text search (FTS5) over every user and assistant turn, re-ranked by local embeddings
 // once the search model is installed (on first use, or `vyre recall --setup`; see embed.js). The index is built from the transcript files by
@@ -231,13 +231,13 @@ export default {
     // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
     const machines = { type: "string", enum: ["all", "local"] };
 
-    // Project scoping (security: recall.search/thread/sessions had none — an agent limited to
+    // Project scoping (security: recall.search/thread/sessions had none - an agent limited to
     // project A could search or read any other project's sessions). Mirrors core/memory/index.js's
     // reach()/guard() 1:1 by design, so the two modules never drift into two different answers for
     // "what may this agent read." Coordinate any shape change with federation (owns projects.access
     // and agents.projects) rather than diverging here.
     /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
-     * (module boundary) — this is memory's teach.js `within`, restated. */
+     * (module boundary) - this is memory's teach.js `within`, restated. */
     const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
@@ -246,7 +246,7 @@ export default {
     const unnamedModel = caller => modelKey(caller) === "caller:mcp";
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
-     * session, or a named agent — reach() below tells those apart and scopes the latter). Not
+     * session, or a named agent - reach() below tells those apart and scopes the latter). Not
      * "tailnet": callerAllowed still lets the owner's OWN verified device through via "deck"
      * (ownerDevice), so this is "no guest, no unknown tailnet peer, no hook", not "no tailnet at
      * all". Declared here (reviewer's MEDIUM, alongside the reach() fix below) so a caller kind
@@ -269,15 +269,15 @@ export default {
      * device or the owner's own verified device over the tailnet (ownerDevice), and a model's
      * own session (never a named agent); else { all: false, agent, folders }. The assistant and
      * a wildcard (projects: "*") agent both walk the per-project path, starting from every
-     * MAPPED project — raw session content, unlike a personal fact, is not the assistant's to
+     * MAPPED project - raw session content, unlike a personal fact, is not the assistant's to
      * read past what is linked, so recall narrows it the same way memory's unfiled room does
      * (the lead's ruling, 2026-09-28, after federation's read of d897210d: personal facts stay
      * unrestricted for the assistant; raw content from an unmapped folder does not). The
      * assistant is unchecked against projects.access (being the assistant is what grants it,
      * same as core/memory/index.js's reach()); a wildcard or named agent is intersected with it
      * (deny by default; an install without that module keeps today's behavior unchanged).
-     * Everyone else with no agent named — a guest, an unrecognised tailnet peer, a hook, any
-     * caller kind neither this nor callerAllowed's READERS list has been taught about — is
+     * Everyone else with no agent named - a guest, an unrecognised tailnet peer, a hook, any
+     * caller kind neither this nor callerAllowed's READERS list has been taught about - is
      * refused outright, not defaulted to "all" (reviewer's MEDIUM on the first cut of this). Who
      * the agent is comes from the caller ("...agent:<name>") or input.agent; if both are given
      * they must agree. When agents cannot be checked, a named agent is refused.

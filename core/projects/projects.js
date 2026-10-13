@@ -1,5 +1,5 @@
 // @ts-check
-// projects — what this computer knows of a project: the folders on it that belong to the project, the threads picked into it, its people and its watchers. The project itself (its name, short
+// projects - what this computer knows of a project: the folders on it that belong to the project, the threads picked into it, its people and its watchers. The project itself (its name, short
 // name, Drive folder, memory scope) is a Project record in Records (core/work/hub.js, team/0.3/DESIGN-project-hub.md); this module's rows are per machine, and the two stay in step through the
 // events `project.created` and `project.changed` (the work module writes the record) and the tool `projects.adopt` (the work module tells this computer about a record).
 //
@@ -36,12 +36,12 @@ export const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 export const threadId = (/** @type {unknown} */ v) => { const s = String(v ?? "").trim().toLowerCase(); return THREAD_ID.test(s) ? s : null; };
 
 // Reviewer's LOW on 7021d4e1: a project's home or workspace must never be the whole disk, the
-// whole home account, or one of the credential/vault folders under it — granting an agent
+// whole home account, or one of the credential/vault folders under it - granting an agent
 // projects.access on a project scoped that wide hands it the person's real keys and vault the
 // moment the grant lands (create()'s own wildcard-agent grant, and any add-workspace after).
 // Names mirror core/files/safety.js's HOME_DENIED so the two lists never disagree about what is
 // sensitive; kept as its own short list here rather than imported, since core/projects may not
-// import core/files (test/boundaries.test.js — no such edge is allowlisted, and this is three
+// import core/files (test/boundaries.test.js - no such edge is allowlisted, and this is three
 // names, not worth a new one). Reviewer's MEDIUM 3 (second pass): "Library" added (Keychains,
 // Mail, Cookies and more all live under it, not just Keychains), and the check below now also
 // refuses an ANCESTOR of any of these, not only the folder itself or something inside it: "/Users"
@@ -89,7 +89,7 @@ export const MIGRATIONS = [
   // by default; Drive, sync and anything else that serves a project's files or sessions to an
   // agent asks projects.access.check before serving. Lives here, not appended in index.js, so
   // core/store's migrate() (which numbers steps by array index) never collides with a step
-  // another team adds to this array later — sessions' next MIGRATIONS step (after e87f63df,
+  // another team adds to this array later - sessions' next MIGRATIONS step (after e87f63df,
   // still just the projects_projects table on main as of this write) is told this slot is taken.
   `
   CREATE TABLE projects_access (
@@ -352,7 +352,7 @@ export class Projects {
 
   /**
    * Add watchers: names on the marker (spec 7.2) for someone who should hear about this
-   * project's Needs without running a session in it — core/waiting's rows already carry
+   * project's Needs without running a session in it - core/waiting's rows already carry
    * `project`, so a surface that knows who watches what can filter on it once this exists.
    * Person-only (core/presence PERSON_ONLY), same shape as addThreads.
    */

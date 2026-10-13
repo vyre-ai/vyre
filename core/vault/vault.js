@@ -1,5 +1,5 @@
 // @ts-check
-// vault — items, grants, passes and the audit trail, behind one class the tools call.
+// vault - items, grants, passes and the audit trail, behind one class the tools call.
 //
 // The shape of the whole thing is in docs/adr/0001-vault-crypto.md. Three habits run through
 // every method here:

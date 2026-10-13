@@ -39,7 +39,7 @@ export function qrLines(text, o = {}) {
     let line = "";
     for (let c = 0; c < n; c++) {
       const t = dark(r, c), b = r + 1 < n && dark(r + 1, c);
-      line += t ? (b ? "█" : "▀") : (b ? "▄" : " ");
+      line += t ? (b ? "\u2588" : "\u2580") : (b ? "\u2584" : " ");
     }
     out.push(line);
   }

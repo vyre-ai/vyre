@@ -1,5 +1,5 @@
 // @ts-check
-// checks — what a lesson checks, as code (docs/SPEC.md section 7.11). Pure: no store, no daemon.
+// checks - what a lesson checks, as code (docs/SPEC.md section 7.11). Pure: no store, no daemon.
 //
 // A lesson's check is plain JSON, so the Deck and the CLI can show it and the user can edit it:
 //

@@ -1,5 +1,5 @@
 // @ts-check
-// rollover — Vyre owns the context window of every session it runs (team/0.2.5/memory-context.md, section 3c).
+// rollover - Vyre owns the context window of every session it runs (team/0.2.5/memory-context.md, section 3c).
 //
 // An agent's own compaction keeps a summary and loses the lines. Vyre rolls over first: between turns,
 // before the window fills, it ends the agent's session, starts a fresh one in the same folder, and the
@@ -85,7 +85,7 @@ export function decide({ ctx, at = ROLL.at, force = ROLL.force, wait = ROLL.wait
 /** Words a model wrote or a person pasted, quoted into a Vyre block: every line indented so a line of its own that looks like the block's end stays inside. @param {string} text */
 export const quote = text => String(text).split("\n").map(l => `  | ${l}`).join("\n");
 /** @param {string} s @param {number} n */
-export const cutTo = (s, n) => (s.length > n ? s.slice(0, Math.max(0, n - 1)) + "…" : s);
+export const cutTo = (s, n) => (s.length > n ? s.slice(0, Math.max(0, n - 1)) + "\u2026" : s);
 
 export { SEED_OPEN, withoutSeed };
 

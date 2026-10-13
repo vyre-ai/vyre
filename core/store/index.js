@@ -1,5 +1,5 @@
 // @ts-check
-// store — the one SQLite database, and how every module gets its own corner of it.
+// store - the one SQLite database, and how every module gets its own corner of it.
 //
 // Two rules came from real failures in the prototype:
 //   - WAL plus a busy timeout on EVERY connection. Without both, a second writer does not wait,

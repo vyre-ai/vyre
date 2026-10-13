@@ -1,5 +1,5 @@
 // @ts-check
-// meter — how full a Claude Code session's window is, read from its transcript, for the warning a person's own terminal session gets (team/0.2.5/memory-context.md, 4b).
+// meter - how full a Claude Code session's window is, read from its transcript, for the warning a person's own terminal session gets (team/0.2.5/memory-context.md, 4b).
 //
 // A session Vyre runs rolls itself (core/switchboard/rollover.js). One the person runs in their own terminal cannot be stopped from outside, so Vyre tells them, once, when the
 // window passes the line, and `vyre roll` is the way on. The count is exact for the last request: each assistant line of the transcript carries its token usage.

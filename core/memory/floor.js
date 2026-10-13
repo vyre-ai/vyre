@@ -1,5 +1,5 @@
 // @ts-check
-// floor — the graph as the Deck draws it: a floor plan with one room per project, a room for the
+// floor - the graph as the Deck draws it: a floor plan with one room per project, a room for the
 // people and organisations several projects share, and a room for what belongs to none.
 //
 // Each project has its own context graph: what its own sessions established and what was taught

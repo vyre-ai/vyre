@@ -1,5 +1,5 @@
 // @ts-check
-// scrub — a first-pass content scan for a session file arriving through sync.upload, before its
+// scrub - a first-pass content scan for a session file arriving through sync.upload, before its
 // final rename lands it where Recall can read it (e2e, session-import review: "scrub at ingest").
 //
 // This is not a redactor: a chat transcript's meaning depends on its exact words, and cutting a

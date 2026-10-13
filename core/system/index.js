@@ -1,5 +1,5 @@
 // @ts-check
-// system — the smallest real module. It proves the contract end to end (a manifest, a tool, an
+// system - the smallest real module. It proves the contract end to end (a manifest, a tool, an
 // event) and answers "what is this machine running".
 
 import fs from "node:fs";
