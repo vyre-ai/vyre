@@ -60,7 +60,10 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   assert.match(String(hiddenRun.run.hidden_for), /authority/, "and is told in words whose authority it ran on");
   assert.ok(String(hiddenRun.run.hidden_for).includes(owner), "naming the person");
 
-  // Flows belong to the Space: she may write a new version of the owner's Flow (a draft), but her yes never replaces the version that runs on the owner's authority
+  // changing someone else's Flow takes Can edit (owner ruling 13 Oct 01:34Z: "Can use" is use only, "Can edit" is full access including editing): refused until the owner shares it with her,
+  // then she may write a new version (a draft), but her yes never replaces the version that runs on the owner's authority
+  await assert.rejects(() => svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob" }) }), /Can edit/);
+  await host().flows.tools["flows.access.set"](chainOf(owner), { id: od.id, subject: BOB, level: "edit" });
   const v2 = await svc.define(bob, { id: od.id, flow: find("owners_flow", { on: "manual" }, { label: "improved by bob" }) });
   assert.ok(v2.ok && v2.version === od.version + 1, JSON.stringify(v2));
   // the app is told, not left to infer: the Flow runs as the owner, and the draft was made by her
@@ -137,6 +140,7 @@ test("a member sets up, approves inside the bound, and starts Flows of her own, 
   // a second member improves bob's Flow: it is a draft; only bob (whose authority it runs on) or an owner/admin approves it
   assert.ok((await svc.list(carolMember, {})).some((/** @type {any} */ r) => r.id === bd.id), "every member sees every Flow of the Space");
   assert.ok((await svc.runs(carolMember, { id: bd.id })).length >= 1, "and the runs of every Flow of the Space");
+  await host().flows.tools["flows.access.set"](chainOf(BOB), { id: bd.id, subject: CAROL, level: "edit" });   // bob made it, so he shares it: Can edit is what lets her change it
   const cv2 = await svc.define(carolMember, { id: bd.id, flow: find("bobs_flow", { on: "manual" }, { label: "carol's improvement" }) });
   assert.ok(cv2.ok, JSON.stringify(cv2));
   assert.match(await words(svc.approve(carolMember, { id: bd.id, version: cv2.version, hash: cv2.hash })), /runs on someone else's authority/, "she cannot approve her version of bob's Flow herself");
