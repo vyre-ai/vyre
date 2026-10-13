@@ -6,6 +6,7 @@ import { Frame, Sec } from "../places/Frame";
 import { errWords, projectIdOf, type Body, roleLines, startName, startWords, stateWord, treeOf, type Version } from "./model";
 import { templates } from "./templates";
 import { TemplateEditor } from "./TemplateEditor";
+import { useMayMakeTemplates } from "./role";
 
 /**
  * /u/templates/:id, the template studio: the tree of stages and tasks, Test mode (every brief and doer on a sample, nothing created or sent), Go live (the owner or an admin), the versions, and the
@@ -15,6 +16,7 @@ export default function TemplateScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const template = String(id);
+  const mayMake = useMayMakeTemplates();
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [pick, setPick] = useState<number | null>(null);
   const [cur, setCur] = useState<Version | null>(null);
@@ -46,7 +48,7 @@ export default function TemplateScreen() {
   const tree = cur?.body ? treeOf(cur.body) : [];
   return (
     <Frame back="/u/templates" title={cur?.name || "Template"} sub={cur ? `Version ${cur.version}, ${stateWord(cur.state).toLowerCase()}` : undefined}
-      actions={cur ? <><Button kind="ghost" size="sm" label="Test mode" loading={busy === "test"} onPress={() => void doTest()} />{cur.state === "draft" ? <Button kind="primary" size="sm" label="Go live" loading={busy === "live"} onPress={() => void goLive()} /> : null}<Button kind="ghost" size="sm" label={edit == null ? "Edit" : "Close editor"} onPress={() => setEdit(edit == null ? structuredClone(cur.body!) : null)} /></> : undefined}>
+      actions={cur ? <><Button kind="ghost" size="sm" label="Test mode" loading={busy === "test"} onPress={() => void doTest()} />{mayMake && cur.state === "draft" ? <Button kind="primary" size="sm" label="Go live" loading={busy === "live"} onPress={() => void goLive()} /> : null}{mayMake ? <Button kind="ghost" size="sm" label={edit == null ? "Edit" : "Close editor"} onPress={() => setEdit(edit == null ? structuredClone(cur.body!) : null)} /> : null}</> : undefined}>
       {err ? <Card flush><ErrorState title="That template did not load" reason={err} retry={load} /></Card> : null}
       {!cur && !err ? <LoadingState rows={4} /> : null}
       {versions && versions.length > 1 ? (

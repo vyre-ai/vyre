@@ -36,7 +36,7 @@ export function createMemberProjects(o) {
     templates: async (/** @type {any} */ _chain, /** @type {any} */ input) => {
       clean("templates", input);
       const r = await o.templates.list(o.reader().read, {});
-      return { templates: (r.templates || []).filter((/** @type {any} */ t) => t.live !== null).map((/** @type {any} */ t) => ({ template: t.template, name: t.name, live: t.live, tags: t.tags })) };
+      return { templates: (r.templates || []).filter((/** @type {any} */ t) => t.live !== null).map((/** @type {any} */ t) => ({ template: t.template, name: t.name, live: t.live, tags: t.tags, ...(t.noun ? { noun: t.noun } : {}) })) };
     },
     "create-project": async (/** @type {any} */ chain, /** @type {any} */ input) => {
       const i = clean("create-project", input);
