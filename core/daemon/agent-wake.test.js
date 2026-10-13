@@ -92,7 +92,7 @@ test("a wake that fails marks the task stuck as the agent, with the error in pla
   await onEvent(created("t1"));
   assert.equal(stuck.length, 1);
   assert.deepEqual(stuck[0].c, { for: "juno" });
-  assert.match(stuck[0].info.reason, /juno could not run: its AI account is not signed in or has expired/);
+  assert.match(stuck[0].info.reason, /juno's AI sign-in has expired/);
   assert.doesNotMatch(stuck[0].info.reason, /ABCDEFGHIJ/);
   assert.equal(stuck[0].info.suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
   assert.deepEqual(marked, [{ task: "t1", agent: "juno" }]);
@@ -127,4 +127,14 @@ test("a named agent is lent its task before it is woken, the lend repeats safely
   await onEvent(created("t1", "task.completed"));
   await onEvent(created("t1", "task.voided"));
   assert.deepEqual(calls.slice(2), ["reclaim t1", "reclaim t1"]);
+});
+
+test("a job that stopped with a bare reason but whose thread says the sign-in expired is reported as an expired sign-in", async () => {
+  const stuck = /** @type {any[]} */ ([]);
+  const gw = { ask: { get: async () => task({ state: "working" }), edit: async () => {}, stuck: async (_c, _id, info) => { stuck.push(info); } } };
+  const w = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: () => ({}), clock: () => NOW, log: () => {},
+    callModule: async tool => (tool === "agents.woken" ? { task: "t1", agent: "juno" } : tool === "threads.get" ? { thread: { last_line: "Failed to authenticate: OAuth session expired" } } : {}) });
+  await w.threadEnded("th1", "exited");
+  assert.match(stuck[0].reason, /^juno's AI sign-in has expired\./);
+  assert.equal(stuck[0].suggested_fix, "Reconnect the AI account for juno in Settings, then retry.");
 });
