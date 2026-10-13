@@ -42,7 +42,11 @@ export default {
       input: obj({ client: { type: "string", maxLength: 60 } }),
       callers: PEOPLE,
       presence: { summary: async (/** @type {any} */ i) => `Connect ${clean(i && i.client, "your AI")} on ${device()} to act as you in Vyre` },
-      run: async (/** @type {any} */ input) => {
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        // A connection runs as the home's owner on the facts of their own terminal; a member's device (whose facts name her) is refused rather than given the owner's chain. Members come with the per-person routing.
+        const who = meta && meta.kernelFacts && typeof meta.kernelFacts.person === "string" ? meta.kernelFacts.person : null;
+        const owner = ctx.kernel && ctx.kernel.id && typeof ctx.kernel.id.owner === "string" ? ctx.kernel.id.owner : null;
+        if (who && owner && who !== owner) throw refuse("connecting your AI works for the person who owns this Vyre, on their own computer, for now", "unavailable");
         const client = clean(input && input.client, "Claude Code");
         const at = now();
         db.prepare("UPDATE mcpconn_connections SET revoked_at = ? WHERE revoked_at IS NULL AND device = ? AND client = ?").run(at, device(), client);
