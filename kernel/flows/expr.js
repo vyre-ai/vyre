@@ -190,6 +190,7 @@ function movedRaw(ms, amount, unit, tz) {
   if (!Number.isFinite(amount) || !Number.isInteger(amount)) return null;
   if (u === "minute") return ms + amount * 60_000;
   if (u === "hour") return ms + amount * 3_600_000;
+  if (Math.abs(ms) > 8.6e15) return null; // too near the edge of time for the calendar sums
   if (Math.abs(amount) > (u === "month" ? 3_000_000 : u === "week" ? 10_000_000 : 100_000_000)) return null; // far past the range of a time
   const w = wall(ms, tz);
   if (u === "day" || u === "week") { const t = new Date(Date.UTC(w.y, w.mo - 1, w.d + amount * (u === "week" ? 7 : 1))); return instant({ ...w, y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate() }, tz); }
