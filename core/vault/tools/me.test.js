@@ -28,7 +28,7 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
   ctx.tool("vault.get", { callers: ["cli"], run: async () => "space vault read" });
   const call = async (/** @type {string} */ name, /** @type {any} */ input, /** @type {string} */ who, /** @type {any} */ extra = {}) => {
-    const meta = { caller: "device:abcdef", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
+    const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
   return { call, reg, people };
@@ -117,5 +117,5 @@ test("vault.me.store.*: only the mcp module may call it, and only on a member's 
   assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] }))).error.code, "denied", "an agent hop is refused");
   assert.equal((await call("vault.me.store.get", { key: "mcp/a" }, OWNER, via(OWNER))).error.code, "denied", "the owner is refused");
   for (const other of ["module:appmods", "module:spaces", "module:some-installed-app"]) for (const n of ["get", "list"]) assert.equal((await call("vault.me.store." + n, { key: "mcp/a" }, BOB, via(BOB, { caller: other }))).error.code, "denied", `${other} is refused even with her token`);
-  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { caller: "device:abc" }))).data, { t: "bob" }, "her own device still reads");
+  assert.deepEqual((await call("vault.me.store.get", { key: "mcp/a" }, BOB, via(BOB, { caller: "device:abcdefghijklmnop" }))).data, { t: "bob" }, "her own device still reads");
 });
