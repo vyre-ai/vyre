@@ -3017,78 +3017,125 @@ Read a docs page, or one section: { page (path from docs.find), heading? }. A lo
 
 Fill a template with values and records, and file the document: { template, values?, records?, project?, contact?, format? }. A missing value stops it, named.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `template` string, required
+  - `contact` string
+  - `format` "docx" or "pdf"
+  - `name` string
+  - `project` string
+  - `records` object
+  - `space` string
+  - `values` object
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.send`
 
 Send a document for signature: { template_id, email or contact, signer?, subject?, note? }. Makes the request and emails the signer their link; one yes.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `template_id` integer, required
+  - `contact` any
+  - `email` string
+  - `note` string
+  - `signer` string
+  - `space` string
+  - `subject` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.send-signed`
 
 Email the signer their signed copy: { slug, email or contact, days? }. Makes the link and emails it; one yes. No end unless days.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `slug` string, required
+  - `contact` any
+  - `days` integer
+  - `email` string
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signed-link`
 
 A link to a signed copy: { slug, days? }. Lasts until revoked unless days is given. Whoever holds it can open the file.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `slug` string, required
+  - `days` integer
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signed-link.revoke`
 
 End every link to a signed copy made so far: {}. Holders get the refusal a made-up link gets; links made afterwards work.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signing.flow`
 
 The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, wait_days? }. Creates nothing.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `out_stage` string, required
+  - `signed_stage` string, required
+  - `template_id` integer, required
+  - `type` string, required
+  - `contact_field` string
+  - `email_field` string
+  - `name_field` string
+  - `signed_field` string
+  - `subject` string
+  - `submission_field` string
+  - `wait_days` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signing.remind`
 
 Email the signer their signing link again: { submission }. One yes, like any send.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `submission` integer, required
+  - `note` string
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signing.waiting`
 
 The documents sent for signature that nobody has signed yet: { requests: [{ submission, signer, email, template, at }] }, newest first.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.add`
 
 Put a Word template in the Drive as Templates/<name>.docx, a new version if the name exists: { name, base64 }. Answers its placeholders.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `base64` string, required
+  - `name` string, required
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.get`
 
 One template and what it asks for: { name, version?, space? } -> { name, version, placeholders, loops }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `space` string
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.list`
 
 The Word templates in the Space's Drive: { templates: [{ name, size }] }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ## events
 
@@ -16914,6 +16961,7 @@ Write a project template as a new draft version: stages, tasks, doers, checklist
 - Input:
   - `body` object or string, required: the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }
   - `note` string
+  - `replace` boolean: save over the newest version when it is a draft, instead of making a new version (for a draft being written)
   - `space` string: the Space it is for (a hosted Space's id from spaces.list); omit for this home's own Space
   - `template` string: template id; omit for a new template
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
@@ -16925,6 +16973,7 @@ work.template.define, run inside another Space by this module for the person (th
 - Input:
   - `body` object or string, required: the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }
   - `note` string
+  - `replace` boolean: save over the newest version when it is a draft, instead of making a new version (for a draft being written)
   - `template` string: template id; omit for a new template
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
