@@ -232,11 +232,18 @@ const partExpr = (t, sign, n, unit, fmt) => {
   const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
   if (!sign && !fmt) {
     if (HELPERS[t]) return HELPERS[t];
+    if (kind === "emails" || kind === "phones") return `first(${base})`;
     return kind === "datetime" ? `datetime(${base}, tz)` : kind === "date" ? `date(${base})` : `text(${base})`;
   }
   const dateOnly = kind === "date";
   const f = (fmt || "").toLowerCase() || (dateOnly || t === "today" ? "weekday" : "weekdaytime");
   return `format(${base}, "${f}", ${dateOnly ? '"UTC"' : "tz"}${sign ? `, ${sign === "-" ? "-" : ""}${Number(n)}, "${String(unit).toLowerCase()}"` : ""})`;
+};
+/** An address or number for a send step: a whole {token} of an emails or phones field is its main address (the engine's `first`), anything else is a value as `val` has it. @param {string} t */
+export const valAddr = (t) => {
+  const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim());
+  const k = m && DATE_TOKENS.get(m[1]);
+  return m && (k === "emails" || k === "phones") ? { expr: `first(${tokenExpr(m[1])})` } : val(t);
 };
 /**
  * A text value the person typed. A whole value like {email} reads that field of what started the Flow. Text with tokens inside, like "Hello {name}, ...", becomes one expression that joins the
@@ -257,14 +264,14 @@ export const val = (t) => {
   if (at < s.length) parts.push(lit(s.slice(at)));
   return { expr: parts.join(" + ") };
 };
-const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
+const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|first\\([a-z0-9_.]+\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
 const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
-  if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format)\(/.test(e)) return null;
+  if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
   let out = "";
   for (const p of e.match(TEMPLATE_PART) || []) {
     if (p.startsWith('"')) { out += unlit(p); continue; }
@@ -276,15 +283,17 @@ function templateText(e) {
       out += `{${ref}${f[4] === undefined ? "" : ` ${Number(f[4]) < 0 ? "-" : "+"} ${Math.abs(Number(f[4]))} ${f[5]}`}${f[2] === dflt ? "" : ` as ${f[2]}`}}`;
       continue;
     }
-    const call = /^(text|date|datetime)\(([a-z0-9_.]+)/.exec(p) || [];
+    const call = /^(text|date|datetime|first)\(([a-z0-9_.]+)/.exec(p) || [];
     const n = call[2] || "";
-    if (n === "now" && call[1] !== "text") out += call[1] === "date" ? "{today}" : "{now}";
+    if (n === "now" && call[1] !== "text" && call[1] !== "first") out += call[1] === "date" ? "{today}" : "{now}";
     else if (refToken(n) && n !== "now") out += `{${refToken(n)}}`;
     else return null;
   }
   return out;
 }
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
+/** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
 const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? v : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
@@ -328,7 +337,7 @@ export function stepDefinition(s, d) {
       return { id: s.id, kind: "wait", for_ms: Math.max(60_000, Number(s.amount || 1) * (UNITS[s.unit || "hours"] || 3_600_000)) };
     case "web": return { id: s.id, kind: "service", connector: s.connector, method: s.method || "GET", path: (s.path || "/").trim() || "/", ...((s.method || "GET") !== "GET" && (s.body || "").trim() ? { body: val(s.body) } : {}) };
     case "formula": return { id: s.id, kind: "fn", language: "js", source: FORMULA_SOURCE, hash: FORMULA_HASH, inputs: { value: { expr: (s.formula || "").trim() || "0" } }, outputs: ["value"] };
-    case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: val(s.to), body: val(s.body) } };
+    case "sms": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "sms", to: valAddr(s.to), body: val(s.body) } };
     case "classify": return { id: s.id, kind: "classify", input: val(s.input), labels: String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean) };
     case "extract": return { id: s.id, kind: "extract", input: val(s.input), fields: (s.fields || []).filter((/** @type {any} */ f) => f.name && f.name.trim()).map((/** @type {any} */ f) => ({ name: slug(f.name), kind: f.kind || "text" })) };
     case "subflow": return { id: s.id, kind: "subflow", flow: s.flow, input: pairs(s.fields) };
@@ -337,12 +346,12 @@ export function stepDefinition(s, d) {
     case "parallel": return { id: s.id, kind: "parallel", steps: (s.lanes || []).map((/** @type {any} */ l, /** @type {number} */ i) => ({ id: `${s.id}_lane${i + 1}`, kind: "branch", steps: (l.steps || []).map((/** @type {DraftStep} */ x) => stepDefinition(x, d)) })) };
     case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
-    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
-    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: s.title, output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
+    case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: val((s.title || "").trim() || "Handle this case"), instructions: val(s.instructions), output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}), ...peopleOf(s) };
+    case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: val(s.title), output: { kind: "note" }, ...(s.brief && s.brief.trim() ? { brief: s.brief } : {}), ...peopleOf(s) };
     case "email": return s.sendStep === "comms.email"
-      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: val(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: val(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: val(s.from) } : {}) } }
-      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
-    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: s.title };
+      ? { id: s.id, kind: "call", action: "comms.email", resource: "vyre://space/comms", input: { to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body), ...(s.replyTo && s.replyTo.trim() ? { replyTo: valAddr(s.replyTo) } : {}), ...(s.from && s.from.trim() ? { from: valAddr(s.from) } : {}) } }
+      : { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: valAddr(s.to), subject: val(s.subject || ""), body: val(s.body) } };
+    case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: val(s.title) };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: val(s.value || "") } };
     default: throw new Error(`no step kind ${s.kind}`);
   }
@@ -383,7 +392,7 @@ export function toDefinition(d, o) {
 function dateTokens(d, o) {
   /** @type {Map<string, string>} */ const out = new Map();
   if (!o) return out;
-  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime") out.set(token(f.name), f.kind); };
+  const add = (/** @type {string | undefined} */ type, /** @type {(f: string) => string} */ token) => { for (const f of o.types.find((x) => x.name === type)?.fields || []) if (f.kind === "date" || f.kind === "datetime" || f.kind === "emails" || f.kind === "phones") out.set(token(f.name), f.kind); };
   if (isRecordTrigger(d.trigger)) add(d.trigger.type, (f) => `after.${f}`);
   for (const s of flat(d.steps)) if (s.kind === "create" || s.kind === "upsert") add(s.type, (f) => `steps.${s.id}.record.data.${f}`);
   return out;
@@ -537,19 +546,19 @@ function stepFrom(s) {
         const name = exprOf(i.name) === "trigger.name" ? "" : unval(i.name);
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
-      if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unval(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unval(i.to), body: unval(i.body) };
-      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unval(i.replyTo) !== null) && (i.from === undefined || unval(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unval(i.replyTo) }), ...(i.from === undefined ? {} : { from: unval(i.from) }) };
-      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
+      if (s.action === "comms.send" && i.via === "sms" && keys(i, ["via", "to", "body"]) && unvalAddr(i.to) !== null && unval(i.body) !== null) return { id: s.id, kind: "sms", to: unvalAddr(i.to), body: unval(i.body) };
+      if (s.action === "comms.email" && keys(i, ["to", "subject", "body", "replyTo", "from"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null && (i.replyTo === undefined || unvalAddr(i.replyTo) !== null) && (i.from === undefined || unvalAddr(i.from) !== null)) return { id: s.id, kind: "email", sendStep: "comms.email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body), ...(i.replyTo === undefined ? {} : { replyTo: unvalAddr(i.replyTo) }), ...(i.from === undefined ? {} : { from: unvalAddr(i.from) }) };
+      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unvalAddr(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unvalAddr(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && typeof s.instructions === "string" && typeof s.title === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "label", "checker", "followers", "notes"])
-        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: s.title, instructions: s.instructions, record: rec, ...ppl } : adv;
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "label", "checker", "followers", "notes"])
+        ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...ppl } : adv;
     }
-    case "assign": return typeof s.title === "string" && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "brief", "checker", "followers", "notes"]) ? { id: s.id, kind: "assign", to: who(s.to), title: s.title, ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
-    case "ask": return typeof s.title === "string" && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: s.title } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && s.output && s.output.kind === "note" && keys(s, ["id", "kind", "to", "title", "output", "brief", "checker", "followers", "notes"]) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title"]) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});
       return rec && f.length === 1 && unval(s.set[f[0]]) !== null && keys(s, ["id", "kind", "type", "record", "set"]) ? { id: s.id, kind: "update", type: s.type, record: rec, field: f[0], value: unval(s.set[f[0]]) } : adv;
