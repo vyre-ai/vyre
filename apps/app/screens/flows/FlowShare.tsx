@@ -1,4 +1,5 @@
-// Share a Flow with a person or a team or role: "Can use" (run it, see it) or "Can edit". A real build calls flows.access.get and flows.access.set (the Flows module's store, lib/access.js); the sample build keeps the levels in memory.
+// Share a Flow with a person or a team or role: "Can use" (run it, see it) or "Can edit". A real build calls flows.access.get and flows.access.set (kernel grants on that Flow); the sample build keeps the levels in memory
+// 
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Row, Select, Sheet, Text, allowsMock, showToast } from "@vyre/ui";
