@@ -2,7 +2,7 @@
 title: Give your own AI a key
 summary: Make a named key for each of your AIs (Claude Code, Codex, an agent in another tool). It acts as you in Vyre, with the access you have, on this computer or hosted over HTTP. Settings lists the keys and revokes one with a tap.
 audience: users, agents
-owner: import-mcp
+owner: app-design
 status: draft
 ---
 
