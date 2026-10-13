@@ -393,6 +393,7 @@ Wake an agent for a task it was given: one job thread with the task's title, ins
   - `approver` string
   - `flow` string
   - `instructions` string
+  - `origin` object
   - `project` string
   - `record` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
@@ -8776,7 +8777,7 @@ A person's decision on a held act. Approving completes the act as that person; d
 
 ### `publish.domain.add`
 
-Start connecting a domain to a site. Returns the DNS record to add. Nothing serves until it is verified and published, which waits for a person's yes.
+Start connecting a domain to a site. Returns the DNS record to add. Nothing serves until verified and published, which waits for a person's yes.
 
 - Input:
   - `deployment` string, required
@@ -8859,7 +8860,7 @@ Approve a previewed version and put it live with one yes. The first call holds; 
 
 ### `publish.holds`
 
-Publishing acts waiting for a person's yes: each plan (what goes public, where, with which secrets, replacing which version) and its deciding task. A model cannot decide them.
+Publishing acts waiting for a person's yes: each plan (what goes public, where, which secrets, which version it replaces) and its task. A model cannot decide them.
 
 - Input:
   - `space` string
@@ -12748,64 +12749,91 @@ Rename this server: its display name, a label the person chooses (not its vyre.r
 
 Approve or reject a task waiting for a check. The person's own act, with their presence.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `outcome` "approved" or "rejected", required
+  - `reason` string
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `tasks.get`
 
 One task, or null when it is not there or not the caller's to read.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `tasks.list`
 
 Tasks, oldest first: by record, doer, checker or state. Only what the caller may read.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `checker` string
+  - `doer` string
+  - `record` string
+  - `space` string
+  - `state` list of one of "waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `tasks.move`
 
 Move a task: start it, flag it stuck (with a reason), skip it, or fix a stuck one. Which kernel act that is, and whether the caller may, is the kernel's.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `to` one of "working", "stuck", "skipped", "ready", required
+  - `reason` string
+  - `space` string
+  - `suggested_fix` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `tasks.request`
 
-No description.
+Ask a person or an assistant for something, as a task: a title, an output, a doer and, when it needs one, a checker. Pick the output kind for what you need back: fields (a value on a record; target is the field name), file (a file; target is the folder to put it in, else it lands in the record's or project's folder), decision (yes or no with a reason), note (text with sources), draft or sent (a person checks it; a sent act leaves the Space only on their approval). Set session to your chat so the card links back to it, and record or project so it says what it is for. Never ask for a password, key or token: flag the task stuck (tasks.move) with a suggested_fix that names the Vault item in quotes, such as Add "court-portal" to the Vault, and the person's card opens the Vault's Add sheet for it. The kernel writes its id, state and who asked.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `task` object, required
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `tasks.serve`
 
-No description.
+A team member's reads of the team's tasks (list, get), as that member, in that Space. Only the daemon's member door runs it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `call` "list" or "get", required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `tasks.serve-request`
 
-No description.
+A team member asks for a task, as that member, in that Space. Only the daemon's member door runs it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `call` "request", required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `tasks.serve-work`
 
-No description.
+A team member works a task of hers (start it, flag it stuck, hand it in), as that member, in that Space. Only the daemon's member door runs it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `call` "move" or "submit", required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `tasks.submit`
 
 The doer hands in what it made. The kernel checks the output and moves the task on (to needs_check or done).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `evidence` object, required
+  - `id` string, required
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ## team
 

@@ -1070,7 +1070,7 @@ The app's way into a Space's tasks: one tool per Store call over the kernel's ta
 - Folder: `core/tasks-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#tasks)
+- Tools: [9](tools.md#tasks), 3 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
