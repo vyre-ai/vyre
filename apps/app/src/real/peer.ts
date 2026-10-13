@@ -4,7 +4,6 @@
 
 import type { Peer } from "@vyre/relay-client/peerclient.js";
 import { withTimeout } from "./with-timeout.js";
-import { multiServers } from "./space-servers";
 
 /** How long a call to one of several servers waits before that server is called offline. */
 const ANSWER_MS = 60_000;
@@ -85,7 +84,8 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
   if (fake) return (await fake(tool, input, id)) as T;
   let p = await openPeer(id);
   // With several servers paired one that is stopped or offline must not hang a screen: the call waits a set time, then is refused in words, and the stuck connection is dropped so the next call opens a fresh one.
-  const sent = async (peer: Peer) => (multiServers() ? await withTimeout(peer.call(tool, input), ANSWER_MS) : await peer.call(tool, input)) as T;
+  const several = (await import("./space-servers")).multiServers();
+  const sent = async (peer: Peer) => (several ? await withTimeout(peer.call(tool, input), ANSWER_MS) : await peer.call(tool, input)) as T;
   try { return await sent(p); }
   catch (e) {
     const code = (e as { code?: string })?.code;

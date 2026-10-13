@@ -24,6 +24,6 @@ test("a call that fails keeps its own error", async () => {
 test("peerCall waits only when several servers are paired, and drops the stuck connection so the next call reopens it", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("./peer.ts", import.meta.url), "utf8");
-  assert.match(src, /multiServers\(\) \? await withTimeout\(/);
+  assert.match(src, /several \? await withTimeout\(/);
   assert.match(src, /peers\.delete\(id\)/);
 });
