@@ -102,3 +102,17 @@ test("an invite cannot carry a custom role wider than Member, and an admin canno
   await assert.rejects(() => mk(ada, { role: "admin" }), { code: "not_allowed" }, "an admin cannot invite an admin");
   assert.equal((await mk(ada, { role: "member", custom: custom("okay", ["records.read"]) })).custom.id, "okay", "an admin invites into a Member-based role");
 });
+
+test("an invite keeps its project seats beside the hash, and invite.used carries them with the issuer; a malformed list is refused", async () => {
+  const { k, g, owner } = await rig();
+  const mk = i => g.invites.create(owner, i, { presence: proof("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  for (const bad of [[{ project: "" }], [{ project: "p", level: "boss" }], "p", Array.from({ length: 65 }, (_, n) => ({ project: `p${n}` }))]) await assert.rejects(() => mk({ role: "member", seats: bad }), { code: "bad_input" });
+  const i = { role: "member", seats: [{ project: "px", level: "viewer" }, { project: "py" }] };
+  const inv = await mk(i);
+  assert.deepEqual(inv.seats, [{ project: "px", level: "viewer" }, { project: "py", level: "contributor" }]);
+  const guest = k.chains.fromFacts({ kind: "invitee", person: BOB, vouched: true });
+  await g.invites.accept(guest, inv.id, { seen: { role: inv.role, scope: inv.scope, expires: inv.expires, invitee: inv.invitee }, proof: { op: "grant.accept", fields: { invite: inv.id, hash: inv.hash, person: BOB }, n: Math.random() } });
+  const ev = k.log.read({ type: "invite.used" }).at(-1);
+  assert.deepEqual(ev.data.seats, inv.seats);
+  assert.equal(ev.data.issuer, OWNER);
+});

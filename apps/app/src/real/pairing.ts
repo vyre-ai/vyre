@@ -201,6 +201,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
       await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });
+      void import("./space-list-app").then((m) => m.recordPaired({ relay: r.relay, route: r.route, box: r.box, name: r.name })).catch(() => {});
       // the Spaces of every server are asked again, so the switcher and the routing know the new one
       void import("./space-servers").then((m) => m.refreshSpaceServers()).catch(() => {});
       // The connection made while there was no pairing (the box check) is stale: drop it so the next call goes over the relay to this server.
@@ -227,6 +228,7 @@ export async function afterPaired(r: { relay: string; route: string; box: string
   const { savePairing } = await import("../api/relay");
   await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
   (await import("./peer")).usePeer(true);
+  void import("./space-list-app").then((m) => m.recordPaired({ relay: r.relay, route: r.route, box: r.box, name: r.name })).catch(() => {});
   // A browser the owner has not trusted yet cannot start its session: the pairing stays, the session starts (renewSession) once the owner trusts it, and Devices says so.
   await openPairedSession(r).catch(() => {});
   const { disconnect, connect } = await import("../api/box");

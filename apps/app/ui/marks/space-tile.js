@@ -29,8 +29,8 @@ export function paletteIndex(id) {
   return h % TILE_PALETTE.length;
 }
 
-/** Only an image the app can safely draw: https, a data image, or a local file the app made. @param {unknown} uri */
-const drawable = (uri) => typeof uri === "string" && /^(https:\/\/|data:image\/(png|jpeg|webp|gif|svg\+xml);|file:\/\/|blob:)/i.test(uri);
+/** Only an image the app can safely draw: https, a raster data image (never SVG, which can carry script), or a local file the app made. @param {unknown} uri */
+const drawable = (uri) => typeof uri === "string" && /^(https:\/\/|data:image\/(png|jpeg|webp);|file:\/\/|blob:)/i.test(uri);
 
 /**
  * What a space's tile shows. A logo when there is one and it loaded; otherwise the monogram. `failed` is the image's own load error.

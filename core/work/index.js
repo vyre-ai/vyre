@@ -122,6 +122,8 @@ export default {
       // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
       hear("chat.created", p => hubOf().onChatCreated(p));
       hear("chat.changed", p => hubOf().onChatChanged(p));
+      // an accepted invite that named projects: the joiner is seated on each, at the level the invite chose, by the one seat-giving path (setSeatLevel, keep: a replay leaves an edited seat alone)
+      hear("invite.used", p => hubOf().onInviteUsed(p && p.data));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => (p && p.space ? null : hubOf().onThreadRenamed(p)));

@@ -30,7 +30,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9604 (class 3, on 9598: a row-scoped grant given by an owner or an admin, never a delegation, is access to see for a communication, a team row, a project or a task: the authorizer already matched it to the row, the lead's ruling A of 12 Oct 2026, "whatever is scoped to you or you have access to see").
 // 9611 (kernel +7 on 9604, per-project seat levels: a viewer on a project reads it and writes nothing in it, refused in words from the one folder guard and the gate; the rule that judges who writes a seat or a task is in gateway/ownership.js, which is not base).
 // 9613 (seats +7 and roles-core +2 together on 9604, merged on the stage 13 Oct 2026).
-const CAP = 9613;
+// 9615 (invite-seats, 13 Oct 2026, lead ruling: an invite carries its project seats; +2: the shape check and the seats kept beside custom, which invite.used carries to the work module).
+const CAP = 9615;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

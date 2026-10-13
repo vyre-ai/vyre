@@ -44,7 +44,7 @@ export function Frame({ title, sub, back, onBack, top, actions, marks, scope, ch
     );
   }
   return (
-    <ScrollView contentContainerClassName="w-full max-w-page gap-s2 self-center p-s4 pb-s12">
+    <ScrollView contentContainerClassName="w-full max-w-page gap-s3 self-center px-gutter pt-s8 pb-s12">
       {back || onBack ? <View className="self-start"><Button kind="ghost" size="sm" icon="chev-l" label="Back" onPress={() => (onBack ? onBack() : router.push(back as never))} /></View> : null}
       <View className="flex-row items-start gap-s3">
         <View className="min-w-0 flex-1 gap-s1">

@@ -47,7 +47,9 @@ import { lentRequest } from "./threadsock.js";
 import { available as spawnerThere } from "../spawner/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
-import { createDoorGate, memberSees } from "../modules/door-gate.js";
+import { createDoorGate } from "../modules/door-gate.js";
+import { readRoles } from "../roles/index.js";
+import { TOOL_IDS } from "../roles/catalogue.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -611,6 +613,12 @@ async function startLocked(opts, root, p, release) {
         if (e && (e.type === "chat.created" || e.type === "chat.changed")) setImmediate(() => { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } });
       }, { batch: true });   // the work module's mirror of who is in a chat: a repeat writes the same ids
     } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
+    // An accepted invite that named projects: the work module seats the joiner (core/work onInviteUsed). Only the ids the event carries.
+    try {
+      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-invite-seats", { type: "invite.used" }, (/** @type {any} */ e) => {
+        if (e && e.data && Array.isArray(e.data.seats)) setImmediate(() => { try { events.emit("kernel", "invite.used", { data: e.data }); } catch { /* a notice, never a stop */ } });
+      }, { batch: true });
+    } catch (e) { log(`kernel: invite events are not passed on (${/** @type {Error} */ (e).message})`); }
     // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
     const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
@@ -812,11 +820,27 @@ async function startLocked(opts, root, p, release) {
       const doorKernel = kernel.kernelFor({ name: "door-gate" });
       // the grants of the Space a chain is for: this home's own, or a hosted team Space's (a session's call relayed into it carries that Space's chain)
       const spaceOf = (/** @type {string | undefined} */ space) => { if (!space || space === kernel.id.space) return kernel; try { const h = kernel.spaces && kernel.spaces.for(space); return h && h.hosted === true && h.kernel ? h.kernel : null; } catch { return null; } };
+      /** @type {Map<string, { seq: number, roles: Map<string, any> }>} */ const roleDefs = new Map();
       registry.deps.doorGate = createDoorGate({
+        ...(Array.isArray(opts.doorScopedGroups) ? { scopedGroups: opts.doorScopedGroups } : {}), // a test seam: which role groups open at the door (default none, core/modules/door-lists.js SCOPED_GROUPS)
         chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
         // the role from the person's membership: the same source the gateway's staff statement reads, so the swap to it is a rename
         roleOf: (/** @type {any} */ a) => { const k = spaceOf(a && a.space); const m = k ? k.grants.members.membership(a) : null; return m ? m.role : null; },
         othersExist: async (/** @type {string | undefined} */ space) => { const k = spaceOf(space); return k ? k.grants.hasOtherMembers(k.id.owner) : true; },
+        // the person's base role and the tool groups a custom role turns on (core/roles): read from the role's own definition record, never from anything a caller says. The definitions are cached per Space
+        // against the kernel log's latest sequence, so any change (a role edited, a member set or removed) is read at the next call, never from a stale copy; a person with no custom role never reads them.
+        roleTools: async (/** @type {any} */ actor) => {
+          const k = spaceOf(actor && actor.space); const m = k && actor ? k.grants.members.membership(actor) : null;
+          if (!k || !m) return null;
+          if (!m.custom) return { base: String(m.role), groups: [] };
+          const seq = k.gateway.events.latestSeq(), key = String(actor.space || "");
+          let hit = roleDefs.get(key);
+          if (!hit || hit.seq !== seq) { hit = { seq, roles: await readRoles(k.gateway, k.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: k.id.owner, path: "direct" })) }; roleDefs.set(key, hit); }
+          const def = hit.roles.get(String(m.custom));
+          const role = def && def.role;
+          if (!role || role.base !== "member" || (role.ends && Number(role.ends) <= Date.now())) return { base: String(m.role), groups: [] };
+          return { base: String(m.role), groups: (Array.isArray(role.tools) ? role.tools : []).filter((/** @type {string} */ t) => TOOL_IDS.includes(t)) };
+        },
       });
     }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
@@ -1451,7 +1475,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/tools") {
     let data = registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name));
     // A member's own session is shown the tools it may call and no others (core/modules/door-gate.js).
-    if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null && await registry.deps.doorGate.hides(String(caller), typeof tok === "string" ? { token: tok } : {}) === "member") data = data.filter(t => memberSees(t.name)); }
+    if (registry.deps.doorGate) { const tok = await kernelSession(req, kernelOf); if (tok !== null) { const show = await registry.deps.doorGate.visible(String(caller), typeof tok === "string" ? { token: tok } : {}); if (show) data = data.filter(t => show(t.name)); } }
     // The plugin agent is offered only what its grant names.
     if (pluginAgent) {
       const ask = await registry.call("pluginagent.allows", { tools: data.map(t => t.name) }, "module:vyred").catch(() => null);
