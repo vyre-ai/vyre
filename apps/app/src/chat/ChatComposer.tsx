@@ -10,6 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { AiMark, AnsweringControl, Chip, ChipToken, Icon, PickerList, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
 import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
+import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
+import { useMentionNodes } from "./useMentionNodes";
 import { Face } from "./Face";
 import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
@@ -75,6 +77,14 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
 }
 
 const POP_ID = "composer-pop";
+/** The mark on a nested row: its kind (a project, an object, a file, a tag) or, for a top category, what it holds. */
+function nestIcon(r: NestRow): IconName {
+  if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", ais: "assistants", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
+  const k = (r.pick as { kind?: string } | undefined)?.kind;
+  return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
+}
+/** What a token in the words shows: @ a person, # by what was picked. */
+const tokenIcon = (lead: "@" | "#", kind?: string): IconName => (lead === "@" ? "mention" : kind === "collection" ? "records" : kind === "project" ? "projects" : kind === "file" ? "file" : "hash");
 type Pop = null | "plus" | "files" | "vyrefiles" | "answering" | "model";
 /** An icon for a file by its name: a picture, sound, film or document. Pictures with a thumbnail show the thumbnail instead. */
 const fileIcon = (name: string): IconName => (/\.(png|jpe?g|gif|webp|heic|svg)$/i.test(name) ? "eye" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) ? "mic" : /\.(mp4|mov|webm|mkv)$/i.test(name) ? "play" : "file");
@@ -103,6 +113,15 @@ export function ChatComposer(p: ComposerProps) {
   const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);
   const trig = trigRaw && trigRaw.range.start !== dismissed ? trigRaw : null;
   useEffect(() => { if (!trigRaw) setDismissed(null); }, [trigRaw]);
+  // The @ and # lists nest: the keys of the branches opened so far (empty is the top). It starts over whenever a different trigger opens.
+  const [nestPath, setNestPath] = useState<string[]>([]);
+  const wantActive = useRef<number | null>(null);
+  const trigId = trig && trig.kind !== "command" ? `${trig.kind}:${trig.range.start}` : null;
+  useEffect(() => { setNestPath([]); }, [trigId]);
+  const [nestSeen, setNestSeen] = useState(false);
+  useEffect(() => { if (trigId) setNestSeen(true); }, [trigId]);
+  const nodes = useMentionNodes({ wanted: nestSeen, people: p.people ?? [], records: p.records ?? [], files: p.vyreFiles ?? [], ais: useMemo(() => (p.slots ?? []).map((s) => s.label), [p.slots]) });
+  const nestRoot = trig?.kind === "person" ? nodes.at : trig?.kind === "record" ? nodes.hash : null;
   const editId = p.editing?.id;
   useEffect(() => {
     if (!p.editing) return;
@@ -175,19 +194,46 @@ export function ChatComposer(p: ComposerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pop, p.runsOn, p.models, p.model, slots, working, mode, answering, slotSel, text, caret]);
 
+  const nestList = useMemo((): NestRow[] => (nestRoot && trig ? nestRows(nestRoot, nestPath, trig.range.query) : []), [nestRoot, nestPath, trig]);
+  const drillRow = (i: number) => {
+    const r = nestList[i];
+    if (!r?.drill || !trig) return;
+    // What was typed was a search for this row: it is spent once the row is open.
+    const t = text.slice(0, trig.range.start + 1) + text.slice(trig.range.end);
+    setText(t);
+    setCaret(trig.range.start + 1);
+    setNestPath(nestStep(nestPath, "drill", r));
+    input.current?.focus();
+  };
+  const goBack = () => {
+    const key = nestPath[nestPath.length - 1];
+    const parent = nestPath.slice(0, -1);
+    wantActive.current = nestRoot ? Math.max(0, nestRows(nestRoot, parent, "").findIndex((r) => r.trail[r.trail.length - 1] === key)) : 0;
+    setNestPath(parent);
+    input.current?.focus();
+  };
   const trigRows = useMemo((): (PickerItem & { pick: string; urn?: string; kind?: string })[] => {
     if (!trig) return [];
     const q = trig.range.query;
     if (trig.kind === "command") return rankCommands(COMMANDS, q).slice(0, 30).map((c) => ({ key: c.name, label: "/" + c.name, sub: c.description, pick: c.name }));
-    if (trig.kind === "person") return rankByName(p.people ?? [], q).slice(0, 30).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? (x.doing || "Assistant") : "Person", pick: x.name, leading: <Face name={x.name} family={x.family} size={24} /> }));
-    return rankByName(p.records ?? [], q).slice(0, 30).map((r) => { const chip = sealedChip(r); return { key: r.urn ?? r.name, label: r.name, sub: r.type, pick: r.name, urn: r.urn, kind: r.kind, trailing: chip ? <Chip tone="sealed" icon="shield">{chip}</Chip> : undefined }; });
-  }, [trig, p.people, p.records]);
+    return nestList.map((r, i): PickerItem & { pick: string; urn?: string; kind?: string } => {
+      const sealed = typeof r.sealed === "number" ? sealedChip({ sealed: r.sealed }) : null;
+      const family = typeof r.family === "string" ? r.family : "";
+      const above = r.path && r.path.includes(" › ") ? r.path.slice(0, r.path.lastIndexOf(" › ")) : undefined;
+      return {
+        key: r.key, label: r.label, group: r.group, sub: above ?? (typeof r.sub === "string" ? r.sub : undefined),
+        leading: family ? <Face name={r.label} family={family as "person" | "assistant"} size={24} /> : <Icon name={nestIcon(r)} size={18} />,
+        trailing: <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>{sealed ? <Chip tone="sealed" icon="shield">{sealed}</Chip> : null}{r.drill ? <Pressable accessibilityRole="button" accessibilityLabel={`Open ${r.label}`} onPress={() => drillRow(i)} {...(web ? ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault() } as object) : {})} style={{ width: 28, height: 28, alignItems: "center", justifyContent: "center" }}><Icon name="chev-r" size={16} tone="label" /></Pressable> : null}</View>,
+        pick: r.pick?.pick ?? r.label, urn: r.pick?.urn, kind: r.pick?.kind,
+      };
+    });
+  }, [trig, nestList]);
 
   const shownMenu = useMemo(() => (pop ? (filterItems(menuRows, menuQ) as Row[]) : []), [pop, menuRows, menuQ]);
   const rows: PickerItem[] = pop ? shownMenu : trigRows;
   const query = pop ? menuQ : trig?.range.query ?? "";
-  const open = rows.length > 0 || !!pop;
-  useEffect(() => { setActive(0); }, [trig?.kind, trig?.range.query, menuQ, pop]);
+  const open = rows.length > 0 || !!pop || (!!nestRoot && nestPath.length > 0);
+  useEffect(() => { const a = wantActive.current; wantActive.current = null; setActive(a ?? 0); }, [trig?.kind, trig?.range.query, menuQ, pop, nestPath]);
 
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
@@ -198,7 +244,13 @@ export function ChatComposer(p: ComposerProps) {
     setCaret(r.caret);
     input.current?.focus();
   };
-  const pickRow = (i: number) => { if (pop) shownMenu[i]?.run(); else if (trigRows[i]) choose(trigRows[i]); };
+  const pickRow = (i: number) => {
+    if (pop) { shownMenu[i]?.run(); return; }
+    const r = nestList[i];
+    // A level with nothing to choose (Projects, Records) opens; everything else writes its token.
+    if (nestRoot) { if (r?.pick) choose(trigRows[i]); else drillRow(i); return; }
+    if (trigRows[i]) choose(trigRows[i]);
+  };
 
   const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
@@ -221,7 +273,8 @@ export function ChatComposer(p: ComposerProps) {
   }, [text, p, answering, allIds, slots, mode, files, working]);
 
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
-  const names = useMemo(() => [...(p.people ?? []).map((x) => x.name), ...(p.records ?? []).map((r) => r.name)], [p.people, p.records]);
+  // The words that count as a token: the people, and what was picked from a list (a whole object, a file, a tag). Typed names that were never picked tag nothing.
+  const names = useMemo(() => [...(p.people ?? []).map((x) => x.name), ...picked.current.keys()], [p.people, text]); // eslint-disable-line react-hooks/exhaustive-deps
   const toks = useMemo(() => tokensIn(text, names), [text, names]);
 
   const onKey = (e: any) => {
@@ -236,7 +289,18 @@ export function ChatComposer(p: ComposerProps) {
       if (sc === "ai:all") askEveryone(); else { const sl = slots[Number(sc.slice(3))]; if (sl) toggleAi(sl.id); }
       return;
     }
-    if (open) {
+    if (open && !pop && nestRoot) {
+      // The @ and # lists nest: Right or Tab opens, Left or Backspace on nothing typed goes back, Enter picks.
+      const act = nestKey(ev, { query, count: rows.length, depth: nestPath.length, row: nestList[active] });
+      if (act === "next" || act === "prev") { stop(); setActive((a) => moveActive(a, act === "next" ? 1 : -1, rows.length)); return; }
+      if (act === "pick") { stop(); pickRow(active); return; }
+      if (act === "drill") { stop(); drillRow(active); return; }
+      if (act === "back") { stop(); goBack(); return; }
+      if (act === "close") {
+        if (ev.key === "Escape" && trig) { stop(); setDismissed(trig.range.start); }
+        return; // Backspace at the top on an empty query goes on to delete the trigger character.
+      }
+    } else if (open) {
       const act = pickerKey(ev, { query, count: rows.length });
       if (act === "next" || act === "prev") { stop(); setActive((a) => moveActive(a, act === "next" ? 1 : -1, rows.length)); return; }
       if (act === "pick") { stop(); pickRow(active); return; }
@@ -306,8 +370,12 @@ export function ChatComposer(p: ComposerProps) {
   );
   const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
 
-  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc";
-  const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
+  // A nested list says where it is: "Tag › Records › Clients". The footer names only the keys that work on the row under the cursor.
+  const nested = !pop && !!nestRoot;
+  const crumbs = nested && nestPath.length ? [trig?.kind === "person" ? "Mention" : "Tag", ...crumbsOf(nestRoot, nestPath)] : undefined;
+  const nestFooter = nested ? nestHint(nestPath.length, nestList[active]) : null;
+  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
+  const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "Mention" : trig?.kind === "record" ? "Tag" : undefined;
   const aiMenu = slots.length > 1 || !!p.models?.length;
 
   return (
@@ -323,7 +391,7 @@ export function ChatComposer(p: ComposerProps) {
       ) : null}
       {open ? (
         <View style={{ marginBottom: 6 }}>
-          <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
+          <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} crumbs={crumbs} onCrumb={(i) => { if (i < nestPath.length) setNestPath(nestPath.slice(0, i)); }} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
         </View>
       ) : null}
       <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: focused ? color["edge-strong"] : color.edge, borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
@@ -336,7 +404,7 @@ export function ChatComposer(p: ComposerProps) {
                 <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
             )))}
-            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={t.lead === "@" ? "mention" : "hash"} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
+            {toks.map((t) => <ChipToken key={t.lead + t.name} icon={tokenIcon(t.lead, picked.current.get(t.name)?.kind)} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
             {stateChips}
           </View>
         ) : null}
