@@ -28,8 +28,24 @@ export const ALLOWED = Object.freeze(new Set([
   "recall.search", "recall.sessions", "recall.thread", "recall.turn", "recall.links", "recall.transcript", "recall.related", "recall.status",
   "projects.list", "projects.context", "projects.catalog", "projects.of", "projects.threads", "projects.history",
   "threads.list", "threads.get", "threads.history", "threads.lineage",
-  "pluginagent.ask", "pluginagent.status",
+  "pluginagent.ask", "pluginagent.status", "pluginagent.setup.status",
 ]));
+/**
+ * What Set up mode adds while it is on (the lead's ruling, 13 Oct): the tools that set a space up and the two that bring old sessions in. Granted by the person once, with presence, for a few hours;
+ * every tool here still runs under the person's own access (the kernel judges the agent's chain, which `setup.begin` bounds by what the person holds).
+ */
+export const SETUP_ALLOWED = Object.freeze(new Set([
+  "projects.create", "projects.rename", "projects.add-threads", "projects.add-workspace",
+  "agents.create", "agents.update", "agents.list",
+  "records.types", "records.define",
+  "flows.define", "flows.compile-text", "flows.list",
+  "roles.catalogue", "roles.list", "roles.create", "roles.update", "roles.assign",
+  "work.template.define", "work.template.get",
+  "import.sessions.list", "import.sessions.run", "import.status",
+  "pluginagent.setup.end",
+]));
+/** Set up mode lasts this long unless the person says otherwise, and never longer than the most. */
+export const SETUP_HOURS = Object.freeze({ default: 4, max: 24 });
 /** The file the plugin's MCP server reads, in the home: { agent, key }. Mode 0600. */
 export const KEY_FILE = "plugin-agent.json";
 const ASK_MS = 24 * 3600_000, QUIET_MS = 7 * 24 * 3600_000;
@@ -148,6 +164,7 @@ export default {
         }
         db.prepare("DELETE FROM pluginagent_agents WHERE agent = ?").run(String(a.agent));
         setState("off", "1");
+        setState("setup_until", null);
         try { fs.rmSync(keyPath(), { force: true }); } catch { /* the hash is gone: the key is already dead */ }
         // The person's own act (revoke needs presence): the delete runs as the person's surface that revoked (a device as "local", above), not as this module, so agents.delete's person-only rule is what decides.
         const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as, relay: meta });
@@ -175,11 +192,41 @@ export default {
       run: async () => { setState("off", null); return { on: true }; },
     });
 
+    /** When Set up mode ends, in ms, or 0 when it is off (a granted agent is needed, and the clock decides, not whoever last swept a row). */
+    const setupUntil = () => { const u = Number(getState("setup_until") || 0); return current() && u > now() ? u : 0; };
+
+    ctx.tool("pluginagent.setup.begin", {
+      description: "The person lets Claude Code on this computer set their space up for a few hours (projects, agents, record types, flows, templates, roles) and bring their old sessions in. One yes, then no more cards for the setup itself; it holds only what the person holds, and sending, publishing and paying still wait for the person.",
+      input: obj({ hours: { type: "number", minimum: 0.25, maximum: SETUP_HOURS.max } }),
+      callers: PEOPLE,
+      presence: { summary: async () => `Let Claude Code on ${computerName()} set up your Vyre for the next few hours` },
+      run: async (/** @type {any} */ input) => {
+        if (!current()) throw refuse("Claude Code has no reach on this computer yet; allow it first (pluginagent.grant)", "conflict");
+        const hours = Math.min(SETUP_HOURS.max, Math.max(0.25, Number(input && input.hours) || SETUP_HOURS.default));
+        const until = now() + hours * 3600_000;
+        setState("setup_until", String(until));
+        try { ctx.events.emit("pluginagent.setup", { on: true, until }); } catch { /* an event never decides */ }
+        return { on: true, until, hours };
+      },
+    });
+
+    ctx.tool("pluginagent.setup.end", {
+      description: "Ends Set up mode now. Claude Code goes back to reading memory and sessions; what it set up stays.",
+      input: obj(), callers: [...PEOPLE, "mcp", "harness"],
+      run: async () => { const was = setupUntil() > 0; setState("setup_until", null); if (was) { try { ctx.events.emit("pluginagent.setup", { on: false }); } catch { /* an event never decides */ } } return { on: false, was }; },
+    });
+
+    ctx.tool("pluginagent.setup.status", {
+      description: "Whether Set up mode is on for Claude Code on this computer, and until when.",
+      input: obj(), callers: [...PEOPLE, "mcp", "harness", "module"],
+      run: async () => { const u = setupUntil(); return { on: u > 0, ...(u ? { until: u } : {}) }; },
+    });
+
     ctx.tool("pluginagent.allows", {
       description: "vyred asks, for a call or a tool listing by the plugin agent: which of these tools does the grant name? Answers { allowed: [tool] } for the ones it does, the rest are refused with not_in_grant.",
       internal: true, callers: ["module"],
       input: obj({ tools: { type: "array", items: { type: "string" }, maxItems: 5000 } }, ["tools"]),
-      run: async (/** @type {any} */ i) => ({ allowed: (Array.isArray(i.tools) ? i.tools : []).map(String).filter(t => ALLOWED.has(t)) }),
+      run: async (/** @type {any} */ i) => ({ allowed: (Array.isArray(i.tools) ? i.tools : []).map(String).filter(t => ALLOWED.has(t) || (setupUntil() > 0 && SETUP_ALLOWED.has(t))) }),
     });
 
     ctx.tool("pluginagent.vouch", {

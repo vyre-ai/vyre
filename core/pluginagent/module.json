@@ -14,11 +14,14 @@
       { "name": "pluginagent.revoke", "reach": "person", "effect": "write" },
       { "name": "pluginagent.decline", "reach": "person", "effect": "write" },
       { "name": "pluginagent.on", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.setup.begin", "reach": "person", "effect": "write" },
+      { "name": "pluginagent.setup.end", "reach": "anyone", "effect": "write" },
+      { "name": "pluginagent.setup.status", "reach": "anyone", "effect": "read" },
       { "name": "pluginagent.allows", "reach": "modules", "effect": "read" },
       { "name": "pluginagent.vouch", "reach": "modules", "effect": "read" }
     ]
   },
-  "watches": { "emits": ["pluginagent.asked", "pluginagent.granted", "pluginagent.revoked", "pluginagent.declined"] },
+  "watches": { "emits": ["pluginagent.asked", "pluginagent.granted", "pluginagent.revoked", "pluginagent.declined", "pluginagent.setup"] },
   "shows": { "cli": [] },
   "teaches": { "tips": [] },
   "settings": []

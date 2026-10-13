@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { transcriptFolders, claudeHome } from "../config/index.js";
-import { scan } from "./scan.js";
+import { scan, notSuggested } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
 import { folderName } from "./formats/shared.js";
 import { newPrefixedId } from "../../lib/id.js";
@@ -52,27 +52,38 @@ export default {
       return list.map(p => ({ slug: String(p.slug), name: String(p.name || p.slug), folders: (Array.isArray(p.folders) ? p.folders : p.home ? [p.home] : []).map(String) }));
     };
 
+    /** One scan of this device, kept as `last` for the plan that follows. */
+    const doScan = async folders => {
+      const ps = await projects().catch(() => []);
+      const projectOf = cwd => {
+        let best = null;
+        for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, name: p.name, len: f.length };
+        return best ? { slug: best.slug, name: best.name } : null;
+      };
+      // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
+      // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
+      const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
+      const candidates = ps.flatMap(p => p.folders);
+      const r = scan(roots(folders), { projectOf, candidates, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
+      last = { at: Date.now(), files: r.files };
+      return r;
+    };
+
     ctx.tool("import.scan", {
       effect: "write",
       description: "The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each source is tagged with its agent), by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
       run: async ({ folders } = {}) => {
-        const ps = await projects().catch(() => []);
-        const projectOf = cwd => {
-          let best = null;
-          for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, name: p.name, len: f.length };
-          return best ? { slug: best.slug, name: best.name } : null;
-        };
-        // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
-        // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
-        const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
-        const candidates = ps.flatMap(p => p.folders);
-        const r = scan(roots(folders), { projectOf, candidates, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
-        last = { at: Date.now(), files: r.files };
+        const r = await doScan(folders);
         return { sources: r.sources, left_out: r.left_out, capped: r.capped, claude_keeps_days: keepsDays() };
       },
     });
+
+    /** A plan from scan rows: what would go, with the hash that consent is tied to. */
+    const makePlan = chosen => ({ at: Date.now(), files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
+      hash: crypto.createHash("sha256").update(chosen.map(f => f.file).sort().join("\n")).digest("hex"), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
+      folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() });
 
     ctx.tool("import.plan", {
       effect: "write",
@@ -90,9 +101,7 @@ export default {
           return byFolder || bySource;
         });
         const id = newPrefixedId("plan");
-        const plan = { at: t, files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
-          hash: crypto.createHash("sha256").update(chosen.map(f => f.file).sort().join("\n")).digest("hex"), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
-          folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() };
+        const plan = makePlan(chosen);
         plans.set(id, plan);
         return { plan: id, sessions: plan.sessions, bytes: plan.bytes, folders: plan.folders, pace: await paces(plan.bytes) };
       },
@@ -169,6 +178,22 @@ export default {
       soon();
     };
 
+    /** Consent, then send: what import.start and import.sessions.run share. */
+    const begin = async (p, mode, pace) => {
+      if (current) throw Object.assign(new Error("an import is already running: stop it first"), { code: "busy" });
+      const m = machine();
+      // Consent goes to the server's own record, through federation's one door; the plan's hash
+      // goes with this run, so a different plan is a different consent (e2e).
+      const c = await consent({ machine: m, on: true, planHash: p.hash });
+      if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
+      await ctx.call("memory.pace", { pace });
+      const id = newPrefixedId("imp");
+      ctx.store.db.prepare("INSERT INTO import_runs (id, at, machine, plan_hash, mode, pace, state, of) VALUES (?,?,?,?,?,?,'sending',?)").run(id, Date.now(), m, p.hash, mode, pace, p.items.length);
+      current = { id, stop: false, done: null };
+      current.done = send(id, p.items, mode).catch(e => ctx.log(`import ${id} failed: ${e.message}`));
+      return { run: id, sessions: p.items.length, mode, pace };
+    };
+
     ctx.tool("import.start", {
       effect: "write",
       description: "Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, uses more of the Claude plan's normal limits today) | gentle (over days) }. Never adds paid usage. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.",
@@ -179,18 +204,8 @@ export default {
         const p = plans.get(String(plan));
         if (!p || Date.now() - p.at > PLAN_TTL_MS) throw Object.assign(new Error("that plan has expired or was never made: choose again"), { code: "not_found" });
         if (current) throw Object.assign(new Error("an import is already running: stop it first"), { code: "busy" });
-        const m = machine();
-        // Consent goes to the server's own record, through federation's one door; the plan's hash
-        // goes with this run, so a different plan is a different consent (e2e).
-        const c = await consent({ machine: m, on: true, planHash: p.hash });
-        if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
-        await ctx.call("memory.pace", { pace });
-        const id = newPrefixedId("imp");
-        ctx.store.db.prepare("INSERT INTO import_runs (id, at, machine, plan_hash, mode, pace, state, of) VALUES (?,?,?,?,?,?,'sending',?)").run(id, Date.now(), m, p.hash, mode, pace, p.items.length);
-        current = { id, stop: false, done: null };
-        current.done = send(id, p.items, mode).catch(e => ctx.log(`import ${id} failed: ${e.message}`));
         plans.delete(String(plan));
-        return { run: id, sessions: p.items.length, mode, pace };
+        return begin(p, mode, pace);
       },
     });
     ctx.tool("import.stop", {
@@ -219,12 +234,70 @@ export default {
       },
     });
 
+
+    // ---- the person's own AI doing the import (Set up mode, core/pluginagent): the same scan and the same sender, as session lines instead of folders, filed into projects the person confirmed.
+    /** Rows the answer holds at most; a larger machine says `more` and the AI narrows with `folders` or `since`. */
+    const ROWS = 2000;
+    /** Who may call: the person's surfaces, or Claude Code on this computer while the person has Set up mode on (never a Vyre session of an agent, which has a thread). */
+    const mayRun = async meta => {
+      if (person(meta.caller)) return;
+      const plugin = String(meta.caller || "").startsWith("mcp") && !meta.thread && !meta.agent;
+      const on = plugin ? (await ctx.call("pluginagent.setup.status", {}).catch(() => null))?.data?.on === true : false;
+      if (!on) throw Object.assign(new Error("importing sessions is the person's own action; Claude Code may do it only while Set up mode is on (the person turns it on in Vyre)"), { code: "denied" });
+    };
+    const rowOf = (f, projectOf) => {
+      const why = notSuggested(f.cwd, { quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null, isDev: cwd => VYRE_DIR.test(cwd) });
+      const p = f.cwd ? projectOf(f.cwd) : null;
+      return { id: f.id, agent: f.format || "claude-code", cwd: f.cwd, bytes: f.bytes, modified: Math.round(f.mtime), ...(p ? { project: p.slug } : {}), suggested: !why, ...(why ? { why } : {}) };
+    };
+    ctx.tool("import.sessions.list", {
+      effect: "write",
+      description: "List the coding-agent sessions on this computer (Claude Code, Codex, Gemini CLI; Grok is not supported yet) one per line: { id, agent, cwd, bytes, modified, project?, suggested }. Reads file names, sizes, dates and the folder each ran in, never what was said; nothing leaves the computer. Group them by cwd to propose one project per client, then call import.sessions.run with the ones the person confirmed. since: only sessions modified after this time (ms). folders: more folders to look in (absolute paths).",
+      input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } }, since: { type: "number" } } },
+      callers: [...PEOPLE, "mcp"],
+      run: async ({ folders, since } = {}, meta = {}) => {
+        await mayRun(meta);
+        const ps = await projects().catch(() => []);
+        const projectOf = cwd => { let best = null; for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, len: f.length }; return best; };
+        const r = await doScan(folders);
+        const all = [...r.files.values()].filter(f => !(Number(since) > 0) || f.mtime > Number(since)).sort((a, b) => b.mtime - a.mtime);
+        return { sessions: all.slice(0, ROWS).map(f => rowOf(f, projectOf)), total: all.length, ...(all.length > ROWS ? { more: true } : {}), projects: ps.map(p => ({ slug: p.slug, name: p.name })), left_out: r.left_out, capped: r.capped,
+          unsupported: ["grok"], claude_keeps_days: keepsDays() };
+      },
+    });
+    ctx.tool("import.sessions.run", {
+      effect: "write",
+      description: "Bring the sessions the person confirmed into their Vyre space: { sessions: [{ id, project? }], confirmed: true }. Run import.sessions.list first; ids come from it. project is a project's slug or name (make it first with projects.create); each session is then filed in it. The server scrubs secrets on arrival. Say plainly to the person what goes (count, size, which folders) and get their yes before calling; confirmed: true says you did.",
+      input: { type: "object", required: ["sessions", "confirmed"], properties: { sessions: { type: "array", maxItems: ROWS, items: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } } }, confirmed: { type: "boolean" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
+      callers: [...PEOPLE, "mcp"],
+      run: async ({ sessions, confirmed, mode = "once", pace = "gentle" }, meta = {}) => {
+        await mayRun(meta);
+        if (confirmed !== true) throw Object.assign(new Error("tell the person what will go and get their yes, then call again with confirmed: true"), { code: "bad_input" });
+        if (!last) throw Object.assign(new Error("run import.sessions.list first"), { code: "bad_input" });
+        if (!Array.isArray(sessions) || !sessions.length) throw Object.assign(new Error("no sessions chosen"), { code: "bad_input" });
+        const ps = await projects().catch(() => []);
+        const find = ref => ps.find(p => p.slug === ref || p.name.toLowerCase() === String(ref).toLowerCase());
+        const chosen = [], picks = new Map(), unknown = [], noProject = new Set();
+        for (const x of sessions) {
+          const f = last.files.get(String(x.id));
+          if (!f) { unknown.push(String(x.id)); continue; }
+          chosen.push(f);
+          if (x.project) { const p = find(x.project); if (!p) { noProject.add(String(x.project)); continue; } picks.set(p.slug, [...(picks.get(p.slug) || []), f.id]); }
+        }
+        if (unknown.length) throw Object.assign(new Error(`not in the last scan: ${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? ` and ${unknown.length - 5} more` : ""}; scan again`), { code: "not_found" });
+        if (noProject.size) throw Object.assign(new Error(`no such project: ${[...noProject].slice(0, 5).join(", ")}; make it with projects.create first`), { code: "not_found" });
+        const r = await begin(makePlan(chosen), mode, pace);
+        const filed = {};
+        for (const [slug, ids] of picks) { const a = await ctx.call("projects.add-threads", { project: slug, threads: ids }); filed[slug] = a?.error ? { error: a.error.message } : ids.length; }
+        return { ...r, filed };
+      },
+    });
     ctx.tool("import.status", {
       effect: "read",
       description: "How far the import has got, stage by stage: search (sessions indexed), meaning (turns embedded), graph (people, orgs and facts so far) and personal facts (turns read and waiting). Each { done, total }. Counts only, read when asked.",
       input: { type: "object", properties: {} },
-      callers: [...PEOPLE, "module"],
-      run: async () => statusNow(),
+      callers: [...PEOPLE, "mcp", "module"],
+      run: async (_, meta = {}) => { if (meta.caller !== "module") await mayRun(meta); return statusNow(); },
     });
     /**
      * How long reading personal facts would take at each pace (the person chooses, docs/design/import.md).
