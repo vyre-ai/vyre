@@ -45,7 +45,7 @@ test("a chain-listed device of the owner is admitted, with the person's role and
   assert.deepEqual([a.identity, a.entry, a.role, a.limited, a.seq], [IDENT, EID("d"), "owner", false, 5]);
 });
 
-test("a member's device is admitted at the member's role only; an unknown identity is refused with the same words as a bad signature", async () => {
+test("a member's device is admitted at exactly the member's role; an unknown identity is refused with the same words as a bad signature", async () => {
   const m = rig({ role: "member" });
   assert.equal((await m.admit.check(m.hello(), CH)).role, "member");
   const u = rig({ role: null });

@@ -218,11 +218,21 @@ export default {
       if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
 
-    /** The chain-hello check: members are the owner's own identity here (a member's devices come in through the member door). Built on first use. */
+    /** The chain-hello check: the owner's identity, or a member of this home's Space at exactly their role. Built on first use. */
     /** @type {ReturnType<typeof createChainAdmit> | null} */ let chainGate = null;
     const chains = () => (chainGate ??= createChainAdmit({
       boxId: async () => { await keys.ready(); return Buffer.from(k().box.pub).toString("base64url"); },
-      roleOf: async identity => { try { const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {})); return r && r.data && r.data.claimed === identity ? "owner" : null; } catch { return null; } },
+      // the owner, or a member of this home's Space with exactly the role the kernel gives them (the same person, a new device: no code)
+      roleOf: async identity => {
+        try {
+          const r = /** @type {any} */ (await ctx.call("spaces.owner.claimed", {}));
+          if (r && r.data && r.data.claimed === identity) return "owner";
+          const space = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
+          if (!space) return null;
+          const m = /** @type {any} */ (await ctx.call("spaces.membership", { person: identity, space }));
+          return m && m.data && typeof m.data.role === "string" ? m.data.role : null;
+        } catch { return null; }
+      },
       fetchState: async identity => { const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
     }));
 
