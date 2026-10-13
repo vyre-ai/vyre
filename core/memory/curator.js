@@ -515,7 +515,7 @@ export class Curator {
       let b = a.by.get(session);
       if (!b) { b = { n: 0, turns: [], last: 0 }; a.by.set(session, b); }
       b.n += n;
-      b.turns.push({ seq, ts });
+      b.turns.push(seq);
       if (ts > b.last) b.last = ts;
       a.parents.add(parentOf(session, sess));
       a.mentions += n;
@@ -693,7 +693,7 @@ export class Curator {
           const y = b.by.get(s);
           if (!y) { b.by.set(s, { n: x.n, turns: [...x.turns], last: x.last }); continue; }
           y.n += x.n;
-          y.turns = [...y.turns, ...x.turns.filter(t => !y.turns.some(u => u.seq === t.seq))].sort((p, q) => p.seq - q.seq);
+          y.turns = [...y.turns, ...x.turns.filter(t => !y.turns.includes(t))].sort((p, q) => p - q);
           y.last = Math.max(y.last, x.last);
         }
         for (const p of a.parents) b.parents.add(p);
@@ -809,15 +809,15 @@ export class Curator {
     // ---- edges
     /** @type {Want[]} */
     const want = [];
-    const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t.seq]));
+    const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t]));
     const tsOf = (session, seq) => (turnTs.get(session) || EMPTY).get(Number(seq)) || 0;
     /** Turns where both appear, same turn first, then same session; capped. */
     const together = (xs, ys) => {
       const out = [], seen = new Set();
       const put = (s, q) => { const k = s + "\u0000" + q; if (!seen.has(k) && out.length < T.evidencePerEdge) { seen.add(k); out.push(/** @type {[string, number]} */ ([s, q])); } };
       const xt = new Map(), yt = new Map();
-      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) xt.set(s + "\u0000" + t.seq, [s, t.seq]);
-      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) yt.set(s + "\u0000" + t.seq, [s, t.seq]);
+      for (const id of xs) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) xt.set(s + "\u0000" + t, [s, t]);
+      for (const id of ys) for (const [s, b] of agg.get(id)?.by || []) for (const t of b.turns) yt.set(s + "\u0000" + t, [s, t]);
       for (const [k, v] of xt) if (yt.has(k)) put(v[0], v[1]);
       const ys2 = new Set([...yt.values()].map(v => v[0]));
       for (const v of xt.values()) if (ys2.has(v[0])) put(v[0], v[1]);
@@ -1508,7 +1508,7 @@ function orgStems(label) {
 }
 
 /**
- * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, turns: { seq: number, ts: number }[], last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
+ * @typedef {{ id: string, kind: string, key: string, by: Map<string, { n: number, turns: number[], last: number }>, parents: Set<string>, mentions: number, first: number, last: number, mid: boolean }} Agg
  * @typedef {{ module: string, kind: string, key: string, at: number, factAt: number, text: string|null, claims: import("./teach.js").Claim[], project: string[]|null }} Lesson
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work

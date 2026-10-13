@@ -887,22 +887,15 @@ async function startLocked(opts, root, p, release) {
   /** @type {NodeJS.Timeout | null} */ let labelTimer = null;
   if (kernel && typeof kernel.setLabel === "function") {
     /** @type {{ name?: string, words?: string } | null} */ let label = null;
-    let asked = 0, lastAsk = 0, inflight = false;
+    kernel.setLabel(() => label || {});
     const ask = async () => {
-      if (inflight) return;
-      inflight = true; lastAsk = Date.now();
-      if (labelTimer) clearTimeout(labelTimer);
       try {
         const r = await registry.call("spaces.label", {}, "module:vyred");
         const d = r && r.data;
         if (d && (typeof d.name === "string" || typeof d.words === "string")) label = { ...(typeof d.name === "string" ? { name: d.name.slice(0, 80) } : {}), ...(typeof d.words === "string" ? { words: d.words.slice(0, 80) } : {}) };
       } catch { /* the module is not there yet */ }
-      inflight = false;
-      // Asked again soon only while the module may simply not be up yet; a home with no root key waits for setup, and asking it every 30 s kept an idle daemon doing work for nothing.
-      if (!stopped) { labelTimer = setTimeout(ask, label ? 600_000 : asked++ < 1 ? 10_000 : asked < 3 ? 120_000 : 600_000); labelTimer.unref(); }
+      if (!stopped) { labelTimer = setTimeout(ask, label ? 600_000 : 30_000); labelTimer.unref(); }
     };
-    // The join card asks for the label: when it has none and the last ask was a while ago, ask again now, so a home that finished setting up shows its words at once.
-    kernel.setLabel(() => { if (!label && !stopped && !inflight && Date.now() - lastAsk > 10_000) void ask(); return label || {}; });
     void ask();
   }
 
