@@ -36,7 +36,7 @@ export function ContextBox({ label, value, onChange, options, placeholder, help 
     <View className="gap-s2">
       <Field label={label} multiline lines={4} value={value} onChangeText={onChange} placeholder={placeholder} help={help} />
       <View className="flex-row flex-wrap items-center gap-s2">
-        <Menu trigger={<Button kind="ghost" size="sm" icon="mention" label="Tag" />} items={[
+        <Menu align="start" trigger={<Button kind="ghost" size="sm" icon="mention" label="Tag" />} items={[
           { label: "This record", onPress: () => add(tagToken({ kind: "this" })) },
           { label: "A field of this record", onPress: () => setPick("field") },
           { label: "A specific record", onPress: () => setPick("record") },
