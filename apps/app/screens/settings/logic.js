@@ -96,6 +96,7 @@ function all(/** @type {string} */ space) {
       ["Memory", "See and edit what Vyre remembers", "/u/memory", "memory"],
       ["Vault", "Store logins, keys and cards, sealed", "/u/vault", "vault"],
       ["Flows", "Set up work that runs by itself", "/u/flows", "flows"],
+      ["Tags", "Find everything marked with a tag", "/u/tags", "hash"],
       ["Sites and publishing", "Put pages online from this Space and set their address", "/u/sites", "globe"],
       ["Planner", "Your agenda, alarms, to-dos and notes", "/u/planner", "cal"],
       ["Agents", "Your assistant and the agents that work for you", "/u/settings/assistants", "assistants"],
