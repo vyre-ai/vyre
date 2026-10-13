@@ -6,9 +6,9 @@ import { useEffectiveList } from "./views-actions";
 import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -82,10 +82,19 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
   const tagged = { ...table, content: { ...table.content, rows: table.content.rows.map((r: any) => ({ ...r, tag: tagFor(cards, spaceOfUrn(r.urn) || showing, showing) })) } };
+  // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
+  const exportCsv = () => {
+    if (typeof document === "undefined") return;
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + tableToCsv(table.content as any)], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `${vd.plural.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
+  };
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
     frame(vd.plural, <>
-      <ListHeader noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)}
+      <ListHeader noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
