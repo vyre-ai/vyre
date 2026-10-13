@@ -1,4 +1,4 @@
-// Vault's own list as the sidebar's panel (the same drill-in as Files, Chat and Build): Mine and Space, then the groups the page lists with how many each holds, then Expiring and Shared with me.
+// Vault's own list as the sidebar's panel (the same drill-in as Files, Chat and Build): Mine and Space, then Everything, Expiring and Shared with me, then the groups the page lists with how many each holds.
 // Picking one narrows the page (vault-nav.ts). The counts are the page's own, so the two cannot disagree.
 import { View } from "react-native";
 import { SidebarRow, Text } from "@vyre/ui";
@@ -22,10 +22,10 @@ export function VaultPanel() {
       <SidebarRow label="Space" icon="space" on={scope === "space"} onPress={() => setScope("space")} />
       <View style={{ height: 8 }} />
       {pick({ kind: "all" })}
-      {GROUPS.map((g) => pick({ kind: "group", group: g }))}
-      <View style={{ height: 8 }} />
       {pick({ kind: "expiring" })}
       {scope === "space" ? pick({ kind: "shared" }) : null}
+      <View style={{ height: 8 }} />
+      {GROUPS.map((g) => pick({ kind: "group", group: g }))}
     </View>
   );
 }

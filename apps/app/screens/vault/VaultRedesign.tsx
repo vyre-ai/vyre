@@ -14,7 +14,7 @@ import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
 
-const ICON: Record<string, IconName> = { "Firm keys": "key", "Sending services": "mail", "API keys": "key", Phone: "phone", Logins: "key", "MCP keys": "link", "SSH and notes": "file" };
+const ICON: Record<string, IconName> = { "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
 
