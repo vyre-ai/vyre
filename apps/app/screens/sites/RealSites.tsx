@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState, useUiTheme } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, edgeDown, edgeUp, jobAttention, jobRun, jobRuns, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
@@ -31,6 +31,7 @@ export function RealSites() {
     setProblem(""); setBusy(true);
     create(b.input).then(() => { setDraft(null); showToast("Started as a draft. Nothing is public."); load(); router.push(`/u/sites/${b.input.name}` as never); }).catch((e) => setProblem(say(e))).finally(() => setBusy(false));
   };
+  const { color } = useUiTheme();
   const rows = deps ? sites(deps) : [];
   const [failing, setFailing] = useState<{ deployment: string; name: string; message: string }[]>([]);
   useEffect(() => { jobAttention().then(setFailing).catch(() => setFailing([])); }, [deps]);
@@ -41,12 +42,10 @@ export function RealSites() {
       {deps === null && !err ? <LoadingState rows={3} /> : null}
       {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Files folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
       {failing.length ? (
-        <Banner tone="warn">
-          <View className="gap-s1">
-            <Text strong>{failing.length === 1 ? "A job needs you" : `${failing.length} jobs need you`}</Text>
-            {failing.map((j) => <Text key={j.deployment} size="caption">{`${j.name}: ${j.message || "its last run failed"}`}</Text>)}
-          </View>
-        </Banner>
+        <View accessibilityRole="alert" style={{ borderRadius: 12, padding: 12, gap: 4, backgroundColor: color["accent-wash"] }}>
+          <Text strong tone="accent">{failing.length === 1 ? "A job needs you" : `${failing.length} jobs need you`}</Text>
+          {failing.map((j) => <Text key={j.deployment} size="caption">{`${j.name} failed on its last run. Open the site's Jobs to see it.`}</Text>)}
+        </View>
       ) : null}
       {rows.length ? <SitesList rows={rows} onOpen={(name) => router.push(`/u/sites/${name}` as never)} /> : null}
       {rows.length ? <Serving /> : null}
@@ -71,6 +70,7 @@ export function RealSites() {
 type Tab = "pipeline" | "history" | "domain" | "secrets" | "jobs" | "logs";
 
 export function RealSite() {
+  const { phone } = useUiTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [deps, setDeps] = useState<Dep[] | null>(null);
@@ -157,7 +157,7 @@ export function RealSite() {
     );
 
   return (
-    <Frame back="/u/sites" title={site.name} sub={site.live?.domains[0]?.host ?? ""} actions={<Chip tone={site.status.tone}>{site.status.label}</Chip>}>
+    <Frame back="/u/sites" title={site.name} sub={phone ? [site.status.label, site.live?.domains[0]?.host].filter(Boolean).join(" · ") : site.live?.domains[0]?.host ?? ""} actions={phone ? undefined : <Chip tone={site.status.tone}>{site.status.label}</Chip>}>
       <Tabs<Tab> value={tab} onChange={setTab} items={[["pipeline", "Publish"], ["history", "History"], ["domain", "Domain"], ["secrets", "Secrets"], ["jobs", "Jobs"], ["logs", "Logs"]]} />
       {body}
       <Footnote icon="shield">{`This site runs on its own. It cannot reach your space's data unless you grant it. Granted now: ${st?.secrets.length ? st.secrets.map((s) => s.name).join(", ") : "nothing"}.`}</Footnote>
@@ -209,7 +209,7 @@ function Jobs({ dep }: { dep: Dep }) {
       {runs === null ? <LoadingState rows={2} /> : runs.length ? (
         <Card flush>{runs.map((r, i) => <View key={r.at + ":" + i}>{i ? <Divider /> : null}<Row dense title={jobLine(r)} end={<Chip tone={r.ok ? "ok" : "warn"}>{r.ok ? "Ran" : "Failed"}</Chip>} /></View>)}</Card>
       ) : <Card><EmptyState title="No runs yet" body="A job this site declares runs on its own schedule. Its runs show here." /></Card>}
-      <Text size="caption" tone="label">The box waits five minutes after a run and never runs two at once.</Text>
+      <Text size="caption" tone="label">Vyre waits five minutes after a run and never runs two at once.</Text>
     </View>
   );
 }
@@ -217,12 +217,12 @@ function Jobs({ dep }: { dep: Dep }) {
 /** Serving: start or stop the edge that answers for every live site (an owner's and admin's act). A box with no way to start containers says what to run by hand. */
 function Serving() {
   const [busy, setBusy] = useState(false);
-  const act2 = (up: boolean) => { setBusy(true); (up ? edgeUp() : edgeDown()).then(() => showToast(up ? "The edge is up." : "The edge is stopped. Sites do not answer.")).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
+  const act2 = (up: boolean) => { setBusy(true); (up ? edgeUp() : edgeDown()).then(() => showToast(up ? "Your sites are online." : "Your sites are offline.")).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
-    <Sec title="Serving">
+    <Sec title="Online">
       <Card className="gap-s2">
-        <Text tone="muted">The edge answers for every live site. Stopping it takes them all offline; their files and certificates stay.</Text>
-        <View className="flex-row gap-s2"><Button size="sm" kind="secondary" label="Start the edge" disabled={busy} onPress={() => act2(true)} /><Button size="sm" kind="ghost" label="Stop the edge" disabled={busy} onPress={() => act2(false)} /></View>
+        <Text tone="muted">Your live sites are answered by one service. Taking it offline takes every site offline; their files and certificates stay.</Text>
+        <View className="flex-row gap-s2"><Button size="sm" kind="secondary" label="Put sites online" disabled={busy} onPress={() => act2(true)} /><Button size="sm" kind="ghost" label="Take sites offline" disabled={busy} onPress={() => act2(false)} /></View>
       </Card>
     </Sec>
   );
