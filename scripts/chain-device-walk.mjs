@@ -38,7 +38,7 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
   const dir = fs.mkdtempSync(path.join(out, "dev-"));
   const crypto2 = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "k.json"));
   const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "Chain device", crypto: crypto2, keyStore,
-    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "Chain device" }); console.log(`DIAG client hello channel ${h.channel}, devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
+    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "Chain device" }); const { deviceId } = await import("../core/relay/index.js"); console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
   return conn;
 }
 /** One tool call as that device: { status, text }. */
