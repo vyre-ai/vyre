@@ -656,6 +656,8 @@ const RELAY_ALLOWED = Object.freeze({
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
+  // a team member's own MCP servers (mcp.mine.*) live in the member's own vault store: the mcp module asks it as the member, and the vault tool resolves the person from the relayed claim
+  mcp: ["vault.me.store."],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start

@@ -10,6 +10,7 @@
 //   - "locked" and "deleted" are only ever said once they are verified, a watchdog outside this process closes the workspace if
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
+import { mergeMcpServers } from "../../lib/merge-mcp.js";
 import { HARNESS_MARK } from "./pipe-home.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { writeInside } from "./safefs.js";
@@ -263,7 +264,7 @@ export function createRunner(o) {
       let args = s.args, readOnly = s.readOnly, penv = env;
       const sock = dr ? (platform === "linux" ? "/run/vyre.sock" : dr.socket) : "";
       if (dr && s.vyre && s.vyre.entry && s.vyre.root) {
-        args = [...(s.args || []), "--mcp-config", JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [s.vyre.entry], env: { VYRE_SOCKET: sock } } } })];
+        args = [...(s.args || []), "--mcp-config", JSON.stringify({ mcpServers: mergeMcpServers({ vyre: { command: process.execPath, args: [s.vyre.entry], env: { VYRE_SOCKET: sock } } }, s.memberMcp) })];
         readOnly = [...(s.readOnly || []), s.vyre.root, ...(s.vyre.also || [])];
         // The box's own Harness is named in the arguments (HARNESS_MARK): with the door up, the lender's copy of it loads and its hooks reach the home through the same door (VYRE_SOCKET in the session's own
         // environment; VYRE_THREAD says this is Vyre's own session, as on the box). Without the door the plugin is taken out and the session runs without hooks, as before.
