@@ -409,18 +409,21 @@ export class Curator {
     // Observations, grouped by session, paged in key order with a yield between pages.
     /** @type {Map<string, { seq: number, node: string, n: number, initial: number, ts: number }[]>} */
     const obsBy = new Map();
+    // One string per distinct node id, session and cue side: a row read from SQLite brings a new copy of each, and the maps below would keep every one.
+    const words = new Map();
+    const one = (/** @type {string} */ w) => { const k = words.get(w); if (k !== undefined) return k; words.set(w, w); return w; };
     const turnTs = new Map();
     const obsPage = db.prepare(`SELECT session, seq, node, n, initial, ts FROM memory_obs
       WHERE (session, seq, node) > (?, ?, ?) ORDER BY session, seq, node LIMIT ?`);
     for (let at = ["", -1, ""]; ;) {
       const rows = obsPage.all(at[0], at[1], at[2], PAGE);
       for (const r of rows) {
-        const s = String(r.session);
+        const s = one(String(r.session));
         let ts = turnTs.get(s);
         if (!ts) turnTs.set(s, ts = new Map());
         ts.set(Number(r.seq), Number(r.ts));
         if (!obsBy.has(s)) obsBy.set(s, []);
-        obsBy.get(s).push({ seq: Number(r.seq), node: String(r.node), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
+        obsBy.get(s).push({ seq: Number(r.seq), node: one(String(r.node)), n: Number(r.n), initial: Number(r.initial), ts: Number(r.ts) });
       }
       if (rows.length < PAGE) break;
       const l = rows[rows.length - 1];
@@ -430,9 +433,9 @@ export class Curator {
     /** @type {Map<string, { session: string, seq: number, rel: string, a: string, b: string, ts: number }[]>} */
     const cuesBy = new Map();
     for (const r of db.prepare("SELECT session, seq, rel, a, b, ts FROM memory_cues ORDER BY session, seq").all()) {
-      const s = String(r.session);
+      const s = one(String(r.session));
       if (!cuesBy.has(s)) cuesBy.set(s, []);
-      cuesBy.get(s).push({ session: s, seq: Number(r.seq), rel: String(r.rel), a: String(r.a), b: String(r.b), ts: Number(r.ts) });
+      cuesBy.get(s).push({ session: s, seq: Number(r.seq), rel: one(String(r.rel)), a: one(String(r.a)), b: one(String(r.b)), ts: Number(r.ts) });
     }
     // What the user said. Merges and splits rename nodes before anything is counted; the rest
     // is applied after the votes, in each scope it names.
