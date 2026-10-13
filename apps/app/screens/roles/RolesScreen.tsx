@@ -58,7 +58,7 @@ function NewRole({ open, onClose, roles, create }: { open: boolean; onClose: () 
     <Sheet open={open} onClose={onClose} title="New role">
       <Text tone="muted">It starts as a copy of a built-in role. You change what it can do next.</Text>
       <Field label="Name" name="Role name" value={name} onChangeText={(v) => { setName(v); setProblem(""); }} placeholder="Paralegal, Contractor, Bookkeeper" error={problem} />
-      <Segmented label="Start from" value={from} onChange={setFrom} options={BUILT_INS.map((b) => [b.id, b.name] as [string, string])} />
+      <Segmented label="Start from" value={from} onChange={setFrom} options={BUILT_INS.filter((b) => b.id !== "guest").map((b) => [b.id, b.name] as [string, string])} />
       <Text size="caption" tone="label">{BUILT_INS.find((b) => b.id === from)?.line}</Text>
       <View className="flex-row gap-s2"><Button kind="primary" label="Make the role" loading={busy} onPress={() => void go()} /><Button kind="ghost" label="Cancel" onPress={onClose} /></View>
     </Sheet>
@@ -96,7 +96,7 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
       {locked ? <Banner icon="shield"><Text>{`${role.name} is built in. Duplicate it to make a version you can change.`}</Text></Banner> : null}
 
       <Sec title="1. Can do">
-        <Card flush>{CAN_DO.map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.can[k]} locked={locked} onToggle={(v) => edit((x) => setCan(x, k, v))} /></View>)}</Card>
+        <Card flush>{(world.catalogue?.can ?? CAN_DO).map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.can[k]} locked={locked} onToggle={(v) => edit((x) => setCan(x, k, v))} /></View>)}</Card>
       </Sec>
 
       <Sec title="2. Where">
@@ -133,7 +133,7 @@ function RoleDetail({ role, world, src, back, go }: { role: Role; world: NonNull
       </Sec>
 
       <Sec title="4. Which tools">
-        <Card flush>{TOOLS.map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.tools[k]} locked={locked} onToggle={(v) => edit((x) => setTool(x, k, v))} /></View>)}</Card>
+        <Card flush>{(world.catalogue?.tools ?? TOOLS).map(([k, title, line], i) => <View key={k}>{i ? <Divider /> : null}<ControlRow title={title} sub={line} on={!!r.tools[k]} locked={locked} onToggle={(v) => edit((x) => setTool(x, k, v))} /></View>)}</Card>
       </Sec>
 
       {!locked ? (

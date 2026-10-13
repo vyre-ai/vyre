@@ -30,12 +30,21 @@ export const screenRole = (id) => (id === "temp" ? "guest" : id);
 /** Section 1, Can do: the switches, in plain words. */
 export const CAN_DO = [
   ["view", "See work", "Open and read what the role reaches."],
-  ["edit", "Change work", "Edit tasks, records and documents."],
   ["create", "Create new things", "Start projects, tasks and records."],
+  ["edit", "Change work", "Edit tasks, records and documents."],
   ["delete", "Delete", "Remove tasks, records and files."],
-  ["approve", "Approve what assistants propose", "Say yes to drafts and changes."],
+  ["tasks", "Run tasks", "Start and finish tasks."],
+  ["flows", "Run flows", "Start what runs by itself."],
+  ["files", "Work with files", "Add and change files."],
+  ["memory", "Use memory", "Read and add to what Vyre remembers."],
+  ["people", "See people", "See who is in the space."],
+  ["rules", "Set rules", "Change what may go without asking."],
   ["invite", "Invite people", "Bring someone into the space."],
-  ["settings", "Manage settings", "Change the space's setup."],
+  ["customize", "Customize", "Change types, fields and stages."],
+  ["kits", "Install Kits", "Add or remove Kits."],
+  ["services", "Connect services", "Connect accounts and services."],
+  ["reveal", "Reveal sealed values", "Open sealed fields."],
+  ["computers", "Use computers", "Run sessions on a computer."],
 ];
 
 /** Section 2, Where. */
@@ -75,7 +84,7 @@ export function starting(id, types = SAMPLE_TYPES) {
   const rule = (/** @type {Access} */ access) => types.map((t) => ({ id: t.id, name: t.name, access, hidden: /** @type {string[]} */ ([]) }));
   if (id === "admin") return { can: allOf(CAN_DO, true), where: { kind: /** @type {WhereKind} */ ("space"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, true) };
   if (id === "guest") return { can: { ...allOf(CAN_DO, false), view: true, edit: true }, where: { kind: /** @type {WhereKind} */ ("chosen"), projects: [] }, data: rule("read"), tools: allOf(TOOLS, false) };
-  return { can: { ...allOf(CAN_DO, false), view: true, edit: true, create: true }, where: { kind: /** @type {WhereKind} */ ("seats"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, false) };
+  return { can: { ...allOf(CAN_DO, false), view: true, edit: true, create: true, tasks: true, flows: true, files: true, memory: true }, where: { kind: /** @type {WhereKind} */ ("seats"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, false) };
 }
 
 /** @param {string} id */

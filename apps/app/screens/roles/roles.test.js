@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { BUILT_INS, inviteChoices, TOOLS, builtInRoles, canEditRoles, duplicateRole, holdersLine, invitable, list, newRole, nameProblem, removeRefusal, rolesRefusal, screenRole, sees, setAccess, setCan, setHidden, setProject, setTool, setWhere, starting, withTypes, wireRole } from "./model.js";
-import { mockSource, projectsOf, roleOf, rolesOf, rolesSource, typesOf } from "./source.js";
+import { bodyOf, catalogueOf, mockSource, projectsOf, roleOf, rolesOf, rolesSource, typesOf } from "./source.js";
 
 test("the built-ins are Admin, Member and Guest, Guest is temp on the wire, manager is not among them", () => {
   assert.deepEqual(BUILT_INS.map((b) => b.name), ["Admin", "Member", "Guest"]);
@@ -114,18 +114,34 @@ test("a type the role does not mention is None, never open by accident", () => {
   assert.deepEqual(withTypes(r, t).data, [{ id: "case", name: "Cases", access: "none", hidden: [] }]);
 });
 
-test("the box's role is read tolerantly: temp reads as guest, missing parts are empty", () => {
-  const r = roleOf({ id: "temp", name: "Temp", holders: 2 });
-  assert.equal(r.id, "guest");
-  assert.equal(r.builtin, true);
-  assert.equal(r.holders, 2);
-  assert.deepEqual(r.where, { kind: "seats", projects: [] });
-  assert.deepEqual(rolesOf({ roles: [{ id: "paralegal", name: "Paralegal", from: "member", can: { view: true, edit: "yes" }, data: [{ id: "client", access: "weird", hidden: ["SSN"] }] }, null, { name: "no id" }] }).map((x) => x.id), ["paralegal"]);
-  const p = rolesOf([{ id: "p", can: { view: true, edit: "yes" }, data: [{ id: "client", access: "weird" }] }])[0];
-  assert.deepEqual(p.can, { view: true, edit: false });
-  assert.equal(p.data[0].access, "none");
+test("roles-core's role is read: label, base, people, id lists, a level per type, hidden fields apart", () => {
+  const types = [{ id: "client", name: "Clients", fields: ["SSN"] }, { id: "invoice", name: "Invoices", fields: [] }];
+  const r = roleOf({ id: "paralegal", label: "Paralegal", base: "member", people: 4, can: ["view", "edit"], where: { kind: "projects", projects: ["p1"] }, data: { client: "edit", invoice: "weird" }, hidden_fields: { client: ["SSN"] }, tools: ["mail"] }, types);
+  assert.deepEqual([r.name, r.from, r.holders, r.builtin], ["Paralegal", "member", 4, false]);
+  assert.deepEqual(r.can, { view: true, edit: true });
+  assert.deepEqual(r.where, { kind: "chosen", projects: ["p1"] });
+  assert.deepEqual(r.data, [{ id: "client", name: "Clients", access: "edit", hidden: ["SSN"] }, { id: "invoice", name: "Invoices", access: "none", hidden: [] }]);
+  assert.deepEqual(r.tools, { mail: true });
+  const open = roleOf({ id: "x", can: ["view"] }, types);
+  assert.deepEqual(open.data.map((d) => d.access), ["read", "read"], "no data: the can switches apply to every type");
+  assert.equal(roleOf({ id: "guest" }).builtin, true);
+  assert.deepEqual(roleOf({ id: "a", where: { kind: "my_projects" } }).where.kind, "seats");
+  assert.deepEqual(rolesOf({ roles: [{ id: "a", label: "A" }, null, { label: "no id" }] }).map((x) => x.id), ["a"]);
   assert.deepEqual(typesOf({ types: [{ id: "client", plural: "Clients", fields: [{ label: "Phone" }, "SSN"] }] }), [{ id: "client", name: "Clients", fields: ["Phone", "SSN"] }]);
   assert.deepEqual(projectsOf([{ id: 1, title: "Smith estate" }, {}]), [{ id: "1", name: "Smith estate" }]);
+});
+
+test("a role goes to the box as id lists, a level per type and hidden fields apart", () => {
+  const r = setHidden(setTool(setWhere(setCan(newRole("member", "P", builtInRoles()), "invite", true), "chosen"), "mail", true), "client", "SSN", true);
+  const b = bodyOf(setProject(r, "p1", true));
+  assert.ok(b.can.includes("invite") && b.can.includes("view") && !b.can.includes("delete"));
+  assert.deepEqual(b.where, { kind: "projects", projects: ["p1"] });
+  assert.equal(b.data.client, "edit");
+  assert.deepEqual(b.hidden_fields, { client: ["SSN"] });
+  assert.deepEqual(b.tools, ["mail"]);
+  assert.equal(bodyOf(newRole("member", "Q", builtInRoles())).where.kind, "my_projects");
+  assert.equal(catalogueOf({ can: [{ id: "view", label: "See", gloss: "g" }], tools: [{ id: "mail", label: "Mail" }] })?.tools[0][0], "mail");
+  assert.equal(catalogueOf(null), null);
 });
 
 test("a refused call is said in words", () => {
@@ -167,33 +183,28 @@ test("the sample source creates, saves, duplicates and refuses removal while hel
   assert.ok(told >= 4);
 });
 
-test("the real source asks the roles tools and keeps the box's words on a refusal", async () => {
+test("the real source reads each role with roles.get and sends roles.create with a base", async () => {
   /** @type {{ tool: string, input: any }[]} */
   const seen = [];
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     seen.push({ tool, input });
-    if (tool === "roles.list") return { data: { roles: [{ id: "owner", name: "Owner", holders: 1 }, { id: "temp", name: "Temp", holders: 2 }] } };
+    if (tool === "roles.list") return { data: { roles: [{ id: "owner", label: "Owner", people: 1, builtin: true }, { id: "paralegal", label: "Paralegal", people: 2, base: "member" }] } };
+    if (tool === "roles.get") return { data: { role: { id: input.id, label: input.id === "owner" ? "Owner" : "Paralegal", base: "member", can: ["view"], tools: ["mail"] } } };
     if (tool === "roles.remove") return { error: { code: "role_in_use", message: "held" } };
-    if (tool === "roles.create") return { data: { id: "paralegal", name: "Paralegal", from: "member" } };
+    if (tool === "roles.update") return { data: { role: { id: input.id, label: "Para" }, reapplied: 2 } };
+    if (tool === "roles.create") return { data: { role: { id: "contractor", label: "Contractor", base: "member" } } };
     return { error: { code: "unknown_tool", message: "no" } };
   };
   const src = rolesSource(call);
   const w = await src.read();
-  assert.deepEqual(w.roles.map((r) => r.id), ["owner", "guest"]);
+  assert.deepEqual(w.roles.map((r) => [r.id, r.holders]), [["owner", 1], ["paralegal", 2]]);
+  assert.equal(w.roles[1].tools.mail, true);
   assert.ok(w.types.length > 0, "types fall back to the sample types when the box does not say");
-  assert.deepEqual(w.projects, []);
-  await src.create("guest", "Paralegal");
-  assert.deepEqual(seen.find((s) => s.tool === "roles.create")?.input, { name: "Paralegal", from: "temp" });
+  await src.create("guest", "Contractor");
+  const made = seen.find((s) => s.tool === "roles.create")?.input.role;
+  assert.equal(made.label, "Contractor");
+  assert.equal(made.base, "member", "guest is not a base for a custom role");
   await assert.rejects(src.remove("x"), { code: "role_in_use" });
-});
-
-test("the invite picker lists built-ins then custom roles, Guest under the id the box knows, each with a sentence", () => {
-  const base = builtInRoles();
-  const roles = [...base, newRole("member", "Paralegal", base)];
-  const c = inviteChoices("owner", roles);
-  assert.deepEqual(c.map((x) => [x.id, x.name]), [["admin", "Admin"], ["member", "Member"], ["temp", "Guest"], ["paralegal", "Paralegal"]]);
-  assert.ok(c.every((x) => x.line.length > 10));
-  assert.equal(c[2].line, BUILT_INS[2].line);
-  assert.deepEqual(inviteChoices("admin", roles).map((x) => x.id), ["member", "temp", "paralegal"]);
-  assert.deepEqual(inviteChoices("member", roles), []);
+  await src.save({ ...w.roles[1], name: "Para" });
+  assert.deepEqual(seen.find((s) => s.tool === "roles.update")?.input.id, "paralegal");
 });
