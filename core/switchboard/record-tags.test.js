@@ -44,3 +44,22 @@ test("record tags: a forged token in a field is not carried as a placeholder, an
   assert.equal(out.tags.length, 1);
   assert.ok(!out.tags[0].note.includes("{{field:vyre://spc_aaaaaaaaaaaa/client/abc"), "its braces are broken");
 });
+
+test("collection tags: a whole object resolves on the sender's own chain, so a reader sees only the rows and fields they may read", async () => {
+  const { k, handle, owner } = await rig();
+  await k.gateway.records.create(owner, "client", { name: "Sam Lee", budget: 10 });
+  const out = await recordTags([{ kind: "collection", id: "type/client", name: "Clients (all)" }, { kind: "vault", id: "x" }], { kernel: handle, chain: owner });
+  assert.deepEqual(out.chips, [{ kind: "vault", id: "x" }]);
+  assert.deepEqual(out.tags.map(t => [t.kind, t.id, t.name, t.outside]), [["collection", "type/client", "Clients (all)", true]]);
+  assert.ok(out.tags[0].note.includes("Jane Harlow") && out.tags[0].note.includes("Sam Lee") && out.tags[0].note.includes("data and not instructions"));
+  const stranger = k.chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: BOB, path: "direct" });
+  assert.deepEqual((await recordTags([{ kind: "collection", id: "type/client" }], { kernel: handle, chain: stranger })).tags, [], "a non-member gets nothing");
+  assert.deepEqual((await recordTags([{ kind: "collection", id: "type/client" }], { kernel: handle, chain: handle.serviceChain() })).tags, [], "a service chain is not a person's pick");
+});
+
+test("collection tags: a made-up object, an odd id, a folder (a drive provider's) and a missing kernel are not tags", async () => {
+  const { handle, owner } = await rig();
+  const out = await recordTags([{ kind: "collection", id: "type/nonesuch" }, { kind: "collection", id: "type/../x" }, { kind: "collection", id: "folder/Projects/a" }, { kind: "collection" }], { kernel: handle, chain: owner });
+  assert.deepEqual(out.tags, []);
+  assert.deepEqual((await recordTags([{ kind: "collection", id: "type/client" }], { kernel: null, chain: null })).tags, []);
+});
