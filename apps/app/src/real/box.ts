@@ -20,6 +20,7 @@ import { useSpaces } from "../../screens/shell/state";
 import { mockTools } from "./mock-templates";
 import { mockAgentTools } from "./mock-agents";
 import { mockDocumentTools } from "./mock-documents";
+import { mockMcpTools } from "./mock-mcp";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -57,6 +58,7 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   if (MOCK && mockTools[name]) return mockTools[name](given) as T; // the sample build answers the template tools from memory (mock-templates.ts)
   if (MOCK && mockAgentTools[name]) return mockAgentTools[name](given) as T; // and the agent page's (mock-agents.ts)
   if (MOCK && mockDocumentTools[name]) return mockDocumentTools[name](given) as T; // and the record page's Documents bar (mock-documents.ts)
+  if (MOCK && mockMcpTools[name]) return mockMcpTools[name](given) as T; // and the AI keys screen's (mock-mcp.ts)
   if (override) return (await override(name, given)) as T;
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   const wire = memberChatWire(name);
