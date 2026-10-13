@@ -5,6 +5,7 @@ import { newMenuItems, templateNoun, templateStage } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
+import { StatusPill } from "../components/StatusPill";
 import { EmptyState } from "../components/States";
 import { Fab } from "../components/Fab";
 import { IconButton } from "../components/Button";
@@ -116,7 +117,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
       items={[{ label: "Open", onPress: () => onOpen(i.row.id) }, ...(onRename ? [{ label: "Rename", onPress: () => onRename(i.row) }] : []), ...(onArchive ? [{ label: "Archive", onPress: () => onArchive(i.row) }] : [])]}
     />
   );
-  const stagePill = (i: Item, needsYou = false) => { const s = stageOf(i); if (s.at < 0 || !s.stages.length) return <Text tone="faint">{"–"}</Text>; return <Chip tone={needsYou ? "accent" : "plain"}>{`Stage ${s.at + 1} of ${s.stages.length}`}</Chip>; };
+  const stagePill = (i: Item, needsYou = false) => { const s = stageOf(i); if (s.at < 0 || !s.stages.length) return <Text tone="faint">{"–"}</Text>; return <StatusPill at={s.at + 1} of={s.stages.length} needsYou={needsYou} />; };
   const ownerCell = (i: Item) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted">{firstName(a.name)}</Text></View> : null; };
 
   const wideRow = (i: Item, k: number) => {
