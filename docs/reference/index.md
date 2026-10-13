@@ -2349,7 +2349,7 @@ generated: scripts/gen-docs-reference
 - `vault.said.revoke` tool, [explained](tools.md#vaultsaidrevoke). No mentions.
 - `vault.scope-converted` event, [explained](events.md#vault). 1 mention: using/vault.md [290](../using/vault.md#which-agents-can-call-an-api-credential)
 - `vault.search` tool, [explained](tools.md#vaultsearch). 1 mention: using/vault.md [27](../using/vault.md#the-rule-that-has-no-off-switch)
-- `vault.secretkey.changed` event, [explained](events.md#vault). No mentions.
+- `vault.secretkey-changed` event, [explained](events.md#vault). No mentions.
 - `vault.service.catalog` tool, [explained](tools.md#vaultservicecatalog). No mentions.
 - `vault.service.forward` tool, [explained](tools.md#vaultserviceforward). No mentions.
 - `vault.session.close` tool, [explained](tools.md#vaultsessionclose). No mentions.
@@ -2723,8 +2723,8 @@ generated: scripts/gen-docs-reference
 - `vyre vault pass` command, [explained](cli.md#vyre-vault). 2 mentions: using/vault.md [412, 418](../using/vault.md#share-with-another-person)
 - `vyre vault pending` command, [explained](cli.md#vyre-vault). 2 mentions: using/vault.md [257](../using/vault.md#let-an-agent-module-or-watcher-use-an-item); using/watchers.md [100](../using/watchers.md#give-a-watcher-a-credential)
 - `vyre vault people` command, [explained](cli.md#vyre-vault). No mentions.
-- `vyre vault put` command, [explained](cli.md#vyre-vault). 9 mentions: using/cli.md [196](../using/cli.md#use-a-credential-without-seeing-it), [224](../using/cli.md#what-it-will-not-do); using/sessions.md [40](../using/sessions.md#four-providers-your-own-accounts); using/agents.md [86, 87](../using/agents.md#run-an-agent-on-your-own-quota); using/vault.md [29](../using/vault.md#the-rule-that-has-no-off-switch), [170](../using/vault.md#leaks-and-rotation), [578](../using/vault.md#which-surface-does-what); adr/0004-presence.md [143](../adr/0004-presence.md#layer-2--the-floor-closes-the-models-routes)
-- `vyre vault read` command, [explained](cli.md#vyre-vault). No mentions.
+- `vyre vault put` command, [explained](tools.md#vaultput). 9 mentions: using/cli.md [196](../using/cli.md#use-a-credential-without-seeing-it), [224](../using/cli.md#what-it-will-not-do); using/sessions.md [40](../using/sessions.md#four-providers-your-own-accounts); using/agents.md [86, 87](../using/agents.md#run-an-agent-on-your-own-quota); using/vault.md [29](../using/vault.md#the-rule-that-has-no-off-switch), [170](../using/vault.md#leaks-and-rotation), [578](../using/vault.md#which-surface-does-what); adr/0004-presence.md [143](../adr/0004-presence.md#layer-2--the-floor-closes-the-models-routes)
+- `vyre vault read` command, [explained](tools.md#vaultresolve). No mentions.
 - `vyre vault relay` command, [explained](cli.md#vyre-vault). 1 mention: using/vault.md [417](../using/vault.md#share-with-another-person)
 - `vyre vault remind` command, [explained](cli.md#vyre-vault). No mentions.
 - `vyre vault restore` command, [explained](cli.md#vyre-vault). 1 mention: using/vault.md [564](../using/vault.md#your-personal-vault-and-getting-it-back)

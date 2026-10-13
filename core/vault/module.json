@@ -197,7 +197,7 @@
       "vault.filled",
       "vault.restored",
       "vault.unlocked",
-      "vault.secretkey.changed",
+      "vault.secretkey-changed",
       "vault.locked",
       "vault.card-changed",
       "vault.person-verified",

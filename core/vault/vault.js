@@ -773,7 +773,7 @@ export class Vault {
     await this.migratePersonal();
     this.audit("account-reset", null, who, true, "new password set with the recovery kit");
     this.emit("vault.unlocked", { vault: PERSONAL });
-    this.emit("vault.secretkey.changed", { acct: rec.acct, why: "reset" });
+    this.emit("vault.secretkey-changed", { acct: rec.acct, why: "reset" });
     return { reset: true, acct: rec.acct };
   }
 
@@ -796,7 +796,7 @@ export class Vault {
     await this.secretKeys.remove?.();
     await this.secretKeys.put(String(secretKey).toUpperCase().replace(/\s/g, ""));
     this.audit("secretkey-import", null, who, true, null);
-    this.emit("vault.secretkey.changed", { acct: rec.acct, why: "import" });
+    this.emit("vault.secretkey-changed", { acct: rec.acct, why: "import" });
     return { imported: true, acct: rec.acct };
   }
 

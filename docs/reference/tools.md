@@ -13270,1142 +13270,1627 @@ The person has read what is new in the running version: it is not shown again.
 
 Set the password for your personal vault. Returns your recovery secret once, for the recovery kit; a terminal also gets the Secret Key. Neither is shown again.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `password` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.account.enroll-touchid`
 
 Turn on Touch ID unlock of your personal vault on this Mac. Needs your password once.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `password` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.account.export-secret-key`
 
 Give your own device your account's Secret Key to carry to a new device or an escrow. Never shown on screen.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.account.import-secret-key`
 
 Put your account's Secret Key on this device, so your master password opens the vault here.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `secretKey` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.account.lock`
 
-No description.
+Lock your personal vault now. Agents keep what is granted to them.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.account.reset`
 
 Set a new password for your personal vault with the recovery secret from your recovery kit. Use it when you forgot the password. It is for a forgotten password, not a break-in: it does not rotate the vault key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `password` string, required
+  - `recovery` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.account.status`
 
-No description.
+Whether this vault has an account password, whether it is unlocked, and whether Touch ID unlock is set up here.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.account.unlock`
 
 Unlock your personal vault (logins, cards, notes, one-time codes) with its password, or with Touch ID once enrolled.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `method` "password" or "touchid"
+  - `password` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.account.unlock-phone`
 
 Unlock your personal vault from the phone: its password, and Face ID.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `password` string, required
+- Callers: `device`, `mobile`
+- Needs a person present.
 
 ### `vault.agent.fill`
 
 Sign in on your own computer with a login lent to you; you never see it. Answers which fields were filled and the origin.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+  - `agent` string
+  - `lineage` list of string
+  - `origin` string
+  - `thread` string
+- Callers: `harness`, `mcp`, `module`
 
 ### `vault.agent.grant`
 
 Let one agent sign in to one site with one login through vyred. It never reads the login. From Claude it waits for a person.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string, required
+  - `item` string, required
+  - `origin` string, required
+  - `expires` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.agent.grants`
 
 Agent logins, active, pending, expired and revoked, with the last use and a use count. Names and origins only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string
+  - `item` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `vault.agent.revoke`
 
-No description.
+Take an agent login away. Needs no one: taking access away is always allowed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
 - Callers: any caller
 
 ### `vault.api.send`
 
-No description.
+The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `content` object
+  - `to` list of string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.approve`
 
 Approve a pending grant or pass.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.audit`
 
 Who used which item, when, and whether it was allowed. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `limit` integer
+  - `name` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.autobackup.drill`
 
 Prove the newest backup restores: restore it into a scratch vault and compare every item with the live vault. Asks for your recovery code.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `code` string, required
+  - `file` string
+  - `password` string
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.autobackup.enrol`
 
 Turn on the daily automatic vault backup. Asks for your recovery code once; every backup opens with that code alone.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `code` string, required
+  - `keep` number
+  - `password` string
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.autobackup.run`
 
 Make an automatic vault backup now.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.autobackup.status`
 
 When the vault was last backed up automatically, how many backups are kept, and how the last restore drill went.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.backup`
 
 Write a backup of the whole vault, sealed to a passphrase of its own.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `file` string, required
+  - `passphrase` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.breach.check`
 
 Opt-in, a network call: sends the first 5 characters of each password's SHA-1 to api.pwnedpasswords.com and compares the rest here. Names only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.caps`
 
 What this vyred lets a surface do with the Vault: reveal (needs a presence proof) and the breach check mode. No value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.clipboard.clear`
 
 Clear the clipboard now, if it still holds what the vault copied.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`, `tailnet`
 
 ### `vault.codes`
 
 Every one-time code: the current and next code for each item with a TOTP seed, the seconds left, and the issuer. Never a seed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `names` list of string
+  - `session` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.codes.import`
 
 Bring in accounts from scanned codes: every part of a Google Authenticator export (otpauth-migration://), or otpauth://totp/ addresses. preview stores nothing. A split export waits until every part is scanned.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `uris` list of string, required
+  - `preview` boolean
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.connect`
 
 Fill one module's need: check the fields (or a dropped service-account file) against the provider catalog, save the item with the need's kind and provider, and grant it to the module. For a sign-in provider it stores nothing and returns next: {tool, input}. Values come from a person's surface, never from Claude.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `module` string, required
+  - `need` string, required
+  - `fields` object
+  - `file` object
+    - `content` string, required
+    - `filename` string
+  - `label` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.connections.allowed`
 
 May `caller` use this connection ({id}, or {source, ref})? {allowed, surface, reason?}. People are always allowed. Ask before acting on a connection.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `caller` string, required
+  - `id` string
+  - `ref` string
+  - `source` string
+- Callers: `module`
 
 ### `vault.connections.end`
 
 A task is over: take back every Connection lent for it: { task, reason? }. Only the flows module asks. { ended }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `task` string, required
+  - `reason` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.connections.get`
 
 One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `module`
 
 ### `vault.connections.grant`
 
 Let a surface (capsule, chat, agents or phone) use a connection. Granting agents asks for presence (Touch ID or a passkey): it hands a credential to an autonomous session. Lumen, chat and phone are one tap.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `surface` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.connections.lend`
 
 A task's doer may use named Connections for that task: { task, agent, connections: [ids], until }. Only the flows module asks, and only for credentials the task's approved Kit version names. Use only; anything outward is still held. Idempotent per task, agent and Connection. { lent, already }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string, required
+  - `connections` list of string, required
+  - `task` string, required
+  - `until` number, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.connections.list`
 
 Connections the caller's surface may use, each with the {tool, input} that acts on a capability. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `caller` string: the caller a module acts for
+  - `capability` string: narrow to one capability; use is then that one, and suggest_default is true the first time it has two or more ready connections and no default
+  - `surface` string: a person may pass one to see that surface's view; a module must pass surface or caller
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `vault.connections.register`
 
 A module registers one of its connections, or refreshes it: {ref, provider, account, auth, label?, capabilities? or tools?, items?, use?}. The source is the module's own name. Returns {id}, stable across calls.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `account` string, required
+  - `auth` string, required
+  - `provider` string, required
+  - `ref` string, required
+  - `capabilities` list of string
+  - `items` list of string
+  - `label` string
+  - `tools` list of string
+  - `use` object
+- Callers: `module`
 
 ### `vault.connections.revoke`
 
 Take a surface's use of a connection away. Needs no one: taking access away is always allowed, but only of the caller's own surface.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `surface` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `vault.connections.sync`
 
 Resync now: the vault's own items with a catalog provider, google.accounts, and mcp.servers with their cached tools. It happens on its own on each source's events.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.connections.unregister`
 
 A module removes one of its own connections.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `ref` string, required
+- Callers: `module`
 
 ### `vault.connections.update`
 
 Rename a connection or set its capabilities (both survive every resync), or make it the default for some capabilities (`default_for`; one default per capability, so this clears it elsewhere). A default changes no access and needs no proof of presence.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `capabilities` list of string
+  - `default_for` list of string
+  - `label` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.copy`
 
-vault.totp
+Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `field` string
+  - `front` object
+  - `id` string
+  - `name` string
+  - `session` string
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
+- Needs a person present.
 
 ### `vault.credential.tokens`
 
 The connectors module stores a finished sign-in in an oauth api-credential: { name, tokens: { refresh_token?, access_token, expires_in?, token_uri } }. Refused unless the token_uri is the one the credential names.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `tokens` object, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.delete`
 
-vault.totp
+Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Needs a person present.
 
 ### `vault.device.approve`
 
 Let a new device into your vault. It receives the account keyset sealed to its own key; a storage device gets no personal key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `code` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.device.code`
 
-No description.
+A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string
+  - `phone` boolean
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.device.join`
 
 On a new device: make a join code (role full or storage), or finish joining with the approval another device gave.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `approval` string
+  - `role` "full" or "storage"
+- Callers: `cli`, `local`
 
 ### `vault.device.list`
 
 Your devices in this vault's group: names, roles, fingerprints.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.device.revoke`
 
-No description.
+Unpair a browser: its token and every session it holds stop working now.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.device.sync`
 
 Push and pull items between your devices now.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `local`, `mcp`
 
 ### `vault.device.unlock`
 
-No description.
+Open an autofill session for a paired browser without a passphrase, after Touch ID. Returns no token.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `device` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.devices`
 
-No description.
+Browsers paired for autofill, when each was last seen and how many sessions it has open.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.edit`
 
-vault.git
+Change an item in place: merge fields, remove fields, rename, description, url, add or remove hosts. People only, with presence.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `addHosts` list of string
+  - `description` string
+  - `fields` object
+  - `removeFields` list of string
+  - `removeHosts` list of string
+  - `rename` string
+  - `url` string
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.emergency.add`
 
 Keep emergency access for a verified contact: they can ask, and after the wait (7d by default, 1d to 30d) the items open to them unless you deny it. Every item except ssh keys and passkeys unless `items` names some.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string, required
+  - `items` list of string
+  - `wait` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.emergency.deny`
 
-No description.
+Close an emergency request (or a release) from a contact. They may ask again, and wait again.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `person` string, required
 - Callers: any caller
 
 ### `vault.emergency.list`
 
 Emergency contacts: the wait, where a request stands and when it opens. Names only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.emergency.refresh`
 
 Rebuild the escrowed emergency ticket for one contact or all, so items added since are in it. It happens on its own at most once a day when the personal vault is unlocked.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.emergency.remove`
 
-No description.
+End a contact's emergency access and delete its escrow.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `person` string, required
 - Callers: any caller
 
 ### `vault.emergency.request`
 
 Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `owner` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.emergency.status`
 
 Where an emergency request to an owner stands; once it has opened, the items are taken into this vault.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `owner` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.env.scan`
 
 The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `roots` list of string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.fetch.public`
 
 A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `url` string, required
+  - `max_bytes` integer
+  - `raw` boolean
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.fill.native`
 
 Fill a login's username and password into the app in front, by Accessibility. The value goes to a helper, never back to the caller.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `app` object
+    - `bundle` string
+    - `pid` integer
+  - `front` object
+    - `bundle` string
+    - `pid` integer
+  - `id` string
+  - `name` string
+  - `session` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.fingerprint`
 
 This Vyre's fingerprint; with `with`, that person's fingerprint and the four safety words you should both see.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `with` string
 - Callers: any caller
 
 ### `vault.forward`
 
 The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `credential` string, required
+  - `method` one of "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", required
+  - `session` string, required
+  - `url` string, required
+  - `allow_headers` list of string
+  - `body` string or object or list
+  - `headers` object
+  - `query` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.forward.file`
 
-No description.
+The kernel's lease module forwards one request that moves a file for a lent computer's program: { credential, method, url, query?, headers?, session, upload?: { drive: { path, version?, contentType } } or { multipart: [ { name, value } | { name, filename, contentType, drive: { path, version? } } ] }, saveTo?, stream?, limits?: { maxBytes, contentTypes }, drive?: { read, write } }. The file is read from, or saved to, the Space's Drive by reference at the home and moves a chunk at a time; an outward call is held for a person. Returns the response, { saved }, a stream or { held }; never a credential value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `credential` string, required
+  - `method` one of "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", required
+  - `session` string, required
+  - `url` string, required
+  - `allow_headers` list of string
+  - `drive` object
+  - `headers` object
+  - `limits` object
+  - `query` object
+  - `saveTo` string
+  - `stream` boolean
+  - `upload` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.generate`
 
 Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `description` string
+  - `length` integer
+  - `name` string
+  - `symbols` boolean
+  - `words` integer
+- Callers: `cli`, `local`, `mcp`
 
 ### `vault.git`
 
-vault.ssh.keys
+The git credential helper (git-credential-vyre): get, store or erase, for logins matched by exact origin.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `action` one of "get", "store", "erase", required
+  - `request` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.grant`
 
 Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `module` string, required
+  - `name` string, required
+  - `project` string: scope the grant to this project; omit for every project
+  - `watcher` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.granted`
 
-No description.
+Whether an item is granted to the calling module, and to exactly this watcher when one is named: { granted }. The same check vault.release makes; no value is returned.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `project` string
+  - `watcher` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.grants.status`
 
 Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `vault.health`
 
-No description.
+Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.health.dismiss`
 
-No description.
+Hide the vault health row on Now for a while (default a week). The next Watchtower run after that raises it again if items still need attention.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `days` integer
+- Callers: `cli`, `deck`, `local`
 
 ### `vault.health.summary`
 
-No description.
+How many vault items need attention (to rotate, to fix) from the last Watchtower run, counts only, never a name or a value; zero while the person has dismissed it. For the Now screen's one row.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.history`
 
-No description.
+An item's last versions: when, by whom, and which fields changed. `field` narrows it (password history). Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `name` string, required
+  - `field` string
 - Callers: any caller
 
 ### `vault.identity`
 
-No description.
+This Vyre's public card, to give to someone who will share items with you. It holds no secret.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.import`
 
 Import a .env file, a folder of them, or a password manager export. vyred reads the files; values never pass through Claude.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `conflicts` "skip" or "update": update makes a new version of the existing item
+  - `content` string
+  - `file` string: path to a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and other managers
+  - `filename` string
+  - `files` list of string: absolute paths of several .env files, imported under one yes
+  - `format` string
+  - `rewrite` boolean: swap each imported .env value for a vault:// reference once stored
+  - `token` string: the token from vault.import.preview; refuses a file that changed since
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
+- Needs a person present.
 
 ### `vault.import.preview`
 
 Preview an import by name and count only: what it adds, skips or finds in conflict, plus a token binding vault.import to this file.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `content` string
+  - `file` string: path to a file, or a folder scanned for .env files (variables come back with type and secret flag)
+  - `filename` string
+  - `format` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
+- Needs a person present.
 
 ### `vault.inject`
 
 Values for `vyre vault run`, which puts them in one child process's environment.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `items` list of object, required
+    - `name` string, required
+    - `env` string
+    - `field` string
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.item`
 
-vault.resolve
+One item's metadata: kind, description, field names, url, hosts, grants, ssh public key. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `name` string, required
 - Callers: any caller
 
 ### `vault.items.names`
 
 Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `kind` string
+  - `limit` integer
+  - `q` string
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `vault.kit`
 
 Print a recovery kit: a one-time page on this machine, gone after one load or ten minutes, with the account id, Secret Key, fingerprint, box address and a QR code. Never the password.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.link`
 
 Link a vault item to a client, matter or project by its address, so its uses show on that record. Grants nothing; no value moves.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+  - `to` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `vault.links`
 
 The records a vault item is linked to, or the items linked to a record: names and addresses, never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string
+  - `to` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `vault.list`
 
-No description.
+Every item's name, kind, description, field names, hosts and grants. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `filter` string
+  - `host` string
+  - `kind` string
 - Callers: any caller
 
 ### `vault.lock`
 
-No description.
+Forget the key until the next unlock.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.match`
 
 Logins for a page, for autofill: names only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `url` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.mcp.agent.call`
 
 One Vault tool call as a registered outside agent: { agent, tool, arguments, source } answers { content, isError? } like tools/call. Only the outside-agents module asks.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string, required
+  - `tool` string, required
+  - `arguments` object
+  - `source` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.mcp.agent.tools`
 
 The Vault tools a registered outside agent holds through its pass: { tools } (empty when it holds none). Only the outside-agents module asks.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.mcp.base`
 
 The public address the gate serves this box on, or null: { base }. Only the wink module sets it; passes made afterwards name it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `base` string or null
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.mcp.items`
 
 The api credentials a pass can share, with the hosts each is pinned to: { items: [{ name, hosts }] }. Names and hosts, never a key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
 
 ### `vault.mcp.pass.create`
 
 Share chosen api credentials with an outside agent (Claude Code, Codex) through the Vault MCP: it can have calls made with them and never sees them. Returns the token once, and the line to give the outsider. { name, items, days?, expires?, rate?, budget?, hosts?, reveal? }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `items` list of string, required
+  - `name` string, required
+  - `budget` number
+  - `days` number
+  - `expires` number
+  - `hosts` list of string
+  - `rate` number
+  - `reveal` boolean
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.mcp.pass.list`
 
 The passes made for outside agents: who, which credentials, until when, how often they were used. Never a token.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `vault.mcp.pass.revoke`
 
 End a pass for an outside agent: its token opens nothing from now on. Needs no one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `vault.mcp.reveal.allow`
 
 Let an outside agent see one value, once: your fresh yes, then its next poll for that ask returns the value a single time and it is gone. Logged as vault.revealed-to-pass, never with the value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.mcp.reveal.clear`
 
 Decline an outside agent's ask to see a value (it was never sent).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
 
 ### `vault.mcp.status`
 
 Whether the Vault MCP endpoint is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.members.accept`
 
 Join a shared vault from an invite.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `invite` string, required
+- Callers: `cli`, `device`, `local`
+- Needs a person present.
 
 ### `vault.members.invite`
 
 Invite a person whose card you pinned and verified into a shared vault. Returns an invite for them to accept.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string, required
+  - `vault` string, required
+  - `role` one of "admin", "member", "read-only"
+- Callers: `cli`, `device`, `local`
+- Needs a person present.
 
 ### `vault.members.remove`
 
 Remove a member: a new key they never see, and every item they could read flagged for rotation.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string, required
+  - `vault` string, required
+- Callers: `cli`, `device`, `local`
+- Needs a person present.
 
 ### `vault.members.role`
 
 Change a member's role: admin, member or read-only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string, required
+  - `role` one of "admin", "member", "read-only", required
+  - `vault` string, required
+- Callers: `cli`, `device`, `local`
+- Needs a person present.
 
 ### `vault.mention.resolve`
 
 The person tagged #item in their own turn: record that this thread (and the threads under it) may use the item, bound to the hosts it has now. Only sessions and the assistant; answers what the tag grants, never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+  - `thread` string, required
+  - `said` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.mention.search`
 
 The # picker's vault items: id and name are the item name, hint says the kind and host.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `limit` integer
+  - `q` string
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `vault.migrate-key`
 
 Move the vault's keychain items to this build of the keychain helper. macOS may ask you to allow it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.move`
 
 Move an item into a shared vault. Everyone in it can then use it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `to` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.need`
 
 What each module needs from the Vault (its manifest's needs.credentials): each need's state (ready, missing, not_granted, pending, expired) and how to fill it (how, field names and labels, help). A group is ready when any member is. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `module` string
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.offboard`
 
 Someone left: revoke every pass they hold and list what must be rotated.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `person` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.pass.accept`
 
 Take a signed pass ticket someone sent you. From Claude it waits for a person to approve it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `ticket` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.pass.create`
 
 Share items with another person's Vyre. Relayed by default: the value never leaves this box. From Claude it waits for approval.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `holder` string, required
+  - `items` list of string, required
+  - `card` string
+  - `expires` string
+  - `hosts` list of string
+  - `methods` list of string
+  - `mode` "relayed" or "sealed"
+  - `note` string
+  - `paths` list of string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.pass.list`
 
 Passes this Vyre gave, and passes it holds.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.pass.revoke`
 
-No description.
+End a pass. A relayed pass stops at once; a sealed one lists what to rotate.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
 - Callers: any caller
 
 ### `vault.pending`
 
-No description.
+Grants and passes an agent asked for, waiting for a person.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `vault.people`
 
-No description.
+The people this Vyre shares with: name, fingerprint, whether you verified it, and whether a changed key blocks new passes. Never a secret.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.people.verify`
 
 Say you compared fingerprints with a person out of band and they match. The fingerprint is checked against the card on file.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `fingerprint` string, required
+  - `name` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.person.add`
 
 Pin a person's Vyre card (trust on first use). A changed key blocks new passes until verified. From Claude it waits for a person.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `card` string, required
+  - `name` string
+- Callers: `cli`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.provider.remove`
 
 Remove a stored provider sign-in token.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `provider` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.provider.set`
 
 Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `provider` string, required
+  - `token` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.provider.status`
 
 Which provider sign-in tokens are stored and when each was added. Never the value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `provider` string
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `vault.put`
 
-vault.delete
+Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `apps` list of string
+  - `description` string
+  - `details` object
+    - `address` string
+    - `count` integer
+    - `credential` string
+    - `expires` integer or string
+    - `filename` string
+    - `issuer` string
+    - `product` string
+    - `provider` string
+    - `rp` string
+    - `scope` list of string
+    - `ssid` string
+  - `fields` object
+  - `grants` list of string
+  - `hosts` list of string
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential"
+  - `relay` object
+    - `body` boolean
+  - `reprompt` boolean
+  - `url` string
+  - `value` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`
+- Needs a person present.
 
 ### `vault.relay`
 
-vault.request
+Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+  - `request` object, required
+    - `url` string, required
+    - `body` string
+    - `headers` object
+    - `method` string
+  - `owner` string
+- Callers: `cli`, `local`, `module`
 
 ### `vault.release`
 
-No description.
+One value, to a module holding a grant for it, or to Publish for a deployment holding its own grant. `project`, when the grant names one, must match.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `deployment` string
+  - `field` string
+  - `project` string
+  - `watcher` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.remind.run`
 
 Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `deck`, `local`
 
 ### `vault.render`
 
-vault.edit
+Render a template's {{ vault://item/field }} references into a file vyred writes itself (0600), so values never cross the socket.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `out` string, required
+  - `template` string, required
+  - `force` boolean
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.request`
 
-vault.verify
+HTTP call to a vendor API using a vault api-credential; Vyre adds the key. Reads run at once; sends, payments, deletes wait at the Gate.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `credential` string, required: name of an api-credential in the vault
+  - `body` string or object or list
+  - `headers` object
+  - `input` object
+  - `method` one of "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"
+  - `operation` string
+  - `query` object
+  - `url` string
+  - `watcher` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `vault.resolve`
 
-vault.render
+Values for vault://item/field references, for `vyre vault read` and `inject` to stdout. People only, with presence.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `refs` list of string, required
+  - `destination` string
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.restore`
 
 Restore a backup. merge adds what is missing; replace needs an empty vault.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `file` string, required
+  - `passphrase` string, required
+  - `mode` "merge" or "replace"
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.reveal`
 
-vault.copy
+Show one field of an item to the person, on their own device. Hide it again after concealAfter seconds.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `field` string
+  - `session` string
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
+- Needs a person present.
 
 ### `vault.revert`
 
 Put an older version of an item back, as a new version.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `version` integer, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.revoke`
 
 Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `module` string, required
+  - `name` string, required
+  - `project` string
+  - `watcher` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`, `tailnet`
 
 ### `vault.rotate`
 
 Rotate an item at its provider: make the new credential with the current one, store it as a new version, then revoke the old one. For a provider without an API, returns its page and steps instead.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.rotation`
 
 How an item is rotated: automatically through its provider's API, or by hand at the provider's page with the steps. Names only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `vault.said.add`
 
 The person adds a standing permission from a person surface (Settings). Only the Gate calls it, after it has checked the caller is the person's own surface.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `kind` one of "send", "post", "pay", "act_out", "setting", "revoke", "use", required
+  - `surface` string, required
+  - `to` list of string, required
+  - `agents` list of string
+  - `channel` string
+  - `limits` object
+    - `currency` string
+    - `max_amount` number
+  - `what` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.said.list`
 
 The intents the person has voiced, live ones unless `all`; the Gate's gate.said.list shows them to the person.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `all` boolean
+  - `thread` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.said.match`
 
 Whether an outward call is covered by something the person said before it: kind, channel and every recipient exact, pay by payee and amount within limits. { matched, id? }. The Gate asks before it holds.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `kind` string, required
+  - `agent` string
+  - `amount` number
+  - `at` integer
+  - `channel` string
+  - `consume` boolean
+  - `currency` string
+  - `lineage` list of string
+  - `payee` string
+  - `thread` string
+  - `to` list of string
+  - `via` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.said.record`
 
 Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `kind` one of "send", "post", "pay", "act_out", "setting", "revoke", "use", required
+  - `said` string, required
+  - `thread` string, required
+  - `what` string, required
+  - `agents` list of string
+  - `at` integer
+  - `channel` string
+  - `limits` object
+    - `currency` string
+    - `hosts` list of string
+    - `max_amount` number
+  - `standing` boolean
+  - `to` list of string
+  - `when` string
+  - `window_minutes` number
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.said.revoke`
 
 Take an intent back. The Gate's gate.said.revoke calls this for the person; no proof of presence, since removing permission never needs one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.search`
 
 Items whose name, description, kind or hosts match, for a launcher's results. Names only, never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `limit` integer
+  - `q` string
 - Callers: any caller
 
 ### `vault.service.catalog`
 
 The connectors a Flow may call: { connectors: { <name>: { allow: [{ method?, path }], deny: [{ method?, path }], draft?, idempotency?, rate?, ops? } } }, the credential's own `service` rules and what a declared connector says beside them (the draft op, its idempotency header, its rate and each op's outward flag and read-back). No host, no secret. Only the kernel's lease module asks.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.service.forward`
 
 A Flow's call through a connector: { connector, request: { method, path, query?, headers?, body?, upload?, saveTo? }, idem?, approval? }. Refused unless the connector's `service` rules allow the method and path. Returns { status, ok, headers, body (base64) }, or { saved } for a Drive save, or { held } when the vault itself must ask. Only the kernel's lease module calls it, after authorizing the caller's chain; `approval` is an ask-first task id the kernel has already seen approved.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `connector` string, required
+  - `request` object, required
+  - `approval` string
+  - `idem` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.session.close`
 
 Lock a surface's session now.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`, `tailnet`
 
 ### `vault.session.open`
 
 Unlock the vault in the Deck, Lumen or the extension for a while. Returns a session token for that surface only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `surface` one of "deck", "capsule", "extension", required
+  - `ttl_s` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
+- Needs a person present.
 
 ### `vault.session.status`
 
 Whether a session is unlocked, until when, and for which surface.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `session` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `vault.ssh.add`
 
-vault.ssh.approvals
+Add an existing OpenSSH private key file. vyred reads the file itself; the key never crosses the socket.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `file` string, required
+  - `name` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.ssh.approvals`
 
-vault.ssh.approve
+SSH signing leases (key, destination host, until) and requests waiting for a person.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `cli`, `local`
 
 ### `vault.ssh.approve`
 
-vault.ssh.forget
+Approve a waiting SSH signing request: its key may sign for that host for 8 hours or until the vault locks.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.ssh.forget`
 
-No description.
+End SSH signing leases: all of them, or those for one key or host. The next signature asks again.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `host` string
+  - `name` string
 - Callers: any caller
 
 ### `vault.ssh.generate`
 
-vault.ssh.add
+Generate an SSH key in vyred and store it; returns only the public key and fingerprint. A new name only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `comment` string
+  - `description` string
+  - `type` one of "ed25519", "rsa", "ecdsa"
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `vault.ssh.keys`
 
-vault.ssh.generate
+SSH keys in the vault: name, type, fingerprint and public key, plus the agent socket. Never a private key.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `vault.state`
 
 Whether the vault is open, for the app's empty and locked states: { locked, keystore, unlock: "passphrase" | "none", items }. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.sweep`
 
 Search a folder, its git history and the shell history for values the vault holds and credentials it lacks. Returns places and names, never values.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `path` string, required
+  - `history` boolean: also search the folder's git history
+  - `shell` boolean: also search the shell history
+- Callers: `cli`, `deck`, `local`, `mcp`
+- Needs a person present.
 
 ### `vault.tagged`
 
 Conversations a # tag has lent a login to: { tags: [{ id, item, thread, hosts, since, lastUsed }] }. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `vault.totp`
 
-vault.relay
+The current one-time code for a login with a TOTP seed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string
+  - `name` string
+  - `session` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
+- Needs a person present.
 
 ### `vault.unlink`
 
 Take a vault item's link to a record away. The item and the record stay.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+  - `to` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `vault.unlock`
 
 Unlock a passphrase vault (the first unlock sets the passphrase).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `passphrase` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
+- Needs a person present.
 
 ### `vault.unlock-passphrase`
 
-No description.
+Set the passphrase a paired browser types to unlock autofill. Changing it ends every session.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `passphrase` string, required
+- Callers: `cli`, `local`
+- Needs a person present.
 
 ### `vault.untag`
 
 Take a login back from a conversation a # tag lent it to. Needs no proof: taking access away is always allowed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `vault.update`
 
 Add or change an item by merging fields: only the fields given are replaced, `remove` drops fields, and `generate` makes a new value on this machine that is never returned.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `description` string
+  - `details` object
+    - `address` string
+    - `count` integer
+    - `credential` string
+    - `expires` integer or string
+    - `filename` string
+    - `issuer` string
+    - `product` string
+    - `provider` string
+    - `rp` string
+    - `scope` list of string
+    - `ssid` string
+  - `fields` object
+  - `generate` object
+    - `field` string
+    - `length` integer
+    - `symbols` boolean
+    - `words` integer
+  - `hosts` list of string
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file", "api-credential"
+  - `remove` list of string
+  - `url` string
+- Callers: `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `vault.use.check`
 
 Whether a thread (or a thread it descends from) may use a vault item because the person tagged it. { item, thread, lineage?, hosts? } -> { allowed, id? }. Never a value. A host the item has now that it did not have at the tag ends the permission.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `hosts` list of string, required
+  - `item` string, required
+  - `thread` string, required
+  - `lineage` list of string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.use.note`
 
 A quiet record that a tagged item was used: emits vault.used {item, thread, via} with no value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+  - `thread` string
+  - `via` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.used-by`
 
 Everything that uses one credential: modules, Connections, agents, sites, apps, Flows and linked records, each with what a new value does to it. Names, never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `item` string, required
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `vault.uses`
 
 Every use of an item: when, which item, which agent or device, which origin and surface, and whether it was allowed. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `agent` string
+  - `item` string
+  - `limit` integer
+  - `since` any: ms since epoch or an ISO date
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.uses.for`
 
 The recent uses of the items linked to one record, newest first, in plain words: which item, when, by whom. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `urn` string, required
+  - `limit` integer
+- Callers: `module`
 
 ### `vault.vaults.create`
 
 Make a shared vault. This Vyre is its owner and its home.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `cli`, `device`, `local`, `mobile`
 
 ### `vault.vaults.list`
 
 Shared vaults: members, roles, fingerprints and item names. Never a value.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.vaults.rotate`
 
 Give a shared vault a new key. Members keep access; item keys are re-wrapped.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `vault` string, required
+- Callers: `cli`, `device`, `local`
+- Needs a person present.
 
 ### `vault.vaults.sync`
 
 Pull what changed in shared vaults from their homes.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `vault` string
+- Callers: `cli`, `device`, `local`, `mcp`
 
 ### `vault.verify`
 

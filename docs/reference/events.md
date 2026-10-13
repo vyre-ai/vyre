@@ -852,7 +852,7 @@ Listens for: `link.unpaired`
 | `vault.revealed-to-pass` | `item`, `name`, `pass` |
 | `vault.revoked` | `module`, `name`; sometimes `project`, `watcher` |
 | `vault.scope-converted` | `agents`, `item`, `projects`; sometimes `note` |
-| `vault.secretkey.changed` | not found in the source (the type is built at run time) |
+| `vault.secretkey-changed` | `acct`, `why` |
 | `vault.shared-created` | `vault` |
 | `vault.shared-joined` | `role`, `vault` |
 | `vault.ssh-approved` | `expires`, `host`, `name` |

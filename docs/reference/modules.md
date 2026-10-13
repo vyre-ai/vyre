@@ -1112,7 +1112,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [164](tools.md#vault)
+- Tools: [164](tools.md#vault), 23 of them only for other modules
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true}`
