@@ -200,6 +200,10 @@ function compileRaw(flow, cat) {
         const names = fieldNames(t);
         for (const k of Object.keys(s.set || {})) if (!names.has(k)) errors.push({ path: `${p}.set.${k}`, message: `${s.type} has no field ${k}`, bad: k, choices: [...names] });
         if (s.kind === "upsert") for (const k of Object.keys(s.match || {})) if (!names.has(k)) errors.push({ path: `${p}.match.${k}`, message: `${s.type} has no field ${k}`, bad: k, choices: [...names] });
+        if (s.kind === "upsert") for (const k of Object.keys(s.update || {})) {
+          if (!names.has(k)) errors.push({ path: `${p}.update.${k}`, message: `${s.type} has no field ${k}`, bad: k, choices: [...names] });
+          else if ((t.fields || []).find(f => f.name === k)?.kind === "sealed") errors.push({ path: `${p}.update.${k}`, message: `${k} is sealed: a Flow cannot write a sealed value (it is entered by a person, or by an Ask)` });
+        }
         for (const k of Object.keys(s.set || {})) if ((t.fields || []).find(f => f.name === k)?.kind === "sealed") errors.push({ path: `${p}.set.${k}`, message: `${k} is sealed: a Flow cannot write a sealed value (it is entered by a person, or by an Ask)` });
       }
       if (s.kind === "stage" && t && s.to && !(t.stages || []).some(st => st.name === s.to)) errors.push({ path: `${p}.to`, message: `${s.type} has no stage ${s.to}`, bad: s.to, choices: (t.stages || []).map(st => st.name) });
@@ -241,7 +245,7 @@ function compileRaw(flow, cat) {
         case "filter": ex(s.from, "from"); checkExprNames(s.where, `${p}.where`, new Set([...scope, "record"]), done); break;
         case "create": nm(s.set, "set"); break;
         case "update": nm(s.record, "record"); nm(s.set, "set"); break;
-        case "upsert": nm(s.match, "match"); nm(s.set, "set"); break;
+        case "upsert": nm(s.match, "match"); nm(s.set, "set"); if (s.update !== undefined) nm(s.update, "update"); break;
         case "remove": nm(s.record, "record"); break;
         case "stage": nm(s.record, "record"); break;
         case "wait": if (s.until !== undefined) nm(s.until, "until"); checkExprNames(s.where, `${p}.where`, new Set([...scope, "event"]), done); break;

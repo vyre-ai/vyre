@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
-import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
+import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary, stepProblem, choiceOf, valueSources } from "./logic.js";
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
@@ -165,6 +165,34 @@ test("every other step kind the engine has stores, checks and comes back", () =>
   assert.deepEqual(checkFlow(def), []);
   assert.deepEqual(toDefinition(fromDefinition(def)), def);
   assert.equal(flat(fromDefinition(def).steps).some((s) => s.kind === "advanced"), false);
+});
+
+test("Find or create a record: match, create-only fields and optional update compile to an upsert and come back", () => {
+  const step = { id: "upsert1", kind: "upsert", type: "client", matchFields: [{ field: "email", value: "{email}" }], fields: [{ field: "name", value: "{name}" }], updateFields: [{ field: "plan", value: "Gold" }] };
+  const d = { name: "Find", trigger: { kind: "form", path: "intake" }, steps: [step, { id: "email2", kind: "email", to: "{steps.upsert1.record.data.email}", subject: "Hi", body: "Hello" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0], { id: "upsert1", kind: "upsert", type: "client", match: { email: { expr: "trigger.email" } }, set: { name: { expr: "trigger.name" } }, update: { plan: "Gold" } });
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(fromDefinition(def).steps[0], step);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+});
+
+test("Find or create with no update fields leaves a found record alone; an older upsert keeps changing it", () => {
+  const mk = (extra) => toDefinition({ name: "F", trigger: { kind: "manual" }, steps: [{ id: "upsert1", kind: "upsert", type: "client", matchFields: [{ field: "Email", value: "a@b.co" }], fields: [{ field: "Name", value: "Ann" }], ...extra }] }).steps[0];
+  assert.deepEqual(mk({ updateFields: [] }).update, {}, "an empty update is stored, so a found record is not touched");
+  assert.equal("update" in mk({}), false, "no update key is the older meaning: set applies to a found record too");
+  const back = fromDefinition({ format: 1, name: "f", trigger: { on: "manual" }, steps: [mk({ updateFields: [] })] }).steps[0];
+  assert.deepEqual(back.updateFields, []);
+  assert.equal(fromDefinition({ format: 1, name: "f", trigger: { on: "manual" }, steps: [mk({})] }).steps[0].updateFields, undefined);
+  assert.equal(stepProblem({ id: "u", kind: "upsert", type: "client", matchFields: [{ field: "", value: "" }], fields: [], updateFields: [] }, { types: [] }), "Say which field finds an existing record.");
+});
+
+test("Find or create is in the palette and later steps can read what it found or made", () => {
+  assert.equal(choiceOf("upsert").label, "Find or create a record");
+  const o = { types: [{ name: "client", label: "Client", fields: [{ name: "email", label: "Email" }] }], agents: [], templates: [], roles: [], people: [] };
+  const d = { name: "F", trigger: { kind: "manual" }, steps: [{ id: "upsert1", kind: "upsert", type: "client", matchFields: [], fields: [] }, { id: "email2", kind: "email", to: "", subject: "", body: "" }] };
+  const tokens = valueSources(d, "email2", o).map(([t]) => t);
+  assert.ok(tokens.includes("{steps.upsert1.record.id}") && tokens.includes("{steps.upsert1.created}") && tokens.includes("{steps.upsert1.record.data.email}"));
 });
 
 test("the formula step is a Code step with a fixed source whose hash is the engine's", () => {
