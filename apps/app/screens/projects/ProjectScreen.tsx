@@ -15,6 +15,7 @@ import { projectFolder } from "../folderdocs/project";
 import { mockFolderApi } from "../folderdocs/mock-folder";
 import { ProjectAccess } from "./ProjectAccess";
 import { ProjectHeaderStrip } from "./ProjectHeaderStrip";
+import { RecordTags } from "../tags/RecordTags";
 
 /** A rail section that opens and closes (Instructions open at first, the others closed): its name, a chevron, and its body when open. */
 function Disclosure({ label, children, defaultOpen = false }: { label: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -94,6 +95,7 @@ export default function ProjectScreen() {
           : (
             <>
               <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
+              <RecordTags rec={q.data.found.row as never} onChanged={q.reload} />
               {wide
                 ? <Segmented label="Project" value={at === "timeline" || at === "team" ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ["timeline", "Timeline"], ["team", "Team"]]} />
                 : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs()} />}

@@ -5,6 +5,8 @@ import { Icon } from "../components/Icon";
 import { Avatar, type AvatarKind } from "../components/Avatar";
 import { StageMini } from "../components/StageSteps";
 import { addrText, actorIdOf, actorName, fmtDate, linkHref, linkLabel, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
+import { TagRow } from "../components/TagRow";
+import { tagsOf } from "../tags/model.js";
 import type { ViewProps } from "./types";
 
 const Empty = () => <Text tone="faint">Empty</Text>;
@@ -136,4 +138,10 @@ export function EmailView({ p }: ViewProps) {
 
 export function UrlView({ p }: ViewProps) {
   return isEmpty(p.value) ? <Empty /> : <View className="flex-row items-center gap-s1"><Icon name="link" /><Text className="hover:underline">{listOf(p.value).join(", ")}</Text></View>;
+}
+
+/** The free tags of a record, `#word` chips; a chip opens that tag's page where the screen says where it is. */
+export function TagsView({ p, env }: ViewProps) {
+  const tags = tagsOf(p.value);
+  return tags.length ? <TagRow tags={tags} onOpen={env.openTag} /> : <Empty />;
 }

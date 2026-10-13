@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, EmptyState, LoadingState, Text, useTypeStyle, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, Chip, EmptyState, LoadingState, Text, useTypeStyle, useUiTheme } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
 import { Page } from "../places/Frame";
@@ -13,7 +13,7 @@ import { ageOf } from "./chat-model.js";
 import { tool } from "../../src/real/box";
 import { ChatsList } from "./ChatsList";
 import FlowChatsList from "./FlowChatsList";
-import { UNSUPPORTED, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
+import { UNSUPPORTED, byTag, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
@@ -57,7 +57,9 @@ export default function ChatsScreen() {
     return () => document.removeEventListener("keydown", on);
   }, []);
   const word = q.trim().toLowerCase();
-  const found = word ? rows.filter((c) => [c.title, c.line, c.project, ...c.people, ...c.agents].join(" ").toLowerCase().includes(word)) : rows;
+  const [tag, setTag] = useState("");
+  const tagged = byTag(rows, tag);
+  const found = word ? tagged.rows.filter((c) => [c.title, c.line, c.project, ...c.people, ...c.agents, ...(c.tags || [])].join(" ").toLowerCase().includes(word)) : tagged.rows;
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
@@ -83,6 +85,7 @@ export default function ChatsScreen() {
               onKeyPress={(e: any) => { if (e.nativeEvent.key === "Escape" && q) { e.preventDefault?.(); setQ(""); } }}
               style={[type, { minHeight: 36, borderWidth: 1, borderColor: color.edge, borderRadius: 8, paddingHorizontal: 12, color: color.text, outlineStyle: "none" } as any]} />
             <View className="flex-row gap-s2"><Button size="sm" kind={flows ? "ghost" : "secondary"} label="Chats" onPress={() => setFlows(false)} /><Button size="sm" kind={flows ? "secondary" : "ghost"} label="Flows" onPress={() => setFlows(true)} /></View>
+            {flows ? null : tagged.tags.length ? <View accessibilityLabel="Filter by tag" className="flex-row flex-wrap gap-s1">{tagged.tags.slice(0, 12).map((t) => <Chip key={t.tag} selected={tag === t.tag} onPress={() => setTag(tag === t.tag ? "" : t.tag)}>{`#${t.tag}`}</Chip>)}</View> : null}
             {flows ? <FlowChatsList now={now} /> : null}
             {flows ? null : word && !found.length ? <Card><EmptyState title="No chat matches" body="Try a name, a project or a word from the last message." /></Card> : null}
             {flows ? null : <ChatsList menu={menu} tag={chatsTag} rows={found} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />}
