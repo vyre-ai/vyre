@@ -31,7 +31,7 @@ import { calendar, fieldsOf, dayRange } from "./calendar.js";
 import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
 import { connector } from "./connect.js";
-import { scopeFor } from "./member-scope.js";
+import { scopeFor, requireOwner, emailProblem } from "./member-scope.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const str = { type: "string" };
@@ -119,11 +119,15 @@ export default {
       description: "The work email the firm key may act as for a team member: { person, email } sets or edits it, { person } alone clears it, no input lists them. Owner and admins only; a member never sets their own.",
       input: obj({ person: str, email: str }),
       callers: PEOPLE,
-      run: safe(async ({ person, email }) => {
+      run: safe(async ({ person, email }, meta) => {
+        // The tool that decides whose mailbox the firm key becomes: the owner's, checked from the kernel's chain here, whatever the door's lists say.
+        await requireOwner(ctx.kernel, meta);
         if (person === undefined) return emails_.all();
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(String(person))) throw fail("person must be a member id");
         if (email === undefined) return { removed: emails_.clear(person) };
         if (!EMAIL.test(String(email))) throw fail("email must be an address");
+        const why = emailProblem({ email: String(email), person, firmKeys: accounts.all(), taken: e => emails_.holder(e) });
+        if (why) throw fail(why);
         emails_.set(person, email, null, now());
         return { person, email: String(email).toLowerCase() };
       }),
