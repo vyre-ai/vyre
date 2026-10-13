@@ -15,7 +15,7 @@ const presence = { check: async (/** @type {any} */ q) => (q.chain && q.proof &&
 const proof = (/** @type {string} */ action, /** @type {any} */ input, /** @type {string} */ resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
-test("the assistant's and the Engineer's chats are one each per person: pinned, kept the same chat, refused twice, the Engineer's for an owner or an admin only", { timeout: 180_000 }, async t => {
+test("the assistant's and the Engineer's chats are one each per person: pinned, kept the same chat, refused twice, the Engineer's for anyone (an ordinary agent on the person's own chain)", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence });
   t.after(() => d.stop());
@@ -46,11 +46,11 @@ test("the assistant's and the Engineer's chats are one each per person: pinned, 
   assert.deepEqual([rows.find((/** @type {any} */ r) => r.chat === a1.id).pinned, rows.find((/** @type {any} */ r) => r.chat === a2.id).pinned], ["assistant", undefined]);
   assert.equal((await call(bobChain, "work.chat.pin", { kind: "assistant", chat: a1.id })).error.code, "not_found", "nobody pins another person's chat");
 
-  // the Engineer: an owner or an admin, and only a chat with the engineer agent
-  assert.equal((await call(bobChain, "work.chat.persistent", { kind: "engineer" })).data.allowed, false, "a member may not");
+  // the Engineer: anyone (a member too), and only a chat with the engineer agent
+  assert.equal((await call(bobChain, "work.chat.persistent", { kind: "engineer" })).data.allowed, true, "a member may have one");
   const bobEng = await grants.chats.create(bobChain, { assistants: ["engineer"] });
   await until(async () => (await d.kernel.gateway.records.query(ownerChain, "chat-record", { filter: { field: "chat", op: "eq", value: bobEng.id }, page: { limit: 1 } })).rows[0], "bob's chat record");
-  assert.equal((await call(bobChain, "work.chat.pin", { kind: "engineer", chat: bobEng.id })).error.code, "not_allowed");
+  assert.equal((await call(bobChain, "work.chat.pin", { kind: "engineer", chat: bobEng.id })).data.chat, bobEng.id, "a member pins their own Engineer chat");
   assert.equal((await call(ownerChain, "work.chat.persistent", { kind: "engineer" })).data.allowed, true);
   assert.equal((await call(ownerChain, "work.chat.pin", { kind: "engineer", chat: a2.id })).error.code, "bad_input", "a chat without the engineer is not the Engineer's");
   const e1 = await grants.chats.create(ownerChain, { assistants: ["engineer"] });
