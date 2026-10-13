@@ -332,7 +332,7 @@ export default {
       const acct = r && !r.error ? r.data : null;
       return acct && !acct.synthetic && acct.person === person ? acct : null;
     };
-    const launch = async (a, { prompt, resume, job, project, forPerson, own } = {}) => {
+    const launch = async (a, { prompt, resume, job, project, forPerson, own, runAs, flowOrigin } = {}) => {
       const creds = own ? { auth: "ambient" } : await credentials(a);
       // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
       let caps = "";
@@ -356,6 +356,8 @@ export default {
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
+        // a Flow's job: its kernel session is the approver's (never the owner's), and the thread says which Flow, run, step and task it came from
+        ...(runAs ? { run_as: runAs } : {}), ...(flowOrigin ? { flow_origin: flowOrigin } : {}),
         // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
         ...(own ? { account: String(own.id), person: forPerson } : {}),
         // an agent working in a project runs in the PROJECT folder: its own agent folder (instructions, context, notes) is then the one extra folder it may read, never another agent's
@@ -810,7 +812,7 @@ export default {
     ctx.tool("agents.wake", {
       description: "Wake an agent for a task it was given: one job thread with the task's title, instructions and record as the prompt. Once per task and agent. For the Flows host.",
       internal: true, callers: ["module"],
-      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" } } },
+      input: { type: "object", required: ["task", "agent", "title"], properties: { task: { type: "string" }, agent: { type: "string" }, title: { type: "string" }, instructions: { type: "string" }, record: { type: "string" }, project: { type: "string" }, approver: { type: "string" }, flow: { type: "string" }, origin: { type: "object" } } },
       run: async (i, { caller }) => {
         if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host wakes an agent for a task"), { code: "denied" });
         const a = must(i.agent);
@@ -818,14 +820,16 @@ export default {
         const claim = db.prepare("INSERT OR IGNORE INTO agents_wakes (task, agent, at) VALUES (?,?,?)").run(task, a.name, Date.now());
         if (!claim.changes) { const row = /** @type {any} */ (db.prepare("SELECT thread FROM agents_wakes WHERE task = ? AND agent = ?").get(task, a.name)); return { agent: a.name, thread: row ? row.thread : null, already: true }; }
         try {
+          const org = i.origin && typeof i.origin === "object" ? i.origin : null;
           const prompt = [
+            org && org.flow_name ? `From Flow ${String(org.flow_name).slice(0, 80)}${org.step_name ? `, step ${String(org.step_name).slice(0, 80)}` : ""}.` : "",
             `You were given a task: ${String(i.title).slice(0, 200)}`,
             i.instructions ? `Instructions for this task:\n${String(i.instructions).slice(0, 4000)}` : "",
             i.record ? `Record: ${String(i.record)}` : "",
             `Task id: ${task}. Start it with tasks.start, do the work, then hand in what you made with tasks.submit. If you cannot finish, say why in a note and leave it open.`,
           ].filter(Boolean).join("\n\n");
           const project = i.project && (a.projects === "*" || a.projects.includes(String(i.project))) ? String(i.project) : undefined;
-          const t = await launch(a, { prompt, job: true, project, ...(i.approver ? { forPerson: String(i.approver) } : {}) });
+          const t = await launch(a, { prompt, job: true, project, ...(i.approver ? { forPerson: String(i.approver), runAs: String(i.approver) } : {}), ...(org ? { flowOrigin: Object.fromEntries(Object.entries({ ...org, task, ...(i.approver ? { approver: String(i.approver) } : {}) }).filter(([, v]) => typeof v === "string" || typeof v === "number").map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 200) : v])) } : {}) });
           db.prepare("UPDATE agents_wakes SET thread = ? WHERE task = ? AND agent = ?").run(t.id, task, a.name);
           return { agent: a.name, thread: t.id, already: false };
         } catch (e) { db.prepare("DELETE FROM agents_wakes WHERE task = ? AND agent = ? AND thread IS NULL").run(task, a.name); throw e; }

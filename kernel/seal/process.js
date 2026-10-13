@@ -24,7 +24,7 @@ import { appAttestVerifier, devSwitch } from "./appattest.js";
 export { devSwitch };
 import { SealStore } from "./store.js";
 
-export const HUMAN_SURFACES = new Set(["deck", "capsule", "mobile"]);
+export const HUMAN_SURFACES = new Set(["deck", "capsule"]);
 const REVEAL_MS = 30_000, LOOKUP_PER_MIN = 10, MATCH_PER_MIN = 5, MATCH_PER_DAY = 100, MATCH_SPACE_PER_DAY = 200, MATCH_MIN = 4, MAX_VALUE = 8192, MAX_BODY = 1 << 20;
 /** Every address an envelope names: to, cc and bcc, a string or a list, case and spacing folded. */
 export const recipientsOf = env => ["to", "cc", "bcc"].flatMap(k => (Array.isArray(env[k]) ? env[k] : env[k] == null ? [] : [env[k]])).map(x => String(x).trim().toLowerCase());

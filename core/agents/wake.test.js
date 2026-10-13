@@ -57,6 +57,7 @@ test("agents.wake: one job thread with the task in the prompt, for the approver,
   assert.equal(l.purpose, "job");
   assert.equal(l.for_person, "ana", "the job is for the approver, whom the asker gate judges");
   assert.equal(l.project, "harlow-legal");
+  assert.equal(l.run_as, "ana", "the job's kernel session is the approver's, not the owner's");
   assert.match(l.prompt, /Refund R-9/);
   assert.match(l.prompt, /Escalate to Dana/);
   assert.match(l.prompt, /vyre:\/\/s\/refund\/9/);
@@ -74,4 +75,14 @@ test("agents.wake: only the host, an unknown agent is refused, and a project the
   assert.ok((await call("agents.wake", { task: "t2", agent: "nobody", title: "x" }, "module:vyred")).error);
   await call("agents.wake", { task: "t2", agent: "kit", title: "x", project: "harlow-legal" }, "module:vyred");
   assert.notEqual(globalThis.__launched.at(-1).project, "harlow-legal", "the task's project is not the agent's, so the job is not put in it");
+});
+
+test("agents.wake: the thread says where it came from, and the wake message opens with the Flow and step", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "juno", kind: "agent", projects: ["harlow-legal"] });
+  const origin = { flow: "fl_1", flow_name: "Refund request", flow_version: 3, run: "run_9", step: "go", step_name: "Handle refund", record: "vyre://s/refund/9", junk: { x: 1 } };
+  await call("agents.wake", { task: "t9", agent: "juno", title: "Handle refund", approver: "ana", origin }, "module:vyred");
+  const l = globalThis.__launched.at(-1);
+  assert.deepEqual(l.flow_origin, { flow: "fl_1", flow_name: "Refund request", flow_version: 3, run: "run_9", step: "go", step_name: "Handle refund", record: "vyre://s/refund/9", task: "t9", approver: "ana" });
+  assert.match(l.prompt, /^From Flow Refund request, step Handle refund\./);
 });

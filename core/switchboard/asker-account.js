@@ -235,9 +235,11 @@ export async function agentLaunchGuard(sb, i, who, owner) {
 export const trustedLaunch = (i, meta) => {
   if (!i) return i;
   const first = Boolean(meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"));
-  const { for_person, read_only, ...rest } = i;
+  const { for_person, read_only, run_as, flow_origin, ...rest } = i;
   // `for_person` from any first-party module; `read_only` (one folder the session may read, its own agent folder) only from the agents module: nobody else widens what a sandbox can read.
-  return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}) };
+  return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}),
+    // `run_as` (the person a Flow's job acts as, so its kernel session is theirs and not the owner's) and `flow_origin` (where the job came from) only from the agents module, which got them from the host.
+    ...(run_as !== undefined && first && String(meta.caller) === "module:agents" ? { run_as } : {}), ...(flow_origin !== undefined && first && String(meta.caller) === "module:agents" ? { flow_origin } : {}) };
 };
 
 /** The first person on a kernel chain (a member's session chain carries her and the assistant: she is who asks). @param {any} chain @returns {string | null} */
