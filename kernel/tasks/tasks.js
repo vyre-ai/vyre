@@ -6,6 +6,7 @@
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson, actsAsPerson } from "../core/chain.js";
+import { isStaffRole } from "../../lib/roles/staff.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
@@ -304,7 +305,7 @@ export function createTasks(cfg) {
     const maker = await Promise.resolve(cfg.agentMaker(agentId)).catch(() => null);
     if (typeof maker !== "string" || !maker) return false;
     const role = await Promise.resolve((cfg.makerRole || cfg.members.roleOf)({ kind: "person", id: maker, space: cfg.space })).catch(() => null);
-    return role === "owner" || role === "admin";
+    return isStaffRole(role);
   };
   /**
    * An agent checks another agent's work, under its own chain and reach (rc1-d, 13 Oct): only when the task names it as its checker, never the doer or anything running under the doer, only an
