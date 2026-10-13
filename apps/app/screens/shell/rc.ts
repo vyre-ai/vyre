@@ -17,7 +17,7 @@ export const RC = {
   typedCode: flagNotOff(process.env.EXPO_PUBLIC_VYRE_TYPED_CODE),
 };
 
-/** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
+/** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (web.vyre.run or app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
 export const claimBlocked = (): boolean =>
   Platform.OS === "web" && !macKeyAvailable() && (!RC.browserClaim || passkeyRp(typeof location !== "undefined" ? location.origin : undefined, { dev: process.env.NODE_ENV !== "production" }) === null);
 
