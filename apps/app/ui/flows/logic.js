@@ -37,7 +37,7 @@ export const STEP_GROUPS = /** @type {const} */ ([
     { kind: "find", icon: "search", label: "Find records", hint: "Look records up in an object", words: "search lookup query fetch get" },
     { kind: "create", icon: "records", label: "Create a record", hint: "Add a row to one of your objects", words: "add new insert" },
     { kind: "update", icon: "edit", label: "Update a record", hint: "Change a field on a record", words: "change set edit write" },
-    { kind: "upsert", icon: "refresh", label: "Create or update", hint: "Update the record that matches, or make it", words: "upsert match merge" },
+    { kind: "upsert", icon: "refresh", label: "Find or create a record", hint: "Use the record that matches, or make a new one", words: "upsert match merge find lookup create if missing exists duplicate" },
     { kind: "remove", icon: "trash", label: "Remove a record", hint: "Take a record out", words: "delete" },
     { kind: "stage", icon: "board", label: "Move to a stage", hint: "Put a record in another stage", words: "pipeline status move" },
   ] },
@@ -121,7 +121,7 @@ export function stepSummary(s, o, d) {
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
     case "find": return `Find ${named(o.types, s.type) || "records"}${(s.where || "").trim() ? ` where ${s.where.trim()}` : ""}`;
-    case "upsert": return `Create or update a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
+    case "upsert": return `${s.updateFields ? "Find or create" : "Find, then change or create"} a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
     case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
@@ -241,7 +241,7 @@ export function stepDefinition(s, d) {
   switch (s.kind) {
     case "advanced": return s.raw;
     case "find": return { id: s.id, kind: "find", type: s.type, ...((s.where || "").trim() ? { where: s.where.trim() } : {}), limit: Number(s.limit) > 0 ? Number(s.limit) : 20 };
-    case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields) };
+    case "upsert": return { id: s.id, kind: "upsert", type: s.type, match: pairs(s.matchFields), set: pairs(s.fields), ...(s.updateFields ? { update: pairs(s.updateFields) } : {}) };
     case "remove": return { id: s.id, kind: "remove", type: s.type, record: rec(s.record) };
     case "stage": return { id: s.id, kind: "stage", type: s.type, record: rec(s.record), to: (s.to || "").trim() };
     case "wait":
@@ -315,7 +315,7 @@ export function newStep(kind, d, o) {
     case "email": return { id, kind, to: "", subject: "", body: "" };
     case "ask": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
     case "find": return { id, kind, type: "", where: "", limit: 20 };
-    case "upsert": return { id, kind, type: "", matchFields: [{ field: "", value: "" }], fields: [{ field: "", value: "" }] };
+    case "upsert": return { id, kind, type: "", matchFields: [{ field: "", value: "" }], fields: [{ field: "", value: "" }], updateFields: [] };
     case "remove": return { id, kind, type: lastMade?.type || "", record: link };
     case "stage": return { id, kind, type: lastMade?.type || d.trigger.type || "", record: link, to: "" };
     case "wait": return { id, kind, amount: 1, unit: "days", mode: "for", field: "", when: "before" };
@@ -404,7 +404,7 @@ function stepFrom(s) {
   const who = (/** @type {string} */ v) => (typeof v === "string" && v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
   switch (s.kind) {
     case "find": return keys(s, ["id", "kind", "type", "where", "limit", "label"]) ? { id: s.id, kind: "find", type: s.type, where: s.where || "", limit: s.limit ?? 20 } : adv;
-    case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "label"]) && rowsOf(s.match) && rowsOf(s.set) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set) } : adv;
+    case "upsert": return keys(s, ["id", "kind", "type", "match", "set", "update", "label"]) && rowsOf(s.match) && rowsOf(s.set) && (s.update === undefined || rowsOf(s.update)) ? { id: s.id, kind: "upsert", type: s.type, matchFields: rowsOf(s.match), fields: rowsOf(s.set), ...(s.update === undefined ? {} : { updateFields: s.update && Object.keys(s.update).length ? rowsOf(s.update) : [] }) } : adv;
     case "remove": return refOf(s.record) && keys(s, ["id", "kind", "type", "record", "label"]) ? { id: s.id, kind: "remove", type: s.type, record: refOf(s.record) } : adv;
     case "stage": return refOf(s.record) && typeof s.to === "string" && keys(s, ["id", "kind", "type", "record", "to", "label"]) ? { id: s.id, kind: "stage", type: s.type, record: refOf(s.record), to: s.to } : adv;
     case "wait": {
@@ -513,7 +513,9 @@ export function valueSources(d, stepId, o) {
   else if (t.kind === "form" || t.kind === "signup") for (const f of ["name", "email", "phone", "message"]) out.push([`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)} from the form`]);
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
-    if (s.kind === "create" || s.kind === "upsert") out.push([`{steps.${s.id}.record.id}`, `The record made by ${s.id}`]);
+    if (s.kind === "create" || s.kind === "upsert") out.push([`{steps.${s.id}.record.id}`, s.kind === "upsert" ? `The record found or made by ${s.id}` : `The record made by ${s.id}`]);
+    if (s.kind === "upsert") out.push([`{steps.${s.id}.created}`, `Whether ${s.id} made a new record (true) or found one (false)`]);
+    if (s.kind === "create" || s.kind === "upsert") for (const f of o.types.find((x) => x.name === s.type)?.fields || []) out.push([`{steps.${s.id}.record.data.${f.name}}`, `${f.label} of the record ${s.kind === "upsert" ? "found or made" : "made"} by ${s.id}`]);
     if (s.kind === "find") out.push([`{steps.${s.id}.rows}`, `The records found by ${s.id}`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }

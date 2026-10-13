@@ -175,8 +175,17 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
       {s.kind === "upsert" ? (
         <>
           <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => set({ type })} />
-          <Rows rows={s.matchFields ?? []} onChange={(matchFields) => set({ matchFields })} draft={draft} stepId={s.id} options={options} fieldLabel="Match on" help="The record whose fields equal these is updated. If there is none, one is made." />
-          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} />
+          <Rows rows={s.matchFields ?? []} onChange={(matchFields) => set({ matchFields })} draft={draft} stepId={s.id} options={options} fieldLabel="Match on" help="The first record whose fields equal these is used. If there is none, one is made with these fields too." />
+          <Rows rows={s.fields ?? []} onChange={(fields) => set({ fields })} draft={draft} stepId={s.id} options={options} fieldLabel="Set when it is created" help="Only used when no record matches. A record that is found keeps what it has." />
+          {s.updateFields ? (
+            <Rows rows={s.updateFields} onChange={(updateFields) => set({ updateFields })} draft={draft} stepId={s.id} options={options} fieldLabel="Also update if found" help="Optional. Changed only when a record is found. Leave empty to use the found record as it is." />
+          ) : (
+            <View className="gap-s2">
+              <Text size="caption" tone="label">This older step also changes the fields above on a record it finds.</Text>
+              <View className="flex-row"><Button kind="ghost" size="sm" label="Only set them when creating" onPress={() => set({ updateFields: [] })} /></View>
+            </View>
+          )}
+          <Text size="caption" tone="label">{`Later steps read the record as {steps.${s.id}.record.id} and whether it was new as {steps.${s.id}.created}.`}</Text>
         </>
       ) : null}
       {s.kind === "remove" ? (
