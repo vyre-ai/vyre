@@ -145,7 +145,7 @@ export const addressPicks = (groups) => groups.flatMap((g) => g.items.filter((i)
 /** The date fields in context, for "Insert a date": a field typed date or datetime, or one whose name says so; plus Now, which has no token the engine reads yet. @param {Group[]} groups @returns {Item[]} */
 export function dateRefs(groups) {
   const like = (/** @type {string} */ t) => /(^|[._])(date|time|start|end|starts|ends|due|[a-z]+_at|[a-z]+_on|[a-z]+_date)$/i.test(t.replace(/\}$/, ""));
-  const found = groups.flatMap((g) => g.items.filter((i) => i.date || like(i.token)).map((i) => ({ ...i, label: g.object ? `${g.object} · ${i.label}` : i.label })));
+  const found = groups.filter((g) => g.title !== "Helpful values").flatMap((g) => g.items.filter((i) => i.date || like(i.token)).map((i) => ({ ...i, label: g.object ? `${g.object} · ${i.label}` : i.label })));
   return [...found, { token: "", label: "Now", known: false, note: "Coming next" }];
 }
 

@@ -43,7 +43,7 @@ export function DateTimePicker({ label, value, onChange, now, withTime = false, 
       </View>
       {open ? (
         <View style={{ borderWidth: 1, borderColor: color.edge, borderRadius: 12, padding: 10, gap: 6, backgroundColor: color["surface-3"], alignSelf: "flex-start", width: 7 * 40 + 24, maxWidth: "100%" }}
-          onKeyPress={(e: any) => { const n = keyDay(picked ?? today, String(e?.nativeEvent?.key)); if (n) { e.preventDefault?.(); choose(n); } }}>
+          {...({ onKeyDown: (e: any) => { const n = keyDay(picked ?? today, String(e?.key)); if (n) { e.preventDefault?.(); choose(n); } } } as object)}>
           <View className="flex-row items-center justify-between">
             <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setShown(shiftMonth(shown, -1))} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}><Icon name="chevron-left" size={16} tone="muted" /></Pressable>
             <Text strong>{MONTHS[shown.m]} {shown.y}</Text>
