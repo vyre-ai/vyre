@@ -5,9 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 import { Tree, type NodeRendererProps } from "react-arborist";
-import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, Icon, IconButton } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
@@ -16,14 +15,14 @@ import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, rootsOf, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort, type TreeNode } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
-import { linked, spaceRead, spaceRestore, spaceVersions, statusReal, linkCreate } from "./real";
+import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
 import { bytesOf, sizeWord, textOf, type Status } from "./real-model";
 import { driveRefusal } from "./real-model";
 import { linkedRefusal, type LinkedFolder, type LinkedVersion } from "./linked-model";
-import { dayOf, spaceDriveRefusal, type Version } from "./space-model";
+import { dayOf, spaceDriveRefusal, toBase64, MAX_UPLOAD, type Version } from "./space-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
-const ROW_H = 40, TREE_H = 560;
+const ROW_H = 40, TREE_H = 520;
 const ICON: Record<string, string> = { folder: "folder", pdf: "file", doc: "file", sheet: "file", image: "file", video: "file", audio: "file", archive: "file", text: "file", file: "file" };
 const KIND_WORD: Record<string, string> = { folder: "Folder", pdf: "PDF", doc: "Document", sheet: "Spreadsheet", image: "Image", video: "Video", audio: "Audio", archive: "Archive", text: "Text", file: "File" };
 /** What the shared list header filters on: a file as a record with a name and a kind. */
@@ -125,19 +124,12 @@ function Manager({ wide }: { wide: boolean }) {
     setSel(e.shiftKey ? selectRange(sel, keys, r.key) : e.metaKey || e.ctrlKey ? selectToggle(sel, r.key) : selectOnly(r.key));
   };
 
-  // columns
-  const columns = useMemo<ColumnDef<FileRow>[]>(() => [
-    { id: "name", header: "Name", accessorKey: "name", cell: (c) => <Cell r={c.row.original} /> },
-    { id: "kind", header: "Kind", accessorFn: (r) => KIND_WORD[r.kind], size: 84 },
-    { id: "modified", header: "Modified", accessorFn: (r) => when(r.modified), size: 104 },
-    { id: "size", header: "Size", accessorFn: (r) => (r.dir ? "" : sizeWord(r.size)), size: 72 },
-  ], []);
-  const table = useReactTable({ data: shown, columns, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.key });
   const scroller = useRef<HTMLDivElement>(null);
   const virt = useVirtualizer({ count: shown.length, getScrollElement: () => scroller.current, estimateSize: () => ROW_H, overscan: 8 });
 
   const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames }) : [];
-  const bar = bulkActions(root, picked.length);
+  // The bar is for several at once; one row has its "..." and the detail panel, and a bar that appears on the first click would push the rows down before the second click of a double click.
+  const bar = picked.length > 1 ? bulkActions(root, picked.length) : [];
   /** The "..." of a row: only what its source really does. */
   const menuFor = (r: FileRow) => {
     const a = abilities(r.root);
@@ -155,97 +147,138 @@ function Manager({ wide }: { wide: boolean }) {
     else if (id === "share" && one) linkCreate(undefined, one.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e)));
   };
 
+  // upload: the picker and a drop onto the open folder (the Space and linked folders take files)
+  const [dropping, setDropping] = useState(false);
+  const upload = async (files: File[]) => {
+    if (!parsed || !ability.upload || !files.length) return;
+    const base = parsed.path ? `${parsed.path}/` : "";
+    let done = 0;
+    for (const f of files) {
+      if (f.size > MAX_UPLOAD) { showToast(spaceDriveRefusal("too_large", "")); continue; }
+      try {
+        const b64 = toBase64(new Uint8Array(await f.arrayBuffer()));
+        if (parsed.root === "space") await spaceUpload(undefined, `${base}${f.name}`, b64, rows?.find((x) => !x.dir && x.name === f.name)?.ver);
+        else if (parsed.root === "linked" && parsed.link) await linked.write(parsed.link, `${base}${f.name}`, b64);
+        done++;
+      } catch (e) { showToast(say(e)); }
+    }
+    if (done) { showToast(done === 1 ? "Uploaded." : `Uploaded ${done} files.`); load(place); }
+  };
+  const pickUpload = () => {
+    const input = document.createElement("input");
+    input.type = "file"; input.multiple = true;
+    input.onchange = () => { void upload(Array.from(input.files ?? [])); };
+    input.click();
+  };
+  const canOpenFolder = !!parsed && (parsed.root === "space" || (parsed.root === "linked" && !!parsed.link));
+
+  const uploadButton = ability.upload && canOpenFolder ? <Button kind="primary" size="sm" icon="upload" label="Upload" onPress={pickUpload} /> : null;
+  // With the detail panel open the middle is narrower, so Kind (which the panel shows) steps aside and the rest keep their widths.
+  const showDetail = !!one && (one.root === "space" || one.root === "linked" || one.root === "box");
+  const GRID_COLS = showDetail ? "minmax(140px, 1fr) 104px 72px 36px" : "minmax(240px, 1fr) 120px 140px 80px 36px";
+  const row = (r: FileRow, i: number, style?: React.CSSProperties) => {
+    const on = sel.set.has(r.key);
+    // The row's own grid is the child of MenuRow's wrapper (a column View), so every cell sits on the one line.
+    return (
+      <div key={r.key} style={style}>
+        <MenuRow items={menuFor(r)}>{(menu) => (
+          <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)}
+            style={{ display: "grid", gridTemplateColumns: GRID_COLS, alignItems: "center", columnGap: 12, height: ROW_H, boxSizing: "border-box", padding: "0 12px", cursor: "pointer", background: on ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", outline: i === focus ? "1px solid var(--edge-strong, rgba(128,128,128,.5))" : "none", outlineOffset: -1 }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}><Icon name={ICON[r.kind] as never} tone="text-2" size={18} /><div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></div></div>
+            {showDetail ? null : <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><Text size="caption" tone="muted" numberOfLines={1}>{KIND_WORD[r.kind]}</Text></div>}
+            <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}><Text size="caption" tone="muted" numberOfLines={1}>{when(r.modified)}</Text></div>
+            <div style={{ minWidth: 0, textAlign: "right", whiteSpace: "nowrap" }}><Text size="caption" tone="muted">{r.dir ? "" : sizeWord(r.size)}</Text></div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>{menu}</div>
+          </div>
+        )}</MenuRow>
+      </div>
+    );
+  };
+  const head = (id: Sort["key"], label: string, right?: boolean) => (
+    <div onClick={() => setSort(nextSort(sort, id))} style={{ cursor: "pointer", userSelect: "none", textAlign: right ? "right" : "left", minWidth: 0 }}>
+      <Text size="caption" strong tone="label">{label}{sort.key === id ? (sort.dir === "asc" ? "  \u25B2" : "  \u25BC") : ""}</Text>
+    </div>
+  );
+  const BIG = 200;
+  const emptyState = (
+    <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Add a file, or drop one here." : "Nothing is here, or everything in it is kept away from you."}
+      action={!q && !chips.length && uploadButton ? { label: "Upload", onPress: pickUpload } : undefined} /></Card>
+  );
+
   const main = root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
     : root === "computer" ? <Card>{status ? <View className="gap-s2"><Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>{status.why ? <Text tone="muted">{status.why}</Text> : null}{status.fix ? <Text tone="label">{status.fix}</Text> : null}</View> : <LoadingState rows={2} />}</Card>
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>
     : rows === null ? <LoadingState rows={4} />
-    : !shown.length ? <Card flush><EmptyState title={q ? "Nothing matches" : "Nothing here"} body={q ? "No name in this folder has all of those words." : "This folder is empty, or everything in it is kept away from you."} /></Card>
+    : !shown.length ? emptyState
     : view === "grid" ? (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
-          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 12, padding: 12, border: "1px solid var(--edge, rgba(128,128,128,.25))", outline: sel.set.has(r.key) ? "2px solid var(--accent, #6b5cff)" : "none" }}>
-            <IconTile name={ICON[r.kind] as never} tone="text-2" />
-            <div style={{ marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
+          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge, rgba(128,128,128,.25))", background: sel.set.has(r.key) ? "var(--surface-3, rgba(128,128,255,.14))" : "var(--surface-2, transparent)" }}>
+            <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Icon name={ICON[r.kind] as never} tone="text-2" size={44 as never} /></div>
+            <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
           </div>
         ))}
       </div>
     ) : (
       <Card flush>
-        <div style={{ display: "flex", padding: "8px 16px" }}>
-          {table.getHeaderGroups()[0].headers.map((h) => (
-            <div key={h.id} onClick={() => setSort(nextSort(sort, h.id as Sort["key"]))} style={{ minWidth: 0, flex: h.id === "name" ? "1 1 0" : "none", width: h.id === "name" ? undefined : h.getSize(), cursor: "pointer", userSelect: "none" }}>
-              <Text size="caption" strong tone="label">{flexRender(h.column.columnDef.header, h.getContext())}{sort.key === h.id ? (sort.dir === "asc" ? "  ▲" : "  ▼") : ""}</Text>
-            </div>
-          ))}
+        <div role="row" style={{ display: "grid", gridTemplateColumns: GRID_COLS, columnGap: 12, padding: "10px 12px 8px" }}>
+          {head("name", "Name")}{showDetail ? null : head("kind", "Kind")}{head("modified", "Modified")}{head("size", "Size", true)}<div />
         </div>
         <Divider />
-        <div ref={scroller} style={{ height: Math.min(shown.length * ROW_H, TREE_H - 60), overflow: "auto" }}>
-          <div style={{ height: virt.getTotalSize(), position: "relative" }}>
-            {virt.getVirtualItems().map((v) => {
-              const row = table.getRowModel().rows[v.index]; const r = row.original; const on = sel.set.has(r.key);
-              return (
-                <div key={row.id} onClick={(e) => click(r, v.index, e)} onDoubleClick={() => open(r)}
-                  style={{ position: "absolute", top: 0, left: 0, right: 0, height: ROW_H, transform: `translateY(${v.start}px)`, display: "flex", alignItems: "center", padding: "0 16px", cursor: "pointer", background: on ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", outline: v.index === focus ? "1px solid var(--accent, #6b5cff)" : "none" }}>
-                  <MenuRow items={menuFor(r)}>{(menu) => (<>
-                  {row.getVisibleCells().map((c) => (
-                    <div key={c.id} style={{ flex: c.column.id === "name" ? "1 1 0" : "none", width: c.column.id === "name" ? undefined : c.column.getSize(), minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.column.id === "name" ? flexRender(c.column.columnDef.cell, c.getContext()) : <Text size="caption" tone="muted">{String(c.getValue() ?? "")}</Text>}
-                    </div>
-                  ))}
-                  <div style={{ flex: "none", width: 36 }}>{menu}</div></>)}</MenuRow>
-                </div>
-              );
-            })}
+        {shown.length > BIG ? (
+          <div ref={scroller} style={{ height: 480, overflow: "auto" }}>
+            <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+              {virt.getVirtualItems().map((v) => row(shown[v.index], v.index, { position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${v.start}px)` }))}
+            </div>
           </div>
-        </div>
+        ) : <div>{shown.map((r, i) => row(r, i))}</div>}
       </Card>
     );
 
   return (
-    <Frame title="Files" sub="The space's files with their versions, linked folders, and your server's folders.">
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
-        <div style={{ width: 252, flex: "none" }}>
-          <Card flush>
-            <Tree<TreeNode> data={treeData} childrenAccessor="kids" idAccessor="id" width={252} height={TREE_H} rowHeight={32} indent={14} openByDefault={false} selection={place}
-              disableDrag={(n) => n.root !== "linked" || !n.id.includes(":")} disableDrop={(a) => !(a.parentNode?.data?.root === "linked" && a.parentNode.data.id.includes(":")) } disableEdit
-              onSelect={(ns) => { if (ns[0]) go(ns[0].id); }} onToggle={(id) => openNode(id)} onMove={onMove}>
-              {TreeRow}
-            </Tree>
-          </Card>
+    <Frame title="Files">
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
+        <div style={{ width: 220, flex: "none" }}>
+          <Tree<TreeNode> data={treeData} childrenAccessor="kids" idAccessor="id" width={220} height={TREE_H} rowHeight={34} indent={16} openByDefault={false} selection={place}
+            disableDrag={(n) => n.root !== "linked" || !n.id.includes(":")} disableDrop={(a) => !(a.parentNode?.data?.root === "linked" && a.parentNode.data.id.includes(":")) } disableEdit
+            onSelect={(ns) => { if (ns[0]) go(ns[0].id); }} onToggle={(id) => openNode(id)} onMove={onMove}>
+            {TreeRow}
+          </Tree>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(true); } }} onDragLeave={() => setDropping(false)}
+          onDrop={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(false); void upload(Array.from(e.dataTransfer.files)); } }}>
           <View className="gap-s3">
-            <ListHeader noun="items" shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}}
-              title={
-                <Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} end={<Segmented<"list" | "grid"> value={view} onChange={setView} options={[["list", "List"], ["grid", "Grid"]]} />} />
-              } />
+            <View className="flex-row items-center gap-s3">
+              <View className="min-w-0 flex-1"><Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} /></View>
+              <View className="flex-row items-center gap-s2">
+                {uploadButton}
+                <IconButton icon="list" label="Show as a list" kind={view === "list" ? "secondary" : "ghost"} onPress={() => setView("list")} />
+                <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
+              </View>
+            </View>
+            <ListHeader noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
             ) : null}
-            {main}
+            <div style={{ outline: dropping ? "2px dashed var(--accent, #6b5cff)" : "none", outlineOffset: 4, borderRadius: 14 }}>{main}</div>
           </View>
         </div>
-        {wide || one ? (
-          <div style={{ width: 320, flex: "none" }}>
-            <Detail row={one} ability={ability} onChanged={() => load(place)} />
-          </div>
-        ) : null}
+        {showDetail ? <div style={{ width: 320, flex: "none" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
       </div>
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(place); setKids({}); }} />
     </Frame>
   );
 }
 
-function Cell({ r }: { r: FileRow }) {
-  return <View className="min-w-0 flex-1 flex-row items-center gap-s2"><IconTile name={ICON[r.kind] as never} tone="text-2" /><View className="min-w-0 flex-1"><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></View></View>;
-}
-
+const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", box: "server", computer: "laptop" };
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
+  const top = !node.id.includes(":") && ROOT_ICON[node.id];
   return (
-    <div style={{ ...style, display: "flex", alignItems: "center", gap: 6, paddingRight: 8, background: node.isSelected ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", borderRadius: 8, cursor: "pointer" }} ref={dragHandle}>
-      <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, textAlign: "center", opacity: node.isLeaf ? 0 : 0.7 }}>{node.isOpen ? "▾" : "▸"}</span>
-      <Text size="caption" numberOfLines={1}>{node.data.label}</Text>
+    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, paddingRight: 8, background: node.isSelected ? "var(--surface-3, rgba(128,128,255,.14))" : "transparent", borderRadius: 8, cursor: "pointer" }}>
+      <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
+      <Icon name={(top ? ROOT_ICON[node.id] : "folder") as never} size={16 as never} tone={node.isSelected ? "text" : "text-2"} />
+      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={node.isSelected || !!top}>{node.data.label}</Text></div>
     </div>
   );
 }
@@ -271,7 +304,7 @@ function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: Ret
     setVersions(null);
     if (!row || row.root !== "space" || !ability.versions) return;
     let live = true;
-    spaceVersions(undefined, row.path).then((v: Version[]) => live && setVersions([...v].reverse().map((x, k) => ({ id: String(x.ver), line: `Version ${x.ver}${k === 0 ? ", current" : ""}, ${sizeWord(x.size)}, ${when(x.at)}`, restorable: k > 0, ver: x.ver })))).catch(() => live && setVersions([]));
+    spaceVersions(undefined, row.path).then((v: Version[]) => live && setVersions([...v].reverse().slice(0, 6).map((x, k) => ({ id: String(x.ver), line: `v${x.ver}${k === 0 ? " (current)" : ""}, ${when(x.at)}`, restorable: k > 0, ver: x.ver })))).catch(() => live && setVersions([]));
     return () => { live = false; };
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!row) return <Card><EmptyState title="Select a file" body="Its preview, versions and details show here." /></Card>;
