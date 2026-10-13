@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 21 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 34 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
@@ -69,16 +69,17 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 25 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 25 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 26 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 24 | 10 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -99,7 +100,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 75 | 42 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 77 | 42 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
@@ -110,8 +111,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 77 | 0 | cli |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 36 | capsule, cli, deck |
+| [`work`](#work) | `core/work` | `box`, `local` | 78 | 0 | cli |
 
 ## about
 
@@ -129,11 +130,11 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [21](tools.md#agents), 6 of them only for other modules
+- Tools: [34](tools.md#agents), 6 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true,"hidden_from":["member","manager","temp"]},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"tags","kind":"text","label":"Tags","hidden_from":["member","manager","temp"]}]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true,"hidden_from":["member","manager","temp"]},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"folder","kind":"text","label":"Folder"},{"name":"projects","kind":"text","label":"Projects"},{"name":"users","kind":"text","label":"Who may use it"},{"name":"tags","kind":"text","label":"Tags","hidden_from":["member","manager","temp"]}]}],"membership":true,"mints":[{"prefix":"agent","actions":["agents.use","agents.edit"]}]}`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -716,7 +717,7 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#presence), 6 of them only for other modules
+- Tools: [21](tools.md#presence), 7 of them only for other modules
 - Emits: [7 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -738,7 +739,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [24](tools.md#projects)
+- Tools: [25](tools.md#projects)
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
 - Needs kernel: `{"reach":true,"actions":["records.read"]}`
@@ -808,8 +809,8 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [41](tools.md#relay), 14 of them only for other modules
-- Emits: [25 events](events.md#relay)
+- Tools: [42](tools.md#relay), 15 of them only for other modules
+- Emits: [26 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -824,6 +825,18 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## roles
+
+A Space's roles as a person sees them: Owner, Admin, Member, Guest and custom roles built from Member or Admin. One tool per call, each under the caller's own chain; the kernel refuses anything wider than a role's base.
+
+- Folder: `core/roles`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#roles)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## rules
 
@@ -1066,7 +1079,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [75](tools.md#threads), 29 of them only for other modules
+- Tools: [77](tools.md#threads), 31 of them only for other modules
 - Emits: [42 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`, `listModels`
@@ -1199,8 +1212,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Runs on: `box`, `local`
 - Requires: `relay`
 - Tools: [68](tools.md#wink), 14 of them only for other modules
-- Emits: [35 events](events.md#wink)
-- Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
+- Emits: [36 events](events.md#wink)
+- Listens for: `relay.code-asked`, `relay.signin-asked`, `relay.connected`, `name.claimed`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs daemon: `dataStores`
 - Needs kernel: `{"mints":[{"prefix":"member/*","actions":["member.act"]},{"prefix":"node/*","actions":["node.host"]},{"prefix":"storage/*","actions":["storage.hold"]}]}`
@@ -1213,7 +1226,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [77](tools.md#work), 21 of them only for other modules
+- Tools: [78](tools.md#work), 21 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`, `agentActor`

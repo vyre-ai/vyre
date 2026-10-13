@@ -31,9 +31,13 @@
  * These repeat core/relay/wire.js, which uses node:crypto and so cannot load here.
  * relay/worker/worker.test.js checks that they match.
  */
+import { onGithub } from "./github.js";
+export { GithubLinks } from "./github.js";
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = Object.freeze(["registered", "revoke", "code"]);
+/** Sign in by name: how long a box's watch on a name lasts without renewal, and how often one name may be asked about. */
+const SIGNIN = { watchMs: 10 * 60_000, locPerMin: 3 };
+export const FEATURES = Object.freeze(["registered", "revoke", "code", "signin"]);
 export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame: 1 << 20 });
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
@@ -185,6 +189,9 @@ export default {
     if (url.pathname === "/v1/pair" && request.method === "POST") return withPairCors(await onPairResolve(request, env));
     if (url.pathname === "/v1/wink/code" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: PAIR_PREFLIGHT });
     if (url.pathname === "/v1/wink/code" && request.method === "POST") return withPairCors(await onCodeStep(request, env));
+    if (url.pathname === "/v1/signin" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: PAIR_PREFLIGHT });
+    if (url.pathname === "/v1/signin" && request.method === "POST") return withPairCors(await onSignin(request, env));
+    if (url.pathname.startsWith("/v1/github/")) return onGithub(request, url, env);
     if (url.pathname === "/v1/setup/mbx" && request.method === "OPTIONS") return new Response(null, { status: 204, headers: MBX_PREFLIGHT });
     if (url.pathname === "/v1/setup/mbx" && (request.method === "POST" || request.method === "GET")) return withMbxCors(await onSetupMbx(request, url, env));
     if (String(request.headers.get("upgrade")).toLowerCase() !== "websocket") return new Response(null, { status: 426 });
@@ -276,6 +283,33 @@ async function onCodeStep(request, env) {
     if (Date.now() + tick > deadline) { await relay.fetch("https://route/code/drop", { method: "POST", body: JSON.stringify({ q }) }); return refused(); }
     await new Promise(r => setTimeout(r, tick));
   }
+}
+
+/**
+ * Sign in by name: a new device posts { loc, s } (a hash of the name, and a one-time secret). The Worker asks the name's SigninSlot object, which counts the request against the name (3 a
+ * minute) and says which routes serve it, hands the request to each of those routes' boxes, and answers 202 whether or not any route does: a device asking learns nothing about whether the
+ * name has a device online. Per-address limit through the optional env.SIGNIN_LIMITER. The relay holds the name only as a hash and the secret only for the length of the call.
+ * @param {Request} request @param {any} env
+ */
+async function onSignin(request, env) {
+  const who = request.headers.get("cf-connecting-ip") || "unknown";
+  if (!env.SIGNIN) return json(404, { error: "sign in by name is not on this relay" });
+  const text = await request.text();
+  if (text.length > 512) return json(400, { error: "bad request" });
+  let m;
+  try { m = JSON.parse(text); } catch { return json(400, { error: "bad request" }); }
+  const loc = String((m && m.loc) || ""), sd = String((m && m.s) || "");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(loc) || !/^[A-Za-z0-9_-]{22,43}$/.test(sd)) return json(400, { error: "bad request" });
+  const busy = () => json(429, { error: "too many sign-in requests; wait a minute" });
+  if (env.SIGNIN_LIMITER && !(await env.SIGNIN_LIMITER.limit({ key: who })).success) return busy();
+  const r = await env.SIGNIN.get(env.SIGNIN.idFromName(`si:${loc}`)).fetch("https://signin/ask", { method: "POST" });
+  const out = r.status === 200 ? /** @type {any} */ (await r.json()) : { limited: true };
+  if (out.limited) return busy();
+  for (const route of Array.isArray(out.routes) ? out.routes : []) {
+    if (!ROUTE_RE.test(String(route))) continue;
+    try { await env.ROUTES.get(env.ROUTES.idFromName(String(route))).fetch("https://route/signin/ask", { method: "POST", body: JSON.stringify({ loc, s: sd }) }); } catch { /* a route that cannot be reached is the same answer */ }
+  }
+  return json(202, { ok: true });
 }
 
 /**
@@ -491,6 +525,51 @@ export class CodeSlot {
 }
 
 /**
+ * One name's sign-in requests (`si:<hash of the name>`): which routes serve it and until when, and a count of asks this minute. It holds no name and no secret.
+ */
+export class SigninSlot {
+  /** @param {any} ctx */
+  constructor(ctx) { this.ctx = ctx; }
+
+  /** @param {Request} request */
+  async fetch(request) {
+    const url = new URL(request.url);
+    const now = Date.now();
+    /** @type {Record<string, number>} */
+    const routes = (await this.ctx.storage.get("r")) || {};
+    for (const k of Object.keys(routes)) if (routes[k] <= now) delete routes[k];
+    if (request.method === "POST" && url.pathname === "/watch") {
+      let body;
+      try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+      const route = String((body && body.route) || "");
+      if (!ROUTE_RE.test(route)) return new Response(null, { status: 400 });
+      if (Object.keys(routes).length < 16 || routes[route]) routes[route] = now + SIGNIN.watchMs;
+      await this.ctx.storage.put("r", routes);
+      await this.ctx.storage.setAlarm(now + SIGNIN.watchMs + 1000);
+      return json(200, { ok: true });
+    }
+    if (request.method === "POST" && url.pathname === "/ask") {
+      const minute = Math.floor(now / 60_000);
+      const c = (await this.ctx.storage.get("c")) || { minute, n: 0 };
+      if (c.minute !== minute) { c.minute = minute; c.n = 0; }
+      c.n++;
+      await this.ctx.storage.put("c", c);
+      if (c.n > SIGNIN.locPerMin) return json(200, { limited: true });
+      return json(200, { routes: Object.keys(routes) });
+    }
+    return new Response(null, { status: 404 });
+  }
+
+  async alarm() {
+    const now = Date.now();
+    const routes = (await this.ctx.storage.get("r")) || {};
+    for (const k of Object.keys(routes)) if (routes[k] <= now) delete routes[k];
+    if (Object.keys(routes).length) { await this.ctx.storage.put("r", routes); await this.ctx.storage.setAlarm(now + SIGNIN.watchMs + 1000); }
+    else await this.ctx.storage.deleteAll();
+  }
+}
+
+/**
  * @typedef {{ k: "pending", n: string, route: string } | { k: "control", ticket: string } | { k: "device", c: string, piped: boolean, n: number }
  *   | { k: "data", c: string } | { k: "gone" }} Role
  * The attachment on every socket. Tags: "box" (control sockets, pending or authed), "device" and
@@ -555,6 +634,13 @@ export class RouteRelay {
     // Typed-code messages come from the Worker over the object binding (never from the internet: the
     // Worker routes no public path here).
     if (url.pathname.startsWith("/code/") && request.method === "POST") return this.onCodeRequest(url.pathname, request);
+    if (url.pathname === "/signin/ask" && request.method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+      const control = this.control();
+      if (control) this.json(control, { t: "signin.ask", loc: String(body.loc), s: String(body.s) });
+      return json(200, { ok: true });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const done = () => new Response(null, { status: 101, webSocket: client });
@@ -665,6 +751,15 @@ export class RouteRelay {
    */
   async onTicket(ws, message) {
     if (typeof message !== "string") return;
+    if (message.includes('"signin.watch"')) {
+      let c;
+      try { c = JSON.parse(message); } catch { return; }
+      if (c && c.t === "signin.watch" && this.env.SIGNIN && /^[A-Za-z0-9_-]{43}$/.test(String(c.loc || ""))) {
+        const route = String(/** @type {any} */ (this.role(ws)).route || "");
+        try { await this.env.SIGNIN.get(this.env.SIGNIN.idFromName(`si:${c.loc}`)).fetch("https://signin/watch", { method: "POST", body: JSON.stringify({ route }) }); } catch { /* the box renews in a few minutes */ }
+      }
+      return;
+    }
     if (message.includes('"code.')) {
       let c;
       try { c = JSON.parse(message); } catch { return; }

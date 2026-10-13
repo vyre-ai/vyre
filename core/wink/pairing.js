@@ -173,7 +173,7 @@ export function createPairing(o) {
   /** Set when the tools are registered: the relay says a waiting pairing's app went away and did not come back; its ask is dropped at once, so the next scanner is not told "busy". @type {(device: string) => void} */
   let abandonHook = () => {};
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
-  const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
+  const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false, signin: async (/** @type {string} */ _s) => false };
   /** The typed-back acks of this server's person, by the tag of the ticket the typed code's key made: the ack IS the owner's yes for the device that redeems that ticket (DESIGN-wink, the typed code: no three words). Single use. @type {Map<string, number>} */
   const typedAcks = new Map();
   const takeTypedAck = (/** @type {string} */ tag) => { for (const [k, until] of typedAcks) if (until <= now()) typedAcks.delete(k); const until = typedAcks.get(tag); if (until === undefined) return false; typedAcks.delete(tag); return true; };
@@ -1420,7 +1420,7 @@ export function createPairing(o) {
       if (live && live.state === "waiting") { dropLater(`device:${id}`); return true; } // one phone at a time; the other is let go
       const until = now() + ASK_MS;
       const mine = phoneAsk = { device: id, name: cleanPhoneName(p.name) || "A phone", fingerprint: String(p.fingerprint || ""), words: "", choices: [], until, state: "waiting", nb: newNonce(), commit: "", ticket, named: false };
-      if (o.pairWordsFor) { setWords(mine, await o.pairWordsFor(id)); ctx.events.emit("wink.pair-asked", { device: id, name: mine.name, choices: mine.choices, until, kind: "phone" }); }
+      if (o.pairWordsFor) { setWords(mine, await o.pairWordsFor(id)); ctx.events.emit("wink.pair-asked", { device: id, name: mine.name, choices: mine.choices, until, kind: "phone", ...(phoneTicket && phoneTicket.signin ? { signin: true } : {}) }); }
       const t = setTimeout(() => { if (phoneAsk === mine) phoneLive(); }, Math.max(0, until - now()) + 5);
       if (t.unref) t.unref();
       return true;
@@ -1431,7 +1431,9 @@ export function createPairing(o) {
       phoneTicket.claimed = true;
       const byCode = phoneTicket.byCode === true, presence = phoneTicket.presence;
       try { if (o.cancelCode) o.cancelCode(); } catch { /* the QR was the way in; a code left showing lapses */ }
+      const signin = phoneTicket.signin === true;
       const held = await holdPhone(p, phoneTicket.seed);
+      if (signin && phoneAsk && phoneAsk.device === String(p.id)) /** @type {any} */ (phoneAsk).signin = true;
       // A phone that came in by the typed code was confirmed by the code itself (the PAKE key made the ticket, and the person typed its ack back here): no three words to pick, the yes is done when it asks (wink.phone.wait).
       if (byCode && phoneAsk && phoneAsk.device === String(p.id)) { /** @type {any} */ (phoneAsk).auto = true; /** @type {any} */ (phoneAsk).autoPresence = presence; }
       return held;
@@ -1457,6 +1459,8 @@ export function createPairing(o) {
           if (!typedOn()) return base;
           try { const c = await o.openCode("W1"); return { ...base, code: c.code, code_expires: c.expires, code_offer: c.offer, avatar: avatarOf(c.code) }; } catch { return { ...base, code: null }; }
         };
+        // a stranger's sign-in request (two minutes) never holds the slot against the owner: the owner's own code replaces it
+        if (phoneTicket && phoneTicket.signin && !phoneTicket.claimed) phoneTicket = null;
         if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) {
           const now0 = o.codeNow ? o.codeNow() : null;
           const base = { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
@@ -1473,6 +1477,19 @@ export function createPairing(o) {
     });
     /** A phone came in by the typed code (its ack was typed back): the QR is spent too. */
     /** A phone typed the code and the person typed its ack back: the ticket both ends derived from the PAKE key is the pairing now (the QR's is spent), and the phone is confirmed by the code. @param {string} seed base64url @param {any} presence */
+    /** A device asked, by this identity's name, to sign in (relay.signin-asked): its one-time secret becomes a phone ticket good for two minutes, and when it redeems it the person is asked with the three words, like any phone. Dropped when a pairing is already on the screen or waiting, so a stranger asking cannot disturb one. Nothing is added without the person's yes. @param {string} seedB64 */
+    phone.signin = async seedB64 => {
+      if (!/^[A-Za-z0-9_-]{22}$/.test(String(seedB64))) return false;
+      const live = phoneLive();
+      if ((phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) || (live && live.state === "waiting")) return false;
+      const seed = Buffer.from(seedB64, "base64url");
+      const t = /** @type {any} */ (await mint(seed, "phone"));
+      if (!t || t.error) return false;
+      phoneTicket = /** @type {any} */ ({ qr: "", art: "", until: now() + 2 * 60_000, claimed: false, seed: seedB64, signin: true });
+      phoneAsk = null;
+      ctx.events.emit("wink.signin-asked", { until: phoneTicket.until });
+      return true;
+    };
     phone.codeSeed = (seed, presence) => { phoneTicket = { qr: "", art: "", until: now() + 5 * 60_000, claimed: false, seed, byCode: true, presence }; phoneAsk = null; };
     ctx.tool("wink.phone.scan", {
       description: "On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code works too unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).",
@@ -1505,7 +1522,8 @@ export function createPairing(o) {
         // a phone the person said yes to, whose key this server cannot put on the name's list: the owner's app does it (wink.phone.enrolled reports it)
         if (a && a.state === "enrolling" && a.entry) return { asking: false, enrol: { device: a.device, name: a.name, entry: a.entry, until: a.enrolUntil } };
         if (!a || a.state !== "waiting" || !a.words) return { asking: false };
-        return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("phoneAsk", { name: a.name, choices: a.choices }) };
+        const si = /** @type {any} */ (a).signin === true;
+        return { asking: true, name: a.name, choices: a.choices, until: a.until, ...(si ? { signin: true } : {}), line: words(si ? "signinAsk" : "phoneAsk", { name: a.name, choices: a.choices }) };
       },
     });
     /** The yes, done: the phone is a device of this identity now (the relay makes it, the identity list takes its key, a paired session opens). Used by the person's answer and by a typed code's own ack. @param {any} a @param {any} presence */
@@ -1589,7 +1607,7 @@ export function createPairing(o) {
           if (a.commit && typeof i.reveal === "string" && i.reveal) {
             if (!/^[0-9a-f]{32}$/.test(i.reveal) || (await nonceCommit(i.reveal)) !== a.commit) { a.state = "no"; dropLater(`device:${a.device}`); throw fail("denied", words("phoneMismatch")); }
             setWords(a, await pairWords(await boxKey(), a.device, { ticket: a.ticket, nonceA: i.reveal, nonceB: a.nb }));
-            ctx.events.emit("wink.pair-asked", { device: a.device, name: a.name, choices: a.choices, until: a.until, kind: "phone" });
+            ctx.events.emit("wink.pair-asked", { device: a.device, name: a.name, choices: a.choices, until: a.until, kind: "phone", ...(/** @type {any} */ (a).signin ? { signin: true } : {}) });
             if (/** @type {any} */ (a).auto === true && a.state === "waiting") await acceptPhone(a, /** @type {any} */ (a).autoPresence);
           }
         }

@@ -18,6 +18,8 @@ import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
 import { searchItems, NEW_KINDS, fieldWord, putProblems, personalUnlockRefusal, itemsOf, slugName, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type Filter, type ListRow, type NewItem, type RealItem, type UseRow } from "./real-model";
+import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
+import { SpaceTag } from "@vyre/ui";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -28,6 +30,7 @@ const nothingHere = (tab: Filter, any: boolean, blocked: boolean) =>
   any ? `No ${{ All: "items", Login: "logins", Key: "keys", Card: "cards" }[tab]} in the vault.` : blocked ? "Add items in Vyre on your phone." : "Add one with the Add button, or bring them in from another app.";
 
 export default function RealVault() {
+  const vaultTag = usePlaceText("home");
   const phone = usePhone();
   const [tab, setTab] = useState<Filter | "Held">("All");
   const [sharing, setSharing] = useState<Share | null>(null);
@@ -197,6 +200,7 @@ export default function RealVault() {
 
   return (
     <Frame title="Vault" sub="Assistants use these and never see them." actions={<>{addMenu}<AssistantAreaMenu area="vault" label="the Vault" /></>}>
+      <PlaceTag of="home" />
       {ready && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={SECTIONS} fill={phone} /> : null}
       {ready && section === "sharing" ? <SharingPage rows={rows!} reload={load} openItem={openFrom} /> : null}
       {ready && section === "browsers" ? <DevicesPage rows={rows!} reload={load} openItem={openFrom} /> : null}
@@ -254,7 +258,7 @@ export default function RealVault() {
             <Card flush>
               {items.length ? items.map((v, i) => (
                 <View key={v.id}>{i ? <Divider inset={60} /> : null}
-                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.icon} />} title={v.title}
+                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.icon} />} title={v.title} end={vaultTag ? <SpaceTag text={vaultTag} /> : undefined}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
               )) : <EmptyState title={query.trim() ? "Nothing matches" : "Nothing here yet"} body={query.trim() ? "Try a name, a site or a kind." : nothingHere(tab, rows!.length > 0, claimBlocked())} />}

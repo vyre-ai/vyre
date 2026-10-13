@@ -202,27 +202,6 @@ const homeBody = `
       <canvas class="field" aria-hidden="true"></canvas>
       <div class="stage-in">
         <div class="stage-row">
-          <div class="win lumen" id="demo" role="img" aria-label="Vyre Lumen on a Mac answering three requests: an answer from memory with its source, a switch to Codex for one message, and an email held for approval. Sample data.">
-            <div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen</span></div>
-            <div class="body">
-              <div class="ask"><span class="k">&#8997;Space</span><span><span class="q">what did Northwind ask for on the order form?</span><span class="caret"></span></span></div>
-              <div class="scenes">
-                <div class="scene on">
-                  <div class="sends">Sends to <b>kit</b> &middot; Northwind Bakery</div>
-                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">From memory</span><span>no model used</span></div><p class="ah">Delivery by 9 am, two box sizes.</p><p>Northwind’s owner set it on the 12 Sep call. kit is checking the form against it today.</p><div class="why">Call, 12 Sep &middot; Northwind weekly &middot; turn 41 &nbsp;&#9166; open the source</div></div>
-                </div>
-                <div class="scene">
-                  <div class="sends">Sends to <b>Codex</b> &middot; this message only</div>
-                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">Switched to Codex</span><span>same session</span></div><p class="ah">Renaming 6 fields in the intake form.</p><p>Codex has this session’s memory and files. The next message goes back to Claude.</p><div class="why">Answered by Codex &middot; your ChatGPT sign-in</div></div>
-                </div>
-                <div class="scene">
-                  <div class="sends">Sends to <b>kit</b> &middot; Northwind Bakery</div>
-                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">Held for you</span><span>rule: email to a client waits</span></div><p class="ah">Draft to Northwind’s owner is ready.</p><p>“Hi Dana, the new order form is attached. Delivery windows now end at 9 am.”</p><div class="held"><span class="pill go">Send</span><span class="pill">Edit</span><span class="pill acc">Waiting on you &middot; 1</span></div></div>
-                </div>
-              </div>
-              <div class="dots" aria-hidden="true"><i class="on"></i><i></i><i></i></div>
-            </div>
-          </div>
           <div class="phone" aria-hidden="true">
             <div class="notch"></div>
             <div class="scr">
@@ -245,8 +224,8 @@ const homeBody = `
     <p class="lbl" id="works-h" style="margin-bottom:14px">Works on</p>
     <div class="frame rv"><span class="pl-a">+</span><span class="pl-b">+</span>
       <div class="works-grid">
-        <a href="/mac/">${I.mac}<b>Mac</b><span>Vyre Lumen opens over any app with Option-Space.</span><i class="go">Mac &rarr;</i></a>
-        <a href="/windows/">${I.win}<b>Windows</b><span>Vyre Lumen in your tray, with an Alt+Space panel.</span><i class="go">Windows &rarr;</i></a>
+        <a href="/mac/">${I.mac}<b>Mac</b><span>The Vyre app in its own window, with Touch ID.</span><i class="go">Mac &rarr;</i></a>
+        <a href="/windows/">${I.win}<b>Windows</b><span>The Vyre app for Windows, connected to your server.</span><i class="go">Windows &rarr;</i></a>
         <a href="/linux/">${I.server}<b>Linux server</b><span>Where your agents live and keep working. A Mac that stays on works too.</span><i class="go">Server &rarr;</i></a>
         <a href="/phone/">${I.phone}<b>iPhone and Android</b><span>The Vyre app from a file, paired with Face ID or a fingerprint.</span><i class="go">Phone &rarr;</i></a>
       </div>
@@ -283,27 +262,6 @@ const homeBody = `
       <div class="piece"><span class="num">04</span>${I.modules}<h3>Modules</h3><p>The building blocks you or your agents add: tools, connections and screens.</p></div>
       <div class="piece"><span class="num">05</span>${I.people}<h3>People</h3><p>Next: team spaces, tagged Cloud, where a team shares a server and each person keeps their own. Your own space is Personal on your devices and My Cloud on your own server. See the <a href="/direction/">direction</a>.</p></div>
     </div>
-  </div>
-</section>
-
-<section class="sec" id="lumen" aria-labelledby="lumen-h">
-  <div class="wrap feat">
-    <div class="feat-copy rv">
-      <span class="num">01 &middot; Vyre Lumen</span>
-      <h2 id="lumen-h" class="h2">Ask without leaving <b>what you’re doing.</b></h2>
-      <p class="lead">Press Option-Space on a Mac or Alt+Space on Windows, over any app, and Vyre Lumen opens.</p>
-      ${list([['@ anything', 'Name an agent or a project and the message goes there. The destination shows before you send.'], ['Answers from memory', 'If your memory already knows, you get the answer with its source, and no model is used.'], ['Watch it work', 'When an agent works on your Mac or in Chrome, Lumen shows the plan first and lets you pause, stop or edit a step.']])}
-    </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="The Vyre Lumen oversight panel: kit is working in Chrome, with a plan of four steps, and buttons to pause or stop. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen &middot; oversight</span></div>
-      <div class="rows">
-        <div class="row"><span class="mk vi">k</span><div class="grow"><b>kit is working in Chrome</b><small>Northwind order form &middot; step 3 of 4</small></div><span class="st on">working</span></div>
-        <div class="row"><span class="mk sq">1</span><div class="grow">Open the order form<small>done</small></div><span class="st">&#10003;</span></div>
-        <div class="row"><span class="mk sq">2</span><div class="grow">Replace the delivery times<small>done</small></div><span class="st">&#10003;</span></div>
-        <div class="row"><span class="mk sq">3</span><div class="grow">Add the second box size<small>working</small></div><span class="st on">now</span></div>
-        <div class="row"><span class="mk sq">4</span><div class="grow">Send the draft to you<small>waits for your yes</small></div><span class="st">held</span></div>
-        <div class="row"><div class="grow"><span class="pill go">Pause</span> <span class="pill">Stop</span> <span class="pill">Edit a step</span></div></div>
-      </div></div></div>
   </div>
 </section>
 
@@ -437,7 +395,7 @@ const homeBody = `
         <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
           ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}</li>
         <li><b>Check four words in the app.</b> The server prints four words and the app shows four; you confirm they match.</li>
-        <li><b>Add your computers.</b> Vyre Lumen for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
+        <li><b>Add your computers.</b> The Vyre app for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
       </ol>
     </div>
   </div>
@@ -531,48 +489,44 @@ ${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div cl
 }
 
 devicePage({
-  slug: 'mac', os: 'macOS', name: 'Vyre Lumen on Mac', crumb: 'Mac',
-  title: 'Vyre for Mac: Vyre Lumen, one key from any app',
-  desc: 'Vyre Lumen is the ask window for your Mac. Press Option-Space over any app, send a message to an agent, and get answers from your memory. Your agents run on your own server.',
-  h1: 'Vyre Lumen, <b>one key away on your Mac.</b>',
-  lead: 'Press Option-Space over any app. Ask, send to an agent, or pull an answer from your memory. Your agents run on your server, and Lumen is the window.',
-  ogSub: 'Press Option-Space over any app. Ask, send to an agent, or pull an answer from your memory.',
-  art: `<div class="win" role="img" aria-label="Vyre Lumen on a Mac. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen</span></div><div class="body" style="padding:18px 20px 20px"><div class="ask"><span class="k">&#8997;Space</span><span>@kit the Northwind form needs the new box size</span></div><div class="sends" style="margin-top:12px">Sends to <b>kit</b> &middot; Northwind Bakery &middot; then a draft, held for you</div></div></div><p class="demo-tag">Sample data.</p>`,
-  what: { h: 'A small window, <b>over everything.</b>', items: [
-    ['Option-Space, or Control twice', 'Opens over any app, a call or a doc. Esc closes it.'],
-    ['@ an agent or a project', 'The message goes there, and the destination shows before you send.'],
-    ['Answers from memory', 'If your memory knows, you get the answer with its source. No model is used.'],
-    ['Oversight', 'When an agent works on your Mac or in Chrome, Lumen shows the plan, and you can pause, stop, edit a step or say something.'],
-    ['Touch ID', 'Unlock your vault with Touch ID or your vault password.'],
-    ['Your keys', 'Your own shortcuts, # tags, module commands and spoken replies.'],
+  slug: 'mac', os: 'macOS', name: 'Vyre on Mac', crumb: 'Mac',
+  title: 'Vyre for Mac: the Vyre app in a window',
+  desc: 'The Vyre app for Mac is the Vyre web app in its own window, with Touch ID for your approvals. Your agents run on your own server.',
+  h1: 'The Vyre app, <b>in its own window on your Mac.</b>',
+  lead: 'Download it, open it, and the app walks you through connecting to your server. Your agents run on your server; the Mac app is the window.',
+  ogSub: 'The Vyre app in its own window on your Mac, with Touch ID for approvals.',
+  art: `<div class="win" role="img" aria-label="The Vyre app on a Mac. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre</span></div><div class="body" style="padding:18px 20px 20px"><div class="sends">Connected to your server &middot; Northwind Bakery</div></div></div><p class="demo-tag">Sample data.</p>`,
+  what: { h: 'The same app, <b>with a Mac window.</b>', items: [
+    ['One window', 'Opens on launch and when you open the app again. The menu bar icon has Open Vyre and Quit Vyre.'],
+    ['Touch ID', 'Approve what needs your yes with Touch ID.'],
+    ['Your files', 'Drop a file onto the app to hand it to an agent.'],
+    ['Your server', 'Everything runs on your own server; the app connects to it.'],
   ] },
-  steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>). Then, on your Mac:', items: [
-    `<b>Install the command line.</b> Vyre is not on npm yet, so it installs from a tarball on vyre.run.${term('npm i -g https://vyre.run/box/vyre.tgz')}`,
-    `<b>Pair this Mac with your server.</b> It asks for your server’s pairing code, shows three words, and pairs once you confirm they match on both screens.${term('vyre up')}`,
-    `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
-    `<b>Press Option-Space.</b> No extra permission is needed. Control twice needs Input Monitoring.`,
+  steps: { h: 'Download the app, <b>then connect it.</b>', lead: 'Get the Mac app from the latest release.', items: [
+    `<b>Download it.</b> <code>Vyre-aarch64.dmg</code> for Apple silicon or <code>Vyre-x86_64.dmg</code> for an Intel Mac, from <a href="https://github.com/vyre-ai/vyre/releases/latest">the latest release</a>. Open it and drag Vyre to Applications.`,
+    `<b>Open it once.</b> If macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security.`,
+    `<b>Follow the app.</b> It asks whether to connect to your server or set one up, and walks you through it.`,
   ] },
-  needs: [['Mac', 'macOS, with Node 22.5 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
-  extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too. The same setup line works there.</p>`,
-  gapList: ['Lumen is built on your Mac, not downloaded. There is no signed Mac download yet.', 'Lumen is self-signed, not notarized, so macOS may ask for your permissions again after an update. Notarization comes next.', 'Lumen has no AI presets or browser tabs yet, and its text snippets paste when you press Enter rather than expanding as you type.', 'The Mac server installer has not run on a real Mac yet.'],
+  needs: [['Mac', 'macOS 14 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
+  extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too: run the install line in Terminal.</p>`,
+  gapList: ['The Mac app is not yet signed with an Apple Developer ID, so you open it once with Open Anyway.'],
   faq: [
-    ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Vyre app opens in any browser. Lumen is the fastest way to ask from your Mac.'],
+    ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Vyre app opens in any browser.'],
     ['Can my Mac be the server?', 'Yes, a Mac that stays on can be the server. A Linux server is the best home, because agents keep working when a laptop sleeps.'],
-    ['Why does it build instead of download?', 'There is no signed Mac download yet. Building on your Mac from the package means nothing unsigned is installed. A notarized download comes next.'],
-    ['Does Lumen need Touch ID?', 'Only to unlock your vault. Asking and sending what you asked for do not.'],
+    ['Does the app need Touch ID?', 'Only to approve what needs your yes.'],
   ],
 });
 
 devicePage({
-  slug: 'windows', os: 'Windows', name: 'Vyre Lumen on Windows', crumb: 'Windows',
-  title: 'Vyre for Windows: Vyre Lumen in your tray',
-  desc: 'Vyre Lumen for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server, ask your agents, and map your shared folder as a drive.',
-  h1: 'Vyre Lumen, <b>in your Windows tray.</b>',
+  slug: 'windows', os: 'Windows', name: 'Vyre on Windows', crumb: 'Windows',
+  title: 'Vyre for Windows: the Vyre app in your tray',
+  desc: 'Vyre for Windows is a tray app with an Alt+Space panel. Pair your PC to your own Vyre server, ask your agents, and map your shared folder as a drive.',
+  h1: 'Vyre, <b>in your Windows tray.</b>',
   lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Pair a PC with 13 words or a QR code from your other device.',
   ogSub: 'A tray icon and an Alt+Space panel, connected to your own Vyre server.',
-  art: `<div class="win" role="img" aria-label="The Vyre Lumen panel on Windows. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen</span></div><div class="body" style="padding:18px 20px 20px"><div class="ask"><span class="k">Alt+Space</span><span>what did Northwind ask for on the order form?</span></div><div class="sends" style="margin-top:12px">From memory &middot; no model used &middot; Call, 12 Sep</div></div></div><p class="demo-tag">Sample data.</p>`,
+  art: `<div class="win" role="img" aria-label="The Vyre panel on Windows. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre</span></div><div class="body" style="padding:18px 20px 20px"><div class="ask"><span class="k">Alt+Space</span><span>what did Northwind ask for on the order form?</span></div><div class="sends" style="margin-top:12px">From memory &middot; no model used &middot; Call, 12 Sep</div></div></div><p class="demo-tag">Sample data.</p>`,
   what: { h: 'The same window, <b>on your PC.</b>', items: [
-    ['A tray app', 'A Lumen icon in your tray, and an Alt+Space panel to ask from.'],
+    ['A tray app', 'A Vyre icon in your tray, and an Alt+Space panel to ask from.'],
     ['Pair with 13 words or a QR code', 'Type the words or scan the code from your other device, then confirm the server’s address and key fingerprint.'],
     ['Your shared folder as a drive', 'The tray’s “Open Vyre Drive” maps a folder your server shares as a drive letter.'],
     ['Signed updates', 'The app updates itself, only from releases the Vyre key signed, and never to an older version.'],
@@ -718,7 +672,7 @@ ${part('00', 'need', 'What you need', `<ul>
 <li>To add a server: a Linux machine (a cloud machine is fine) or a Mac that stays on. With Records, which is recommended, it needs 8 GB of memory (4 GB at the least); without Records, 2 GB.</li>
 <li>To join a team: the invite your team sent you.</li></ul>`)}
 ${part('01', 'name', 'Reserve your name', `<p>Open <a href="/setup/">vyre.run/setup</a>, type the name you want and press <strong>Reserve this name</strong>. The page shows a code that starts with VYRE. Copy it. It is held for you for 24 hours and works once.</p>`)}
-${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-Lumen-aarch64.dmg</a> (Apple silicon) or Vyre-Lumen-x86_64.dmg (Intel), open it and drag Vyre Lumen to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
+${part('02', 'app', 'Install the app', `<p><strong>Mac:</strong> download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-aarch64.dmg</a> (Apple silicon) or Vyre-x86_64.dmg (Intel), open it and drag Vyre to Applications. Open it once; if macOS says it cannot check the app, choose Open Anyway in System Settings, Privacy and Security. More on the <a href="/mac/">Mac page</a>.</p>
 <p><strong>Windows:</strong> download VyreSetup.exe from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> and run it. If Windows warns that the publisher is unknown, choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
 ${part('03', 'code', 'Paste the code', `<p>Open the app, choose <strong>Start</strong> and paste the code. The app makes your key on this computer and shows a recovery code once. Keep it somewhere only you can reach.</p>`)}
 ${part('04', 'choose', 'Choose how you will use Vyre', `<ul>
@@ -811,7 +765,7 @@ ${ul([
 ${part('07', 'site', 'This website, updates and downloads', `${ul([
   'vyre.run has <b>no analytics and no cookies</b>.',
   'The marketing pages serve their fonts from vyre.run itself, so no font request goes to another company. The server behind <code>app.vyre.run</code> sets no cookies and keeps nothing about you or your server; the page keeps your device key, server address and pairing in your browser, as section 08 lists.',
-  '<b>Two optional lookups:</b> Vyre Lumen on a Mac fetches exchange rates from <code>open.er-api.com</code> when you type something that reads as money, at most every 12 hours, with none of your words sent. The weather action sends a city name (by default one derived from your time zone) to <code>open-meteo.com</code>. The device sign-in page that your own server serves loads its fonts from that server.',
+  '<b>Two optional lookups:</b> the weather action sends a city name (by default one derived from your time zone) to <code>open-meteo.com</code>. The device sign-in page that your own server serves loads its fonts from that server.',
   'The pages are served by Cloudflare, which keeps ordinary server logs under its own policy.',
   '<b>Updates:</b> your server checks GitHub\'s releases API for new versions and pulls signed images from <code>ghcr.io</code>; the Windows app checks GitHub\'s releases feed once a day and downloads its installer from GitHub; the install line fetches from <code>vyre.run</code>. Those services see the address your server or PC connects from, under their own policies. Vyre itself receives no report of which version you run.',
 ])}`)}
@@ -819,13 +773,13 @@ ${part('08', 'apps', 'What each app keeps on your device', `${ul([
   '<b>The Vyre app in a browser or on a Home Screen</b> keeps in the browser\'s own storage: a device key the browser cannot export, the key that opens your private chats and notes, the pairing with your server, a cache of recent views (needs rows, the chat list and snippets), your pins, unsent drafts, recent searches, your appearance settings, where setup stopped, an outbox of writes not yet delivered, and cached app files. The browser\'s push service holds your push subscription, and the app sends it to your server. The web app keeps no unlock session: the browser asks for your passkey on each protected call. On a phone, keys and the pairing sit in the phone\'s secure store, and an unlock session lasts 30 minutes after you confirm. When the owner removes a device, it forgets all of this the next time it reaches Vyre and asks to be paired again; a device that is offline keeps it until then. Two more limits: an old browser that cannot list its databases has only the app\'s four named databases deleted, and a sign-in cookie that your server sets (when the app is opened at your server\'s own address) belongs to the server, which refuses a removed device anyway.',
   '<b>The hosted web app at app.vyre.run</b> keeps two keys the browser cannot export, the pairing record in localStorage, the relay key in IndexedDB and cached app files. It has no wipe: sign out and clear the site\'s data in your browser.',
   '<b>The phone app (iPhone and Android)</b> makes two keys in secure hardware where the phone has it, the Secure Enclave on iPhone and the Android Keystore on Android (some phones fall back to software). One signs its requests, and the other signs only after your face or fingerprint. They cannot be exported. Your sign-in tokens and the pairing with your server are kept in the system Keychain or Keystore. On iPhone those items are marked this-device-only; on Android, backup follows Android\'s own backup rules. The view of recent threads and lists is held in memory and is gone when you close the app. Signing in on your own address opens the system sign-in browser. Pairing links open the app. The app declares no camera, microphone, location, contacts or photos permission, and this version has no notifications.',
-  '<b>Vyre Lumen on a Mac</b> keeps its approval key in the Secure Enclave where the Mac has one, with only an opaque handle in the login keychain; a Mac without one keeps a software key in the login keychain. It talks to your server.',
-  '<b>Vyre Lumen on Windows</b> (the app is named Vyre in Windows) keeps your server\'s address in a pairing file and its device key in its app data folder, with the key protected by Windows DPAPI. The installer for a newer version is saved there before it runs. Starting at sign-in uses a Windows scheduled task named Vyre, which the app creates and deletes when you change that setting.',
+  '<b>The Vyre app on a Mac</b> keeps its approval key in the Secure Enclave where the Mac has one, with only an opaque handle in the login keychain; a Mac without one keeps a software key in the login keychain. It talks to your server.',
+  '<b>The Vyre app on Windows</b> keeps your server\'s address in a pairing file and its device key in its app data folder, with the key protected by Windows DPAPI. The installer for a newer version is saved there before it runs. Starting at sign-in uses a Windows scheduled task named Vyre, which the app creates and deletes when you change that setting.',
   '<b>Password AutoFill</b> (in the Android phone app, and on iPhone and Mac in builds that include the extension) asks your server for one login at a time, after you confirm with your face or fingerprint. On iPhone and Mac it keeps the server address and a device token in the Keychain and the unlocked session in memory only, and gives the system the sites, usernames, passkey names and one-time-code labels from your vault, never passwords, passkey private keys or code seeds. On Android the address and token sit in Keystore-protected storage, and it uses its own biometric key.',
   '<b>The vault browser extension</b> keeps the address of your server, this browser\'s device id and token, and its two on and off choices in the extension\'s storage, and the unlocked session in session storage. It talks only to the server address you set and sends no page content. With the API-key offer on, it reads the page text on your device looking for one key-shaped value, and a matched value leaves the page only after you tap Save.',
 ])}`)}
 ${part('09', 'camera', 'Camera and microphone', `<p>The camera is used for one thing: scanning a Wink, the code that pairs or introduces a device, in the Vyre app in a browser or on a phone. It asks for video only, never audio. The picture is read on your device. It is not saved and not sent anywhere. You can also scan a pairing QR code with the phone\'s own camera and it opens the app.</p>
-<p>The microphone is used by push-to-talk in Vyre Lumen on a Mac, only while you hold the key or button. The audio goes to your server and from there to the speech service you chose; your server does not log or keep it. The phone app declares no microphone permission (the browser app never asks for audio), and the Windows app has no microphone code.</p>`)}
+<p>The microphone is not used. The Mac app and the Windows app have no microphone code, the phone app declares no microphone permission, and the browser app never asks for audio.</p>`)}
 ${part('10', 'passkeys', 'Passkeys and keys', `<p>You make your passkey for your own server's address, with your device's own passkey system. The private key stays in your device's secure hardware or your password manager. Your server keeps only the public half, and Vyre never receives either. The approval key in the phone app is made in secure hardware where the phone has it (the Secure Enclave or the Android Keystore; some phones fall back to software), cannot be exported, and needs your face or fingerprint to use. Your identity has its own recovery code. It is shown to you once; keep it somewhere safe. It restores your identity on a new device.</p>`)}
 ${part('11', 'push', 'Notifications', `<p>A notification carries a fixed sentence, such as "A session is waiting for your answer", "A milestone is done" or "A teammate finished", and a link to an item by its id. That is all. It carries no thread text, no goal or milestone text, no message text, no teammate name and no project name. The phone opens the item and asks your own server for the details, over your own connection. The fixed sentence does say what kind of thing happened: a question, an approval or a finished goal.</p>
 <p>One setting is an exception, and it is off by default: <em>Show a reminder\'s own words on the lock screen</em>. When you turn it on, the label you typed on a reminder rides in that notification and passes through Apple\'s, Google\'s or Mozilla\'s push service. The setting says so.</p>
@@ -835,7 +789,7 @@ ${part('13', 'delete', 'Delete everything', `${ul([
   '<b>On your server:</b> If you want a copy of your data, run <code>vyre backup</code> and copy the file off the server, because it is saved inside the volume the uninstall deletes. Then run <code>vyre uninstall --delete-data</code>, which stops Vyre, removes its images and deletes its data volumes for good. Finally remove the install folder (<code>/srv/vyre</code>, or your <code>VYRE_DIR</code>; the uninstall prints it) and <code>/var/lib/vyre-update</code>, where automatic updates keep their backups.',
   '<b>On a Mac that runs Vyre as a server,</b> run the installer\'s <code>--uninstall --purge</code> (<code>scripts/install-mac-server.sh</code>), which removes the service, <code>~/.vyre-server</code>, <code>~/.vyre</code> and the system data. Delete <code>~/Vyre/projects</code> if you used it, and remove the <code>vyre-vault</code> and <code>sh.vyre.capsule.presence</code> items in Keychain Access.',
   '<b>On a phone:</b> remove it in Devices on your server first, so its keys stop working. Signing out in the phone app ends your session when the phone can reach your server and forgets the sign-in on the phone, but the phone stays paired. Deleting the app removes its keys on Android; on iPhone the system may keep them.',
-  '<b>On a Mac with Vyre Lumen:</b> Lumen lives in <code>~/.vyre/capsule/Vyre.app</code>, so it goes with <code>~/.vyre</code>, but its Keychain item stays: remove <code>sh.vyre.capsule.presence</code> in Keychain Access. <b>On Windows:</b> uninstall Vyre in Windows Settings, delete the <code>run.vyre.app</code> folder in <code>%APPDATA%</code> (the pairing file and key), and delete the scheduled task named Vyre in Task Scheduler, or turn off start at sign-in before you uninstall.',
+  '<b>On a Mac with the Vyre app:</b> drag Vyre from Applications to the Bin, then remove <code>sh.vyre.capsule.presence</code> in Keychain Access. If you also ran Vyre as a server on this Mac, delete <code>~/.vyre</code> too. <b>On Windows:</b> uninstall Vyre in Windows Settings, delete the <code>run.vyre.app</code> folder in <code>%APPDATA%</code> (the pairing file and key), and delete the scheduled task named Vyre in Task Scheduler, or turn off start at sign-in before you uninstall.',
   '<b>What stays with the project:</b> nothing of your work, because it never arrived. Relay records expire within an hour, held frames go when delivered or when the device leaves, and address counters go within about two days. A name that was ever live stays reserved, as described above. To have even that looked at, write to the contact below.',
 ])}`)}
 ${part('14', 'contact', 'Contact', `<p>Questions about this page, or a request about a name: ${CONTACT_EMAIL ? `email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, or ` : ''}open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>
@@ -861,7 +815,7 @@ ${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defe
 
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
-const SUMMARY = 'Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.';
+const SUMMARY = 'Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from the Vyre app on a Mac, the Vyre app on Windows, and a phone web app paired with Face ID.';
 
 const LLMS = `# Vyre
 
@@ -877,8 +831,8 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
-- [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, built on your Mac
-- [Windows: Vyre Lumen](${SITE}/windows/): tray app with an Alt+Space panel
+- [Mac: Vyre](${SITE}/mac/): the Vyre app in its own window
+- [Windows: Vyre](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 
@@ -908,14 +862,14 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
-- Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
-- Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
+- Mac: the Vyre app in its own window, from the GitHub release (Vyre-aarch64.dmg or Vyre-x86_64.dmg). Not yet signed with an Apple Developer ID, so it opens once with Open Anyway. Needs macOS 14 or newer.
+- Windows: Vyre, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
 1. Reserve your name at ${SITE}/setup/ and copy the code it shows.
-2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-Lumen-aarch64.dmg or Vyre-Lumen-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
+2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
 5. To add a server, run the one line the app shows on it, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh\`. Confirm the four words in the app.
@@ -971,7 +925,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
-- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: the Vyre app, sideloaded.
+- Mac app: Vyre, in its own window. Windows app: Vyre, Alt+Space. Phone: the Vyre app, sideloaded.
 - Current release: ${VERSION}.
 
 ## Operating a user's own Vyre
@@ -987,7 +941,7 @@ const AGENT_JSON = {
   license: 'Apache-2.0',
   docs: { llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
   install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user.' },
-  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (Vyre Lumen)', 'Windows (Vyre Lumen)', 'iOS and Android (the app, sideloaded)'] },
+  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (the Vyre app)', 'Windows (the Vyre app)', 'iOS and Android (the app, sideloaded)'] },
 };
 
 const write = (p, s) => { mkdirSync(dirname(join(site, p)), { recursive: true }); writeFileSync(join(site, p), s); };

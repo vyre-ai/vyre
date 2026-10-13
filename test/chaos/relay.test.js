@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tempHome, writeModule, nameAsOwner } from "../helpers.js";
+import { tempHome, writeModule, nameAsOwner, offerUrl } from "../helpers.js";
 import { proxy } from "./proxy.js";
 
 process.env.VYRE_SSE_HEARTBEAT_MS = "300";
@@ -89,11 +89,10 @@ async function world(t) {
     network: { name: "alex" }, relay: { enabled: false, url: r.url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ presence: lenient, root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
-  const first = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
-  assert.ok(first.data, JSON.stringify(first.error));
+  const offer = await offerUrl(d);
   const keyStore = memoryKeyStore(), crypto = webCrypto();
-  const paired = await pair(first.data.url, { name: "kit", keyStore, crypto });
-  nameAsOwner(d, paired.device);   // stands for the owner's first device after adoption (relay.pair.first), which Wink names
+  const paired = await pair(offer, { name: "kit", keyStore, crypto });
+  nameAsOwner(d, paired.device);   // stands for the owner's first device after adoption, which Wink names
   const relayPath = { ...paired, keyStore, crypto, backoff: { min: 100, max: 400 } };
   return {
     ...r, d, relayPath,

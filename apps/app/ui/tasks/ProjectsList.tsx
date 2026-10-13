@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
-import { templateStage } from "./template-stage.js";
+import { newMenuItems, templateNoun, templateStage } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Avatar } from "../components/Avatar";
 import { Card, Divider } from "../components/Card";
@@ -21,17 +21,21 @@ import { spaceRef } from "../marks/useMark";
 import { recordTitle, spaceName, taskFraction, who, type World } from "./model";
 import { Stagger } from "../motion/Appear";
 import { useUiTheme } from "../theme";
+import { SpaceTag } from "../components/SpaceTag";
 
 type Item = { def: any; row: any };
 
 const TABULAR = { fontVariant: ["tabular-nums" as const] };
 const workTypes = (items: Item[]) => [...new Map(items.map((i) => [i.def.name, i.def])).values()];
 
-/** The New menu: a plus icon button on a wide screen, the floating 56 button on a phone. A choice per type that holds work ("New matter"). */
-export function NewMenu({ items, onNew, floating }: { items: Item[]; onNew: (type: string) => void; floating?: boolean }) {
-  const work = workTypes(items);
-  if (!work.length) return null;
-  return <Menu trigger={floating ? <Fab label="New" /> : <IconButton icon="plus" label="New" kind="secondary" />} items={work.map((t) => ({ label: `New ${t.label.toLowerCase()}`, onPress: () => onNew(t.name) }))} />;
+/**
+ * The New menu: a plus icon button on a wide screen, the floating 56 button on a phone. A choice per type that holds work ("New trip"). `choices` are the ways a project is started, each a template
+ * by what it calls its projects ("New matter") and last the blank one ("New blank project"); when given they stand in for the plain Project type, and `onChoose` gets the choice's key (a template id, or null for blank).
+ */
+export function NewMenu({ items, onNew, floating, choices, onChoose }: { items: Item[]; onNew: (type: string) => void; floating?: boolean; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
+  const menu = newMenuItems(workTypes(items), choices).map((m) => ({ label: m.label, onPress: () => (m.type ? onNew(m.type) : onChoose?.(m.key ?? null)) }));
+  if (!menu.length) return null;
+  return <Menu trigger={floating ? <Fab label="New" /> : <IconButton icon="plus" label="New" kind="secondary" />} items={menu} />;
 }
 
 /** "2 of 4" and a 40 wide, 3 high bar, or an en dash when a record has no tasks. */
@@ -50,7 +54,7 @@ function TaskBar({ done, total, width = 40 }: { done: number; total: number; wid
  * shows as one applied chip. A wide screen gets a table (emblem and title with "Matter · Juniper Studio" under it, stage steps and name, owner, "2 of 4"); a phone gets
  * 72 high rows (emblem 44, title, "Matter · Engagement", the owner at the end, a 3 high progress bar), grouped by space only in All spaces.
  */
-export function ProjectsList({ world, items, onOpen, onNew }: { world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void }) {
+export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose }: { world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void; /** The small tag that says where a project lives, from its source space (placeTag); the list shows it on every row */ tagOf?: (spaceId?: string) => string | null; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
   const { phone } = useUiTheme();
   const [space, setSpace] = useState("all");
   const [type, setType] = useState("all");
@@ -71,7 +75,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   const showOwner = shown.some((i) => !!ownerOf(i));
   const showTasks = shown.some((i) => tasksOf(i).total > 0);
   const tally = (() => { const c = new Map<string, number>(); for (const i of shown) { const s = stageOf(i); const n = s.at >= 0 ? s.stages[s.at] : ""; if (n) c.set(n, (c.get(n) ?? 0) + 1); } const parts = [...c].map(([n, k]) => `${k} ${n}`); return work.length === 1 && parts.length <= 5 ? parts.join(", ") : ""; })();
-  const typeLabel = (i: Item) => i.def.label;
+  const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) : null) || i.def.label;
 
   const filter = (
     <Menu
@@ -91,6 +95,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
               <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
               <Text size="secondary" tone="label" numberOfLines={1}>{[showType ? "" : typeLabel(i), manySpaces ? spaceName(world, spaceId(i)) : ""].filter(Boolean).join(" · ")}</Text>
             </View>
+            {tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}
           </View>
         ) },
         ...(showType ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
@@ -110,7 +115,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
         lead={emblem(i, 44, false)}
         title={recordTitle(world, i.row)}
         sub={<View className="gap-s2"><Text size="secondary" tone="label" numberOfLines={1}>{line}</Text>{t.total ? <View className="overflow-hidden rounded-full bg-edge-strong" style={{ width: 120, height: 3 }}><View className="h-full rounded-full bg-accent" style={{ width: `${(t.done / t.total) * 100}%` }} /></View> : null}</View>}
-        end={a ? <ActorMark who={a} size={28} /> : undefined}
+        end={<>{tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}{a ? <ActorMark who={a} size={28} /> : null}</>}
         onPress={() => onOpen(i.row.id)}
       />
     );
@@ -140,7 +145,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
       <View className="flex-row items-center gap-s2">
         <View className="min-w-0 flex-1"><Text size="page" strong>Projects</Text><Text size="caption" tone="label">{`${shown.length} ${shown.length === 1 ? "project" : "projects"}${tally ? `: ${tally}` : ""}`}</Text></View>
         {filter}
-        {phone ? null : <NewMenu items={items} onNew={onNew} />}
+        {phone ? null : <NewMenu items={items} onNew={onNew} choices={choices} onChoose={onChoose} />}
       </View>
       {world.spaces.length > 1 ? <Segmented fill={phone} label="Space" value={space} onChange={setSpace} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} /> : null}
       {type !== "all" ? <View className="flex-row"><Chip icon="x" onPress={() => setType("all")}>{`Type: ${viewDefOf(work.find((t) => t.name === type) ?? work[0]).plural}`}</Chip></View> : null}

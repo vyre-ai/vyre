@@ -29,7 +29,9 @@ export async function startAddServer(onChange: (s: AddServerState) => void) {
     pair: async (qr: string, ctx?: { pageKey?: unknown }) => {
       const code = parseWinkCode(qr);
       if (!code.ok) throw new Error("the server gave a ticket this app cannot read");
-      const session = serverSession(code, undefined, ctx && ctx.pageKey ? { pageKey: ctx.pageKey } : undefined);
+      // A device that already reaches a server over the relay (a phone, a browser) pairs this one beside it: the person pressed "Add another server".
+      const addAnother = (await import("./peer")).peerWanted();
+      const session = serverSession(code, undefined, { ...(ctx && ctx.pageKey ? { pageKey: ctx.pageKey } : {}), ...(addAnother ? { addAnother } : {}) });
       await session.ready!();
       await session.confirm();
     },

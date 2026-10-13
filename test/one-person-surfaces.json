@@ -16,6 +16,7 @@
   "core/presence/module.js": 1,
   "core/records-tools/index.js": 1,
   "core/relay/index.js": 2,
+  "core/roles/index.js": 1,
   "core/rules-tools/index.js": 1,
   "core/signin/index.js": 1,
   "core/switchboard/index.js": 2,

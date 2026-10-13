@@ -40,7 +40,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 /** @type {Record<string, string|null>} */
 export const BACK = {
   welcome: null, mycloud: null, choose: null, adding: "scan", browser: null, nosetup: "browser", novyre: "scan", addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", cmd: "create", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", pick: "create", cmd: "create", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. */

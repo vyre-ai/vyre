@@ -2,7 +2,7 @@
 // Which space is showing, and the look each space gives (ui-primitives.md section 2): pure, so Node tests it.
 // "all" is not a space with a look of its own: it shows Mine's, as the prototype does.
 
-/** @typedef {{ accent: string, hex?: string, tint: string, thex?: string, density: string, font: string, corners: string }} SpaceLook */
+/** @typedef {{ logo?: string, accent: string, hex?: string, tint: string, thex?: string, density: string, font: string, corners: string }} SpaceLook */
 
 /** @type {Record<string, SpaceLook>} */
 export const DEFAULT_LOOKS = {

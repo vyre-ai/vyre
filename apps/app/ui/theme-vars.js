@@ -42,10 +42,11 @@ export function themeVars(r, { phone, os = "web" }) {
     const [fs, lh] = k === "body" && !phone ? step.body : scale[k];
     out[`--fs-${k}`] = Math.round(fs * bump); out[`--lh-${k}`] = Math.round(lh * bump);
   }
+  out["--gutter"] = phone ? v2.layout.gutterPhone : v2.layout.gutter;
   out["--page-max"] = v2.layout.pageMax; out["--read-max"] = v2.layout.readMax;
   // Now and other two-column pages: the side column (340) and the content width (1040) that holds a 640 main, a 32 gap and the side.
   out["--side"] = v2.layout.side; out["--wide-max"] = 1040;
   // Lengths carry their unit: a bare number is not a CSS length on the web.
-  for (const k of Object.keys(out)) if (/^--(s-|r-|control|touch|row-h|fs-|lh-|page-max|read-max|side|wide-max)/.test(k)) out[k] = `${out[k]}px`;
+  for (const k of Object.keys(out)) if (/^--(s-|r-|control|touch|row-h|fs-|lh-|gutter|page-max|read-max|side|wide-max)/.test(k)) out[k] = `${out[k]}px`;
   return out;
 }

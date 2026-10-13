@@ -65,8 +65,8 @@ In the order `vyre help` lists them.
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
-| [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
-| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code |
+| [`vyre phone`](#vyre-phone) | install the app on a phone, list, remove and test the phones the box has |
+| [`vyre relay`](#vyre-relay) | reach this box from anywhere, and manage the devices that do |
 | [`vyre send`](#vyre-send) | send files to another of your computers through your server |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
@@ -84,7 +84,7 @@ In the order `vyre help` lists them.
 | [`vyre reboot`](#vyre-reboot) | restart this computer the planned way (FileVault Macs come back by themselves) |
 | [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
 | [`vyre signout`](#vyre-signout) | sign this terminal out |
-| [`vyre space`](#vyre-space) | which space this terminal acts in |
+| [`vyre space`](#vyre-space) | this server's space: its details, its setup code, and which space this terminal acts in |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -630,36 +630,31 @@ vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|sig
 
 ### vyre phone
 
-Add a phone to your box, list, remove and test the ones it has.
+Install the app on a phone, list, remove and test the phones the box has.
 
 ```
-vyre phone [add [--iphone|--android] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
+vyre phone [add --android [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
 ```
 
-vyre phone add               the steps to put a phone on the box, then live checks
-      --iphone | --android     only that phone's install step
-      --android --usb          the native app over a cable: downloads the APK the box serves,
-                               checks its size and sha256, installs it with adb, opens it to pair
-      --android --wireless     the same over Wireless debugging
-  vyre phone list              the devices that get notifications, and the passkeys
-  vyre phone remove <id>...    forget a notification device, or remove a passkey (asks you first)
-  vyre phone test [id]         send a test notification to every device, or one
+vyre phone add --android --usb      the native app over a cable: downloads the APK the box serves,
+                                      checks its size and sha256 and installs it with adb
+  vyre phone add --android --wireless the same over Wireless debugging
+  vyre phone list                     the devices that get notifications, and the passkeys
+  vyre phone remove <id>...           forget a notification device, or remove a passkey (asks you first)
+  vyre phone test [id]                send a test notification to every device, or one
 
-  add pairs through the relay by default: it asks you first, then shows a QR that works once
-  for 10 minutes, so the phone needs nothing installed first. Then it watches until the phone shows up: a new
-  notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
-  With --json it prints the address, the code and the steps as one JSON value and does not watch.
+  A phone joins by signing in with your name and being approved on a device you already use: Devices, Add a device.
+  The old pairing code is gone, so add installs the app and says so; it pairs nothing.
 
 ### vyre relay
 
-Reach this box from your phone with a QR code.
+Reach this box from anywhere, and manage the devices that do.
 
 ```
-vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
+vyre relay [status|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
 ```
 
 vyre relay: whether the relay is on and connected
-vyre relay pair: a QR code for one more device (once, 10 minutes)
 vyre relay devices: paired devices, which are connected, and how
 vyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)
 vyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts
@@ -842,13 +837,13 @@ vyre signout [--json]
 
 ### vyre space
 
-Which space this terminal acts in.
+This server's space: its details, its setup code, and which space this terminal acts in.
 
 ```
-vyre space [use <name> | use --clear | add-agent <space> <agent>] [--json]
+vyre space [up | use <name> | use --clear | add-agent <space> <agent>] [--json]
 ```
 
-`vyre space use harlow` remembers harlow for this terminal's calls. `vyre call records.list` then acts in it; `--space <name>` on one call overrides it. With none, calls act in the home's own space.
+`vyre space` shows the space's name, owner, members, Records, vault and version. `vyre space up` shows the code that sets it up from the Vyre app (again, any time). `vyre space use harlow` remembers harlow for this terminal's calls: `vyre call records.list` then acts in it, and `--space <name>` on one call overrides it. With none, calls act in the home's own space.
 
 ### vyre tips
 

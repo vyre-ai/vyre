@@ -194,6 +194,28 @@ export function createWink(inject = {}) {
       await ctx.call("relay.code.reply", { q: String(m.q), ...(out ? { m: out.m } : {}) });
     });
 
+    // Sign in by name (relay/client/signin.js): this box serves the sign-in requests for the name of the identity it holds. The relay hands each one over as relay.signin-asked { loc, s }; only a request for
+    // this name's own locator is taken, and it only opens a two-minute phone ticket that asks the person with the three words. Nothing is added without their yes.
+    let signinLoc = /** @type {string | null} */ (null);
+    const watchSignin = async () => {
+      try {
+        const r = /** @type {any} */ (await ctx.call("spaces.identity.self", {}).catch(() => null));
+        const name = r && r.data && r.data.name ? String(r.data.name) : "";
+        if (!name) return;
+        const { signinLoc: locOf } = await import("../../relay/client/signin.js");
+        const { nodeCrypto } = await import("../../relay/client/nodecrypto.js");
+        signinLoc = await locOf(name, nodeCrypto());
+        await ctx.call("relay.signin.watch", { loc: signinLoc }).catch(() => null);
+      } catch { /* no identity name yet, or no relay: nothing to serve */ }
+    };
+    const offSignin = ctx.events.on("relay.signin-asked", async (/** @type {any} */ e) => {
+      const m = e.payload || e;
+      if (!signinLoc || String(m.loc) !== signinLoc) return;
+      try { await pairing.phone.signin(String(m.s)); } catch (err) { ctx.log(`wink: a sign-in request was not taken: ${/** @type {Error} */ (err).message}`); }
+    });
+    const offSigninWatch = [ctx.events.on("relay.connected", () => { void watchSignin(); }), ctx.events.on("name.claimed", () => { void watchSignin(); })];
+    void watchSignin();
+
     /** What a code carries to the typist once the ack is typed back (an invitation's link), by offer id. Memory only: a restart ends the code with it. @type {Map<string, any>} */
     const carried = new Map();
     /** Opens (or replaces) the showing code for one flow. @param {"W1" | "W2" | "W3" | "W5"} flow @param {any} [carry] sealed into the ticket the right ack makes */
@@ -961,7 +983,7 @@ export function createWink(inject = {}) {
         for (const off of offHold) { try { off(); } catch {} }
         try { offBridge(); } catch {}
         dropHold();
-        for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
+        for (const off of [offSignin, ...offSigninWatch, offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
         try { if (netd) await netd.stop(); } catch {}

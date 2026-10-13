@@ -12,8 +12,20 @@ test("a long code is read, for a server or a phone", { skip: !strip }, async () 
   assert.deepEqual(parseWinkCode(`  ${LONG}\n`), { ok: true, kind: "ticket", ticket: "SGVsbG9TYW1wbGVTZWNyZQ", relay: "wss://relay.example", for: "server" });
   const p = parseWinkCode(`${LONG}&k=phone`);
   assert.ok(p.ok && p.kind === "ticket" && p.for === "phone");
+});
+
+test("the old bearer offer is refused, in every wrapping, with the next step", { skip: !strip }, async () => {
+  const { parseWinkCode, SAY } = await import("./wink-code.ts");
   const offer = "https://vyre.run/pair#eyJhIjoxfQ";
-  assert.deepEqual(parseWinkCode(offer), { ok: true, kind: "offer", offer });
+  for (const t of [offer, `vyre://pair?offer=${encodeURIComponent(offer)}`, `https://h.example/app/pair?offer=${encodeURIComponent(offer)}`, `vyre://pair?offer=${offer}`, encodeURIComponent(offer)]) {
+    const r = parseWinkCode(t);
+    assert.equal(r.ok, false, t);
+    assert.equal(!r.ok && r.reason, "old_offer", t);
+    assert.equal(!r.ok && r.say, SAY.old_offer);
+  }
+  assert.match(SAY.old_offer, /Devices, Add a device/);
+  assert.equal(parseWinkCode("https://example.com/pair").ok, false);
+  assert.equal(!parseWinkCode("https://example.com/pair").ok && parseWinkCode("https://example.com/pair").reason, "not_a_code");
 });
 
 test("a short typed code is a code, in any case and with or without dashes; the old wink/1 form is refused in plain words", { skip: !strip }, async () => {

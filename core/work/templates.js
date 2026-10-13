@@ -59,11 +59,16 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const id = template ? String(template) : `tpl_${slug(b.name)}`;
     if (!/^tpl_[a-z0-9-]{1,56}$/.test(id)) throw fail("bad_input", "a template id is tpl_ and a lower-case word");
     const have = await versions(chain, id);
+    // a template of a Space is made by its owner or an admin, or by an assistant working for one (its chain's first hop is that person); a member uses the live ones, and an assistant of a member makes none
+    if (!have[0] && !isAdmin(person)) throw fail("not_allowed", "only the Space's owner or an admin makes a new template; ask one of them, or start a project from a template that is already live");
     const owner = have[0] ? have[0].data.owner : { actor: { kind: "person", id: person.id, space: person.space } };
-    if (have[0] && have[0].data.owner && have[0].data.owner.actor && have[0].data.owner.actor.id !== person.id && !isAdmin(person) && !chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent")) throw fail("not_allowed", `only ${id}'s owner or an admin adds a version to it; propose the change instead (flows.propose { what: "template" })`);
+    if (have[0] && have[0].data.owner && have[0].data.owner.actor && have[0].data.owner.actor.id !== person.id && !isAdmin(person)) throw fail("not_allowed", `only ${id}'s owner or an admin adds a version to it; propose the change instead (flows.propose { what: "template" })`);
     const rec = await kernel().records.create(chain, TYPE, { name: b.name, template: id, version: (have[0] ? have[0].data.version : 0) + 1, state: "draft", body: JSON.stringify(b), owner, ...(kit ? { kit: String(kit) } : {}), ...(note ? { note: String(note).slice(0, 500) } : {}), tags: changeTags("", { add: b.tags || [] }) });
     return shape(rec);
   }
+
+  /** What a template's projects are called, from the body of its newest version; undefined when it does not say. */
+  const nounIn = (/** @type {any} */ rec) => { try { const n = JSON.parse(String(rec.data.body)).noun; return n && n.one ? { one: n.one, many: n.many } : undefined; } catch { return undefined; } };
 
   /** @param {any} chain @param {{ template?: string }} [i] */
   async function list(chain, i = {}) {
@@ -71,8 +76,8 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const rows = (await kernel().records.query(chain, TYPE, { page: { limit: 500 } })).rows;
     const by = new Map();
     for (const r of rows.sort((/** @type {any} */ a, /** @type {any} */ b) => b.data.version - a.data.version)) {
-      const t = by.get(r.data.template) || { template: r.data.template, name: r.data.name, live: null, latest: r.data.version, versions: 0, owner: r.data.owner && r.data.owner.actor ? r.data.owner.actor.id : null, tags: parseTags(r.data.tags) };
-      t.versions++; if (r.data.state === "live" && t.live === null) t.live = r.data.version;
+      const t = by.get(r.data.template) || { template: r.data.template, name: r.data.name, live: null, latest: r.data.version, versions: 0, owner: r.data.owner && r.data.owner.actor ? r.data.owner.actor.id : null, tags: parseTags(r.data.tags), noun: nounIn(r), archived: true };
+      t.versions++; if (r.data.state === "live" && t.live === null) t.live = r.data.version; if (r.data.state !== "retired") t.archived = false;
       by.set(r.data.template, t);
     }
     return { templates: [...by.values()].sort((a, b) => a.template < b.template ? -1 : 1) };
@@ -85,7 +90,8 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const rec = all.find((/** @type {any} */ r) => r.data.version === Number(i.version));
     if (!rec) throw fail("not_found", `no version ${i.version} of ${i.template}`);
     const owner = rec.data.owner && rec.data.owner.actor ? rec.data.owner.actor.id : null;
-    if (owner !== person.id && !isAdmin(person)) throw fail("not_allowed", `only ${i.template}'s owner or an admin puts a version live`);
+    // a draft is put live by an owner or an admin: a member who owns a draft (an older one, or one an assistant of hers made) cannot publish it herself
+    if (!isAdmin(person)) throw fail("not_allowed", `only the Space's owner or an admin puts ${i.template} live; ask one of them${owner === person.id ? " to look at your draft" : ""}`);
     if (rec.data.state === "live") return shape(rec);
     if (rec.data.state === "retired") throw fail("bad_state", "that version was retired; make a new one with work.template.define");
     const errors = problems(bodyOf(rec), env());
@@ -173,7 +179,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const roles = rows.filter((/** @type {any} */ r) => r.data.role && r.data.actor && r.data.actor.actor && r.data.actor.actor.kind === "agent").map((/** @type {any} */ r) => ({ role: String(r.data.role), agent: r.data.actor.actor.id, ...(proj.data.lead === r.data.actor.actor.id ? { lead: true } : {}) }));
     // A free-flow project has no stages to copy (it is chats and files), but it has a team and the work it did: its tasks become the tasks of one working stage, its team the roles, and the person edits the draft in the studio.
     const snap = proj.data.template_snapshot ? JSON.parse(String(proj.data.template_snapshot)) : await freeFlowSnapshot(chain, proj, roles);
-    const body = { name: String(i.name || `${snap.name || proj.data.name} (copy)`), roles, tags: parseTags(proj.data.tags).filter((/** @type {string} */ t) => !t.startsWith("from-")), stages: snap.stages.map((/** @type {any} */ s, /** @type {number} */ n) => ({ name: s.name, ...(s.owner ? { owner: s.owner } : {}), ...(snap.stages[n + 1] && snap.stages[n + 1].enter_if ? { moves_on_when: snap.stages[n + 1].enter_if } : {}), ...(s.tasks ? { tasks: s.tasks } : {}) })) };
+    const body = { name: String(i.name || `${snap.name || proj.data.name} (copy)`), roles, ...(snap.noun ? { noun: snap.noun } : {}), tags: parseTags(proj.data.tags).filter((/** @type {string} */ t) => !t.startsWith("from-")), stages: snap.stages.map((/** @type {any} */ s, /** @type {number} */ n) => ({ name: s.name, ...(s.owner ? { owner: s.owner } : {}), ...(snap.stages[n + 1] && snap.stages[n + 1].enter_if ? { moves_on_when: snap.stages[n + 1].enter_if } : {}), ...(s.tasks ? { tasks: s.tasks } : {}) })) };
     return define(chain, { body, note: `saved from the project ${proj.data.slug}` });
   }
 

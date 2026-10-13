@@ -1764,3 +1764,44 @@ test("a pairing that fails AFTER the server was adopted gives back the channel i
   assert.equal(good.p.homeServerId(), d.id, "a completed pairing is the home");
   assert.ok(good.p.meta.get(`paired:${d.id}`).at > 0, "with its completion mark");
 });
+
+test("Sign in by name: a request opens a two-minute ticket, the device that redeems it is asked with the words and a sign-in line, and a yes adds it", async () => {
+  const w = world(OFF);
+  const seed = "c".repeat(22);
+  assert.equal(await w.p.phone.signin(seed), true);
+  assert.equal(w.events.some(e => e[0] === "wink.signin-asked"), true);
+  assert.equal(await w.p.phone.signin("short"), false, "a malformed secret opens nothing");
+  assert.equal(await w.p.phone.signin("d".repeat(22)), false, "a second request while one is open is let go, not stacked");
+  assert.equal(w.p.devices.list(ME).length, 0, "nothing is added by a request");
+  assert.equal(await w.p.phone.hold(PHONE), true);
+  const q = await w.call("wink.phone.pairing");
+  assert.equal(q.asking, true);
+  assert.equal(q.signin, true);
+  assert.match(q.line, /^Someone typed your name to sign in on "Alex's iPhone"\. Read the three words off that device's own screen, never from a message: 1\) .+ If that wasn't you just now, decline\.$/);
+  assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].signin === true));
+  await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
+  const yes = await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" });
+  assert.equal(yes.yes, true);
+  assert.equal(w.p.devices.list(ME).length, 1);
+});
+
+test("Sign in by name: a request does not disturb a code already on the screen, and a no adds nothing", async () => {
+  const w = world(OFF);
+  await phoneOpen(w);
+  assert.equal(await w.p.phone.signin("e".repeat(22)), false, "the person's own code stays");
+  const w2 = world(OFF);
+  assert.equal(await w2.p.phone.signin("f".repeat(22)), true);
+  assert.equal(await w2.p.phone.hold(PHONE), true);
+  const no = await w2.call("wink.phone.pair.answer", { yes: false });
+  assert.equal(no.yes, false);
+  assert.equal(w2.p.devices.list(ME).length, 0);
+});
+
+test("Sign in by name: a stranger's request never holds the slot against the owner's own Add a phone", async () => {
+  const w = world(OFF);
+  assert.equal(await w.p.phone.signin("h".repeat(22)), true);
+  const open = await w.call("wink.phone.open", {});
+  assert.ok(open.qr && open.qr.startsWith("vyre://wink/2?"), "the owner gets a real code, not the request's empty one");
+  assert.equal(await w.p.phone.hold(PHONE), true);
+  assert.equal((await w.call("wink.phone.pairing")).signin, undefined, "a phone that scans the owner's code is a normal add, not a sign-in");
+});

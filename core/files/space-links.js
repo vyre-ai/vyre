@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
 import { MAX_UPLOAD } from "./space-drive.js";
+import { filesMigrations } from "./migrations.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -38,7 +39,7 @@ export const mimeOf = (name) => /** @type {any} */ (MIME)[String(name).split("."
 export function registerSpaceLinks(ctx, o = {}) {
   const now = o.now || (() => Date.now());
   const door = createDoor(ctx);
-  const db = () => { ctx.store.migrate(LINK_MIGRATIONS); return ctx.store.db; };
+  const db = () => { ctx.store.migrate(filesMigrations()); return ctx.store.db; };
   let ready = false;
   /** An expired link keeps no copy: drop the bytes of every link past its end, so a file does not sit on the box after the person's chosen time. */
   const sweep = () => open().prepare("UPDATE files_links SET bytes = NULL WHERE bytes IS NOT NULL AND expires <= ?").run(now());

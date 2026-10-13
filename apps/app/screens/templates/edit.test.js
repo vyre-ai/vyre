@@ -85,3 +85,63 @@ test("automations: attach a Flow at the start or at a stage, once per point; ren
   b = removeAutomation(b, 0);
   assert.equal("automations" in b, false);
 });
+
+test("a template says what its projects are called, and the plural follows the singular until it is set by hand", async () => {
+  const { setNoun, nounOf } = await import("./edit.ts");
+  let b = setNoun(base(), "Matter");
+  assert.deepEqual(b.noun, { one: "Matter", many: "Matters" });
+  b = setNoun(b, "Campaign");
+  assert.deepEqual(b.noun, { one: "Campaign", many: "Campaigns" });
+  b = setNoun(b, "Case", "Cases");
+  assert.deepEqual(b.noun, { one: "Case", many: "Cases" });
+  assert.deepEqual(setNoun(b, "").noun, undefined);
+  assert.deepEqual(nounOf(setNoun(base(), "Policy")), { one: "Policy", many: "Policies" });
+  assert.deepEqual(nounOf(base()), { one: "Project", many: "Projects" });
+  assert.deepEqual(nounOf(null), { one: "Project", many: "Projects" });
+});
+
+test("a plural set by hand stays when the singular is edited", async () => {
+  const { setNoun } = await import("./edit.ts");
+  let b = setNoun(setNoun(base(), "Case"), "Case", "Cases here");
+  b = setNoun(b, "Cases");
+  assert.equal(b.noun.many, "Cases here");
+});
+
+test("a noun without a plural cannot be saved, and says what to add", async () => {
+  const { setNoun } = await import("./edit.ts");
+  assert.deepEqual(missing(setNoun(base(), "Matter", "")), ['Say what several matter projects are called, such as "Matters".']);
+});
+
+test("a task is given to a role, the project lead, a person or an assistant, each named in words", async () => {
+  const { assigneeChoices, assigneeWords, kindOfDoer } = await import("./edit.ts");
+  const b = base();
+  const ch = assigneeChoices(b, [{ id: "per_bob", name: "Bob Reyes" }], [{ id: "research", name: "Research" }]);
+  assert.deepEqual(ch.map(([v]) => v), ["role:attorney", "role:researcher", "lead", "person:per_bob", "teammate:research"]);
+  assert.deepEqual(ch.map(([, l]) => l), ["The attorney", "The researcher", "The project lead", "Bob Reyes", "Research (assistant)"]);
+  assert.equal(assigneeWords("lead", [], []), "The project lead");
+  assert.equal(assigneeWords("person:per_x", [], []), "A person");
+  assert.deepEqual(["role:a", "lead", "person:p", "teammate:t", "owner"].map(kindOfDoer), ["role", "lead", "person", "agent", "role"]);
+});
+
+test("a task's due is set in days and kept in milliseconds; empty or zero takes it away", async () => {
+  const { setDueDays, dueDays } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, {});
+  b = setDueDays(b, 0, 0, "3");
+  assert.equal(b.stages[0].tasks[0].due_offset_ms, 3 * 86_400_000);
+  assert.equal(dueDays(b.stages[0].tasks[0]), "3");
+  assert.equal(setDueDays(b, 0, 0, "").stages[0].tasks[0].due_offset_ms, undefined);
+  assert.equal(setDueDays(b, 0, 0, "0").stages[0].tasks[0].due_offset_ms, undefined);
+  assert.equal(setDueDays(b, 0, 0, "abc").stages[0].tasks[0].due_offset_ms, 3 * 86_400_000, "a word is not a number of days: it changes nothing");
+  assert.equal(dueDays({ title: "x", doer: "lead", output: { kind: "note" } }), "");
+});
+
+test("an assistant's task can wait for a person's yes, written in a line; a person's task cannot", async () => {
+  const { setApproval, approvalOf } = await import("./edit.ts");
+  let b = setTask(base(), 0, 0, { doer: "teammate:research" });
+  b = setApproval(b, 0, 0, "sending anything to the client");
+  assert.deepEqual(b.stages[0].tasks[0].needs_yes, ["sending anything to the client"]);
+  assert.equal(approvalOf(b.stages[0].tasks[0]), "sending anything to the client");
+  assert.equal(setApproval(b, 0, 0, "  ").stages[0].tasks[0].needs_yes, undefined);
+  const person = setTask(b, 0, 0, { doer: "role:attorney" });
+  assert.equal(person.stages[0].tasks[0].needs_yes, undefined, "moving the task to a person drops the approval line");
+});

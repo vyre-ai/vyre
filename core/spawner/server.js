@@ -20,6 +20,9 @@
 //   as that account's own uid and gid, HOME at <accounts home>/<uid>, in no supplementary group
 //   unless shared (only project work under /work needs the shared group). The HOME must exist, be
 //   owned by that uid, and be closed to every other user: it is checked before every spawn.
+//   a spawn with an account may instead carry "projects": [ids] (at most 64), the projects the person is on at this launch. With project groups configured (`projects` option) the child joins exactly the
+//   groups of the ids this spawner knows, and `shared` means no group at all; ids it does not know are ignored.
+//   {"op":"project-group","project":"<id>","home":"/work/...","force"?:true} -> {"project","gid","home","migrated"}: gives the project a group (never reused) and hands that folder to it
 //   {"op":"wipe","account":<uid>}                               -> {"wiped":true}: empties that account's HOME (as that uid)
 //                                                                 so a uid handed to a new account holds nothing of the last
 //   spawn may instead carry "role":"watcher" (the watcher wall, core/spawner/wall.js): argv[0] must be the watcher program
@@ -34,6 +37,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { spawn, execFileSync, execFile } from "node:child_process";
+import { ID_RE as PROJECT_ID_RE, MAX_PER_SPAWN } from "./project-groups.js";
 
 /** Environment keys a session child may get. Anything else (LD_PRELOAD, NODE_OPTIONS ...) is dropped. */
 const ENV_KEYS = /^(HOME|PATH|LANG|LC_[A-Z]+|TERM|TZ|USER|SHELL|TMPDIR|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_CONFIG_DIR|ANTHROPIC_API_KEY|ANTHROPIC_BASE_URL|OPENAI_API_KEY|OPENAI_BASE_URL|XAI_API_KEY|XAI_BASE_URL|CODEX_HOME|DISABLE_[A-Z0-9_]+|MCP_[A-Z0-9_]+)$/;
@@ -46,6 +50,7 @@ const MAX_LIVE = 16;
  *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, seed?: (home: string, who: Who, files: Record<string, string>) => void, log?: (m: string) => void,
  *   seed?: (home: string, who: Who, files: Record<string, string>) => void,
  *   grantGroup?: (home: string, who: Who) => void,
+ *   projects?: ReturnType<typeof import("./project-groups.js").projectGroups>,
  *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void | Promise<void> } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
@@ -100,6 +105,7 @@ export async function serve(o) {
     }
   };
   const acc = o.accounts || null;
+  const pg = o.projects || null;
   const accountHome = uid => path.join(path.resolve(/** @type {any} */ (acc).home), String(uid));
   const lstat = /** @type {any} */ (acc && acc.stat) || (d => { try { return fs.lstatSync(d); } catch { return null; } });
   /** The identity a spawn runs as: the agent, or a numbered account. Null when the request names an account it may not. */
@@ -115,7 +121,10 @@ export async function serve(o) {
     // to the account's transcripts, and no other account is in that group.
     const gid = st.gid === undefined ? uid : st.gid;
     if (st.uid !== uid || (st.mode & 0o077 & ~0o010) !== 0 || ((st.mode & 0o010) !== 0 && gid !== uid)) return { who: null, why: `account ${uid}'s home is not private to it (owner ${st.uid}, mode ${(st.mode & 0o777).toString(8)})` };
-    return { who: /** @type {Who} */ ({ uid, gid: uid, groups: req.shared === true ? [...(acc.shared || [])] : [], home, account: uid }), why: null };
+    // With project groups the session joins the groups of the projects named (the ones this person is on, asked at each launch); `shared` alone is no group. Without them, the old single shared group.
+    /** @type {number[]} */ let groups;
+    try { groups = pg ? pg.gids(req.projects) : req.shared === true ? [...(acc.shared || [])] : []; } catch (e) { return { who: null, why: /** @type {Error} */ (e).message }; }
+    return { who: /** @type {Who} */ ({ uid, gid: uid, groups, home, account: uid }), why: null };
   }
   // Programs by their real path, so a symlink (/bin/sh to dash) is the program it names.
   const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
@@ -153,7 +162,7 @@ export async function serve(o) {
     if (wl.heldCap && wl.heldCap()) return "the watcher wall is not in place: the spawner still holds NET_ADMIN";
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
     if (!path.isAbsolute(req.argv[0]) || !watcherAllowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program a watcher may run`;
-    for (const k of ["account", "shared", "seed", "fd3", "env"]) if (req[k] !== undefined) return `a watcher spawn takes no ${k}`;
+    for (const k of ["account", "shared", "projects", "seed", "fd3", "env"]) if (req[k] !== undefined) return `a watcher spawn takes no ${k}`;
     if (req.ro !== undefined && (!Array.isArray(req.ro) || req.ro.length > 16 || !req.ro.every(/** @param {any} r */ r => typeof r === "string" && path.isAbsolute(r) && !r.includes("\0") && r.length < 1024))) return "ro is a short list of absolute paths";
     if (live.size >= MAX_LIVE) return "too many sessions are running";
     if (taken.size >= wl.max - wl.min + 1) return "every watcher slot is busy";
@@ -189,6 +198,10 @@ export async function serve(o) {
       }
     }
     if (req.account !== undefined && (typeof req.account !== "number" || (req.shared !== undefined && typeof req.shared !== "boolean"))) return "account is a uid and shared a boolean";
+    if (req.projects !== undefined) {
+      if (req.account === undefined) return "projects are for an account";
+      if (!Array.isArray(req.projects) || req.projects.length > MAX_PER_SPAWN || !req.projects.every((/** @type {unknown} */ p) => typeof p === "string" && PROJECT_ID_RE.test(p))) return `projects is a list of up to ${MAX_PER_SPAWN} project ids`;
+    }
     const w = whoFor(req);
     if (w.why) return w.why;
     const cwd = path.resolve(String(req.cwd || work));
@@ -335,6 +348,12 @@ export async function serve(o) {
       if (!s || !["stdio", "stderr"].includes(req.stream) || s[req.stream]) { sock.destroy(); return; }
       s[req.stream] = sock;
       start(String(req.id));
+      return;
+    }
+    if (req.op === "project-group") {
+      // vyred asks for a project's group when the project is made and at its first launch (and for all of them at once, projects.sync). The path rules and the pass are project-groups.js; the answer is the group number.
+      if (!pg) { sock.end(JSON.stringify({ error: "this spawner has no project groups" }) + "\n"); return; }
+      try { sock.end(JSON.stringify(await pg.ensure(req.project, req.home, { force: req.force === true })) + "\n"); } catch (e) { sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); }
       return;
     }
     if (req.op === "wipe") {

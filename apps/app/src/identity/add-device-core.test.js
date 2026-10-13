@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addDeviceCore, nameOfPairing } from "./add-device-core.js";
+import { addDeviceCore, nameOfPairing, pairRoute } from "./add-device-core.js";
 
 const KEY = { publicKey: "pub", eid: "eid_me" };
 const PAIRED = { enrolled: true, relay: "ws://r", route: "rt", box: "bx", device: "dev", name: "Awbox.vyre.run", identity: { id: "per_x", vyre: "Juniper.vyre.run" } };
@@ -107,4 +107,13 @@ test("a phone's chip key and its attestation ride in the key it offers, made aft
   const noEnclave = stubs({ enclave: async () => { throw new Error("no biometrics"); }, attest: async () => "NEVER", pair: async (o) => { seen.push(o.key); return PAIRED; } });
   await addDeviceCore(noEnclave.d, { deviceLabel: "Phone" });
   assert.deepEqual(seen[2], { publicKey: "pub" }, "no chip key, nothing to attest");
+});
+
+test("how a device is paired: a name asks the relay and never falls back to a code, a web page with a long code joins from the browser, anything else is the relay code", () => {
+  assert.equal(pairRoute({ byName: "alex" }, "ios"), "name");
+  assert.equal(pairRoute({ byName: "alex", payload: "vyre://wink/2?t=x" }, "web"), "name");
+  assert.equal(pairRoute({ byName: "" }, "web"), "name", "an empty name is still the by-name route, and the relay refuses it as bad_name");
+  assert.equal(pairRoute({ payload: "vyre://wink/2?t=x" }, "web"), "browser");
+  assert.equal(pairRoute({ payload: "vyre://wink/2?t=x" }, "ios"), "code");
+  assert.equal(pairRoute({}, "web"), "code");
 });

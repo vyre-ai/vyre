@@ -30,8 +30,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var enclave: MacEnclave?
     /// This Mac's agreement key (MacAgree.swift): ECDH for opening a wrapped chat key, no prompt per use.
     var agreement: MacAgree?
-    /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
-    var makeServer: (() -> Void)?
+    /// Whether a local vyred answers right now; set by the Capsule at launch.
+    var vyredUp: () -> Bool = { false }
     /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
     var confirmForget: () -> Bool = {
         let a = NSAlert()
@@ -42,7 +42,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         return a.runModal() == .alertFirstButtonReturn
     }
 
-    /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
+    /// A Mac with no local vyred (Shell.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
 
     private(set) var window: NSWindow?
@@ -53,6 +53,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private var priorMenu: NSMenu?
 
     var isOpen: Bool { window?.isVisible ?? false }
+
+    /// Launch, reopen and "Open Vyre": the kind the state says (no local vyred means the one that carries the web build), so a server Mac never gets a blank local window.
+    func showShell() { show(boxless: Shell.opensBoxless(vyredUp: vyredUp())) }
 
     /// Open the window, or bring it forward. Never starts anything else. `boxless` is a server Mac's window (the web build carried in this app, no vyred socket);
     /// a window already open in the other mode is closed and made again.
@@ -81,6 +84,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         if !boxless { cfg.userContentController.addUserScript(WKUserScript(source: Self.wsShimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
+        // Brand colour behind everything, so no white shows before the first paint.
+        view.underPageBackgroundColor = Shell.brandBackground
+        view.setValue(false, forKey: "drawsBackground")
         // `defaults write sh.vyre.capsule inspect -bool true`: Safari's Develop menu can inspect this window (for a person, or support, finding why a step failed).
         if #available(macOS 13.3, *), UserDefaults.standard.bool(forKey: "inspect") { view.isInspectable = true }
         view.navigationDelegate = self
@@ -95,14 +101,74 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         w.minSize = NSSize(width: 380, height: 560)
         w.isReleasedWhenClosed = false
         w.delegate = self
-        w.contentView = view
+        w.backgroundColor = Shell.brandBackground
+        let holder = NSView()
+        holder.wantsLayer = true
+        holder.layer?.backgroundColor = Shell.brandBackground.cgColor
+        view.frame = holder.bounds; view.autoresizingMask = [.width, .height]
+        holder.addSubview(view)
+        let cover = makeSplash(frame: holder.bounds)
+        holder.addSubview(cover)
+        splashView = cover; splashShownAt = Date(); pageLoaded = false
+        w.contentView = holder
         w.setFrameAutosaveName("VyreApp")
         if w.frame.origin == .zero { w.center() }
         window = w
         view.load(URLRequest(url: Self.start))
     }
 
+    // MARK: Splash
+
+    private var splashView: NSView?
+    private var splashShownAt = Date()
+    private var pageLoaded = false
+
+    /// The shared splash piece when the app carries one, else the brand mark centred on the brand background. Never white.
+    private func makeSplash(frame: NSRect) -> NSView {
+        let box: NSView
+        switch Shell.splash(resources: Bundle.main.resourcePath) {
+        case .page(let path):
+            let cfg = WKWebViewConfiguration()
+            let v = WKWebView(frame: frame, configuration: cfg)
+            v.underPageBackgroundColor = Shell.brandBackground
+            v.setValue(false, forKey: "drawsBackground")
+            v.loadFileURL(URL(fileURLWithPath: path), allowingReadAccessTo: URL(fileURLWithPath: path).deletingLastPathComponent())
+            box = v
+        case .brandMark:
+            let v = NSView(frame: frame)
+            v.wantsLayer = true
+            v.layer?.backgroundColor = Shell.brandBackground.cgColor
+            if let img = NSApp.applicationIconImage {
+                let iv = NSImageView(image: img)
+                iv.imageScaling = .scaleProportionallyUpOrDown
+                iv.frame = NSRect(x: frame.midX - 56, y: frame.midY - 56, width: 112, height: 112)
+                iv.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
+                v.addSubview(iv)
+            }
+            box = v
+        }
+        box.autoresizingMask = [.width, .height]
+        return box
+    }
+
+    /// The page has loaded (or failed to: its own words must show): fade the splash away once.
+    private func finishSplash() {
+        pageLoaded = true
+        guard let cover = splashView else { return }
+        let shown = Int(Date().timeIntervalSince(splashShownAt) * 1000)
+        guard let wait = Shell.fadeAfterMs(shownForMs: shown, loaded: true) else { return }
+        splashView = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(wait)) {
+            NSAnimationContext.runAnimationGroup({ c in c.duration = 0.35; cover.animator().alphaValue = 0 }, completionHandler: { cover.removeFromSuperview() })
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finishSplash() }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finishSplash() }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { finishSplash() }
+
     func windowWillClose(_ notification: Notification) {
+        splashView = nil
         web?.stopLoading()
         proxy.stopAll()
         for s in sockets.values { s.stop() }
@@ -168,8 +234,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
             reply(id, ["secret": MacIdentity.b64url(secret)])
         case "setup.server":
-            makeServer?()
-            reply(id, ["ok": true])
+            reply(id, ["error": "To use this Mac as a server, run the install line in Terminal."])
         case "enclave.public":
             guard let pt = enclave?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no Secure Enclave key."]) }
             reply(id, ["publicKey": MacIdentity.b64url(pt)])
