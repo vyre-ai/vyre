@@ -37,6 +37,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme() === "light" ? "paper" : "dark";
   const { width } = useWindowDimensions();
   const phone = width < PHONE_MAX;
+  const outer = useContext(ThemeCtx);
   const ctx = useMemo<UiCtx>(() => {
     const resolved: Resolved = resolveTheme({ space, person, system });
     // The font is the platform's own (SF, Roboto, the system font on the web) until a space or a person picks Serif; the older "sans" reads as the system font.
@@ -59,7 +60,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     <ThemeCtx.Provider value={ctx}>
       <View style={[StyleSheet.absoluteFill, style]} className="bg-bg">
         {children}
-        <ToastHost />
+        {/* One toast host for the whole app: a provider nested inside another (a route that wraps its own) must not draw a second pill. */}
+        {outer ? null : <ToastHost />}
         <PortalHost />
       </View>
     </ThemeCtx.Provider>
