@@ -127,7 +127,8 @@ export function Models({ name }: { name: string }) {
   const save = () => { setBusy(true); config.savePlan(name, plan, ack).then(() => { showToast("Saved. It applies from the next turn."); q.reload(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
     <>
-      <Sec title="Runs on, in this order">
+      <Sec title="Which AI account it runs on">
+        <Banner>{`In chats: each person's own AI account. In flows: the sign-ins below, in order.`}</Banner>
         {rows.length ? (
           <Card flush>
             <SortableList items={rows} keyOf={({ e }) => `${e.provider}:${e.account ?? ""}`} rowHeight={68} onMove={(from, to) => setPlan(moveTo(plan, from, to))}
@@ -140,7 +141,7 @@ export function Models({ name }: { name: string }) {
                 />
               )} />
           </Card>
-        ) : <Card><Text tone="muted">{`No plan of its own. ${name} runs on the Space's default model. Add a sign-in to choose.`}</Text></Card>}
+        ) : <Card><Text tone="muted">{`No order of its own. In flows, ${name} runs on the Space's default. Add a sign-in to choose.`}</Text></Card>}
         {ack ? <Banner>{ACK_WORDS}</Banner> : null}
         <View className="flex-row flex-wrap gap-s2">
           <Button size="sm" kind="secondary" label="Add a sign-in" onPress={() => setAdding(true)} />

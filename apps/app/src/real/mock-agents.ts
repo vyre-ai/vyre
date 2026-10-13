@@ -11,46 +11,68 @@ Ask when something is missing. Do not guess a date, a name or an amount.
 `;
 const CLAUDE_MD = "Write short sentences. Use the client's own words for their situation.\n";
 
-const state = {
-  docs: { "AGENTS.md": AGENTS_MD, "CLAUDE.md": CLAUDE_MD } as Record<string, string>,
+const REFUNDS_MD = `You handle refund requests for Juniper Studio.
+
+1. Read the request and the order. Check the refund policy in your context files.
+2. Under $200 and inside 30 days: draft the refund for a person to approve.
+3. Over $200, past 30 days, or a customer who is upset: do not decide. Escalate to the owner with the order, the amount, and what the customer said, in three lines.
+
+Never promise a refund in a reply. A person sends every message.
+`;
+type State = { role: string; docs: Record<string, string>; files: { name: string; size: number; at: number }[]; links: string[]; routes: { provider: string; account?: string }[]; vault: string[]; instructions: string; lent: { id: string; agent: string; item: string; origin: string; expires: number }[] };
+const intake = (): State => ({
+  role: "Intake assistant",
+  docs: { "AGENTS.md": AGENTS_MD, "CLAUDE.md": CLAUDE_MD },
   files: [{ name: "intake-checklist.pdf", size: 184320, at: 1760000000000 }, { name: "price-list.xlsx", size: 42000, at: 1760100000000 }],
   links: ["/Users/alex/Vyre/Files/Intake forms"],
-  routes: [{ provider: "claude", account: "acc_login" }, { provider: "claude", account: "acc_key" }] as { provider: string; account?: string }[],
+  routes: [{ provider: "claude", account: "acc_login" }, { provider: "claude", account: "acc_key" }],
   vault: ["lawmatics-api"],
   instructions: AGENTS_MD,
-};
+  lent: [{ id: "ag_0", agent: "intake", item: "lawmatics", origin: "https://app.lawmatics.com", expires: Date.now() + 20 * 86400000 }],
+});
+const refunds = (): State => ({
+  role: "Refunds agent",
+  docs: { "AGENTS.md": REFUNDS_MD, "CLAUDE.md": "Be calm and exact. Quote the policy, never paraphrase an amount.\n" },
+  files: [{ name: "refund-policy.pdf", size: 96000, at: 1760200000000 }],
+  links: [],
+  routes: [{ provider: "claude", account: "acc_login" }, { provider: "openrouter", account: "acc_or" }],
+  vault: [],
+  instructions: REFUNDS_MD,
+  lent: [],
+});
+const W: Record<string, State> = { intake: intake(), refunds: refunds() };
+const w = (i: any): State => W[String(i?.agent ?? i?.name ?? "intake")] ?? W.intake;
 const accounts = [
   { id: "acc_login", provider: "claude", label: "Claude (Alex)", kind: "login", is_default: true, signed_in_at: 1760000000000, identity: { email: "alex@juniper.studio" } },
   { id: "acc_key", provider: "claude", label: "Anthropic API token", kind: "api-key", vault_item: "anthropic-api-key" },
   { id: "acc_or", provider: "openrouter", label: "OpenRouter", kind: "api-key", vault_item: "openrouter-key" },
 ];
-let lent: { id: string; agent: string; item: string; origin: string; expires: number }[] = [{ id: "ag_0", agent: "intake", item: "lawmatics", origin: "https://app.lawmatics.com", expires: Date.now() + 20 * 86400000 }];
-const agent = () => ({ uid: "agt_intake", name: "intake", kind: "agent", role: "Intake assistant", projects: ["juniper"], instructions: state.instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
+const agentOf = (name: string) => ({ uid: `agt_${name}`, name, kind: "agent", role: W[name].role, projects: ["juniper"], instructions: W[name].instructions, model: "sonnet", effort: "medium", computer: false, status: "idle", thread: null });
 
 export const mockAgentTools: Record<string, (i: any) => unknown> = {
-  "agents.list": () => [agent()],
-  "agents.usage": () => [{ agent: "intake", auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
+  "agents.list": () => Object.keys(W).map(agentOf),
+  "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
   "sessions.models.get": () => ({ aliases: { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" } }),
   "watchers.list": () => [],
-  "agents.update": (i) => { if (typeof i.instructions === "string") state.instructions = i.instructions; return agent(); },
+  "agents.update": (i) => { if (typeof i.instructions === "string") w(i).instructions = i.instructions; return agentOf(String(i.name ?? i.agent)); },
   "agents.ask": () => ({ thread: "thr_intake_1", project: "juniper" }),
-  "agents.docs.get": () => ({ files: { ...state.docs } }),
-  "agents.docs.set": (i) => { state.docs[i.file] = i.text; if (i.file === "AGENTS.md") state.instructions = i.text; return { ok: true, file: i.file }; },
-  "agents.context.list": () => ({ files: state.files.slice(), links: state.links.slice() }),
-  "agents.context.add": (i) => { state.files = [...state.files.filter((f) => f.name !== i.name), { name: i.name, size: Math.round((String(i.base64).length * 3) / 4), at: Date.now() }]; return { ok: true, name: i.name }; },
-  "agents.context.remove": (i) => { state.files = state.files.filter((f) => f.name !== i.name); return { ok: true }; },
-  "agents.context.link": (i) => { if (!state.links.includes(i.path)) state.links.push(i.path); return { ok: true, path: i.path }; },
-  "agents.context.unlink": (i) => { state.links = state.links.filter((p) => p !== i.path); return { ok: true }; },
+  "agents.docs.get": (i) => ({ files: { ...w(i).docs } }),
+  "agents.docs.set": (i) => { w(i).docs[i.file] = i.text; if (i.file === "AGENTS.md") w(i).instructions = i.text; return { ok: true, file: i.file }; },
+  "agents.context.list": (i) => ({ files: w(i).files.slice(), links: w(i).links.slice() }),
+  "agents.context.add": (i) => { w(i).files = [...w(i).files.filter((f) => f.name !== i.name), { name: i.name, size: Math.round((String(i.base64).length * 3) / 4), at: Date.now() }]; return { ok: true, name: i.name }; },
+  "agents.context.remove": (i) => { w(i).files = w(i).files.filter((f) => f.name !== i.name); return { ok: true }; },
+  "agents.context.link": (i) => { if (!w(i).links.includes(i.path)) w(i).links.push(i.path); return { ok: true, path: i.path }; },
+  "agents.context.unlink": (i) => { w(i).links = w(i).links.filter((p) => p !== i.path); return { ok: true }; },
   "files.dirs": (i) => ({ dirs: [{ name: "Intake forms", path: "/Users/alex/Vyre/Files/Intake forms" }, { name: "Intake archive", path: "/Users/alex/Vyre/Files/Intake archive" }].filter((d) => d.name.toLowerCase().includes(String(i.q || "").toLowerCase())) }),
   "sessions.accounts.list": () => accounts,
-  "sessions.routes.get": () => ({ scope: "agent:intake", entries: state.routes.slice() }),
-  "sessions.routes.set": (i) => { state.routes = i.entries; return { scope: i.scope, entries: i.entries }; },
+  "sessions.routes.get": (i) => ({ scope: i.scope, entries: w({ agent: String(i.scope).replace("agent:", "") }).routes.slice() }),
+  "sessions.routes.set": (i) => { w({ agent: String(i.scope).replace("agent:", "") }).routes = i.entries; return { scope: i.scope, entries: i.entries }; },
   "vault.list": () => ({ items: [{ name: "lawmatics-api", kind: "api-key", hosts: [] }, { name: "lawmatics", kind: "login", hosts: ["https://app.lawmatics.com"] }, { name: "mail", kind: "login", hosts: ["https://mail.juniper.studio"] }, { name: "anthropic-api-key", kind: "api-key", hosts: [] }], locked: false, personal: "none" }),
-  "agents.vault.list": () => ({ assigned: state.vault.slice() }),
-  "agents.vault.assign": (i) => { if (!state.vault.includes(i.item)) state.vault.push(i.item); return { ok: true }; },
-  "agents.vault.unassign": (i) => { state.vault = state.vault.filter((x) => x !== i.item); return { ok: true }; },
-  "vault.agent.grants": () => ({ grants: lent.map((g) => ({ ...g, status: "active", uses: 3 })) }),
-  "vault.agent.grant": (i) => { lent.push({ id: `ag_${lent.length + 1}`, agent: i.agent, item: i.item, origin: i.origin, expires: Date.now() + 30 * 86400000 }); return { grant: { status: "active", ...i } }; },
-  "vault.agent.revoke": (i) => { lent = lent.filter((g) => g.id !== i.id); return { revoked: true }; },
-  "agents.used": () => ({ chats: [{ id: "thr_intake_1", title: "Priya Shah: first inquiry" }, { id: "thr_intake_2", title: "Weekly intake review" }], flows: [{ id: "flw_new_client", name: "New client intake" }] }),
+  "agents.vault.list": (i) => ({ assigned: w(i).vault.slice() }),
+  "agents.vault.assign": (i) => { if (!w(i).vault.includes(i.item)) w(i).vault.push(i.item); return { ok: true }; },
+  "agents.vault.unassign": (i) => { w(i).vault = w(i).vault.filter((x) => x !== i.item); return { ok: true }; },
+  "vault.agent.grants": (i) => ({ grants: w(i).lent.map((g) => ({ ...g, status: "active", uses: 3 })) }),
+  "vault.agent.grant": (i) => { w(i).lent.push({ id: `ag_${i.agent}_${w(i).lent.length + 1}`, agent: i.agent, item: i.item, origin: i.origin, expires: Date.now() + 30 * 86400000 }); return { grant: { status: "active", ...i } }; },
+  "vault.agent.revoke": (i) => { for (const x of Object.values(W)) x.lent = x.lent.filter((g) => g.id !== i.id); return { revoked: true }; },
+  "agents.used": (i) => i.agent === "refunds" ? ({ chats: [{ id: "thr_ref_1", title: "Refund request, order 4471" }], flows: [{ id: "flw_refunds", name: "Refund requests" }] }) : ({ chats: [{ id: "thr_intake_1", title: "Priya Shah: first inquiry" }, { id: "thr_intake_2", title: "Weekly intake review" }], flows: [{ id: "flw_new_client", name: "New client intake" }] }),
 };
