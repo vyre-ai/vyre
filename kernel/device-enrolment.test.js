@@ -17,6 +17,7 @@ test("a device removed from a Space has no person chain in it, and keeps its cha
   const person = async (c) => c.hops[0].actor.kind === "person" && c.hops.length === 1;
   assert.equal(await person(await h.chain({ kernelFacts: facts("dev1") })), true, "enrolled: the person's chain");
   assert.equal(await person(await h.chainIn(OTHER, { kernelFacts: facts("dev1") })), true, "enrolled in the other Space too");
+  await assert.rejects(() => h.chain({ kernelFacts: { kind: "socket", surface: "deck", uid: 31337, pid: 1, inside_model_process: false, capsule_verified: true } }), { code: "not_a_member" }, "facts the kernel refuses: no chain, never the service chain");
   removed.add(`${SPACE}|dev1`);
   await assert.rejects(() => h.chain({ kernelFacts: facts("dev1") }), { code: "not_a_member", message: /no longer part of this Space/ }, "removed from this Space: refused, never the module's service chain");
   const svc = await h.chain({});
