@@ -173,7 +173,7 @@ function spawnDaemon(home, timersFile, gcFile) {
   const entry = path.join(REPO, "core", "daemon", "main.js");
   const hook = path.join(HERE, "lib", "timer-hook.mjs");
   const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
-  const child = spawn(process.execPath, ["--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
+  const child = spawn(process.execPath, [...(process.env.VYRE_PERF_NODEARGS ? process.env.VYRE_PERF_NODEARGS.split(" ") : []), "--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
     env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
     stdio: ["ignore", "pipe", "pipe"],
