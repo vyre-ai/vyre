@@ -210,6 +210,8 @@ test("a step checked by an agent says so in words, not a person", () => {
 test("a wait can go until a date: before, after or at, and it comes back the same", () => {
   assert.equal(stepSummary(REMINDER_DRAFT.steps[0], O, REMINDER_DRAFT), "Wait until 1 day before {Appointment time}");
   assert.equal(stepSummary(REMINDER_DRAFT.steps[2], O, REMINDER_DRAFT), "Wait until 2 hours before {Appointment time}");
+  assert.equal(stepSummary(REMINDER_DRAFT.steps[1], O, REMINDER_DRAFT), "Text {Phone}");
+  assert.equal(stepSummary({ id: "s", kind: "sms", to: "{phone}", body: "x" }, O, { name: "f", trigger: { kind: "form", path: "p" }, steps: [] }), "Text the number from the form");
   const w = toDefinition(REMINDER_DRAFT).steps;
   assert.deepEqual(w[0], { id: "wait1", kind: "wait", until: { expr: "trigger.after.starts_at" }, offset_ms: -86_400_000 });
   assert.equal(w[2].offset_ms, -7_200_000);

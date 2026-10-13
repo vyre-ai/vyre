@@ -11,7 +11,7 @@ import { Text } from "../components/Text";
 import { ContextBox } from "./ContextBox";
 import { ValueField } from "./ValueField";
 import { FormulaBox } from "./FormulaBox";
-import { OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, whoChoices, whoWords } from "./logic.js";
+import { dateChoices, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, condExpr, firstStageTasks, whoChoices, whoWords } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -198,7 +198,7 @@ export function StepEditor({ s, setStep, draft, options }: { s: DraftStep; setSt
           <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
           {s.mode === "until" ? (
             <>
-              <ValueField label="Date to wait for" value={s.field ?? ""} onChange={(field) => set({ field })} placeholder="Insert the date field, such as the appointment" draft={draft} stepId={s.id} options={options} />
+              <Select label="Date to wait for" value={s.field ?? ""} options={dateChoices(draft, s.id, options)} placeholder="Choose the date, such as the appointment" onChange={(field) => set({ field })} />
               {s.when === "at" ? null : (
                 <>
                   <Field label="Amount" value={String(s.amount ?? 1)} onChangeText={(amount) => set({ amount: Number(amount) || 1 })} kind="number" />
