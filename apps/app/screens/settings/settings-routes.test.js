@@ -8,8 +8,6 @@ import { settingsGroups } from "./logic.js";
 import { SETTINGS_ITEMS } from "../shell/settings-items.js";
 import { REPO_URL, starNote, starPlan } from "./about-model.js";
 
-/** Entries whose screen lands from another branch: tags-wire adds the /u/tags index (a5e1b796e). Remove it from here once that merges. */
-const EXPECTED_FROM_TAGS_WIRE = ["/u/tags"];
 const APP = new URL("../../app", import.meta.url).pathname;
 
 /** True when expo-router would find a screen for this path: a file, a folder's index, or a [dynamic] sibling. */
@@ -48,7 +46,6 @@ test("every row on the Settings home opens a screen that exists", () => {
 test("every entry in the Settings panel opens a screen that exists, and has a place on the home", () => {
   const home = settingsGroups("Space").flatMap((g) => g.rows).map((r) => r[2]);
   for (const i of SETTINGS_ITEMS) {
-    if (EXPECTED_FROM_TAGS_WIRE.includes(i.href)) continue;
     assert.ok(resolves(i.href), `${i.label} points at ${i.href}, which has no screen`);
     assert.ok(home.includes(i.href) || i.href === "/u/spaces", `${i.label} (${i.href}) is in the panel but not on the Settings home`);
   }
