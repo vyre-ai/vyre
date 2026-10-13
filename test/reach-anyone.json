@@ -1725,10 +1725,6 @@
    "module": "vault",
    "reason": "read-only: names and states, never a value"
   },
-  "vault.clipboard.clear": {
-   "module": "vault",
-   "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
-  },
   "vault.codes": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
@@ -1761,33 +1757,13 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.device.join": {
-   "module": "vault",
-   "reason": "callers list in code (cli, local): no model caller"
-  },
-  "vault.device.list": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
   "vault.device.unlock": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.devices": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
-  },
   "vault.edit": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
-  },
-  "vault.emergency.list": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
-  "vault.env.scan": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
   },
   "vault.fill.native": {
    "module": "vault",
@@ -1813,10 +1789,6 @@
    "module": "vault",
    "reason": "read-only: tailnet policy status per pass holder, never a value"
   },
-  "vault.health": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
   "vault.history": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
@@ -1841,10 +1813,6 @@
    "module": "vault",
    "reason": "read-only: names and states, never a value"
   },
-  "vault.items.names": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
-  },
   "vault.kit": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
@@ -1852,10 +1820,6 @@
   "vault.list": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
-  },
-  "vault.match": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
   },
   "vault.mcp.pass.list": {
    "module": "vault",
@@ -1881,10 +1845,6 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.mention.search": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
-  },
   "vault.migrate-key": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
@@ -1892,10 +1852,6 @@
   "vault.move": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
-  },
-  "vault.need": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
   },
   "vault.pass.accept": {
    "module": "vault",
@@ -1905,17 +1861,9 @@
    "module": "vault",
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
   },
-  "vault.pass.list": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
   "vault.pending": {
    "module": "vault",
    "reason": "read-only: lists what waits for a person, never a value"
-  },
-  "vault.people": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
   },
   "vault.people.verify": {
    "module": "vault",
@@ -1932,10 +1880,6 @@
   "vault.relay": {
    "module": "vault",
    "reason": "owner check: the owner's Vyre checks the pass before adding any value; callers list in code"
-  },
-  "vault.remind.run": {
-   "module": "vault",
-   "reason": "callers list in code (cli, deck, local): no model caller"
   },
   "vault.render": {
    "module": "vault",
@@ -1969,10 +1913,6 @@
    "module": "vault",
    "reason": "read-only: names and states, never a value"
   },
-  "vault.session.close": {
-   "module": "vault",
-   "reason": "taking access away is always allowed: it closes a fill session and grants nothing (surfaces.test.js pins it offered to Claude); the session id is the guard"
-  },
   "vault.session.open": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
@@ -1985,25 +1925,13 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.ssh.approvals": {
-   "module": "vault",
-   "reason": "callers list in code (cli, local): no model caller"
-  },
   "vault.ssh.approve": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.ssh.generate": {
-   "module": "vault",
-   "reason": "callers list in code (cli, local, mcp): the private key is never returned and using it needs a person's approval (vault.ssh.approve)"
-  },
   "vault.ssh.keys": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
-  },
-  "vault.state": {
-   "module": "vault",
-   "reason": "callers list limits it to the person's surfaces and their own devices (cli, local, deck, capsule, mobile, device); it returns the vault's lock state only"
   },
   "vault.sweep": {
    "module": "vault",
@@ -2024,18 +1952,6 @@
   "vault.update": {
    "module": "vault",
    "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
-  },
-  "vault.uses": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
-  },
-  "vault.vaults.create": {
-   "module": "vault",
-   "reason": "callers list in code (cli, local): no model caller"
-  },
-  "vault.vaults.list": {
-   "module": "vault",
-   "reason": "read-only: names and states, never a value"
   },
   "vault.vaults.rotate": {
    "module": "vault",
@@ -2508,62 +2424,6 @@
   "mcpconn.guide": {
    "module": "mcpconn",
    "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
-  },
-  "vault.me.account.create": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.account.lock": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.account.reset": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.account.status": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.account.unlock": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.get": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.list": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.put": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.remove": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.store.get": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.store.list": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.store.put": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.store.remove": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
-  },
-  "vault.me.update": {
-   "module": "vault",
-   "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
   },
   "google.drive.read": {
    "module": "google",

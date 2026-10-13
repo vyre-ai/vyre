@@ -317,6 +317,21 @@ export const DECLARED_SINCE = Object.freeze({
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "vault.item": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.search": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.list": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.history": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.identity": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.generate": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.request": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.ssh.keys": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.rotation": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.grants.status": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.fingerprint": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.caps": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.session.status": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.connections.list": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
+  "vault.connections.revoke": "judged by the vault's own per-item grants on the chain; an agent never receives a value",
   "mcp.servers": "a read of the MCP servers set up; an agent acts within its person's reach, judged on the chain",
   "mcp.tools": "a read of the tools an MCP server offers; an agent acts within its person's reach, judged on the chain",
   "mcp.call": "calls a tool on one of the person's MCP servers; the server judges the call; an agent acts within its person's reach, judged on the chain",
