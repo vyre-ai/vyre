@@ -25,6 +25,17 @@ export function connectionsSource(call: Call) {
     disconnect: (name: string) => ask("connectors.disconnect", { name }),
     /** Who can use a connection that exists; a null scope is the default. */
     setScope: (name: string, scope: Scope) => ask("connectors.scope", { name, scope }),
+    // The firm's sending service (comms.*): the key goes to the vault once, through vault.connect (the person's presence), and is never read back.
+    async sending(): Promise<{ configured: boolean; provider: string; label: string; from: string; domain: string; next: string }> {
+      const r = await ask<Record<string, unknown>>("comms.service.get", {});
+      return { configured: r?.configured === true, provider: String(r?.provider ?? ""), label: String(r?.label ?? ""), from: String(r?.from ?? ""), domain: String(r?.domain ?? ""), next: String(r?.next ?? "") };
+    },
+    saveSending: (fields: Record<string, string>) => ask("vault.connect", { module: "comms", need: "sending", fields }),
+    removeSending: () => ask("vault.delete", { name: "comms-sending" }),
+    async testSending(to: string): Promise<{ label: string; to: string }> {
+      const r = await ask<{ label?: string; to?: string }>("comms.service.test", { to });
+      return { label: String(r?.label ?? ""), to: String(r?.to ?? to) };
+    },
     // MCP servers
     async servers() { return pickServers(await ask("mcp.servers")); },
     async addServer(input: Record<string, unknown>) { const r = await ask<{ test?: unknown }>("mcp.add", input); return { test: r?.test ? pickTest(r.test) : null }; },

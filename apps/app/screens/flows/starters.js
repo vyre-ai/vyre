@@ -7,6 +7,7 @@ export const SAMPLE_OPTIONS = {
   types: [
     { name: "refund_requests", label: "RefundRequests", fields: [{ name: "client", label: "Client" }, { name: "email", label: "Email" }, { name: "amount", label: "Amount" }, { name: "reason", label: "Reason" }] },
     { name: "client", label: "Client", fields: [{ name: "name", label: "Name" }, { name: "email", label: "Email" }, { name: "plan", label: "Plan" }] },
+    { name: "appointment", label: "Appointment", fields: [{ name: "client", label: "Client" }, { name: "phone", label: "Phone" }, { name: "email", label: "Email" }, { name: "starts_at", label: "Appointment time" }] },
     { name: "matter", label: "Matter", fields: [{ name: "client", label: "Client" }, { name: "stage", label: "Stage" }] },
   ],
   recordsOf: async (type) => [{ urn: `vyre://sample/${type}/r1`, label: "Pat Lopez" }, { urn: `vyre://sample/${type}/r2`, label: "Sam Ortiz" }],
@@ -58,5 +59,17 @@ export const ATP_DRAFT = {
     { id: "create1", kind: "create", type: "client", fields: [{ field: "Name", value: "{name}" }, { field: "Email", value: "{email}" }] },
     { id: "project2", kind: "project", template: "tpl_atp", name: "", link: "create1" },
     { id: "email3", kind: "email", to: "{email}", subject: "Welcome to your AI Transformation Partnership", body: "Hello, your ATP project is open and your first call is being booked." },
+  ],
+};
+
+/** @type {import("../../ui/flows/logic.js").Draft} */
+export const REMINDER_DRAFT = {
+  name: "Appointment reminder", group: "Clients",
+  trigger: { kind: "created", type: "appointment" },
+  steps: [
+    { id: "wait1", kind: "wait", mode: "until", field: "{after.starts_at}", when: "before", amount: 1, unit: "days" },
+    { id: "sms2", kind: "sms", to: "{after.phone}", body: "Hello {after.client}, a reminder that your appointment is tomorrow." },
+    { id: "wait3", kind: "wait", mode: "until", field: "{after.starts_at}", when: "before", amount: 2, unit: "hours" },
+    { id: "sms4", kind: "sms", to: "{after.phone}", body: "Hello {after.client}, your appointment starts in 2 hours." },
   ],
 };

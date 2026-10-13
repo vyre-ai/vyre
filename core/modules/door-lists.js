@@ -83,7 +83,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "bridges.merge.links", "bridges.propose-projection", "bridges.propose-reference", "bridges.propose-view", "bridges.resolve", "bridges.revoke", "bridges.view.read",
   "chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
   "commands.list",
-  "comms.send",
+  "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
   "computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",

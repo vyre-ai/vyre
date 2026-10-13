@@ -64,3 +64,20 @@ test("a chat's reply mode: anyone in it sets it, it is a logged frame everyone h
   const outsider = await r.call("c2", "dave");
   await assert.rejects(async () => r.groups.replyMode({ chat: "c1", mode: "mention" }, outsider));
 });
+
+test("a chat made with people and no AI starts on mention, as a default frame; a chat with an AI, or of one person, starts unset", async t => {
+  const r = rig(t);
+  const modes = (/** @type {string} */ grp) => r.logs.get(grp).read(0).filter((/** @type {any} */ f) => f.type === "chat.reply-mode");
+  r.fk.create("p1", ["bob", "carol"], []);
+  await r.call("p1", "bob");
+  await r.call("p1", "carol");
+  assert.equal(modes("p1").length, 1, "one default frame, not one per call");
+  assert.equal(modes("p1")[0].data.mode, "mention");
+  assert.equal(modes("p1")[0].data.default, true, "marked as a default so the chat shows no line for it");
+  r.fk.create("p2", ["bob", "carol"], ["kit"]);
+  await r.call("p2", "bob");
+  assert.equal(modes("p2").length, 0, "an AI-centred chat is unset");
+  r.fk.create("p3", ["bob"], []);
+  await r.call("p3", "bob");
+  assert.equal(modes("p3").length, 0, "a chat of one person is unset");
+});

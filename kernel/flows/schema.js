@@ -81,7 +81,7 @@ export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
-  wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
+  wait: ["for_ms", "until", "offset_ms", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills", "followers", "notes", "brief"],
   call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels"], extract: ["input", "fields"],
@@ -169,6 +169,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         if (given.length !== 1) out.push({ path: p, message: "a wait has exactly one of for_ms, until or event" });
         if (s.for_ms !== undefined && !(Number.isInteger(s.for_ms) && s.for_ms >= 0)) out.push({ path: `${p}.for_ms`, message: "for_ms is a whole number of milliseconds" });
         if (s.until !== undefined) value("until");
+        if (s.offset_ms !== undefined && s.until === undefined) out.push({ path: `${p}.offset_ms`, message: "offset_ms moves an until time, so give an until" });
+        if (s.offset_ms !== undefined && !Number.isSafeInteger(s.offset_ms)) out.push({ path: `${p}.offset_ms`, message: "offset_ms is a whole number of milliseconds, negative for before" });
         if (s.event !== undefined && (typeof s.event !== "string" || !EVENT_RE.test(s.event))) out.push({ path: `${p}.event`, message: "an event pattern is noun.past-verb or noun.*" });
         exprOk("where");
         if (s.event !== undefined && s.timeout_ms === undefined) out.push({ path: `${p}.timeout_ms`, message: "waiting for an event needs a timeout" });
