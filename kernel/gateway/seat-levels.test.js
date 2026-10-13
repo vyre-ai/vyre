@@ -11,7 +11,7 @@ import { derive } from "../../lib/databox.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { PROJECT, TEAM_MEMBER, TASK } from "../../records/core-types.js";
 
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", EVE = "per_eve", VIK = "per_vik", LEE = "per_lee", GUS = "per_gus", FAY = "per_fay", NEW = "per_new";
+const SPACE = "spc_aaaaaaaaaaaa", ADA = "per_ada", OWNER = "per_owner", BOB = "per_bob", EVE = "per_eve", VIK = "per_vik", LEE = "per_lee", GUS = "per_gus", FAY = "per_fay", NEW = "per_new";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const used = new Set();
 const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
@@ -39,7 +39,11 @@ async function rig() {
   const drive = sealedDrive(raw, { projectFiles: true, keysFor: c => (c.startsWith("project-files:") ? new Keys(c, new Map([[1, derive(master, `project-files key ${c}`)]]), derive(master, `project-files names ${c}`), 1) : null), projectKeysFor: () => null });
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), presence, drive });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
-  for (const [p, role] of [[BOB, "member"], [EVE, "member"], [VIK, "member"], [LEE, "member"], [GUS, "temp"], [FAY, "member"], [NEW, "member"]]) { const r = { person: p, role }; await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  for (const [p, role] of [[BOB, "member"], [EVE, "member"], [VIK, "member"], [LEE, "member"], [ADA, "admin"], [GUS, "temp"], [FAY, "member"], [NEW, "member"]]) {
+    // a Guest (role temp) is scoped to the types it works in and expires
+    const r = role === "temp" ? { person: p, role, scope: ["project", "team-member", "memo", "task"].map(t => `vyre://${SPACE}/${t}/*`), expires: Date.now() + 3_600_000 } : { person: p, role };
+    await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) });
+  }
   const R = k.gateway.records, T = k.gateway.ask, D = k.gateway.drive;
   await R.define(owner, { add_types: [PROJECT, TEAM_MEMBER, TASK, MEMO].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })) });
   const person = id => ({ actor: { kind: "person", id, space: SPACE } });
@@ -49,8 +53,10 @@ async function rig() {
   await seat(VIK, { level: "viewer" });
   await seat(LEE, { level: "lead" });
   await seat(GUS, { level: "lead" });        // a Guest, made lead
+  await seat(BOB, { level: "contributor" }); // the project's own owner also has a row
+  await seat(ADA, { level: "viewer" });      // an admin with a viewer seat: a seat never narrows the Space's staff
   const dev = (p, id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person: p, path: "direct" });
-  const chains = { owner, bob: dev(BOB, "d-b"), eve: dev(EVE, "d-e"), vik: dev(VIK, "d-v"), lee: dev(LEE, "d-l"), gus: dev(GUS, "d-g"), fay: dev(FAY, "d-f") };
+  const chains = { owner, bob: dev(BOB, "d-b"), eve: dev(EVE, "d-e"), vik: dev(VIK, "d-v"), lee: dev(LEE, "d-l"), ada: dev(ADA, "d-a"), gus: dev(GUS, "d-g"), fay: dev(FAY, "d-f") };
   const ask = (by, doer, project) => T.request(by, { title: "t", doer: { kind: "person", id: doer, space: SPACE }, output: { kind: "note" }, ...(project ? { project } : {}) });
   return { k, R, T, D, raw, owner, chains, p1, person, seat, ask, dir: `Projects/${p1.id}/files` };
 }
@@ -114,10 +120,27 @@ test("a level never widens the Space role: a Guest who is a lead cannot manage t
   await refused(R.create(chains.fay, "team-member", { name: "fay", actor: person(FAY), kind: "person", level: "lead", project: { urn: p1.urn } }), /owner or a lead/);
 });
 
-test("an owner or admin is not narrowed by a viewer seat on a project (they can change the seat themselves)", async () => {
-  const { R, chains, p1, seat, person } = await rig();
-  const owner = chains.owner;
+test("an admin or the Space owner with a viewer seat is not narrowed: records, tasks, files and team writes go through as a real admin write", async () => {
+  const { R, D, chains, p1, person, ask, dir, seat } = await rig();
   await seat(OWNER, { level: "viewer" });
-  assert.ok(await R.create(owner, "memo", { body: "owner writes" }, { attrs: { project: p1.id } }), "the Space owner still writes");
-  void person;
+  for (const who of [chains.ada, chains.owner]) {
+    const memo = await R.create(who, "memo", { body: "staff writes" }, { attrs: { project: p1.id } });
+    assert.ok(await R.update(who, "memo", memo.id, { body: "again" }, memo.version), "a record");
+    assert.ok(await ask(who, FAY, p1.urn), "a task in the project");
+    assert.ok(await D.put(who, `${dir}/staff-${who === chains.ada ? "a" : "o"}.txt`, enc("x")), "a file");
+  }
+  assert.ok(await R.create(chains.ada, "team-member", { name: "n", actor: person(NEW), kind: "person", project: { urn: p1.urn } }), "the team");
+});
+
+test("a level outside lead, contributor and viewer is refused on write; a lead may seat another lead; a lead's change to the project owner's own row changes nothing for the owner", async () => {
+  const { R, chains, p1, person } = await rig();
+  await assert.rejects(R.create(chains.lee, "team-member", { name: "x", actor: person(NEW), kind: "person", level: "owner", project: { urn: p1.urn } }));
+  await assert.rejects(R.create(chains.lee, "team-member", { name: "x", actor: person(NEW), kind: "person", level: "admin", project: { urn: p1.urn } }));
+  const lead = await R.create(chains.lee, "team-member", { name: "x", actor: person(NEW), kind: "person", level: "lead", project: { urn: p1.urn } });
+  assert.equal(lead.data.level, "lead", "a lead may seat another lead (the rule says so)");
+  // the owner's own row demoted to viewer by a lead: the project's owner is never narrowed by a row
+  const row = (await R.query(chains.owner, "team-member", { filter: { field: "name", op: "eq", value: BOB }, page: { limit: 1 } })).rows[0];
+  await R.update(chains.lee, "team-member", row.id, { level: "viewer" }, row.version);
+  const memo = await R.create(chains.bob, "memo", { body: "owner still writes" }, { attrs: { project: p1.id } });
+  assert.ok(await R.update(chains.bob, "memo", memo.id, { body: "yes" }, memo.version), "the owner is not a viewer");
 });

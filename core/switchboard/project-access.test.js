@@ -64,7 +64,7 @@ test("the project the session works in comes first, and a person on more than 64
   assert.deepEqual(await projectsFor(sb(), { person: "ben" }, { cwd: "/work/projects/gamma/docs" }), ["gamma", "alpha"]);
   const many = Array.from({ length: 70 }, (_, i) => ({ slug: `p${i}`, home: `/work/projects/p${i}` }));
   const log = /** @type {string[]} */ ([]), s = sb({ log });
-  s.deps.call = async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: many } } : { data: { exists: true, owner: true, team: false } };
+  s.deps.call = async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: many } } : { data: { exists: true, owner: true, team: false, level: "lead" } };
   const got = await projectsFor(s, { person: "ben" }, { cwd: "/work/projects/p69" });
   assert.equal(got.length, 64); assert.equal(got[0], "p69", "the one it works in made the cut");
   assert.match(log.join(" "), /70 projects/);

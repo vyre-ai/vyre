@@ -15,7 +15,7 @@
 
 import { KernelError } from "../core/errors.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
-import { levelOfSeat, VIEWER_WORDS } from "../../lib/seat-levels.js";
+import { SEAT_LEVELS, levelOfSeat, VIEWER_WORDS } from "../../lib/seat-levels.js";
 
 /**
  * The services whose one-hop chain writes these types for the whole Space, each trusted because the service checks the person itself BEFORE it writes (a service not listed here is judged as acting for the
@@ -109,6 +109,7 @@ export async function mayWrite(chain, type, row, patch, ctx) {
       if (!ref) throw no("a team seat belongs to a project. An owner or admin writes one with no project.");
       if (!manages(await ctx.project(ref))) throw no("only the project's owner or a lead on it, or an owner or admin, changes who is on its team. Ask one of them.");
     }
+    if (ctx.op !== "remove" && p.level !== undefined && p.level !== null && p.level !== "" && !SEAT_LEVELS.includes(p.level)) throw no(`a level is one of ${SEAT_LEVELS.join(", ")}.`);
     // a project's owner adds a PERSON to her own project as a plain member. Anything that routes work to the seat (role, skills), an assistant's brief, or an assistant or agent seat is for an owner or admin.
     const seatKind = Object.prototype.hasOwnProperty.call(p, "kind") ? p.kind : data.kind;
     const actorKind = Object.prototype.hasOwnProperty.call(p, "actor") ? (p.actor && p.actor.actor ? p.actor.actor.kind : null) : (data.actor && data.actor.actor ? data.actor.actor.kind : null);
