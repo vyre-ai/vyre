@@ -1,6 +1,7 @@
 // Flow chats: one chat per Flow, each wake (one agent step run) a thread inside it, shown in one scroll oldest to newest with a divider per wake. Pure: the screens only draw what this returns.
 // The thread's origin names are read in ONE place (markerOf) so the names agent-wake settles on change one function.
 import { threadStatus } from "../../../../lib/thread-status.js";
+import { localParts, systemZone, validZone } from "../../../../lib/time/index.js";
 
 export type Marker = { flow: string; run: string; step: string; task?: string; record?: string; flowName?: string; stepName?: string; runNo?: string; recordName?: string; approver?: string };
 export type WakeState = "running" | "waiting" | "done" | "failed" | "paused";
@@ -31,7 +32,7 @@ export function stateOf(row: any): WakeState {
   return canon === "failed" ? "failed" : canon === "starting" || canon === "working" ? "running" : canon === "paused" || canon === "stopped" ? "paused" : "done";
 }
 
-const clock = (at: number, zone?: string) => new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, ...(zone ? { timeZone: zone } : {}) });
+const clock = (at: number, zone?: string) => { const p = localParts(at, zone && validZone(zone) ? zone : systemZone()); return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`; };
 /** A short run label: its number when the box gives one, else the id's tail. */
 const runLabel = (m: Marker) => `Run ${m.runNo || m.run.replace(/^run[_-]?/, "").slice(-6)}`;
 

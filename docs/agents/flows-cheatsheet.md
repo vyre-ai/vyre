@@ -102,7 +102,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).
 - Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.
 - `ask` goes to `person:<id>` or `role:<name>`, never an agent.
-- Email: `call action=comms.email resource=vyre://space/comms input={to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.
+- Email: `tools_call comms.email {to, subject, text, replyTo, from}`; `from` is the firm's own address; held for a yes.
 - A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
 ## If it can fail

@@ -88,7 +88,7 @@ test("a wake that fails marks the task stuck as the agent, with the error in pla
   const stuck = /** @type {any[]} */ ([]), marked = /** @type {any[]} */ ([]);
   const gw = { ask: { get: async () => task(), edit: async () => {}, stuck: async (c, id, info) => { stuck.push({ c, id, info }); } } };
   const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), agentChain: t => ({ for: t.doer.id }), clock: () => NOW, log: () => {},
-    callModule: async (tool, input) => { if (tool === "agents.wake-failed") { marked.push(input); return {}; } throw new Error("OAuth session expired sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"); } });
+    callModule: async (tool, input) => { if (tool === "agents.wake-failed") { marked.push(input); return {}; } throw new Error("OAuth session expired " + "sk-ant-" + "api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"); } });
   await onEvent(created("t1"));
   assert.equal(stuck.length, 1);
   assert.deepEqual(stuck[0].c, { for: "juno" });

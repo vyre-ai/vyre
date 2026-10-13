@@ -46,6 +46,7 @@ export { Menu } from "./components/Menu";
 export type { MenuItem } from "./components/Menu";
 export { showToast, comingSoon, ToastHost } from "./components/Toast";
 export { Table } from "./components/Table";
+export { useVirtualRows } from "./lib/useVirtualRows";
 export type { Column, TableProps } from "./components/Table";
 export { Board } from "./components/Board";
 export type { BoardColumn, BoardProps } from "./components/BoardStacked";

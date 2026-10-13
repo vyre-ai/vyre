@@ -1,6 +1,8 @@
 // The pure half of Sites on the real box: publish.list, publish.status, publish.plan and the held-act answers (core/publish, lib/publish) as the lines the screens show.
 // A site is every deployment of one name; each deployment is one version, in a stage: Draft, Preview, Approved, Production, Retired.
 
+import { localParts, systemZone } from "../../../../lib/time/index.js";
+
 export type Domain = { host: string; status: string };
 export type Dep = { id: string; name: string; version: number; stage: string; url: string | null; domains: Domain[] };
 export type Status = Dep & { previous: string | null; build_digest: string | null; secrets: { name: string; class: string; use: string[] }[]; ungranted_env: string[]; approved_by: unknown; published_at: number | null; sealed_check?: string };
@@ -145,8 +147,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** A moment as "13 Oct, 06:12" in the viewer's own clock. */
 export function whenText(at: number | null | undefined): string {
   if (typeof at !== "number" || !isFinite(at)) return "";
-  const d = new Date(at);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const p = localParts(at, systemZone());
+  return `${p.day} ${MONTHS[p.month - 1]}, ${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
 /** A person's name from records.actors (the app's one source of names), "You" for the viewer, "Someone" when the box has no name. A placeholder name that is only the id does not count. */
 export function approverName(actors: unknown, id: string, me: string | null): string {
