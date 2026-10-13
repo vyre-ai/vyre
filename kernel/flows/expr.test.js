@@ -129,3 +129,12 @@ test("expr: first reads the main address of a list field", () => {
   assert.equal(run("\"To \" + first(a) + \".\"", { a: ["a@x.co"] }), "To a@x.co.");
   assert.equal(run("\"To \" + first(a) + \".\"", { a: [] }), "To .", "an empty list reads as empty text");
 });
+
+test("expr: a move that leaves the range of a time gives nothing, never a wrong time", () => {
+  assert.equal(run("addtime(t, 1, \"hours\")", { t: 8.64e15 }), null, "one hour past the last time");
+  assert.equal(run("addtime(t, -1, \"days\")", { t: -8.64e15 }), null);
+  assert.equal(run("addtime(t, 1000000000, \"months\")", { t: 0 }), null);
+  assert.equal(run("addtime(t, 99999999999, \"weeks\")", { t: 0 }), null);
+  assert.equal(run("format(t, \"date\", \"UTC\", 1, \"hours\")", { t: 8.64e15 }), String(8.64e15), "format leaves the time as given");
+  assert.equal(run("addtime(t, 1, \"hours\")", { t: 8.64e15 - 3_600_000 }), 8.64e15, "the last time itself is fine");
+});
