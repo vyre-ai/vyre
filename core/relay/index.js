@@ -944,10 +944,10 @@ export default {
       run: async input => {
         const loc = String(input.loc);
         if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
-        await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink();
-        if (link) await link.ready();
-        if (input.on === false) link?.signinUnwatch(loc); else link?.signinWatch(loc);
-        return { watching: input.on !== false, supported: Boolean(link && link.signins()) };
+        // A watch only listens: it never turns the relay on or starts its link. With the relay off there is nothing to watch on; the wink module asks again when relay.connected fires.
+        if (!settings().enabled || !link) return { watching: false, supported: false };
+        if (input.on === false) link.signinUnwatch(loc); else link.signinWatch(loc);
+        return { watching: input.on !== false, supported: link.signins() };
       },
     });
     ctx.tool("relay.code.alloc", {
