@@ -374,7 +374,7 @@ export default {
         // the chain cannot be read and the hour of grace is over: refused, not removed (the device is fine; it connects again when the chain can be read)
         if (st.state !== "ok") throw new Error("this device could not be checked against your identity list just now; try again in a few minutes");
         // a lapsed session renews by reconnecting: the grant is made again unless the device holds one
-        await ctx.call("presence.person.chain-grant", { device: id }).catch(() => null);
+        await ctx.call("presence.person.chain-grant", { device: id }).catch(e => ctx.log(`relay: no session grant for chain device ${id} at reconnect: ${String(e && e.message || e).slice(0, 120)}`));
       }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       // Paired by the old code anyone could hold, and never marked as the owner's: refused. The device hears the relay's "device removed" (the only reason a relay passes on), which sends its app to the pair-again screen;
