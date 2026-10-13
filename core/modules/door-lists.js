@@ -20,6 +20,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
+  // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
+  "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
   "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.control", "flows.define", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
   "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
@@ -81,7 +83,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "bridges.merge.links", "bridges.propose-projection", "bridges.propose-reference", "bridges.propose-view", "bridges.resolve", "bridges.revoke", "bridges.view.read",
   "chrome.click", "chrome.open", "chrome.screenshot", "chrome.snapshot", "chrome.type",
   "commands.list",
-  "comms.send",
+  "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
   "computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
@@ -106,6 +108,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.drive.share", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
   "files.drop.meta", "files.drop.pending", "files.drop.put", "files.drop.register", "files.drop.targets", "files.drop.unregister", "files.fetch", "files.mentions.search",
   "files.preview", "files.recent", "files.search", "files.stat",
+  // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
+  "files.linked.mentions.resolve",
   "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
   "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.request", "gate.revise", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
@@ -263,10 +267,15 @@ export const PLUMBING = Object.freeze(new Set([
 /**
  * The outward tools (the registry's `outward` flag, the one test/outward-flags reads) that stay on MEMBER_MAY, each with whose yes a member's action waits for and why that is right for a member. A member's session that reaches an outward
  * tool lands a held card in the OWNER's approvals worded as her assistant's request (measured on mail.send and files.drive.upload), so an outward tool is not on MEMBER_MAY by its name: it is here, with a reason, or it is owner-only.
- * Empty today. The drift test fails for an outward tool on MEMBER_MAY that is not a key here, and for a key here that is not an outward tool on MEMBER_MAY.
+ * The drift test fails for an outward tool on MEMBER_MAY that is not a key here, and for a key here that is not an outward tool on MEMBER_MAY.
  * @type {Readonly<Record<string, string>>}
  */
-export const MEMBER_OUTWARD = Object.freeze({});
+export const MEMBER_OUTWARD = Object.freeze({
+  "files.linked.link": "the owner's yes: a link points the Space at a folder at a source, and the assistant's request lands as a held card in the owner's approvals; her own call from her device needs only her.",
+  "files.linked.write": "the owner's yes for an assistant's request, held like the Space Drive's; her own save from her device goes through as her, in her own account at the source.",
+  "files.linked.rename": "the owner's yes for an assistant's request, held like the Space Drive's; her own rename goes through as her, in her own account at the source.",
+  "files.linked.delete": "the owner's yes for an assistant's request, held like the Space Drive's; her own delete goes through as her, and the source decides whether it can be got back.",
+});
 
 export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
 

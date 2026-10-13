@@ -33,6 +33,8 @@ export type ComposerProps = {
   onModel?: (id: string, slot?: string) => void;
   /** The slots in a chat with several assistants or models: each gets its own chip to switch that one's model. Fewer than two: the one model chip. */
   slots?: readonly { id: string; label: string; provider?: string | null }[];
+  /** A chat between people (set to "AI answers when mentioned", or with no AI in it): a message goes to the people and no AI answers, unless an AI is asked for that one message. The chip reads "People". */
+  peopleOnly?: boolean;
   runsOn?: "mac" | "server";
   /** Where a chat runs unless the person moved it: the chip shows only when `runsOn` differs. */
   runsOnDefault?: "mac" | "server";
@@ -81,10 +83,10 @@ const POP_ID = "composer-pop";
 function nestIcon(r: NestRow): IconName {
   if (r.trail.length === 1) return ({ projects: "projects", records: "records", files: "drive", tags: "hash", teams: "users", agents: "agents", people: "person" } as Record<string, IconName>)[r.trail[0]] ?? "hash";
   const k = (r.pick as { kind?: string } | undefined)?.kind;
-  return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
+  return k === "collection" ? "records" : k === "project" ? "projects" : k === "file" || k === "linked" ? "file" : k === "tag" ? "hash" : r.drill ? "drive" : "hash";
 }
 /** What a token in the words shows: @ a person, # by what was picked. */
-const tokenIcon = (lead: "@" | "#", kind?: string): IconName => (lead === "@" ? "mention" : kind === "collection" ? "records" : kind === "project" ? "projects" : kind === "file" ? "file" : "hash");
+const tokenIcon = (lead: "@" | "#", kind?: string): IconName => (lead === "@" ? "mention" : kind === "collection" ? "records" : kind === "project" ? "projects" : kind === "file" || kind === "linked" ? "file" : "hash");
 type Pop = null | "plus" | "files" | "vyrefiles" | "answering" | "model";
 /** An icon for a file by its name: a picture, sound, film or document. Pictures with a thumbnail show the thumbnail instead. */
 const fileIcon = (name: string): IconName => (/\.(png|jpe?g|gif|webp|heic|svg)$/i.test(name) ? "eye" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) ? "mic" : /\.(mp4|mov|webm|mkv)$/i.test(name) ? "play" : "file");
@@ -141,15 +143,16 @@ export function ChatComposer(p: ComposerProps) {
 
   const allIds = useMemo(() => slots.map((s) => s.id), [slots]);
   const dflt = slots[0]?.id;
-  const effective = answering.length ? answering : dflt ? [dflt] : [];
+  const pm = !!p.peopleOnly;
+  const effective = answering.length ? answering : dflt && !pm ? [dflt] : [];
   const ais = effective.map((id) => slots.find((s) => s.id === id)).filter(Boolean) as { id: string; label: string; provider?: string | null }[];
   const current = (p.models ?? []).find((m) => m.id === p.model);
-  const summary = slots.length ? answeringSummary(answering, slots, dflt) : current ? current.label : "Model";
+  const summary = pm && !answering.length ? "People" : slots.length ? answeringSummary(answering, slots, pm ? undefined : dflt) : current ? current.label : "Model";
 
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const closePop = () => { setPop(null); setMenuQ(""); setActive(0); input.current?.focus(); };
   const openPop = (k: Exclude<Pop, null>) => { setPop((cur) => (cur === k ? null : k)); setMenuQ(""); setActive(0); input.current?.focus(); };
-  const toggleAi = (id: string) => { const r = toggleAnswering(effective, id, allIds); setAnswering(r.length === 1 && r[0] === dflt ? [] : r); };
+  const toggleAi = (id: string) => { const r = toggleAnswering(effective, id, allIds); setAnswering(!pm && r.length === 1 && r[0] === dflt ? [] : r); };
   const askEveryone = () => setAnswering(effective.length === allIds.length ? [] : [...allIds]);
 
   const menuRows = useMemo((): Row[] => {
@@ -177,12 +180,15 @@ export function ChatComposer(p: ComposerProps) {
     if (pop === "vyrefiles") return (p.vyreFiles ?? []).map((f) => ({ key: f.id, label: f.name, sub: f.path, leading: <Icon name={fileIcon(f.name)} size={18} />, run: () => { closePop(); p.onAttachVyreFile?.(f.id); } }));
     if (pop === "answering") {
       const rows: Row[] = [];
+      if (pm) rows.push({ key: "people", group: "Who answers", label: "Just the people", sub: "No AI answers this message", leading: <Icon name="users" size={18} />, checked: !answering.length, run: () => { setAnswering([]); closePop(); } });
+      const ask = pm ? "Ask an AI for this message" : "Who answers";
       if (slots.length) {
-        if (slots.length > 1) rows.push({ key: "all", group: "Who answers", label: "Everyone", sub: "Every AI in this chat replies", leading: <Icon name="agents" size={18} />, checked: effective.length === allIds.length, hint: "Alt 0", run: askEveryone });
-        slots.forEach((sl, i) => rows.push({ key: sl.id, group: "Who answers", label: sl.label, sub: sl.id === dflt ? "Answers by default" : undefined, leading: <AiMark ai={sl} size={22} />, checked: effective.includes(sl.id), hint: i < 9 ? `Alt ${i + 1}` : undefined, run: () => toggleAi(sl.id) }));
+        if (slots.length > 1) rows.push({ key: "all", group: ask, label: "Everyone", sub: pm ? "Every AI here answers this message" : "Every AI in this chat replies", leading: <Icon name="agents" size={18} />, checked: effective.length === allIds.length, hint: "Alt 0", run: askEveryone });
+        slots.forEach((sl, i) => rows.push({ key: sl.id, group: ask, label: sl.label, sub: sl.id === dflt && !pm ? "Answers by default" : undefined, leading: <AiMark ai={sl} size={22} />, checked: effective.includes(sl.id), hint: i < 9 ? `Alt ${i + 1}` : undefined, run: () => toggleAi(sl.id) }));
       }
-      if (p.models?.length) {
-        (slots.length > 1 ? slots : [{ id: "", label: "This chat", provider: null }]).forEach((sl) => rows.push({ key: `m-${sl.id}`, group: "Model", label: slots.length > 1 ? `Model for ${sl.label}` : "Switch model", sub: slots.length > 1 ? undefined : current?.label, leading: <Icon name="spark" size={18} />, hint: "Right", run: () => { setSlotSel(sl.id || undefined); setPop("model"); setMenuQ(""); setActive(0); } }));
+      // In a chat between people the model rows wait until an AI is picked.
+      if (p.models?.length && !(pm && !answering.length)) {
+        (slots.length > 1 ? (pm ? slots.filter((sl) => answering.includes(sl.id)) : slots) : [{ id: "", label: "This chat", provider: null }]).forEach((sl) => rows.push({ key: `m-${sl.id}`, group: "Model", label: slots.length > 1 ? `Model for ${sl.label}` : "Switch model", sub: slots.length > 1 ? undefined : current?.label, leading: <Icon name="spark" size={18} />, hint: "Right", run: () => { setSlotSel(sl.id || undefined); setPop("model"); setMenuQ(""); setActive(0); } }));
       }
       return rows;
     }
@@ -373,9 +379,9 @@ export function ChatComposer(p: ComposerProps) {
   const nested = !pop && !!nestRoot;
   const crumbs = nested && nestPath.length ? [trig?.kind === "person" ? "Mention" : "Tag", ...crumbsOf(nestRoot, nestPath)] : undefined;
   const nestFooter = nested ? nestHint(nestPath.length, nestList[active]) : null;
-  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
+  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? (pm ? "AI answers only when you @mention it. Change it in chat settings." : "Applies to the next message. Right opens a model") : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
   const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "Mention" : trig?.kind === "record" ? "Tag" : undefined;
-  const aiMenu = slots.length > 1 || !!p.models?.length;
+  const aiMenu = pm || slots.length > 1 || !!p.models?.length;
 
   return (
     <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 20, paddingBottom: p.phone ? 8 : 16, paddingTop: 6 }}>
@@ -419,7 +425,7 @@ export function ChatComposer(p: ComposerProps) {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Tip label="Files" hint="Cmd U" side="top"><Tool big={big} icon="clip" label="Files: from Vyre Files or your computer" onPress={() => (p.vyreFiles && p.onAttachVyreFile ? openPop("files") : p.onAttachFile?.())} /></Tip>
             <Tip label="Mention, tag, where it runs" hint="@ # /" side="top"><Tool big={big} icon="plus" label="More: mention, tag, where it runs" onPress={() => openPop("plus")} /></Tip>
-            {aiMenu ? <Tip label="Who answers" hint="Cmd /" side="top"><AnsweringControl ais={ais.length ? ais : [{ id: "m", label: summary }]} summary={summary} open={pop === "answering" || pop === "model"} hint="Cmd /" onPress={() => openPop("answering")} /></Tip> : null}
+            {aiMenu ? <Tip label="Who answers" hint="Cmd /" side="top"><AnsweringControl people={pm && !ais.length} ais={pm && !ais.length ? [] : ais.length ? ais : [{ id: "m", label: summary }]} summary={summary} open={pop === "answering" || pop === "model"} hint="Cmd /" onPress={() => openPop("answering")} /></Tip> : null}
             <View style={{ flex: 1, minWidth: 8 }} />
             {sendBtn}
           </View>

@@ -6,12 +6,12 @@ import type { MapType, Starter } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";
 import { useKernelTypes } from "./kernel-types";
-import { TEMPLATES, buildType, templateName } from "./logic.js";
+import { TEMPLATES, buildType, templateBlurb, templateName } from "./logic.js";
 import { toKernelType } from "./real-model.js";
 
 const STARTERS: Starter[] = [
   { id: "blank", label: "Blank", blurb: "One field, Title. Add the rest yourself.", fields: ["Title"] },
-  ...TEMPLATES.filter(([id]) => id !== "blank").map(([id, label]) => ({ id, label, blurb: "A starting set of fields and stages.", fields: buildType(id, "x", false, "s").fields.map((f: any) => f.label) })),
+  ...TEMPLATES.filter(([id]) => id !== "blank").map(([id, label]) => ({ id, label, blurb: templateBlurb(id), fields: buildType(id, "x", false, "s").fields.map((f: any) => f.label) })),
 ];
 
 /** Settings, Customize: the model of the space (every record type, its counts and links), and Add a type. A type opens to its fields, groups and stages. */

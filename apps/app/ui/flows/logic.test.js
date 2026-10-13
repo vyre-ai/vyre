@@ -5,7 +5,7 @@ import { checkFlow, sourceHash } from "../../../../kernel/flows/schema.js";
 import { findStep, flat, mapStep, moveDeep, canMove, addTo, removeDeep } from "./tree.js";
 import { previewExpr } from "./preview.js";
 import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefinition, flowSentence, toDefinition, draftProblems, newStep, removeStep, moveStep, firstStageTasks, stepSummary } from "./logic.js";
-import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
+import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
   assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions, then if amount is more than 500: 1 step, otherwise 1, then 2 more steps.");
@@ -17,7 +17,7 @@ test("the ATP starter says what it does", () => {
   assert.match(s, /start a project from the ATP playbook and link it to the new Client record/);
 });
 
-for (const d of [REFUND_DRAFT, ATP_DRAFT]) {
+for (const d of [REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT]) {
   test(`${d.name} is a Flow the box accepts`, () => {
     assert.deepEqual(draftProblems(d, O), []);
     const r = checkFlow(toDefinition(d));
@@ -56,7 +56,7 @@ test("a project step shows what its first stage hands out", () => {
 });
 
 test("a stored Flow opens as a draft and saves back the same", () => {
-  for (const d of [REFUND_DRAFT, ATP_DRAFT]) {
+  for (const d of [REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT]) {
     const stored = toDefinition(d);
     const back = fromDefinition(stored);
     assert.equal(back.steps.some((s) => s.kind === "advanced"), false, "every step the palette wrote is understood");
@@ -205,4 +205,27 @@ test("Send with picks the sending service, and the Web step names a vault connec
 
 test("a step checked by an agent says so in words, not a person", () => {
   assert.match(stepSummary({ id: "a", kind: "assign", to: "role:attorney", title: "Draft", checker: "agent:research" }, O), /checked by the Research agent, not a person/);
+});
+
+test("a wait can go until a date: before, after or at, and it comes back the same", () => {
+  assert.equal(stepSummary(REMINDER_DRAFT.steps[0], O, REMINDER_DRAFT), "Wait until 1 day before {Appointment time}");
+  assert.equal(stepSummary(REMINDER_DRAFT.steps[2], O, REMINDER_DRAFT), "Wait until 2 hours before {Appointment time}");
+  assert.equal(stepSummary(REMINDER_DRAFT.steps[1], O, REMINDER_DRAFT), "Text {Phone}");
+  assert.equal(stepSummary({ id: "s", kind: "sms", to: "{phone}", body: "x" }, O, { name: "f", trigger: { kind: "form", path: "p" }, steps: [] }), "Text the number from the form");
+  const w = toDefinition(REMINDER_DRAFT).steps;
+  assert.deepEqual(w[0], { id: "wait1", kind: "wait", until: { expr: "trigger.after.starts_at" }, offset_ms: -86_400_000 });
+  assert.equal(w[2].offset_ms, -7_200_000);
+  const mk = (when, amount, unit) => ({ name: "x", trigger: REMINDER_DRAFT.trigger, steps: [{ id: "w", kind: "wait", mode: "until", field: "{after.starts_at}", when, amount, unit }] });
+  assert.equal(toDefinition(mk("after", 3, "hours")).steps[0].offset_ms, 3 * 3_600_000);
+  assert.equal("offset_ms" in toDefinition(mk("at", 1, "hours")).steps[0], false);
+  for (const d of [mk("before", 90, "minutes"), mk("after", 2, "days"), mk("at", 1, "hours")]) {
+    const def = toDefinition(d);
+    assert.deepEqual(checkFlow({ format: 1, name: "t", authorship: "human", trigger: { on: "event", event: "appointment.created" }, ...def }), []);
+    const back = fromDefinition(def);
+    assert.equal(back.steps[0].kind, "wait");
+    assert.deepEqual(toDefinition(back), def);
+  }
+  assert.equal(draftProblems(mk("before", 1, "days"), O).length, 0);
+  assert.ok(draftProblems({ ...mk("before", 1, "days"), steps: [{ id: "w", kind: "wait", mode: "until", field: "", when: "before", amount: 1, unit: "days" }] }, O).length > 0);
+  assert.equal(newStep("wait", REMINDER_DRAFT, O).mode, "for");
 });

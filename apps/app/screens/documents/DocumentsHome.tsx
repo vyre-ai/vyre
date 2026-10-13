@@ -8,7 +8,8 @@ import { useSidebar } from "../shell/sidebar";
 import { tool } from "../../src/real/box";
 import { FileViewerSheet } from "../drive/FileViewerSheet";
 import { aliasesFor, whenWords } from "../records/documents-model.js";
-import { MADE_GROUPS, madeSub, appState, asRecs, fillsFor, madeGroupOf, madeRows, signingTemplates } from "./model.js";
+import { MADE_GROUPS, madeSub, appState, asRecs, fillsFor, madeGroupOf, madeRows } from "./model.js";
+import { signingLabel, useSigningTemplates } from "./useSigningTemplates";
 
 type Tab = "made" | "waiting" | "templates" | "setup";
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -33,8 +34,7 @@ export function DocumentsHome() {
   const [templates, setTemplates] = useState<{ name: string; size?: number }[] | null>(null);
   const [asks, setAsks] = useState<Record<string, string[]>>({});
   const [waiting, setWaiting] = useState<any[] | null>(null);
-  const [app, setApp] = useState<ReturnType<typeof appState> | null>(null);
-  const [signing, setSigning] = useState<ReturnType<typeof signingTemplates>>([]);
+  const { app, signing, reload: loadApp } = useSigningTemplates(admin);
   const [open, setOpen] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<FilterChip[]>([]);
@@ -44,8 +44,7 @@ export function DocumentsHome() {
 
   const loadTemplates = useCallback(() => { tool<{ templates?: { name: string; size?: number }[] }>("documents.template.list").then((r) => setTemplates(r?.templates ?? [])).catch(() => setTemplates([])); }, []);
   const loadWaiting = useCallback(() => { if (!admin) return; tool<{ requests?: any[] }>("documents.signing.waiting").then((r) => setWaiting(r?.requests ?? [])).catch(() => setWaiting([])); }, [admin]);
-  const loadApp = useCallback(() => { if (!admin) return; tool<any>("appmods.list").then((l) => { const s = appState(l); setApp(s); if (s.running) tool<any>("connectors.operation.run", { connection: "documents", operation: "templates.list", input: { query: { limit: 50 } } }).then((r) => setSigning(signingTemplates(r))).catch(() => setSigning([])); }).catch(() => setApp(appState(null))); }, [admin]);
-  useEffect(() => { loadTemplates(); loadWaiting(); loadApp(); }, [loadTemplates, loadWaiting, loadApp]);
+  useEffect(() => { loadTemplates(); loadWaiting(); }, [loadTemplates, loadWaiting]);
   useEffect(() => { (templates ?? []).forEach((t) => { if (!asks[t.name]) tool<{ placeholders?: string[] }>("documents.template.get", { name: t.name }).then((r) => setAsks((a) => ({ ...a, [t.name]: r?.placeholders ?? [] }))).catch(() => {}); }); }, [templates]);
 
   const recs = useMemo(() => (hasType ? world?.byType.document ?? [] : allowsMock() ? SAMPLE_MADE : []), [world, hasType]);
@@ -90,7 +89,7 @@ export function DocumentsHome() {
   };
   const remind = (n: number) => tool("documents.signing.remind", { submission: n }).then(() => showToast("Reminder sent.")).catch((e) => showToast(say(e)));
 
-  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
+  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Word templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
   return (
     <Page title="Documents" top sub={undefined}>
       <Segmented<Tab> label="Documents" value={tab} onChange={setTab} options={tabs} />
@@ -181,7 +180,7 @@ export function DocumentsHome() {
         {send ? (
           <View className="gap-s3">
             <Text tone="muted">It goes out for signature and the signer gets their link by e-mail. You approve the send.</Text>
-            {signing.length ? <Select label="Signing template" value={send.template} options={[["", "Pick one"], ...signing.map((x) => [String(x.id), x.folder ? `${x.folder}: ${x.name}` : x.name] as [string, string])]} onChange={(template) => setSend({ ...send, template })} /> : <Field label="Signing template number" kind="number" value={send.template} onChangeText={(template) => setSend({ ...send, template })} help="The Documents app is not answering, so the list is not there. Its number is in the app." />}
+            {signing.length ? <Select label="Signing template" value={send.template} options={[["", "Pick one"], ...signing.map((x) => [String(x.id), signingLabel(x)] as [string, string])]} onChange={(template) => setSend({ ...send, template })} /> : <Field label="Signing template number" kind="number" value={send.template} onChangeText={(template) => setSend({ ...send, template })} help="The Documents app is not answering, so the list is not there. Its number is in the app." />}
             <Field label="Signer's e-mail" kind="email" value={send.email} onChangeText={(email) => setSend({ ...send, email })} />
             {send.problem ? <Banner tone="warn">{send.problem}</Banner> : null}
             <View className="flex-row gap-s2"><Button kind="primary" label="Send" loading={busy === "send"} onPress={doSend} /><Button kind="ghost" label="Cancel" onPress={() => setSend(null)} /></View>

@@ -67,6 +67,17 @@ export function mentionedAssistants(text, people) {
 }
 
 /**
+ * Does a message in this chat go to the people, with no AI turn, unless an AI is asked for that one message? True in a shared chat set to "AI answers when mentioned", and in a shared chat with no AI in it.
+ * A chat of one person keeps its AI answering, and a shared chat set to "every" keeps today's behaviour.
+ * @param {{ shared?: boolean, replyMode?: string | null, ais?: number }} o `ais` is how many AIs are in the chat
+ */
+export function peopleOnly({ shared = false, replyMode = null, ais = 0 }) {
+  if (!shared) return false;
+  if (replyMode === "mention") return true;
+  return replyMode !== "every" && ais === 0;
+}
+
+/**
  * Who a send goes to. "Ask all" sends to every assistant in the chat; otherwise the @mentioned
  * assistants (none: the chat's default assistant answers). Two or more targets make a fan-out:
  * their answers come back as one set.

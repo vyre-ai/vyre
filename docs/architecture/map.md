@@ -217,7 +217,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
 | `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
-| `escrow/` | The Worker that keeps each identity's sealed Secret Key for GitHub sign-in; never the recovery code. |
+| `escrow/` | (not described yet) |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
 | `kernel/` | The trusted core: identity, grants, the event log, records, tasks, the sealing process. See the next section. |
@@ -303,7 +303,6 @@ Projects, records, tasks, rules, Flows, files.
 | `files` | `core/files/` | box and local | Find and bring over files on this machine and the server, inside folders the person chose. |
 | `flows` | `core/flows/` | box and local | Flows and Kits: write, approve and run a Flow with its triggers, waits and tasks. |
 | `goals` | `core/goals/` | box and local | A goal and its ordered milestones, attached to a session or a project. |
-| `mcpconn` | `core/mcpconn/` | box and local | A person's named AI keys, local and hosted /mcp, one-tap revoke. |
 | `planner` | `core/planner/` | box and local | Alarms, timers, reminders, todos, notes and a calendar kept on the server. |
 | `previews` | `core/previews/` | box | A page or app an agent starts, opened in a pane beside the chat on its own address, kept running and shared on purpose. |
 | `projects` | `core/projects/` | box and local | Projects: the folders, repositories and sessions that belong together. |
@@ -343,7 +342,6 @@ Mail, Google, GitHub, webhooks, apps, computers and screens.
 | `hooks` | `core/hooks/` | box | Inbound webhooks from the public internet, each checked by the sender's signature. |
 | `mail` | `core/mail/` | box and local | One capability over every mail account the person connected. |
 | `mcp` | `core/mcp/` | box and local | The hub for outside MCP servers; each is a sender at the Gate. |
-| `microsoft` | `core/microsoft/` | box and local | Microsoft 365 mail, calendar and OneDrive through the Space's firm app, read-only, as one mailbox at a time. |
 | `outside` | `core/outside/` | box | Outside agents (Dots, Muse, ChatGPT): one address and token each, reading only what a person gave them, asking before any change. |
 | `publish` | `core/publish/` | box | Put a site or app on the internet from your space: preview, approve, publish, go back. |
 | `sight` | `core/sight/` | box and local | One screen service for the Mac and every agent's computer: what is on it, what was just done. |

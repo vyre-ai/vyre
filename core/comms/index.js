@@ -5,6 +5,7 @@
 import { normalizePhone } from "../../records/comms/log.js";
 import { agentClaim } from "../modules/index.js";
 import { httpFetch } from "../../lib/http.js";
+import { send as sendThrough, check as checkMessage, LABELS, PROVIDERS } from "./sending/index.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -15,6 +16,12 @@ export const SMS_MAX = 1600;
 /** The most numbers one yes covers. */
 export const SMS_BATCH = 20;
 export const SENDER = "comms:sms";
+/** The Gate sender for an email a Flow sends through the Space's sending service. */
+export const SENDER_SERVICE = "comms:service";
+/** The Vault item the sending service is kept in (needs.credentials id sending). */
+const SENDING_ITEM = "comms-sending";
+const NEXT_STEP = "An owner or an admin adds one in Settings, Connections, Add a sending service (Resend, Mailgun, Postmark, SendGrid or SMTP); then try again.";
+const SERVICE_CONTENT = { subject: "string", text: "string (plain text)", html: "string (the same message as HTML)", from: "string (the firm's own address)", replyTo: "string (optional)" };
 /** The Vault item the Twilio need is kept in (needs.credentials id twilio, as the Vault names a module's single need). */
 const TWILIO_ITEM = "comms-twilio";
 const CONTENT = { body: "string (the text)" };
@@ -43,11 +50,42 @@ export function registerComms(ctx, o = {}) {
     return r.data;
   };
   const offered = new Set();
-  const offer = async () => {
-    if (offered.has(SENDER)) return;
-    const r = await ctx.call("gate.offer", { name: SENDER, tool: "comms.release", kinds: ["send"], content: CONTENT });
-    if (r.error) throw fail(`the Gate did not take the ${SENDER} sender: ${r.error.message}`, "failed");
-    offered.add(SENDER);
+  const offer = async (name = SENDER, content = CONTENT) => {
+    if (offered.has(name)) return;
+    const r = await ctx.call("gate.offer", { name, tool: "comms.release", kinds: ["send"], content });
+    if (r.error) throw fail(`the Gate did not take the ${name} sender: ${r.error.message}`, "failed");
+    offered.add(name);
+  };
+
+  /**
+   * The Space's sending service, read from its Vault item for this one use: { provider, apiKey, from, domain, ... }. The key is held in this call and goes nowhere but the request to the service.
+   * With none connected, or one half-filled, the words say which part and who can fix it.
+   */
+  const serviceConn = async () => {
+    /** @param {string} f @returns {Promise<string>} */
+    const field = async f => {
+      try { return String(await ctx.vault.fetch(SENDING_ITEM, { field: f })); } catch (e) {
+        const m = String(/** @type {any} */ (e)?.message || e);
+        if (/locked/i.test(m)) throw fail("the Vault is locked; unlock it to send through the sending service", "locked");
+        if (/no item named|is not granted to/i.test(m) && f === "service") throw fail(`This Space has no sending service, so nothing can be emailed from a Flow. ${NEXT_STEP}`, "needs_setup");
+        return "";
+      }
+    };
+    const provider = (await field("service")).toLowerCase();
+    if (!PROVIDERS.includes(provider)) throw fail(`The sending service is set to ${provider.slice(0, 30) || "nothing"}, which Vyre does not know. ${NEXT_STEP}`, "needs_setup");
+    const apiKey = await field("api_key"), from = await field("from");
+    if (!apiKey) throw fail(`The sending service has no ${provider === "smtp" ? "password" : "key"}. ${NEXT_STEP}`, "needs_setup");
+    if (!from) throw fail(`The sending service has no from address. ${NEXT_STEP}`, "needs_setup");
+    const smtpPort = await field("smtp_port");
+    return { provider, apiKey, from, domain: await field("domain"), region: await field("region"), smtpHost: await field("smtp_host"), ...(smtpPort ? { smtpPort } : {}), username: await field("username"), security: await field("security") };
+  };
+
+  /** The Twilio account, from number and messaging service: the vault item's own plain fields first, config.json (comms.sms) as the older home. */
+  const twilioConf = async () => {
+    const c = cfg().sms || {};
+    /** @param {string} f */
+    const f = async f => { try { return String(await ctx.vault.fetch(TWILIO_ITEM, { field: f })).trim(); } catch { return ""; } };
+    return { account: (await f("account")) || String(c.account || ""), from: (await f("from")) || String(c.from || ""), service: (await f("service")) || String(c.service || "") };
   };
 
   /** Where a held item is filed: the chat or agent that asked, as mail files its own. @param {any} meta */
@@ -72,8 +110,8 @@ export function registerComms(ctx, o = {}) {
       }
       if (body.length > SMS_MAX) throw fail(`a text is at most ${SMS_MAX} characters; this one is ${body.length}`, "bad_input");
       const to = numbers(i.to);
-      const c = cfg().sms || {};
-      if (!/^AC[0-9a-f]{32}$/i.test(String(c.account || "")) || !(c.from || c.service)) throw fail("texts need a Twilio account: set comms.sms in config.json to { account: \"AC…\", from: \"+1…\" } and connect your Twilio key in the Vault", "needs_setup");
+      const c = await twilioConf();
+      if (!/^AC[0-9a-f]{32}$/i.test(c.account) || !(c.from || c.service)) throw fail("texts need a Twilio account: connect Twilio for Comms in the Vault (Connections) with its account number (starts with AC), the number texts come from and the auth token", "needs_setup");
       await offer();
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       const agent = agentClaim(String(meta.caller || "")) || undefined;
@@ -84,19 +122,89 @@ export function registerComms(ctx, o = {}) {
     },
   });
 
+  ctx.tool("comms.email", {
+    description: "Send an email from the firm's own sending service (Resend, Mailgun, Postmark, SendGrid or SMTP), held at the Gate for a person's yes with the final words: { to, subject, text or html, replyTo?, from? }. A Flow's Send email step.",
+    input: obj({ to: { anyOf: [str, { type: "array", items: str }] }, subject: str, text: str, html: str, body: str, replyTo: str, from: str, why: str }, ["to"]),
+    callers: CALLERS,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+      const conn = await serviceConn();
+      const text = i.text ?? (i.html === undefined ? i.body : undefined);
+      const m = checkMessage(conn, { to: i.to, subject: i.subject, text, html: i.html, from: i.from, replyTo: i.replyTo });
+      await offer(SENDER_SERVICE, SERVICE_CONTENT);
+      const thread = typeof meta.thread === "string" ? meta.thread : undefined;
+      const agent = agentClaim(String(meta.caller || "")) || undefined;
+      const content = { subject: m.subject, text: m.text, html: m.html, from: m.from, ...(m.replyTo ? { replyTo: m.replyTo } : {}) };
+      const held = await use("gate.request", { kind: "send", via: SENDER_SERVICE, to: m.to, content, ...(i.why ? { why: String(i.why) } : {}), ...(thread ? { thread } : {}), ...(agent ? { agent } : {}) });
+      if (!held || !held.id) throw fail("the Gate did not hold this email, so nothing was sent", "failed");
+      ctx.events.emit("comms.held", { id: held.id, via: "service", count: m.to.length }, thread ? { thread } : undefined);
+      return { held: held.id, via: SENDER_SERVICE, message: `Held at the Gate: an email to ${m.to.join(", ")} goes out through ${(/** @type {any} */ (LABELS))[conn.provider]} once the person approves it. Nothing was sent.` };
+    },
+  });
+
+  ctx.tool("comms.service.get", {
+    description: "Which sending service this Space uses and the address it sends from. Never the key.",
+    input: obj(),
+    callers: CALLERS,
+    run: async () => {
+      try {
+        const c = await serviceConn();
+        return { configured: true, provider: c.provider, label: (/** @type {any} */ (LABELS))[c.provider], from: c.from, domain: c.domain || String(c.from).replace(/^.*@|>$/g, "") };
+      } catch (e) {
+        const x = /** @type {any} */ (e);
+        if (x.code === "needs_setup") return { configured: false, next: String(x.message) };
+        throw e;
+      }
+    },
+  });
+
+  ctx.tool("comms.service.test", {
+    description: "Send one test email to one address (the person's own) through the sending service, to prove the key works: { to }. The person approves it with their presence.",
+    input: obj({ to: str }, ["to"]),
+    callers: CALLERS,
+    presence: { summary: (/** @type {any} */ i) => `Send a test email to ${String(i && i.to || "your address")} through your sending service` },
+    run: async (/** @type {any} */ i) => {
+      if (Array.isArray(i.to) || /[,;\s]/.test(String(i.to ?? "").trim())) throw fail("a test goes to one address", "bad_input");
+      const conn = await serviceConn();
+      const r = await sendThrough(conn, { to: [String(i.to).trim()], subject: "Test from your Vyre sending service", text: "This is a test. Your sending service works, and Flows can now send email through it.", html: "<p>This is a test. Your sending service works, and Flows can now send email through it.</p>" }, { http });
+      return { ok: true, provider: r.provider, label: (/** @type {any} */ (LABELS))[r.provider], to: String(i.to).trim(), id: r.id };
+    },
+  });
+
+  ctx.tool("comms.credentials", {
+    description: "The credentials a Flow's Send step can use, by kind: { kind: email | sms } -> { credentials: [{ id, name, provider, step }] }. Names and ids only, never a value. step is the Flow step that uses it.",
+    input: obj({ kind: { type: "string", enum: ["email", "sms"] } }, ["kind"]),
+    callers: CALLERS,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+      const way = /** @type {Record<string, Record<string, string>>} */ ({
+        email: { "sending-service": "comms.email", "imap-smtp": "comms.send", "google-oauth": "comms.send", "google-dwd": "comms.send", "google-apps-script": "comms.send" },
+        sms: { twilio: "comms.send" } })[String(i.kind)];
+      if (!way) throw fail("kind is email or sms", "bad_input");
+      const rows = await use("vault.connections.list", { caller: String(meta.caller || "cli") });
+      const list = Array.isArray(rows) ? rows : (rows && rows.connections) || [];
+      return { credentials: list.filter((/** @type {any} */ r) => r && Object.hasOwn(way, String(r.provider))).map((/** @type {any} */ r) => ({ id: String(r.id), name: String(r.label || r.ref || r.id), provider: String(r.provider), ...(r.account ? { account: String(r.account) } : {}), step: way[String(r.provider)] })) };
+    },
+  });
+
   ctx.tool("comms.release", {
     internal: true,
-    description: "The Gate's call once the person approved a held text: sends exactly the approved numbers and words through Twilio, one message each. Only the Gate.",
+    description: "The Gate's call once the person approved a held text or email: sends exactly the approved numbers and words through Twilio, one message each, or the approved email through the Space's sending service. Only the Gate.",
     input: obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id", "to", "content"]),
     run: async (/** @type {any} */ { id, to, content }, /** @type {any} */ { caller }) => {
       if (caller !== "module:gate") throw fail("only the Gate releases what goes out", "denied");
       const it = await use("gate.get", { id });
       if (!it || it.state !== "sending") throw fail(`${id} is not an approved item being sent`, "denied");
+      if (it.via === SENDER_SERVICE) {
+        const conn = await serviceConn();
+        const c = content && typeof content === "object" ? content : {};
+        const r = await sendThrough(conn, { to, subject: c.subject, text: c.text, html: c.html, from: c.from, replyTo: c.replyTo }, { http, idem: String(id) });
+        ctx.events.emit("comms.sent", { id, via: "service", provider: r.provider, sent: to.length });
+        return { sent: [{ to, id: r.id }], via: r.provider };
+      }
       if (it.via !== SENDER) throw fail(`${id} is not a held text`, "denied");
       const dest = numbers(to), body = String(content && content.body || "");
       if (!body.trim() || body.length > SMS_MAX) throw fail("the approved text is empty or too long", "bad_input");
-      const c = cfg().sms || {};
-      if (!/^AC[0-9a-f]{32}$/i.test(String(c.account || ""))) throw fail("texts need comms.sms.account in config.json", "needs_setup");
+      const c = await twilioConf();
+      if (!/^AC[0-9a-f]{32}$/i.test(c.account)) throw fail("texts need the Twilio account number: connect Twilio for Comms in the Vault (Connections)", "needs_setup");
       // The Twilio key is the person's own item in the Vault, named twilio and handed to Comms: its `value` is the auth token (or an API key's secret, with that key's id in `sid`). It is held for this send only.
       /** @type {string} */ let auth;
       try {

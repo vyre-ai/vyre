@@ -17,6 +17,7 @@ import { Chip, Icon, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
+import { peopleOnly } from "./composer-model.js";
 import { useVyreFiles } from "./useVyreFiles";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
@@ -304,6 +305,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
   const line = head.line + (muted ? (head.line ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
+  // The sealed note speaks of the AI in the chat: with none here (a chat between people) it stays away until one joins or is asked.
+  const aiHere = faces.filter((f) => f.family === "assistant" || f.family === "model").length;
   // Who is in the chat, for the composer's @ list and the model chips: the stream's participants once it has said, else the chat's members from the box (work.chat.get), never the viewer.
   const roster = faces.filter((f) => f.id !== viewerId && f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) }));
   const realComposer = useRealComposer(p.sessionId, roster.length ? roster : undefined, viewer, setNote);
@@ -317,6 +320,9 @@ export function ChatScreen(p: ChatScreenProps) {
     ...(allowsMock() ? [{ id: "slot:claude", label: "Claude", provider: "claude" }, { id: "slot:codex", label: "Codex", provider: "codex" }, { id: "slot:grok", label: "Grok", provider: "grok" }] : []),
   ];
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
+  const sharedChat = Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1;
+  // A chat between people: a message goes to the people and no AI answers unless one is asked for it (reply mode "mention", or no AI in the chat).
+  const peopleChat = peopleOnly({ shared: sharedChat, replyMode: store.group.replyMode(), ais: faces.filter((f) => f.family === "assistant" || f.family === "model").length });
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
@@ -327,7 +333,7 @@ export function ChatScreen(p: ChatScreenProps) {
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
-        shared={Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1} replyMode={store.group.replyMode()}
+        shared={sharedChat} replyMode={store.group.replyMode()}
         thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onOpenFiles={phone ? undefined : () => setFilesOpen(true)}
       />
@@ -370,7 +376,7 @@ export function ChatScreen(p: ChatScreenProps) {
             renderRow={renderRow}
             hasMore={false}
             onNearTop={() => {}}
-            head={<View>{sealedNote ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
+            head={<View>{sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
           <Icon name="shield" />
           <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
           <Text size="caption" tone="label" strong>Got it</Text>
@@ -460,6 +466,7 @@ export function ChatScreen(p: ChatScreenProps) {
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
           slots={answerSlots}
+          peopleOnly={peopleChat}
           onLocalCommand={(name) => { if (name === "move") { setPanel("project"); return true; } return false; }}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}

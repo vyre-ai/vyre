@@ -211,8 +211,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const g = group(grp);
     const wantPeople = new Set(chat.people.map(p => `person:${p}`));
     const wantBots = new Set((chat.assistants || []).map(a => `assistant:${a}`));
+    const fresh = logs.get(grp).head === 0;
     for (const p of wantPeople) if (!g.people.has(p)) join(grp, p);
     for (const b of wantBots) if (!g.bots.has(b)) join(grp, b);
+    // A chat made with people and no AI is a people-centred chat: an AI answers only when mentioned. It is a logged frame (marked `default`, so the chat shows no "set replies" line for it); anyone can switch it.
+    if (fresh && wantPeople.size > 1 && !wantBots.size && !g.mode) { g.mode = "mention"; logs.get(grp).append("reply-mode", { mode: "mention", default: true }); }
     for (const p of [...g.people]) if (!wantPeople.has(p)) { g.people.delete(p); g.names.delete(p); closeSpan(g, p, logs.get(grp).append("participant-left", { who: p }).cur); }
     for (const [b, m] of [...g.bots]) if (!wantBots.has(b) && m.kind !== "run") { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); closeSpan(g, b, logs.get(grp).append("participant-left", { who: b }).cur); }
     if (g.dflt && !g.bots.has(g.dflt)) g.dflt = null;

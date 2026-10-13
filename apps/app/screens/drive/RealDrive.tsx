@@ -8,20 +8,24 @@ import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
 import { SpaceDrive } from "./SpaceDrive";
+import { Breadcrumb } from "./Breadcrumb";
 import { SharedLinks } from "./SharedLinks";
+import { LinkedFiles } from "./LinkedFiles";
 import { SharedArtifacts } from "../chat-tools";
 import { REAL_TABS } from "./tabs.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
 
-type Tab = "space" | "shared" | "files" | "sharing";
+type Tab = "space" | "shared" | "linked" | "files" | "sharing";
+const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", linked: "link", files: "server", sharing: "laptop" };
+const ROOT_SUB: Record<string, string> = { space: "The space's files, with their versions", shared: "Links you made, and what agents made for you", linked: "Live folders from Google Drive", files: "Folders your server offers", sharing: "Sharing to your computer" };
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
   const router = useRouter();
   const driveTag = usePlaceText("home");
-  const [tab, setTab] = useState<Tab>("space");
+  const [tab, setTab] = useState<Tab | null>(null);
   const [made, setMade] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
@@ -58,14 +62,7 @@ export default function RealDrive() {
         </View>
       ) : null}
       {share ? (
-        <View className="flex-row flex-wrap items-center gap-s1">
-          {crumbs(share, path).map((c, i, all) => (
-            <View key={c.path} className="flex-row items-center">
-              <Button kind="ghost" size="sm" label={c.name} disabled={i === all.length - 1} onPress={() => setPath(c.path)} />
-              {i < all.length - 1 ? <Text tone="faint">/</Text> : null}
-            </View>
-          ))}
-        </View>
+        <Breadcrumb crumbs={crumbs(share, path).map((c) => ({ name: c.name, key: c.path }))} onPress={setPath} />
       ) : null}
       {err ? <Card flush><ErrorState title="Files did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
       {!err && share && list === null ? <LoadingState rows={3} /> : null}
@@ -73,7 +70,7 @@ export default function RealDrive() {
         <Card flush>
           {entries.length ? entries.map((e, i) => (
             <View key={e.name}>{i ? <Divider inset={60} /> : null}
-              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} end={driveTag ? <SpaceTag text={driveTag} /> : undefined} onPress={() => show(e)} />
+              <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "folder" : "file"} />} title={e.name} sub={entryLine(e)} end={driveTag ? <SpaceTag text={driveTag} /> : undefined} onPress={() => show(e)} />
             </View>
           )) : <EmptyState title="Nothing here yet" body="This folder is empty, or everything in it is kept away from the app." />}
           {list.next != null ? <View className="p-s3"><Button kind="ghost" size="sm" label={`Show more (${entries.length} of ${list.total})`} onPress={() => share && load(share, path, list.next)} /></View> : null}
@@ -96,8 +93,14 @@ export default function RealDrive() {
   return (
     <Frame title="Files" sub="The space's files with their versions, and the box's own folders." actions={<Button kind="secondary" size="sm" icon="file" label="Documents" onPress={() => router.push("/u/documents" as never)} />}>
       <PlaceTag of="home" />
-      <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
-      {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
+      {tab === null ? (
+        <Card flush>
+          {(REAL_TABS as unknown as [Tab, string][]).map(([id, label], i) => (
+            <View key={id}>{i ? <Divider inset={60} /> : null}<Row chevron lead={<IconTile name={ROOT_ICON[id] as never} />} title={label} sub={ROOT_SUB[id]} onPress={() => setTab(id)} /></View>
+          ))}
+        </Card>
+      ) : <Breadcrumb crumbs={[{ name: "Files", key: "" }, { name: (REAL_TABS as unknown as [Tab, string][]).find((t) => t[0] === tab)?.[1] ?? "", key: tab }]} onPress={() => setTab(null)} />}
+      {tab === null ? null : tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "linked" ? <LinkedFiles /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

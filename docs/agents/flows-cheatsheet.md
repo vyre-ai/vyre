@@ -72,7 +72,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
         mail create type=matter set={client: A}
 - subflow: flow, input; only on_fail, verify
     welcome subflow flow=send_welcome input={client: `trigger.client`}
-- wait: for_ms, until, event, where, timeout_ms, on_timeout; no timeout_ms
+- wait: for_ms, until, offset_ms, event, where, timeout_ms, on_timeout; no timeout_ms
     pause wait for_ms=3600000
 - ask: to, title, form, record
     yes ask to=role:partner title="Send the welcome email?"

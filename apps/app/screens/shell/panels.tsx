@@ -1,6 +1,7 @@
 // What the sidebar becomes inside a place (SidebarStack): the data for each panel. Wiring only: the look is the library's (SidebarPanel, SidebarRow).
 import { useEffect } from "react";
 import { create } from "zustand";
+import { Platform, useWindowDimensions } from "react-native";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
 import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
@@ -13,6 +14,7 @@ import { MOCK, tool } from "../../src/real/box";
 import { useFlowsState } from "../flows/store";
 import { flowsRepo } from "../flows/data";
 import { BUILD_SECTIONS } from "../build/sections.js";
+import { FilesTreePanel } from "../drive/FilesTreePanel";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -89,6 +91,7 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
   build: { title: "Build", icon: "kits", empty: "" },
+  drive: { title: "Files", icon: "drive", empty: "" },
 };
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
@@ -105,8 +108,10 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
+  const { width } = useWindowDimensions();
   const id = panelFor(path, search);
-  const meta = id ? META[id] : undefined;
+  // Files' tree is the web's wide screens' panel; a phone keeps the Drive screen's own drill-in list.
+  const meta = id && !(id === "drive" && (width < 760 || Platform.OS !== "web")) ? META[id] : undefined;
   if (!id || !meta) return { panel: null, id: null };
   const goBack = () => { const to = backTo(path, search); if (to) router.push(to as never); };
   const all = effective(base, mine) as any[];
@@ -117,7 +122,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
-      before: id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
+      before: id === "drive" ? <FilesTreePanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
       after: id === "records" ? <><SidebarRow label="All objects" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,
