@@ -119,6 +119,7 @@ does not have it by design.
 | [Stack](components/stack.md) | not used | built | not used |
 | [Code field](components/code-field.md) | not used | built | not used |
 | [Code display](components/code-display.md) | not used | built | not used |
+| [File viewer](components/file-viewer.md) | not used | built | not used |
 | [Match words](components/match-words.md) | not used | built | not used |
 | [Password field](components/password-field.md) | not used | built | not used |
 | [Choice list](components/choice-list.md) | not used | built | not used |
