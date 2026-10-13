@@ -80,7 +80,7 @@ export type BlockCtx = {
   onJumpTo?: (message: string) => void;
   /** The message to light up for a moment after a jump. */
   flash?: string | null;
-  /** Highlight to assistant: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
+  /** Highlight to agent: pin this (a part of it when the person selected one) above the composer as a quoted reference. Nothing is sent. */
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
@@ -167,8 +167,8 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
-            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to agent" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
+            <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to agent</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (

@@ -73,7 +73,7 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
   const tree = treeOf(body);
   return (
     <View className="gap-s3">
-      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the template" onPress={() => router.push(`/u/templates/${template}` as never)} /></View> : null}
+      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the playbook" onPress={() => router.push(`/u/templates/${template}` as never)} /></View> : null}
       <Card flush>
         {tree.map((l, i) => {
           const here = l.depth === 0 && stage && l.text.replace(/^\d+\.\s*/, "") === stage;

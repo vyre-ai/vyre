@@ -558,7 +558,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "kit") {
     body = (
-      <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
+      <Page title="Start with a Kit" sub="A Kit adds objects, Flows and views in one step. Pick one, or start empty.">
         <Card flush>
           {(MOCK ? DATA.kits : kitList ?? []).map((k) => (
             <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />

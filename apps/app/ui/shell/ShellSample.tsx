@@ -45,7 +45,7 @@ const RECORDS: PanelDef = {
   before: <>
     <SidebarRow label="Contacts" icon="contacts" on /><SidebarRow label="Leads" icon="list" /><SidebarRow label="Sales pipeline" icon="board" /><SidebarRow label="Appointments" icon="cal" />
   </>,
-  after: <><SidebarRow label="All record types" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
+  after: <><SidebarRow label="All objects" icon="records" tone="label" /><SidebarRow label="New view" icon="plus" tone="label" /></>,
 };
 
 /** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. */
