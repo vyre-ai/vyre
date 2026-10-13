@@ -3,6 +3,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { DocOverlay, ThemeProvider } from "@vyre/ui";
 import { DocMentionPanel } from "../src/chat/DocMentionPanel";
+import { useAppearance } from "../ui/theme";
 
 const DOC = `# Intake agent
 
@@ -11,6 +12,9 @@ You open every new matter. Ask [@Dana Okafor](vyre://acme/person/p_1) for the en
 - Tag anything about fees with [#billing](vyre://acme/tag/billing)
 - Hand questions you cannot answer to [@juno](vyre://acme/agent/juno)
 `;
+
+// ?scheme=dark | paper picks the theme for the shot (the headless browser reports a light system).
+if (typeof window !== "undefined") { const t = new URLSearchParams(window.location.search).get("scheme"); if (t === "dark" || t === "paper") useAppearance.getState().setPerson({ theme: t }); }
 
 export default function ShotsDocRefs() {
   const [text] = useState(DOC);
