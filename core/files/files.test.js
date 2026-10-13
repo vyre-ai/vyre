@@ -145,14 +145,14 @@ const refusedAs = async (reg, agent, tool, input, msg = /not available/) => {
   assert.match(r.error.message, msg);
 };
 
-test("files: the manifest loads and offers its five tools to every caller", async t => {
+test("files: the manifest loads and offers its tools to every caller, the linked-folder reads included", async t => {
   const { work, vyreHome } = workspace(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
   // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js. agents.list,
   // projects.list and projects.access.check are the always-installed fake-reach fixture
   // (test/fixtures/fake-reach.js), not one of the files module's own tools.
   const names = reg.listTools("mcp").map(x => x.name).filter(n => n.startsWith("files.") && !n.startsWith("files.drive.")).sort();
-  assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.search", "files.stat"]);
+  assert.deepEqual(names, ["files.dirs", "files.fetch", "files.linked.list", "files.linked.ls", "files.linked.read", "files.linked.search", "files.linked.status", "files.linked.tree", "files.linked.versions", "files.preview", "files.search", "files.stat"]);
   // files.recent lists the folders other sessions worked in, so a model is not offered it (group D, kernel-declare).
   assert.ok(!reg.listTools("mcp").some(x => x.name === "files.recent"));
 });

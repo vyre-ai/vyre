@@ -301,6 +301,8 @@ export default function Gallery() {
     setBoxOverride(async (tool, input) => {
       if (tool === "publish.list") return { deployments: deps };
       if (tool === "publish.status") { const d = deps.find((x) => x.id === input.deployment) ?? deps[0]; const live = d.stage === "Production"; return { ...d, previous: "d2", build_digest: "sha256:3f9a", secrets: [{ name: "STRIPE_KEY", class: "secret", use: ["runtime"] }], ungranted_env: ["MAILER_KEY"], approved_by: d.stage === "Preview" ? null : "per_4f2a9c", published_at: live ? Date.now() - 86400000 * (d.version === 4 ? 1 : 2) : null, sealed_check: "no sealed values found" }; }
+      if (tool === "records.actors") return { actors: [{ id: "per_4f2a9c", name: "Dana Wine" }] };
+      if (tool === "records.me") return { person: "per_me" };
       if (tool === "names.status") return { listening: q.door === "on" };
       if (tool === "publish.edge.up") throw Object.assign(new Error("this box has no way to start containers"), { code: "not_available" });
       if (tool === "publish.domain.verify") return { verified: false, reason: "No TXT record found yet.", domain: { host: String(input.host), status: "pending" }, challenge: { type: "TXT", name: `_vyre-challenge.${input.host}`, value: "vyre-publish=Kq3x9TnV0mZp.7f3a9c1e2b", expires_at: Date.now() + 86400000 } };
