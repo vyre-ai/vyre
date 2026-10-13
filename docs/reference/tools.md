@@ -10997,7 +10997,7 @@ As the inviter of an admin or owner: confirm the fingerprint words the invitee r
 Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.
 
 - Input:
-  - `role` one of "owner", "admin", "manager", "member", "temp", required
+  - `role` string, required: owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)
   - `space` string, required
   - `alias` string
   - `expires` number
