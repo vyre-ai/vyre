@@ -1,0 +1,79 @@
+{
+  "name": "microsoft",
+  "version": "0.1.0",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [
+    "vault"
+  ],
+  "does": {
+    "reads": [
+      "microsoft.accounts",
+      "microsoft.mail.search",
+      "microsoft.mail.read",
+      "microsoft.calendar.list",
+      "microsoft.drive.search",
+      "microsoft.drive.read"
+    ],
+    "tools": [
+      {
+        "name": "microsoft.accounts",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "microsoft.add",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "microsoft.remove",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "microsoft.members.email",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "microsoft.mail.search",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "microsoft.mail.read",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "microsoft.calendar.list",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "microsoft.drive.search",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "microsoft.drive.read",
+        "reach": "anyone",
+        "effect": "read"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "microsoft.added",
+      "microsoft.removed"
+    ]
+  },
+  "needs": {
+    "vault": [
+      "per-connection"
+    ]
+  }
+}
