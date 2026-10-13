@@ -10,19 +10,22 @@ import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { formatRecoverySecret } from "./crypto.js";
 
+/** the phone arrives as its paired device, never as a bare label */
+const PHONE = "device:abcdefghijklmnop";
+
 async function daemon(/** @type {any} */ t) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  return { root, reg: (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, meta) };
+  return { root, reg: (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, caller === PHONE && !meta.kernelFacts ? { ...meta, person: { id: "ps_1", kind: "cookie" }, kernelFacts: { kind: "device", device_key_id: "abcdefghijklmnop", person: d.kernel.id.owner, path: "direct", session: "s" } } : meta) };
 }
 const PW = "a long sample password for the kit test";
 const NEW = "another long sample password after the kit";
 
 test("create gives the recovery secret to every caller and the Secret Key only to a terminal", async t => {
   const { reg } = await daemon(t);
-  const phone = (await reg("vault.account.create", { password: PW }, "mobile")).data;
+  const phone = (await reg("vault.account.create", { password: PW }, PHONE)).data;
   assert.match(phone.recoverySecret, /^R1-[A-Z2-7]{6}-[A-Z2-7]{26}-[A-Z2-7]{2}$/);
   assert.equal(phone.secretKey, undefined, "an app is never handed the Secret Key");
   const root2 = await daemon(t);
@@ -57,7 +60,7 @@ test("the kit works on a device that has lost the Secret Key, and from a phone o
   for (const [who, caller, meta] of /** @type {[string, string, any][]} */ ([["a model", "mcp", {}], ["a named agent", "mcp:agent:juno", { agent: "juno" }], ["a module", "module:probe", {}]])) {
     assert.ok((await reg("vault.account.reset", { recovery: made.recoverySecret, password: NEW }, caller, meta)).error, `${who} is refused`);
   }
-  assert.ok((await reg("vault.account.reset", { recovery: made.recoverySecret, password: NEW }, "mobile")).data, "the phone resets with the kit");
+  assert.ok((await reg("vault.account.reset", { recovery: made.recoverySecret, password: NEW }, PHONE)).data, "the phone resets with the kit");
   await reg("vault.account.lock", {}, "cli");
   assert.ok((await reg("vault.account.unlock", { password: NEW }, "cli")).data, "and the new password opens it with the new Secret Key");
 });
@@ -88,13 +91,13 @@ test("the Secret Key can be carried to a device: exported to the person's own de
     assert.ok((await reg("vault.account.export-secret-key", {}, caller)).error, `${who} is refused`);
     assert.ok((await reg("vault.account.import-secret-key", { secretKey: made.secretKey }, caller)).error, `${who} is refused`);
   }
-  const out = (await reg("vault.account.export-secret-key", {}, "mobile")).data;
+  const out = (await reg("vault.account.export-secret-key", {}, PHONE)).data;
   assert.equal(out.secretKey, made.secretKey);
-  assert.equal((await reg("vault.account.import-secret-key", { secretKey: "V2-NOTAKEY" }, "mobile")).error.code, "bad_secret_key");
+  assert.equal((await reg("vault.account.import-secret-key", { secretKey: "V2-NOTAKEY" }, PHONE)).error.code, "bad_secret_key");
   const other = await daemon(t);
   const stranger = (await other.reg("vault.account.create", { password: PW }, "cli")).data;
-  assert.equal((await reg("vault.account.import-secret-key", { secretKey: stranger.secretKey }, "mobile")).error.code, "wrong_account");
-  assert.ok((await reg("vault.account.import-secret-key", { secretKey: made.secretKey }, "mobile")).data.imported, "its own key is accepted");
+  assert.equal((await reg("vault.account.import-secret-key", { secretKey: stranger.secretKey }, PHONE)).error.code, "wrong_account");
+  assert.ok((await reg("vault.account.import-secret-key", { secretKey: made.secretKey }, PHONE)).data.imported, "its own key is accepted");
   await reg("vault.account.lock", {}, "cli");
   assert.ok((await reg("vault.account.unlock", { password: PW }, "cli")).data, "and the password still opens it");
 });
