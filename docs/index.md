@@ -8,6 +8,10 @@ status: stable
 
 # Vyre docs
 
+Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native.
+
+In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person's yes.
+
 Vyre is one product for a team and its AI agents. It runs on a server you own and on the computers your people use. People and agents share chats, records, files, a vault, Flows and projects. Agents work on tasks and report back, any model can be used on your own accounts, and everything that leaves your server waits for a person's yes. A built-in vault lets agents use credentials nobody sees. Start with the [architecture overview](architecture/overview.md) for the picture, or the [full statement in the spec](architecture/spec.md#1-what-vyre-is).
 
 ## Start here
