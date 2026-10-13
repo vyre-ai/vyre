@@ -50,7 +50,7 @@ if (process.env.VYRE_PERF_TRACE) {
   for (const name of ["setTimeout", "setInterval"]) {
     const real = globalThis[name];
     globalThis[name] = function (fn, ms, ...a) {
-      if (Number(ms) >= 1000) { const st = (new Error().stack || "").split("\n").slice(2, 5).map(x => x.trim().replace(/^at /, "").replace(/.*\/vyre\//, "")).join(" < "); note(`${name} ${ms}ms ${st}`); }
+      if (Number(ms) > 1000) { const st = (new Error().stack || "").split("\n").slice(2, 5).map(x => x.trim().replace(/^at /, "").replace(/.*\/vyre\//, "")).join(" < "); note(`${name} ${ms}ms ${st}`); }
       return real.call(this, fn, ms, ...a);
     };
   }
