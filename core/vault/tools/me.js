@@ -64,10 +64,17 @@ export function register({ ctx, people, tool }) {
   const store = (/** @type {string} */ id) => people.personalStore(id);
   // A module (mcp, the space list) may call the store on the member's own turn: its hop inherits the member's token, so memberOf finds the one person in the chain. A module call with no person in its chain, or with an agent hop, is refused there.
   const STORE_CALLERS = [...PERSON_SURFACES, "module"];
+  // Only the named modules that keep a member's entries here (mcp: the MCP servers she brought): another module, even one holding her inherited token, is refused. The space list is the app's own call, not a module's.
+  const STORE_MODULES = new Set(["module:mcp"]);
+  const storeOnly = (/** @type {(id: string, i: any) => any} */ fn) => async (/** @type {any} */ input, /** @type {any} */ meta) => {
+    const caller = String((meta && meta.caller) || "");
+    if (caller.startsWith("module:") && !STORE_MODULES.has(caller)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+    return mine(fn)(input, meta);
+  };
   const value = { description: "any JSON value up to 64 KB" };
-  tool("vault.me.store.get", STORE_CALLERS, "Read one entry of your own store (a JSON value under a key), or null.", obj({ key: str }, ["key"]), mine((id, i) => store(id).get(i.key)));
-  tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), mine(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
-  tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), mine(id => store(id).list()));
-  tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), mine(async (id, i) => ({ removed: await store(id).remove(i.key) })));
+  tool("vault.me.store.get", STORE_CALLERS, "Read one entry of your own store (a JSON value under a key), or null.", obj({ key: str }, ["key"]), storeOnly((id, i) => store(id).get(i.key)));
+  tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
+  tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
+  tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
   tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
 }

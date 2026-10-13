@@ -149,9 +149,17 @@ export async function teamInvites(space: string) {
   const { listTeamInvites } = await import("./team-invite.js");
   return { invites: await listTeamInvites(await inviteDeps(space)) };
 }
-export async function confirmTeamInviteWords(space: string, id: string, words: string) {
+export async function confirmTeamInviteWords(space: string, id: string, words: string, name: string) {
   const { confirmTeamInvite } = await import("./team-invite.js");
-  return confirmTeamInvite(await inviteDeps(space), id, words);
+  const { WORDS } = await import("@vyre/relay-client/words.js");
+  return confirmTeamInvite({ ...(await inviteDeps(space)), words: WORDS as string[] }, id, words, name);
+}
+/** Check the words an inviter typed against the Space's own, before ANY confirm path (the team wire, the home's spaces tool, the phone's approval): throws the refusal in words. */
+export async function checkInviteWordsFor(space: string, id: string, words: string, name: string) {
+  const { checkInviteWords } = await import("./team-invite.js");
+  const { WORDS } = await import("@vyre/relay-client/words.js");
+  const { DIRECTORY } = await import("./install");
+  await checkInviteWords({ fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, wire: { call: async () => null }, words: WORDS as string[] }, id, words, name);
 }
 export async function cancelTeamInvite(space: string, id: string) {
   const { revokeTeamInvite } = await import("./team-invite.js");
