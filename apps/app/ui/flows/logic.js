@@ -68,7 +68,7 @@ export function whoWords(who, o) {
 /** The step in one plain sentence (what a collapsed card shows). @param {DraftStep} s @param {Options} o @param {Draft} [d] the Flow it is in, to name a record an earlier step made */
 export function stepSummary(s, o, d) {
   switch (s.kind) {
-    case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((f) => f.field).filter(Boolean).join(", ")}` : ""}`;
+    case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ")}` : ""}`;
     case "project": {
       const t = o.templates.find((x) => x.id === s.template);
       return `Start a project from the ${t ? t.name : "chosen"} template${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
@@ -105,7 +105,7 @@ export function flowSentence(d, o) {
 export function stepProblem(s, o) {
   void o;
   switch (s.kind) {
-    case "create": return s.type ? (s.fields || []).some((f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which kind of record to create.";
+    case "create": return s.type ? (s.fields || []).some((/** @type {any} */ f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which kind of record to create.";
     case "project": return s.template ? null : "Choose a project template.";
     case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
@@ -166,7 +166,7 @@ export function stepDefinition(s, d) {
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
-    case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((f) => f.field && f.field.trim()).map((f) => [slug(f.field), val(f.value)])) };
+    case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)])) };
     case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: s.title, output: { kind: "note" } };
