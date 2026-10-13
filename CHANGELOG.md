@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): vyre.run alignment pass: one content grid on every page (FAQ and the agent note span the grid, text-only rows align to the top, mirrored feature rows keep the same copy width, direction and prose pages fill the grid), CSS only.
 - docs(site): vyre.run shows the real app, not drawn screens: animated WebP recordings of the app (dark and paper, laptop and phone, with a still poster for reduced motion) in drawn MacBook Pro and iPhone Pro frames, one 12-column hero grid, and the hand-made fake screens removed from the home, Mac, Windows and phone pages.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).

@@ -307,7 +307,7 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .stop .ver { font: 500 12px var(--mono); letter-spacing: .09em; color: var(--accent); text-transform: uppercase; margin: 0 0 6px; }
 .stop h3 { margin: 0 0 8px; font-size: clamp(24px, 3vw, 34px); font-weight: 600; letter-spacing: -.025em; }
 .stop p { color: var(--ink-2); max-width: 40em; }
-.stop ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; max-width: 880px; }
+.stop ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 28px; }
 .stop li { border-top: 1px dashed var(--line-2); padding: 12px 0; font-size: 15px; color: var(--ink-2); }
 .stop li b { color: var(--ink); font-weight: 600; display: block; }
 .note { background: var(--panel); border: 1px solid var(--line); padding: 18px 20px; font-size: 15px; color: var(--ink-2); max-width: 44em; }
@@ -345,7 +345,7 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .crumbs a { color: var(--ink-3); }
 
 /* FAQ */
-.faq { border-top: 1px solid var(--line); max-width: 860px; }
+.faq { border-top: 1px solid var(--line); }
 .faq details { border-bottom: 1px solid var(--line); }
 .faq summary { list-style: none; cursor: pointer; padding: 20px 40px 20px 0; font-size: 18px; font-weight: 500; letter-spacing: -.01em; position: relative; }
 .faq summary::-webkit-details-marker { display: none; }
@@ -378,7 +378,7 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .lumen.typing .scenes { opacity: .2; transition: opacity .2s; }
 
 /* Start page parts */
-.part { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; padding: 40px 0; border-top: 1px dashed var(--line-2); max-width: 880px; }
+.part { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 16px; padding: 40px 0; border-top: 1px dashed var(--line-2); }
 .part:last-of-type { border-bottom: 1px dashed var(--line-2); }
 .part .n { font: 500 13px var(--mono); color: var(--accent); padding-top: 8px; }
 .part h2 { margin: 0 0 14px; font-size: clamp(24px, 3vw, 32px); font-weight: 600; letter-spacing: -.025em; }
@@ -512,3 +512,14 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .ar-data p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
 
 .note .btn + .btn { margin-left: 8px; }
+
+/* Alignment: one content grid. Blocks span the wrap; text keeps its own measure. */
+.feat.flip { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+.feat:not(:has(.mock)) { align-items: start; }
+.note { max-width: none; }
+.note p, .note ul { max-width: 52em; }
+section.sec#agent-guide { padding-top: clamp(32px, 4vw, 48px); }
+.part p, .part li, .part ul, .part ol { max-width: 46em; }
+.part h2 { max-width: 24em; }
+.faq details p { max-width: 46em; }
+@media (max-width: 880px) { .feat.flip { grid-template-columns: 1fr; } }
