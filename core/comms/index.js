@@ -145,8 +145,12 @@ export function registerComms(ctx, o = {}) {
     description: "Which sending service this Space uses and the address it sends from. Never the key.",
     input: obj(),
     callers: CALLERS,
-    run: async () => {
+    run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => {
       try {
+        // A read: ask the connections list first (it audits nothing), so a Space with no service never reaches a Vault release, which writes an audit row.
+        const rows = await use("vault.connections.list", { caller: String(meta.caller || "cli") }).catch(() => null);
+        const list = rows ? (Array.isArray(rows) ? rows : rows.connections || []) : null;
+        if (list && !list.some((/** @type {any} */ r) => r && (r.ref === SENDING_ITEM || r.provider === "sending-service"))) return { configured: false, next: NEXT_STEP };
         const c = await serviceConn();
         return { configured: true, provider: c.provider, label: (/** @type {any} */ (LABELS))[c.provider], from: c.from, domain: c.domain || String(c.from).replace(/^.*@|>$/g, "") };
       } catch (e) {
