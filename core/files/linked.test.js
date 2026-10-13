@@ -222,10 +222,14 @@ test("rename, delete and versions go to the source as the person; the index foll
   assert.deepEqual(p.calls.filter(c => ["rename", "delete", "versions"].includes(c[0])).map(c => [c[0], c[1]]), [["rename", "per_alex"], ["versions", "per_alex"], ["delete", "per_alex"]]);
 });
 
-test("writing, renaming and deleting reach outside the Space, so each carries presence for a person and is held for an assistant", () => {
+test("writing, renaming and deleting follow the Space Drive's rule: no extra proof from the person, and the manifest marks them outward so an assistant's is held", async () => {
   const r = rig();
-  for (const n of ["write", "rename", "delete"]) { assert.ok(r.tools.get(`files.linked.${n}`).presence, n); }
-  assert.equal(r.tools.get("files.linked.read").presence, undefined);
+  for (const n of ["write", "rename", "delete", "read"]) assert.equal(r.tools.get(`files.linked.${n}`).presence, undefined, n);
+  const m = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const tool = (/** @type {string} */ n) => m.does.tools.find((/** @type {any} */ t) => t.name === n);
+  for (const n of ["write", "rename", "delete"]) assert.equal(tool(`files.linked.${n}`).outward, true, n);
+  assert.equal(tool("files.drive.upload").outward, true, "the same mark the Space Drive's upload has");
+  assert.ok(!tool("files.linked.read").outward);
 });
 
 test("providers lists what can be linked, and pick offers the folders the person may choose, as the person", async () => {
@@ -235,4 +239,34 @@ test("providers lists what can be linked, and pick offers the folders the person
   assert.deepEqual(pk.folders.map(f => f.name), ["Client docs", "Archive"]);
   assert.deepEqual(r.linked.providers.get("fake").calls.at(-1), ["pick", "per_alex", null]);
   assert.equal(await code(r.run("files.linked.pick", { provider: "nope" })), "bad_input");
+});
+
+test("# mentions: the tag search finds linked files the person's account sees, by name and by text, and names them without their text", async () => {
+  const { r, l } = await opened();
+  await r.run("files.linked.sync", { id: l.id });
+  const hits = (await r.run("files.linked.mentions.search", { q: "launch" })).items;
+  assert.deepEqual(hits.map(h => [h.id, h.name, h.hint, h.icon]), [[`${l.id}:a/plan.md`, "plan.md", "Linked/Docs/a", "file"]]);
+  assert.deepEqual((await r.run("files.linked.mentions.search", { q: "" })).items, []);
+  r.state.chain = person("per_bo");
+  assert.deepEqual((await r.run("files.linked.mentions.search", { q: "launch" })).items, [], "another person's index is not searched");
+});
+
+test("# mentions: resolving a tag hands the chat the file's text as outside context and says how to read the rest", async () => {
+  const { r, l, p } = await opened();
+  await r.run("files.linked.sync", { id: l.id });
+  const res = await r.run("files.linked.mentions.resolve", { id: `${l.id}:a/plan.md`, thread: "t1" }, { caller: "module:sessions" });
+  assert.equal(res.name, "plan.md");
+  assert.equal(res.context, "the launch plan");
+  assert.match(res.note, new RegExp(`files\\.linked\\.read \\{id: "${l.id}", path: "a/plan.md"\\}`));
+  assert.equal(p.calls.filter(c => c[0] === "read").at(-1)[1], "per_alex");
+  assert.equal(await code(r.run("files.linked.mentions.resolve", { id: `${l.id}:nope.txt`, thread: "t1" }, { caller: "module:sessions" })), "not_found");
+  assert.equal(await code(r.run("files.linked.mentions.resolve", { id: `${l.id}:a/plan.md`, thread: "t1" }, { caller: "cli" })), "denied");
+});
+
+test("# mentions: a tag whose chat has no person behind it still resolves, to a note without the text", async () => {
+  const { r, l } = await opened();
+  r.state.chain = null;
+  const res = await r.run("files.linked.mentions.resolve", { id: `${l.id}:a/plan.md`, thread: "t1" }, { caller: "module:assistant" });
+  assert.equal(res.context, undefined);
+  assert.match(res.note, /files\.linked\.read/);
 });

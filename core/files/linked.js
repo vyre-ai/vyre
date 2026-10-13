@@ -117,6 +117,49 @@ export function registerLinked(ctx, o) {
 
   registerLinkedIO({ t, linkOf, asLink, index, providers, view });
 
+  // The # tag (core/mentions): linked files are a kind of their own, searched in the asking person's index and resolved from their own turn.
+  const MENTION_CALLERS = [...CALLERS, "tailnet", "space", "agent"];
+  const parseTag = (/** @type {any} */ id) => { const s = String(id ?? ""), k = s.indexOf(":"); return k > 0 && k < s.length - 1 ? { link: s.slice(0, k), path: s.slice(k + 1) } : null; };
+  ctx.tool("files.linked.mentions.search", {
+    description: "Files in the linked folders whose name or text matches what you typed after #, among what your account sees there. Names only.",
+    input: obj({ q: str, limit: { type: "integer" } }), callers: MENTION_CALLERS,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const q = String(i && i.q || "").trim();
+      if (!q) return { items: [] };
+      const d = await door.open({}, meta || {}), who = personOf(d.chain);
+      const names = new Map(db().prepare("SELECT id, name FROM files_linked WHERE space = ? AND removed_at IS NULL").all(d.space).map((/** @type {any} */ r) => [r.id, r.name]));
+      const hits = index().search(who, q, { limit: Math.min(50, Math.max(1, Number(i.limit) || 30)) }).filter((/** @type {any} */ h) => names.has(h.link) && h.entry);
+      return { items: hits.map((/** @type {any} */ h) => { const dir = String(h.path).includes("/") ? `/${String(h.path).replace(/\/[^/]*$/, "")}` : ""; return { id: `${h.link}:${h.path}`, name: String(h.name), hint: `${linkedDir(names.get(h.link))}${dir}`, icon: "file" }; }) };
+    },
+  });
+  ctx.tool("files.linked.mentions.resolve", {
+    description: "Make a tagged linked file known to the chat it was tagged in: its text as context when the tagging person can read it, and how to read the rest. Only the sessions module or the assistant call it.",
+    input: obj({ id: str, thread: str, said: str }, ["id", "thread"]), callers: ["module"],
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!/^module:(sessions|assistant)$/.test(String(meta && meta.caller))) throw refuse("only the chat itself resolves a tag: tag the file again with # in the chat", "denied");
+      const tag = parseTag(i && i.id);
+      const gone = () => refuse("that file is not available (tag it again with # in the chat)", "not_found");
+      if (!tag) throw gone();
+      let d, who = "";
+      try { d = await door.open({}, meta || {}); who = personOf(d.chain); } catch { d = null; }
+      // With a person behind the turn the file is read now, as them; without one the tag is still known, as a note.
+      const row = d ? db().prepare("SELECT * FROM files_linked WHERE id = ? AND space = ? AND removed_at IS NULL").get(tag.link, d.space) : db().prepare("SELECT * FROM files_linked WHERE id = ? AND removed_at IS NULL").get(tag.link);
+      if (!row) throw gone();
+      const note = `The person tagged the linked file "${tag.path}" in ${linkedDir(row.name)}. Read it with files.linked.read {id: "${row.id}", path: "${tag.path}"}.`;
+      const base = { name: tag.path.split("/").pop() || tag.path, hint: linkedDir(row.name), note };
+      if (!d) return base;
+      const e = index().entryAt(row.id, who, tag.path);
+      if (!e || !e.entry) throw gone();
+      if (e.dir) throw refuse("that is a folder, not a file (tag a file inside it)", "not_found");
+      let context;
+      const provider = providers.get(row.provider);
+      if (provider && /^(text\/|application\/(json|xml))/.test(String(e.mime || "")) && Number(e.size || 0) <= 262144) {
+        try { context = Buffer.from((await provider.read(asLink(row), who, { id: e.entry, path: tag.path, name: e.name, mime: e.mime, size: e.size, rev: e.rev })).bytes).toString("utf8"); } catch { context = undefined; }
+      }
+      return { ...base, ...(context !== undefined ? { context } : {}) };
+    },
+  });
+
   /** The scheduler's pass: every (link, person) pair that has synced once, one after another; a failing pair records its error and the rest go on. Answers how many it ran. */
   async function syncKnown() {
     let n = 0;

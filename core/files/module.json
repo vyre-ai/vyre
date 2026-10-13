@@ -44,6 +44,8 @@
     {"name": "files.linked.sync", "effect": "write", "reach": "person"},
     {"name": "files.linked.status", "effect": "read", "reach": "person"},
     {"name": "files.linked.search", "effect": "read", "reach": "person"},
+    {"name": "files.linked.mentions.search", "effect": "read", "reach": "person"},
+    {"name": "files.linked.mentions.resolve", "reach": "modules"},
     {"name": "files.linked.ls", "effect": "read", "reach": "person"},
     {"name": "files.linked.read", "effect": "read", "reach": "person"},
     {"name": "files.linked.write", "effect": "write", "reach": "person", "outward": true},
@@ -69,7 +71,7 @@
     {"name": "files.drive.open", "effect": "write", "reach": "person"},
     {"name": "files.drive.local", "effect": "read", "reach": "anyone"}
   ] },
-  "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}],
+  "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}, {"kind": "linked", "label": "Linked files", "icon": "file", "search": "files.linked.mentions.search", "resolve": "files.linked.mentions.resolve"}],
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },
   "needs": {},

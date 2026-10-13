@@ -1,8 +1,10 @@
 // @ts-check
 // core/files/linked-read.js: the open, edit and write-back side of Files > Linked. Listing a folder comes from the caller's own index; a file's CONTENT is never kept here: `read` asks the
 // source now, as the person, so an edit made elsewhere is what opens. A write goes back through the same provider with the revision the person opened (a stale one answers `conflict`
-// and writes nothing), then the person's index is brought up to date so the edit is searchable at once. Reads are the person's and models' (the asking member's chat); writing, renaming
-// and deleting change the source's files, so a person's own call carries presence and an assistant's is held for a yes.
+// and writes nothing), then the person's index is brought up to date so the edit is searchable at once. Reads are the person's and models' (the asking member's chat). Writing, renaming
+// and deleting follow the rule of editing the Space's own Drive (space-drive.js): the person's own call asks for no extra proof, the manifest marks them outward so an assistant's is held, and
+// a delete goes to the source's own recoverable trash where it has one. Drive has no conditional upload, so a write racing another inside the gap between the revision check and the upload is
+// last write wins at the source.
 //
 //   files.linked.ls        { space?, id, path? }                              -> { path, entries: [{ name, path, dir, size, modified, rev }] }
 //   files.linked.read      { space?, id, path }                               -> { path, name, mime, rev, size, base64 }       (at most MAX_BYTES)
@@ -39,7 +41,7 @@ export function registerLinkedIO({ t, linkOf, asLink, index, providers }) {
     if (!e || !e.entry) throw refuse("no such file in the linked folder, or your account cannot see it", "not_found");
     return e;
   };
-  const outward = (/** @type {string} */ verb) => ({ outward: true, effect: "write", presence: { summary: async (/** @type {any} */ i) => `${verb} ${String(i && i.path || "a file")} in a linked folder` } });
+  const outward = (/** @type {string} */ _verb) => ({});
   const ref = (/** @type {string} */ p, /** @type {any} */ e) => ({ id: e.entry, path: p, name: e.name, mime: e.mime, size: e.size, rev: e.rev });
 
   t("files.linked.ls", "List a folder in a linked folder, from your own index: { space?, id, path? }.", obj({ space: str, id: str, path: str }, ["id"]), {}, async (/** @type {any} */ i, /** @type {any} */ d, /** @type {string} */ who) => {
