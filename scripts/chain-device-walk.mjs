@@ -38,7 +38,7 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
   const dir = fs.mkdtempSync(path.join(out, "dev-"));
   const crypto2 = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "k.json"));
   const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "chain-device", crypto: crypto2, keyStore,
-    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "chain-device" }); const { deviceId } = await import("../core/relay/index.js"); console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
+    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "chain-device" }); const { deviceId } = await import("../core/relay/index.js"); lastChannel = h.channel; console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
   return conn;
 }
 /** One tool call as that device: { status, text }. */
@@ -53,6 +53,8 @@ async function callAs(/** @type {any} */ conn, /** @type {string} */ tool, /** @
     throw new Error(`no answer in 20 s; the connection's last error: ${String(conn.lastError && conn.lastError.message || /** @type {any} */ (e).message).slice(0, 220)}`);
   } finally { clearTimeout(timer); try { if (ac.signal.aborted) conn.close(); } catch { /* closed */ } }
 }
+const channelOf = (/** @type {any} */ c) => String((c && (c.deviceId || (c.o && c.o.deviceId))) || lastChannel);
+let lastChannel = "";
 const rowsOf = () => String(srv.logs.length) && srv.registry.call("relay.devices", {}, "cli").then((/** @type {any} */ r) => r && r.data);
 async function appendOp(/** @type {any} */ body) {
   const name = mac.identity.name;
@@ -112,7 +114,7 @@ try {
   });
   await step("3b. the server marks its row via_chain (relay.devices, then relay.device.info of the chain device's row)", async () => {
     const rows = await rowsOf();
-    const list = JSON.stringify(rows).slice(0, 400);
+    const list = String(JSON.stringify(rows)).slice(0, 400);
     const arr = Array.isArray(rows) ? rows : (rows && (rows.devices || rows.rows)) || [];
     const row = arr.find((/** @type {any} */ d) => d && /founder-laptop|chain/.test(String(d.name || ""))) || arr[arr.length - 1];
     assert.ok(row && row.id, `a device row: ${list}`);
@@ -123,7 +125,11 @@ try {
   });
   await step("3c. a chain device asks for a person-session challenge over its own channel (presence.person.pair-challenge): what it hears", async () => {
     const ch = await callAs(conn, "presence.person.pair-challenge");
-    return `pair-challenge ${ch.status} ${ch.text.slice(0, 220)}`;
+    const challenge = (JSON.parse(ch.text).data || {}).challenge;
+    // sign in as a fresh device would, with the only key this device has (the chain entry key; the hello offered no presence key): the answer is recorded, not pushed further
+    const sig = challenge ? await mac.identity.key.sign(new TextEncoder().encode(`paired-start\n${channelOf(conn)}\n${challenge}`)) : null;
+    const sp = sig ? await callAs(conn, "presence.person.start-paired", { sig: Buffer.from(sig).toString("base64url"), label: "chain-device" }) : null;
+    return `pair-challenge ${ch.status} ${ch.text.slice(0, 100)}; start-paired (signed with the chain entry key) ${sp ? sp.status + " " + sp.text.slice(0, 220) : "not tried"}`;
   });
 
   // 8: replay
