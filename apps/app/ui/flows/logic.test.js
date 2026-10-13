@@ -332,3 +332,44 @@ test("a time in text can be moved by an amount and printed in a named format", (
     assert.equal(fromDefinition(def).steps[0].body, body, body);
   }
 });
+
+test("an agent's task and instructions, a task title and a question are templates like every other text", () => {
+  const d = { name: "T", trigger: { kind: "created", type: "client" }, steps: [
+    { id: "agent1", kind: "agent", agent: "refunds", title: "Refund for {after.name}", instructions: "Look at [[record:this]]. Greet {after.name} and mention {after.plan}.", record: "trigger" },
+    { id: "assign2", kind: "assign", to: "role:attorney", title: "Call {after.name}" },
+    { id: "ask3", kind: "ask", to: "role:attorney", title: "Approve {after.name}?" },
+  ] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0].instructions, { expr: '"Look at [[record:this]]. Greet " + text(trigger.after.name) + " and mention " + text(trigger.after.plan) + "."' });
+  assert.deepEqual(def.steps[0].title, { expr: '"Refund for " + text(trigger.after.name)' });
+  assert.deepEqual(def.steps[1].title, { expr: '"Call " + text(trigger.after.name)' });
+  assert.deepEqual(def.steps[2].title, { expr: '"Approve " + text(trigger.after.name) + "?"' });
+  assert.deepEqual(checkFlow(def), []);
+  const back = fromDefinition(def);
+  assert.equal(back.steps[0].instructions, d.steps[0].instructions);
+  assert.equal(back.steps[0].title, d.steps[0].title);
+  assert.equal(back.steps[1].title, d.steps[1].title);
+  assert.equal(back.steps[2].title, d.steps[2].title);
+  assert.equal(flat(back.steps).some((s) => s.kind === "advanced"), false);
+  assert.equal(toDefinition({ ...d, steps: [{ ...d.steps[0], instructions: "Plain words.", title: "" }] }).steps[0].instructions, "Plain words.", "text with no braces stays text");
+});
+
+test("an emails field is its main address: in text, and as the To, Reply-To or From of a send", () => {
+  const o = { types: [{ name: "client", label: "Client", fields: [{ name: "email", label: "Email", kind: "emails" }, { name: "phone", label: "Phone", kind: "phones" }, { name: "name", label: "Name", kind: "text" }] }], agents: [], templates: [], roles: [], people: [] };
+  const d = { name: "E", trigger: { kind: "created", type: "client" }, steps: [
+    { id: "email1", kind: "email", sendStep: "comms.email", to: "{after.email}", subject: "Hi", body: "We have {after.email} and {after.phone} for {after.name}.", replyTo: "{after.email}" },
+    { id: "sms2", kind: "sms", to: "{after.phone}", body: "Hello" },
+  ] };
+  const def = toDefinition(d, o);
+  assert.deepEqual(def.steps[0].input.to, { expr: "first(trigger.after.email)" });
+  assert.deepEqual(def.steps[0].input.replyTo, { expr: "first(trigger.after.email)" });
+  assert.deepEqual(def.steps[0].input.body, { expr: '"We have " + first(trigger.after.email) + " and " + first(trigger.after.phone) + " for " + text(trigger.after.name) + "."' });
+  assert.deepEqual(def.steps[1].input.to, { expr: "first(trigger.after.phone)" });
+  assert.deepEqual(checkFlow(def), []);
+  const back = fromDefinition(def);
+  assert.equal(back.steps[0].to, "{after.email}");
+  assert.equal(back.steps[0].replyTo, "{after.email}");
+  assert.equal(back.steps[0].body, d.steps[0].body);
+  assert.equal(back.steps[1].to, "{after.phone}");
+  assert.deepEqual(toDefinition(d).steps[0].input.to, { expr: "trigger.after.email" }, "without the object's fields the value is as it is");
+});
