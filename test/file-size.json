@@ -3,7 +3,7 @@
  "limit": 2000,
  "files": {
   "core/switchboard/index.js": 5089,
-  "core/spaces/index.js": 2600,
+  "core/spaces/index.js": 2611,
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2047,
   "core/vault/vault.js": 2037

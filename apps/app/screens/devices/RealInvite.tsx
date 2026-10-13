@@ -63,7 +63,7 @@ export function RealInvite() {
   const confirm = () => {
     if (!card || !made || !words.trim()) return;
     setBusy(true); setProblem("");
-    void (async () => ((await invitesHere()) ? (await import("../../src/real/team-join")).confirmTeamInviteWords(card.id, made.id, words.trim()) : tool("spaces.invites.confirm", { space: card.id, id: made.id, words: words.trim() })))().then(() => { setMade({ ...made, needsConfirm: false }); showToast("Confirmed. The link works now."); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
+    void (async () => ((await invitesHere()) ? (await import("../../src/real/team-join")).confirmTeamInviteWords(card.id, made.id, words.trim(), card.name) : tool("spaces.invites.confirm", { space: card.id, id: made.id, words: words.trim() })))().then(() => { setMade({ ...made, needsConfirm: false }); showToast("Confirmed. The link works now."); refresh(); }).catch((e) => setProblem(why(e))).finally(() => setBusy(false));
   };
   const revoke = (id: string) => void (async () => ((await invitesHere()) ? (await import("../../src/real/team-join")).cancelTeamInvite(String(card?.id), id) : tool("spaces.invites.revoke", { space: card?.id, id })))().then(() => { showToast("The link no longer works."); refresh(); }).catch((e) => showToast(why(e)));
 
@@ -90,7 +90,7 @@ export function RealInvite() {
           </View>
           {made.needsConfirm ? (
             <View className="gap-s2">
-              <Banner><Text>This role needs your yes. When they open the link they read you a few words. Type them here to let them in.</Text></Banner>
+              <Banner><Text>This role needs your yes. When they open the link, their card shows four words of this Space. Ask them to read those words to you and type them here. The words show they are looking at this Space; they do not show who they are, so be sure it is the person you meant to invite.</Text></Banner>
               <Field label="The words they read to you" value={words} onChangeText={setWords} />
               <View className="self-start"><Button kind="primary" label={busy ? "Checking" : "Confirm"} onPress={busy || !words.trim() ? () => {} : confirm} /></View>
             </View>

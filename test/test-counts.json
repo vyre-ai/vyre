@@ -630,6 +630,7 @@
  "kernel/tasks/records.test.js": 8,
  "kernel/tasks/tasks.test.js": 42,
  "kernel/tools/surface.test.js": 8,
+ "lib/spaces/invite-words.test.js": 2,
  "lib/acme/acme.test.js": 11,
  "lib/acme/certs.test.js": 4,
  "lib/acme/csr.test.js": 4,

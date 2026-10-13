@@ -144,9 +144,10 @@ export async function teamInvites(space: string) {
   const { listTeamInvites } = await import("./team-invite.js");
   return { invites: await listTeamInvites(await inviteDeps(space)) };
 }
-export async function confirmTeamInviteWords(space: string, id: string, words: string) {
+export async function confirmTeamInviteWords(space: string, id: string, words: string, name: string) {
   const { confirmTeamInvite } = await import("./team-invite.js");
-  return confirmTeamInvite(await inviteDeps(space), id, words);
+  const { WORDS } = await import("@vyre/relay-client/words.js");
+  return confirmTeamInvite({ ...(await inviteDeps(space)), words: WORDS as string[] }, id, words, name);
 }
 export async function cancelTeamInvite(space: string, id: string) {
   const { revokeTeamInvite } = await import("./team-invite.js");

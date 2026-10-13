@@ -944,8 +944,20 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   // an admin invite waits for the inviter to confirm the invitee's words
   const adm = await d.ok("spaces.invites.create", { space, role: "admin" }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "admin" }) });
   assert.equal(adm.needs_confirm, true);
-  const conf = await d.call("spaces.invites.confirm", { space, id: adm.id, words: card.fingerprint_words }, "cli", { token, kernel_proof: sign("inviteConfirm", adm.id, { words: card.fingerprint_words }) });
-  assert.ok(!conf.error, JSON.stringify(conf.error));
+  // the words are THIS Space's: wrong, empty and another Space's words are refused in words, and nothing is confirmed (the Space's own words then still pass)
+  const tryWords = (/** @type {string} */ id, /** @type {string} */ words) => d.call("spaces.invites.confirm", { space, id, words }, "cli", { token, kernel_proof: sign("inviteConfirm", id, { words }) });
+  for (const bad of ["apple apple apple apple", "", "abandon ability able about", card.fingerprint_words.split(" ").slice(0, 3).join(" ")]) {
+    const r = await tryWords(adm.id, bad);
+    assert.equal(r.error?.code, "words_mismatch", `"${bad}" is refused: ${JSON.stringify(r.error)}`);
+    assert.match(String(r.error.message), /not the words of this Space.*read the four words on their card again/i);
+  }
+  const conf = await tryWords(adm.id, `  ${card.fingerprint_words.toUpperCase()}, `);
+  assert.ok(!conf.error, `the Space's own words pass, in any case and spacing: ${JSON.stringify(conf.error)}`);
+  // too many wrong tries and the invite stops listening, even to the right words
+  const adm2 = await d.ok("spaces.invites.create", { space, role: "admin" }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "admin" }) });
+  for (let n = 0; n < 5; n++) assert.equal((await tryWords(adm2.id, "wrong words here now")).error?.code, "words_mismatch");
+  const locked = await tryWords(adm2.id, card.fingerprint_words);
+  assert.equal(locked.error?.code, "too_many_tries", "five wrong tries spend the invite");
 });
 
 test("a second person joins a space that lives on a server: the record carries the home's route, the invitee opens the stream with a signed hello and reads the card and accepts through the home's kernel", async t => {
