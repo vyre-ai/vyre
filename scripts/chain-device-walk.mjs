@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { proofWith } from "../apps/app/src/auth/person.ts";
 import { createApp } from "./lib/proof/app.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
 import { startDaemonServer } from "./lib/proof/server-daemon.mjs";
@@ -37,9 +38,29 @@ async function dial(/** @type {{ key: any, entry: string, hello?: () => Promise<
   const p = mac.pairing;
   const dir = fs.mkdtempSync(path.join(out, "dev-"));
   const crypto2 = nodeCrypto(), keyStore = fileKeyStore(path.join(dir, "k.json"));
-  const conn = connect({ relay: p.relay, route: p.route, box: p.box, name: o.name || "chain-device", crypto: crypto2, keyStore,
-    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), name: o.name || "chain-device" }); const { deviceId } = await import("../core/relay/index.js"); lastChannel = h.channel; console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
+  const personKey = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: personKey.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  const conn = connect({ presenceKey, relay: p.relay, route: p.route, box: p.box, name: o.name || "chain-device", crypto: crypto2, keyStore,
+    chainHello: o.hello || (async (/** @type {Uint8Array | undefined} */ given) => { const h = await chainHello({ sha256, devicePub: given, box: String(p.box), identity: mac.identity.id, entry: o.entry, sign: (m) => o.key.sign(m), presencePublicKey: presenceKey.public_key, name: o.name || "chain-device" }); const { deviceId } = await import("../core/relay/index.js"); lastChannel = h.channel; console.log(`DIAG client hello channel ${h.channel}, relay.deviceId(devicePub)=${given ? deviceId(Buffer.from(given)) : "-"}, keystore pub ${Buffer.from((await keyStore.get()).publicKey).toString("base64url").slice(0, 8)},  devicePub ${given ? Buffer.from(given).toString("base64url").slice(0, 8) : "undefined"}, ts ${h.ts}, sig ${h.sig.length} chars`); return h; }) });
+  /** @type {any} */ (conn).personKey = personKey;
   return conn;
+}
+/** Sign the device in as a fresh device does (pair-challenge, then start-paired with its presence key) and give a caller that sends the token and a signed proof. */
+async function signIn(/** @type {any} */ conn) {
+  const sgn = (/** @type {Uint8Array} */ m) => new Uint8Array(crypto.sign("sha256", Buffer.from(m), { key: conn.personKey.privateKey, dsaEncoding: "ieee-p1363" }));
+  const ch = JSON.parse((await callAs(conn, "presence.person.pair-challenge")).text);
+  const challenge = (ch.data || {}).challenge;
+  if (!challenge) throw new Error(`no challenge: ${JSON.stringify(ch).slice(0, 200)}`);
+  const sig = sgn(new TextEncoder().encode(`paired-start\n${lastChannel}\n${challenge}`));
+  const sp = await callAs(conn, "presence.person.start-paired", { sig: Buffer.from(sig).toString("base64url"), label: "chain-device" });
+  const token = (JSON.parse(sp.text).data || {}).token;
+  if (!token) throw new Error(`no session: ${sp.status} ${sp.text}`);
+  return async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+    const url = `/v1/tools/${tool}`, body = JSON.stringify(input);
+    const proof = await proofWith(async (m) => sgn(new TextEncoder().encode(m)), { method: "POST", url, body });
+    const r = await conn.fetch(url, { method: "POST", headers: { "content-type": "application/json", authorization: `Vyre ${token}`, "x-vyre-proof": proof }, body });
+    return { status: r.status, text: String(await r.text()).slice(0, 300) };
+  };
 }
 /** One tool call as that device: { status, text }. */
 async function callAs(/** @type {any} */ conn, /** @type {string} */ tool, /** @type {any} */ input = {}) {
@@ -123,13 +144,14 @@ try {
     assert.ok(/via_?[cC]hain|chain/.test(s), `the row mentions the chain: ${s.slice(0, 500)}`);
     return s.slice(0, 500);
   });
-  await step("3c. a chain device asks for a person-session challenge over its own channel (presence.person.pair-challenge): what it hears", async () => {
-    const ch = await callAs(conn, "presence.person.pair-challenge");
-    const challenge = (JSON.parse(ch.text).data || {}).challenge;
-    // sign in as a fresh device would, with the only key this device has (the chain entry key; the hello offered no presence key): the answer is recorded, not pushed further
-    const sig = challenge ? await mac.identity.key.sign(new TextEncoder().encode(`paired-start\n${channelOf(conn)}\n${challenge}`)) : null;
-    const sp = sig ? await callAs(conn, "presence.person.start-paired", { sig: Buffer.from(sig).toString("base64url"), label: "chain-device" }) : null;
-    return `pair-challenge ${ch.status} ${ch.text.slice(0, 100)}; start-paired (signed with the chain entry key) ${sp ? sp.status + " " + sp.text.slice(0, 220) : "not tried"}`;
+  await step("3c. the chain device opens its person session (pair-challenge, start-paired with its presence key) and then runs as the owner: spaces.list, records.list", async () => {
+    const call = await signIn(conn);
+    const sp = await call("spaces.list");
+    const rl = await call("records.list", { type: "contact" });
+    assert.equal(sp.status, 200, `spaces.list ${sp.status} ${sp.text}`);
+    assert.ok(/"role":"owner"/.test(sp.text) || /spc_/.test(sp.text), `spaces.list lists the owner's Space: ${sp.text}`);
+    assert.equal(rl.status, 200, `records.list ${rl.status} ${rl.text}`);
+    return `spaces.list ${sp.status} ${sp.text.slice(0, 160)}; records.list ${rl.status} ${rl.text.slice(0, 120)}`;
   });
 
   // 8: replay
