@@ -262,3 +262,21 @@ export function mapBody({ MAP_URL, REPO, eyebrow }) {
 
 <section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">See your firm <b>on Vyre.</b></h2><div class="btn-row"><a class="btn btn-fill" href="#prompt">Copy the prompt</a><a class="btn" href="/start/">Set up Vyre</a></div></div></section>`;
 }
+
+/** The full-width call to action: the one-line prompt in a big copy box, a link to /map/ and a note on what the agent reads. Right after the hero on the home page; `compact` ends a /for/ page. */
+export function agentBand(compact = false) {
+  return `<section class="agb${compact ? ' agb-compact' : ''}" id="agent-guide" aria-labelledby="agb-h">
+  <div class="wrap">
+    <p class="agb-lbl">Give this to your AI agent</p>
+    <h2 id="agb-h" class="agb-h">Ask your AI how your business <b>would run on Vyre.</b></h2>
+    <div class="agb-box">
+      <pre id="home-prompt" tabindex="0">${esc(PROMPT)}</pre>
+      <button class="cp agb-cp" type="button" data-copy-from="home-prompt" aria-label="Copy the prompt">Copy prompt</button>
+    </div>
+    <div class="agb-foot">
+      <a class="agb-link" href="/map/">Tailor it to your business &rarr;</a>
+      <p class="agb-note">Paste it into ChatGPT, Claude or any agent that can read links. It reads <a href="/agenthome.md">vyre.run/agenthome.md</a>, asks you a few questions and maps your team, records and Flows.</p>
+    </div>
+  </div>
+</section>`;
+}

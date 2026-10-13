@@ -29,7 +29,7 @@
   <meta name="twitter:image" content="https://vyre.run/og/home.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"SoftwareApplication","@id":"https://vyre.run/#app","name":"Vyre","url":"https://vyre.run/","description":"Open-source, self-hosted command center where people and AI agents share chats, records, Flows, a vault, sites and documents. One group chat across Claude, Codex, Grok and OpenRouter. Reach it from a Mac, a Windows PC, a Linux server or any phone.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Windows, Linux, iOS, Android","softwareVersion":"0.5.0","license":"https://www.apache.org/licenses/LICENSE-2.0","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://vyre.run/#org"},"codeRepository":"https://github.com/vyre-ai/vyre","downloadUrl":"https://vyre.run/start/"},{"@type":"WebSite","@id":"https://vyre.run/#site","url":"https://vyre.run/","name":"Vyre","publisher":{"@id":"https://vyre.run/#org"}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is Vyre free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre."}},{"@type":"Question","name":"Do I need a server?","acceptedAnswer":{"@type":"Answer","text":"Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed."}},{"@type":"Question","name":"Does it run on Windows?","acceptedAnswer":{"@type":"Answer","text":"Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”."}},{"@type":"Question","name":"Does it work on my phone?","acceptedAnswer":{"@type":"Answer","text":"Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), scan the code your computer shows, and check that both screens show the same words."}},{"@type":"Question","name":"Where does my data live?","acceptedAnswer":{"@type":"Answer","text":"Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app."}},{"@type":"Question","name":"Do I need a VPN or another network app?","acceptedAnswer":{"@type":"Answer","text":"No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted."}},{"@type":"Question","name":"Does it replace Claude Code, Codex or Grok?","acceptedAnswer":{"@type":"Answer","text":"No. Vyre runs them with your own accounts and adds records, Flows, a vault, agents with roles and one chat that outlives any one model. You keep using each tool the way you do."}},{"@type":"Question","name":"What stops an agent from doing something I did not ask for?","acceptedAnswer":{"@type":"Answer","text":"Anything that leaves your server, such as an email, a payment, a deletion or a published page, waits at the Gate until a person has read the exact words and approved them. An agent can ask and cannot approve. A model sees a placeholder where a secret would be. The architecture page shows how."}},{"@type":"Question","name":"Who is Vyre for?","acceptedAnswer":{"@type":"Answer","text":"Professional services teams that want people and agents to work in one place: the people set the direction and make the calls, and the agents draft, track and follow up. Point your AI agent at the repo and it can show how your business would run on Vyre."}},{"@type":"Question","name":"Is it ready?","acceptedAnswer":{"@type":"Answer","text":"It is 0.5.0, and what this page shows works today. What comes next is labelled with its version on the direction page and in the roadmap."}}]}]}</script>
   <link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>
-  <link rel="stylesheet" href="/v2.css?v=f4e0badbc2">
+  <link rel="stylesheet" href="/v2.css?v=614046e2df">
   <script>document.documentElement.className='js'</script>
   <script src="/v2.js?v=dbc180882c" defer></script>
 </head>
@@ -61,6 +61,7 @@
       <p class="lead">In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person’s yes.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/start/">Set up Vyre</a>
+        <a class="btn" href="#agent-guide">Ask your AI agent</a>
         <a class="btn" href="/architecture/">See the architecture</a>
       </div>
       <p class="hero-note">Free. Needs one AI account. <a href="https://vyre.run/docs/for-agents/MAP-YOUR-BUSINESS">Point your AI agent at the repo</a>.</p>
@@ -74,6 +75,21 @@
         </div>
         <p class="demo-tag">Recorded from the app. Sample data.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="agb" id="agent-guide" aria-labelledby="agb-h">
+  <div class="wrap">
+    <p class="agb-lbl">Give this to your AI agent</p>
+    <h2 id="agb-h" class="agb-h">Ask your AI how your business <b>would run on Vyre.</b></h2>
+    <div class="agb-box">
+      <pre id="home-prompt" tabindex="0">Read https://vyre.run/agenthome.md and follow it to show me how my business would run on Vyre, the agentic command center for AI-native teams. Ask me what you need.</pre>
+      <button class="cp agb-cp" type="button" data-copy-from="home-prompt" aria-label="Copy the prompt">Copy prompt</button>
+    </div>
+    <div class="agb-foot">
+      <a class="agb-link" href="/map/">Tailor it to your business &rarr;</a>
+      <p class="agb-note">Paste it into ChatGPT, Claude or any agent that can read links. It reads <a href="/agenthome.md">vyre.run/agenthome.md</a>, asks you a few questions and maps your team, records and Flows.</p>
     </div>
   </div>
 </section>
@@ -186,87 +202,6 @@
       <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. Your data lives on your devices and on servers you or your team run. Vyre doesn’t hold it.</p></div>
       <div><p class="lbl">Your AI</p><p class="big">Your plans</p><p>Claude, Codex, Grok or OpenRouter, on the subscriptions or keys you already have.</p></div>
       <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on.</p></div>
-    </div>
-  </div>
-</section>
-
-<style>
-.pbox{position:relative;border:1px solid var(--line);background:var(--panel);margin:0}
-.pbox-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
-.pbox-bar .lbl{margin:0}
-.pbox pre{margin:0;padding:16px 18px;font:400 13px/1.55 var(--mono);color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}
-.pbox.tall pre{max-height:520px}
-.pbox button.cp{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--bg);background:var(--ink);border:0;border-radius:4px;padding:9px 14px;cursor:pointer}
-.pbox button.cp:hover{background:var(--accent)}
-.ap-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(24px,4vw,56px);align-items:start}
-@media(max-width:900px){.ap-grid{grid-template-columns:1fr}}
-.ap-steps{list-style:none;margin:18px 0 0;padding:0;counter-reset:s;display:grid;gap:10px}
-.ap-steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;font-size:15px;color:var(--ink-2)}
-.ap-steps li::before{content:counter(s);font:500 11px/26px var(--mono);color:var(--accent);border:1px solid var(--line-2);text-align:center;height:26px}
-.ap-steps b{color:var(--ink)}
-.mapper{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(24px,4vw,48px);align-items:start}
-@media(max-width:960px){.mapper{grid-template-columns:1fr}}
-.mform{border:1px solid var(--line);background:var(--panel);padding:20px}
-.mform fieldset{border:0;margin:0 0 20px;padding:0;min-width:0}
-.mform legend{font:500 11px/1.4 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);padding:0;margin-bottom:8px}
-.mform select,.mform input[type=text]{font:400 15px var(--sans);color:var(--ink);background:var(--bg);border:1px solid var(--line-2);border-radius:4px;padding:9px 10px;width:100%;max-width:100%}
-.mrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:480px){.mrow{grid-template-columns:1fr}}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.chips button{font:400 13px var(--sans);color:var(--ink-2);background:transparent;border:1px solid var(--line-2);border-radius:999px;padding:5px 11px;cursor:pointer}
-.chips button[aria-pressed=true]{color:var(--ink);background:var(--accent-wash);border-color:var(--accent)}
-.addrow{display:flex;gap:6px}
-.addrow button{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink);background:transparent;border:1px solid var(--line-2);border-radius:4px;padding:0 12px;cursor:pointer}
-.sketch{border:1px solid var(--line);background:var(--panel);padding:20px;min-width:0}
-.sketch h3{font:500 11px/1.4 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin:22px 0 8px}
-.sketch h3:first-child{margin-top:0}
-.sk-sum{font-size:15px;color:var(--ink-2);margin:0 0 4px}
-.tblw{overflow-x:auto;max-width:100%}
-.tblw table{border-collapse:collapse;width:100%;font-size:13.5px}
-.tblw th{font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:6px 10px 6px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
-.tblw td{padding:8px 10px 8px 0;border-bottom:1px dashed var(--line);vertical-align:top;color:var(--ink-2)}
-.tblw td:first-child{color:var(--ink);font-weight:500}
-.seal{font:400 11px var(--mono);color:var(--ok)}
-.next{font:500 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);padding:1px 5px;margin-left:4px;white-space:nowrap}
-.flow{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.flow li{font-size:12.5px;color:var(--ink-2);border:1px solid var(--line);padding:3px 8px;background:var(--bg)}
-.flow li.ap{border-color:var(--accent);color:var(--ink)}
-.flow li.tr{background:var(--accent-wash);color:var(--ink)}
-.flow li+li::before{content:"";}
-.skblock{margin:0 0 14px}
-.skblock p{margin:0 0 4px;font-size:14px;color:var(--ink-2)}
-.skblock p b{color:var(--ink)}
-.day{list-style:none;margin:28px 0 0;padding:0;display:grid;gap:0;border-left:1px solid var(--line-2);max-width:760px}
-.day li{position:relative;padding:0 0 18px 22px;font-size:15px;color:var(--ink-2)}
-.day li::before{content:"";position:absolute;left:-4px;top:7px;width:7px;height:7px;background:var(--accent)}
-.day time{font:500 12px var(--mono);color:var(--ink-3);display:block;margin-bottom:2px}
-.day b{color:var(--ink)}
-.conn{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0;border:1px solid var(--line)}
-.conn a{display:block;padding:16px 18px;text-decoration:none;border-left:1px solid var(--line);border-top:1px solid var(--line);margin:-1px 0 0 -1px;font-size:14.5px;color:var(--ink-2)}
-.conn a b{display:block;color:var(--ink);font-size:15.5px;margin-bottom:2px}
-.conn a:hover{background:var(--accent-wash)}
-html:not(.js) .needs-js{display:none}
-html.js .no-js{display:none}
-@media(prefers-reduced-motion:no-preference){.sketch .tblw,.sketch .skblock{animation:apin .35s ease both}@keyframes apin{from{opacity:.4}to{opacity:1}}}
-</style>
-<section class="sec" id="agent-guide" aria-labelledby="agt-h">
-  <div class="wrap">
-    <div class="ap-grid">
-      <div class="rv">
-        <p class="lbl" id="agt-h" style="margin-bottom:14px">Give this to your AI agent</p>
-        <h2 class="h2" style="font-size:clamp(28px,3.8vw,44px)">See your business <b>as an AI-native team on Vyre.</b></h2>
-        <ol class="ap-steps">
-          <li><span><b>Copy the prompt.</b> It is two lines. It sends your agent to a page that holds the full instructions.</span></li>
-          <li><span><b>Paste it into your AI.</b> ChatGPT, Claude or any agent that can read links.</span></li>
-          <li><span><b>Answer a few questions</b> about what you sell, your team, what you track and what must never go out without a yes.</span></li>
-          <li><span><b>Get your business mapped:</b> members, records, Playbooks, Flows, agents and approvals. If you want it, your agent can set Vyre up for you over Vyre&rsquo;s MCP.</span></li>
-        </ol>
-        <p class="btn-row" style="margin-top:22px"><a class="btn btn-fill btn-sm" href="/map/">Tailor it to your business</a> <a class="btn btn-sm" href="/agenthome/">What your agent reads</a></p>
-      </div>
-      <div class="pbox rv">
-        <div class="pbox-bar"><span class="lbl">Prompt &middot; plain text</span><button class="cp" type="button" data-copy-from="home-prompt" aria-label="Copy the prompt">Copy</button></div>
-        <pre id="home-prompt" tabindex="0" style="max-height:none">Read https://vyre.run/agenthome.md and follow it to show me how my business would run on Vyre, the agentic command center for AI-native teams. Ask me what you need.</pre>
-      </div>
     </div>
   </div>
 </section>

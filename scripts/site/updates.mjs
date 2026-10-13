@@ -3,6 +3,9 @@
 // checkbox is its CONSENT_TEXT, so the page and the stored consent_version cannot drift apart (updates/worker/worker.test.js checks it).
 import { CONSENT_TEXT } from '../../updates/worker/consent.js';
 
+/** The Worker at /api/updates is deployed. Set false to show "coming soon" in place of the form and the short privacy wording. */
+export const UPDATES_LIVE = true;
+
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
@@ -10,6 +13,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
  * `compact` is the one-row form for a page footer. Plain HTML: it posts to /api/updates without script and v2.js sends it with fetch.
  */
 export function updatesForm({ id = 'upd', source = '/updates/', compact = false } = {}) {
+  if (!UPDATES_LIVE) return `<div class="upd${compact ? ' upd-compact' : ''}"><p class="upd-t">Weekly updates are coming soon. <a href="https://github.com/vyre-ai/vyre">Star the repo</a> to follow along.</p></div>`;
   return `<form class="upd${compact ? ' upd-compact' : ''}" data-upd method="post" action="/api/updates" aria-labelledby="${id}-t">
   <p class="upd-t" id="${id}-t">${compact ? 'The weekly update' : 'Get the weekly update'}</p>
   <div class="upd-row">
@@ -49,9 +53,10 @@ export const UPDATES_PAGE = {
   <div class="upd-info">
     <h2 class="upd-h">What you get</h2>
     <ul class="plain">
+      <li>Nothing is sent yet. When sending starts, the first email asks you to confirm, and only confirmed addresses get the weekly email.</li>
       <li>One email a week at most, with all of that week's updates in it. Never a second one.</li>
       <li>The same changes that appear in the <a href="https://github.com/vyre-ai/vyre/releases">releases</a> and the <a href="https://github.com/vyre-ai/vyre/blob/main/CHANGELOG.md">changelog</a>, gathered in one place.</li>
-      <li>A link in every email that removes you in one click.</li>
+      <li>A link in every email that removes you in one click. Until then, write to <a href="mailto:privacy@vyre.run">privacy@vyre.run</a> to be removed.</li>
     </ul>
     <h2 class="upd-h">What the list keeps</h2>
     <ul class="plain">
@@ -73,16 +78,20 @@ export const UPDATES_PAGE = {
 };
 
 /** The privacy page's section about the list, as [heading, intro, bullets]. gen-site wraps it in its own part() and ul(). */
-export const UPDATES_PRIVACY = {
+export const UPDATES_PRIVACY = UPDATES_LIVE ? {
   heading: 'The weekly update list',
-  intro: 'If you sign up for the weekly update, the project keeps a small record so it can email you. Signing up is optional and nothing else on this site asks for your name or email.',
+  intro: 'If you sign up for the weekly update, the project keeps a small record. Signing up is optional and nothing else on this site asks for your name or email. The project sends nothing yet.',
   items: [
     '<b>What it keeps:</b> your name, your email address, the time you signed up, the page you signed up on (for example <code>/updates/</code>) and the version of the promise you saw next to the checkbox. Nothing else.',
-    '<b>Why:</b> to send you one email a week at most, with what changed in Vyre. The address is not used for anything else, not shared with anyone and not sold. There is no advertising and no other list.',
+    '<b>Why:</b> to send the weekly update once sending starts. The address is not used for anything else, not shared with anyone and not sold. There is no advertising and no other list.',
     '<b>Where:</b> in a key-value store on the project\'s Cloudflare account. The record is filed under a keyed hash of your address, not the address, and the Worker that saves it writes no log of it. Cloudflare\'s request logs are turned off for that Worker.',
     '<b>Your address while you sign up:</b> the Worker counts requests per address in a 60 second window, so one client cannot flood the form. It does not store the address or write it to a log.',
-    '<b>One a week, at most:</b> the promise next to the checkbox is "' + CONSENT_TEXT + '"',
-    '<b>How to leave:</b> every email carries an unsubscribe link. Opening it shows a button, and pressing the button deletes your record for good. You can also write to <a href="mailto:privacy@vyre.run">privacy@vyre.run</a> and ask to be removed.',
-    '<b>The sending service:</b> the project names the service that sends the email in this section before the first email goes out.',
+    '<b>Nothing is sent yet:</b> when sending starts, the first email asks you to confirm. Only confirmed addresses get the weekly email, at most one a week, and each email carries a one-click link to leave. The promise next to the checkbox is "' + CONSENT_TEXT + '"',
+    '<b>How to leave now:</b> write to <a href="mailto:privacy@vyre.run">privacy@vyre.run</a> and ask to be removed, and the record is deleted. Once emails start, every one carries an unsubscribe link: opening it shows a button, and pressing the button deletes your record for good.',
+    '<b>The sending service:</b> no service is chosen yet. This section will name it before the first email goes out.',
   ],
+} : {
+  heading: 'The weekly update list',
+  intro: 'Weekly updates are not open yet. When they open, this section will say what we keep, why and how to leave, before anyone can sign up.',
+  items: [],
 };

@@ -18,7 +18,7 @@ import { computerPages, COMPUTER_LLMS, COMPUTER_FULL } from './site/computer.mjs
 import { buildIndustries } from './site/industries.mjs';
 import { buildCompare } from './site/compare.mjs';
 import { docsPaths, llmsDocs } from './site/docs.mjs';
-import { PROMPT, MAP_META, homeBlock, mapBody } from './site/agent-prompt.mjs';
+import { PROMPT, MAP_META, mapBody, agentBand } from './site/agent-prompt.mjs';
 import { AGENTHOME_META, agentHomeBody } from './site/agenthome.mjs';
 import { updatesBand, UPDATES_PAGE, UPDATES_PRIVACY } from './site/updates.mjs';
 
@@ -233,6 +233,7 @@ const homeBody = `
       <p class="lead">In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person’s yes.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/start/">Set up Vyre</a>
+        <a class="btn" href="#agent-guide">Ask your AI agent</a>
         <a class="btn" href="/architecture/">See the architecture</a>
       </div>
       <p class="hero-note">Free. Needs one AI account. <a href="${MAP_URL}">Point your AI agent at the repo</a>.</p>
@@ -249,6 +250,8 @@ const homeBody = `
     </div>
   </div>
 </section>
+
+${agentBand()}
 
 <section class="works" id="devices" aria-labelledby="works-h">
   <div class="wrap">
@@ -362,7 +365,6 @@ const homeBody = `
   </div>
 </section>
 
-${homeBlock(MAP_URL)}
 
 
 <section class="sec" id="install" aria-labelledby="in-h">
@@ -1064,7 +1066,7 @@ ${part('13', 'delete', 'Delete everything', `${ul([
   '<b>On a Mac with the Vyre app:</b> drag Vyre from Applications to the Bin, then remove <code>sh.vyre.capsule.presence</code> in Keychain Access. If you also ran Vyre as a server on this Mac, delete <code>~/.vyre</code> too. <b>On Windows:</b> uninstall Vyre in Windows Settings, delete the <code>run.vyre.app</code> folder in <code>%APPDATA%</code> (the pairing file and key), and delete the scheduled task named Vyre in Task Scheduler, or turn off start at sign-in before you uninstall.',
   '<b>What stays with the project:</b> nothing of your work, because it never arrived. Relay records expire within an hour, held frames go when delivered or when the device leaves, and address counters go within about two days. A name that was ever live stays reserved, as described above. To have even that looked at, write to the contact below.',
 ])}`)}
-${part('14', 'updates', UPDATES_PRIVACY.heading, `<p>${UPDATES_PRIVACY.intro}</p>${ul(UPDATES_PRIVACY.items)}`)}
+${part('14', 'updates', UPDATES_PRIVACY.heading, `<p>${UPDATES_PRIVACY.intro}</p>${UPDATES_PRIVACY.items.length ? ul(UPDATES_PRIVACY.items) : ''}`)}
 ${part('15', 'contact', 'Contact', `<p>Questions about this page, or a request about a name: ${CONTACT_EMAIL ? `email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, or ` : ''}open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>
 <p>Vyre is open source (Apache 2.0). Every claim on this page can be checked in the code, and changes to this page are in its history on GitHub.</p>`)}
 </div></section>`;
@@ -1081,7 +1083,7 @@ const PAGES_CTX = { vmark, nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STA
 writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
 
 // ---------- industry pages (scripts/site/industries.mjs) ----------
-const IND = buildIndustries({ page, esc, eyebrow, crumbs, SITE, VERSION });
+const IND = buildIndustries({ page: (spec) => page({ ...spec, body: spec.body + agentBand(true) }), esc, eyebrow, crumbs, SITE, VERSION });
 // ---------- weekly update (scripts/site/updates.mjs) ----------
 page({ ...UPDATES_PAGE, ld: [crumbs([['Vyre', `${SITE}/`], ['Weekly update', `${SITE}/updates/`]])] });
 // ---------- machine-readable files ----------

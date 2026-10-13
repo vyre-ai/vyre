@@ -641,3 +641,21 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
   .nav-pop { position: static; display: block; border: 0; box-shadow: none; padding: 0 0 0 14px; min-width: 0; background: transparent; }
   .nav-pop a { padding: 14px 0; }
 }
+
+/* the call to action for AI agents: full width, inverse colours so it is the loudest block on the page */
+.agb { background: var(--ink); color: var(--bg); padding: clamp(44px, 6vw, 84px) 0; }
+.agb-lbl { margin: 0 0 14px; font: 500 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2, #B8A4FF); }
+.agb-h { margin: 0 0 28px; max-width: 18em; font-size: clamp(32px, 5vw, 58px); line-height: 1.04; letter-spacing: -.03em; font-weight: 400; color: color-mix(in srgb, var(--bg) 62%, var(--ink)); }
+.agb-h b { font-weight: 650; color: var(--bg); }
+.agb-box { display: flex; align-items: stretch; gap: 0; border: 1px solid color-mix(in srgb, var(--bg) 35%, var(--ink)); background: color-mix(in srgb, var(--bg) 8%, var(--ink)); }
+.agb-box pre { flex: 1; margin: 0; padding: 20px 22px; font: 400 clamp(14px, 1.5vw, 17px)/1.55 var(--mono); color: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.agb-cp { flex: none; border: 0; cursor: pointer; padding: 0 28px; font: 600 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; background: var(--bg); color: var(--ink); }
+.agb-cp:hover, .agb-cp:focus-visible { background: var(--accent); color: #fff; }
+.agb-foot { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; margin-top: 22px; }
+.agb-link { font: 600 13px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--bg); text-decoration: none; border: 1px solid var(--bg); padding: 14px 18px; }
+.agb-link:hover { background: var(--bg); color: var(--ink); }
+.agb-note { margin: 0; flex: 1 1 320px; font-size: 14px; line-height: 1.5; color: color-mix(in srgb, var(--bg) 62%, var(--ink)); }
+.agb-note a { color: var(--bg); }
+.agb-compact { padding: clamp(36px, 5vw, 56px) 0; }
+.agb-compact .agb-h { font-size: clamp(26px, 3.6vw, 40px); margin-bottom: 22px; }
+@media (max-width: 640px) { .agb-box { flex-direction: column; } .agb-cp { padding: 16px; } }
