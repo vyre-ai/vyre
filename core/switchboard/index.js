@@ -1853,6 +1853,13 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
+    // Claude to another Claude account with no home of its own (no spawner uid): the new account starts a fresh session, and the thread id already names a transcript in the shared HOME, which the CLI refuses to open again as new.
+    // So it starts under a fresh native id, recorded as a rollover is (nativeOf, the seed chain and the hop back all follow it).
+    if (provider === "claude" && !had && from === "claude" && !(usesSpawner() && acct && acct.uid != null)) {
+      const fromNative = this.nativeOf(id), toNative = crypto.randomUUID();
+      kept.native = toNative;
+      this.db.prepare("INSERT INTO threads_rolls (thread, at, reason, native_from, native_to, provider, model, turn) VALUES (?,?,?,?,?,?,?,?)").run(id, Date.now(), "account", fromNative, toNative, provider, model || rec.model || null, Number(rec.turns) || 0);
+    }
     if (acct) kept.account = acct.id; else delete kept.account; if (reason === "once" && person) kept.switchPerson = person; else delete kept.switchPerson; if (reason !== "once") delete kept.hopBack;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
