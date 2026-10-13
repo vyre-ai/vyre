@@ -61,7 +61,7 @@ test("expr: date and datetime read a time as people do, in the zone given", () =
   assert.equal(r("datetime(at, \"Asia/Karachi\")"), "Thu 15 Oct, 2:00 am");
   assert.equal(r("datetime(at)"), "Wed 14 Oct, 9:00 pm", "no zone reads as UTC");
   assert.equal(r("datetime(at, \"Nowhere/None\")"), "Wed 14 Oct, 9:00 pm", "an unknown zone reads as UTC");
-  assert.equal(r("datetime(text(at), tz)"), "Wed 14 Oct, 2:00 pm", "a time in a string");
+  assert.equal(r("datetime(atText, tz)", { atText: String(at) }), "Wed 14 Oct, 2:00 pm", "a time in a string");
   assert.equal(r("datetime(\"2026-10-14T21:00:00Z\", tz)"), "Wed 14 Oct, 2:00 pm", "a date text");
   assert.equal(r("datetime(missing, tz)"), "", "a missing value is empty");
   assert.equal(r("datetime(\"soon\", tz)"), "soon", "something that is not a time keeps its own text");
