@@ -11,7 +11,7 @@ export const KINDS = [
 export const kindLabel = (/** @type {string} */ k) => KINDS.find((x) => x[0] === k)?.[1] ?? k;
 
 export const TEMPLATES = [
-  ["blank", "Blank"], ["order", "Order (a bakery)"], ["property", "Property"], ["deal", "Deal"],
+  ["blank", "Blank"], ["order", "Order"], ["property", "Property"], ["deal", "Deal"],
 ];
 
 /** @type {Record<string, { name: string, fields: Field[], stages: string[] }>} */
@@ -20,7 +20,7 @@ const TPL = {
   order: {
     name: "Order",
     fields: [{ key: "title", label: "Title", kind: "text", required: true }, { key: "customer", label: "Customer", kind: "link" }, { key: "total", label: "Total", kind: "money" }, { key: "due", label: "Due", kind: "date" }, { key: "stage", label: "Stage", kind: "stage" }],
-    stages: ["New", "Baking", "Ready", "Picked up"],
+    stages: ["New", "In progress", "Ready", "Delivered"],
   },
   property: {
     name: "Property",
@@ -33,6 +33,17 @@ const TPL = {
     stages: ["Lead", "Meeting", "Proposal", "Won", "Lost"],
   },
 };
+
+const list = (/** @type {string[]} */ a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a[a.length - 1]}` : a[0] ?? "");
+
+/** What a preset starts with, read from its own definition: its first four fields (not the stage field, the stages are named after) and its stages. */
+export function templateBlurb(/** @type {string} */ id) {
+  const t = TPL[id];
+  if (!t) return "";
+  if (id === "blank") return "One field, Title. Add the rest yourself.";
+  const f = t.fields.filter((x) => x.kind !== "stage").slice(0, 4).map((x) => x.label);
+  return `Fields: ${list(f)}.${t.stages.length ? ` Stages: ${list(t.stages)}.` : ""}`;
+}
 
 export const templateName = (/** @type {string} */ id) => TPL[id]?.name ?? "Item";
 

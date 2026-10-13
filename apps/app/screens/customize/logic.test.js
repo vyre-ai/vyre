@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KINDS, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, typeLine } from "./logic.js";
+import { KINDS, TEMPLATES, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, templateBlurb, typeLine } from "./logic.js";
 
 const matter = { id: "matter", label: "Matter", plural: "Matters", spaces: ["juniper"], work: true, kit: "Estate planning matter", fields: [{ key: "title", label: "Title", kind: "text", required: true }], stages: ["Intake", "Drafting", "Closed"] };
 
@@ -32,9 +32,17 @@ test("a type from a template carries its fields and stages", () => {
   const t = buildType("order", "", true, "mine");
   assert.equal(t.label, "Order");
   assert.equal(t.plural, "Orders");
-  assert.deepEqual(t.stages, ["New", "Baking", "Ready", "Picked up"]);
+  assert.deepEqual(t.stages, ["New", "In progress", "Ready", "Delivered"]);
   assert.ok(t.fields.some((f) => f.kind === "money"));
   assert.deepEqual(t.spaces, ["mine"]);
+});
+
+test("presets read as real starting points, with no bakery in them", () => {
+  assert.deepEqual(TEMPLATES.map((t) => t[1]), ["Blank", "Order", "Property", "Deal"]);
+  assert.equal(templateBlurb("order"), "Fields: Title, Customer, Total and Due. Stages: New, In progress, Ready and Delivered.");
+  assert.equal(templateBlurb("property"), "Fields: Address, Owner, Value and Deed.");
+  assert.equal(templateBlurb("deal"), "Fields: Title, Contact, Value and Close date. Stages: Lead, Meeting, Proposal, Won and Lost.");
+  for (const [id] of TEMPLATES) assert.ok(!/bak/i.test(templateBlurb(id)));
 });
 
 test("a template name that is taken gets a number", () => {
