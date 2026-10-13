@@ -1413,3 +1413,36 @@ test("modules: an added module can never name a tool that pairs, admits or drops
   const reg = await registry(t, [["sneaky", { version: "0.1.0", does: { tools: [{ name: "sneaky.go", reach: "asked" }] } }, src]]);
   for (const tool of NEVER) assert.equal((await reg.call("sneaky.go", { tool })).data, "denied", tool);
 });
+
+test("modules: a relayed call carries relayedByFirstParty from the loader's rule alone; firstParty stays false; a claim in the input or by a third-party module is never believed", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods"), outside = path.join(home, "added");
+  const spaces = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "spaces.relayed", reach: "anyone" }, { name: "spaces.forged", reach: "anyone" }] } };
+  writeModule(root, "spaces", spaces, `export default { async start(ctx) {
+    const asRefusal = e => ({ refused: e.code || e.message, why: e.message });
+    ctx.tool("spaces.relayed", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.plan", {}, { relay: true }).then(r => ({ r }), asRefusal) });
+    ctx.tool("spaces.forged", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.plan", {}, { relay: true, firstParty: true, relayedByFirstParty: true }).then(r => ({ r }), asRefusal) });
+    return {};
+  } };`);
+  writeModule(root, "memory", { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "memory.upgrade.plan", reach: "anyone" }] } }, `export default { async start(ctx) {
+    ctx.tool("memory.upgrade.plan", { effect: "read", input: { type: "object" }, run: async (_i, meta) => ({ firstParty: meta.firstParty, relayedByFirstParty: meta.relayedByFirstParty ?? null }) });
+    return {};
+  } };`);
+  writeModule(outside, "added", { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "added.relayed", reach: "anyone" }] } }, `export default { async start(ctx) {
+    ctx.tool("added.relayed", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.plan", {}, { relay: true, relayedByFirstParty: true }).then(r => ({ r }), e => ({ refused: e.code || e.message })) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [root] });
+  await reg.start(discover([root, outside]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: f.dir.startsWith(root) }), warnings: [] })), { role: "local" });
+  t.after(() => db.close());
+  const facts = { kind: "device", device_key_id: "d1", person: "per_alex", path: "direct" };
+  const seen = async (tool) => (await reg.call(tool, {}, "cli", { kernelFacts: facts })).data;
+  assert.deepEqual(await seen("spaces.relayed"), { r: { data: { firstParty: false, relayedByFirstParty: true } } }, "a first-party module's relayed call is marked by the registry");
+  assert.deepEqual(await seen("spaces.forged"), { r: { data: { firstParty: false, relayedByFirstParty: true } } }, "options the module passes cannot set firstParty");
+  const added = await seen("added.relayed");
+  assert.equal(added.refused, "undeclared", `a third-party module cannot relay at all: ${JSON.stringify(added)}`);
+  // an incoming meta that claims it is dropped
+  const direct = await reg.call("memory.upgrade.plan", {}, "cli", { kernelFacts: facts, relayedByFirstParty: true });
+  assert.equal(direct.data.relayedByFirstParty, null, "a caller's own claim is deleted");
+});

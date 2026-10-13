@@ -1529,7 +1529,7 @@ export class Registry {
     { const key = viaMcpId(meta), hosted = isViaMcpHosted(meta); delete meta.viaMcp; delete meta.viaMcpHosted; delete meta[VIA_MCP]; delete meta[VIA_MCP_HOSTED]; if (key && callerKind(caller) === "mcp") { meta.viaMcp = key; if (hosted) meta.viaMcpHosted = true; } }
     // A hosted key (the public /mcp door) never uses the tools hostedKeyMay names: code on the box, credentials and connections, devices, people and roles, keys. Refused here, before anything else, for the key alone.
     if (meta.viaMcp && meta.viaMcpHosted === true && !hostedKeyMay(tool)) return { error: { code: "denied", message: `${tool} is not available to a hosted key: keys cannot install apps, add accounts or touch the vault` } };
-    delete meta.relayedBy; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
+    delete meta.relayedBy; delete meta.relayedByFirstParty; delete meta[COVERED]; // set below: relayedBy by the registry relay alone, COVERED only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT], viewAsk = meta[VIEW_ASK]; delete meta[FLOW_ACT]; delete meta[VIEW_ASK]; // flowAct is set by callFlow alone (below it becomes the same mark a redeemed card makes); viewAsk by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
@@ -1809,6 +1809,8 @@ export class Registry {
     // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
     const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
     const fp = !relayed && Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
+    // Kept apart from firstParty (which stays false on a relayed call): the registry's own record that the module relaying is one of Vyre's own, for the tools that forward as this machine (core/link/mac.js). Set here from the loader's rule alone.
+    if (relayed) meta.relayedByFirstParty = Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
     // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
     // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
     // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
