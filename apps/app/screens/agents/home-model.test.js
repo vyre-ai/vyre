@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { roleLine, statusOf, agentRow, groupOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups } from "./home-model.js";
+import { roleLine, statusOf, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups } from "./home-model.js";
 
 const NOW = 1_760_000_000_000;
 
@@ -34,7 +34,7 @@ test("groups: the built-in Engineer is a builder, a personal agent and the assis
   assert.equal(groupOf({ kind: "assistant" }), "yours");
   assert.equal(groupOf({ personal: true, kind: "agent" }), "yours");
   assert.equal(groupOf({ kind: "agent" }), "team");
-  assert.deepEqual(AGENT_GROUPS.map((g) => g[0]), ["yours", "team", "builders"]);
+  assert.deepEqual(AGENT_GROUPS.map((g) => g[0]), ["yours", "team", "shared", "builders"]);
 });
 
 test("the list header filters agents as it filters records: kind, model, status", () => {
@@ -55,4 +55,20 @@ test("a person's own groups are kept where they put them, and a bad store reads 
   assert.deepEqual(loadGroups(store), { groups: [{ name: "Intake team" }], placed: { Intake: "Intake team" } });
   assert.deepEqual(loadGroups({ getItem: () => "{not json", setItem() {} }), { groups: [], placed: {} });
   assert.doesNotThrow(() => saveGroups({ getItem() { return null; }, setItem() { throw new Error("full"); } }, { groups: [], placed: {} }));
+});
+
+test("who made it and who it is shared with decide the group: mine, shared with me, else the team's", () => {
+  assert.equal(groupOf({ kind: "agent", made_by: "me" }, "me"), "yours");
+  assert.equal(groupOf({ kind: "agent", made_by: "bob", shares: [{ person: "me", level: "use" }] }, "me"), "shared");
+  assert.equal(groupOf({ kind: "agent", made_by: "bob", shares: [{ person: "cy", level: "use" }] }, "me"), "team");
+  assert.equal(groupOf({ kind: "agent", made_by: "bob" }, "me"), "team");
+  assert.equal(groupOf({ builtin: true, made_by: "me" }, "me"), "builders");
+});
+
+test("sharing: what I may do with it, and with how many it is shared when I can see that", () => {
+  assert.deepEqual(sharingOf({ shares: [{ person: "me", level: "edit" }] }, "me"), { mine: "Can edit", count: 1 });
+  assert.deepEqual(sharingOf({ shares: [{ person: "me", level: "use" }, { person: "a", level: "edit" }, { person: "b", level: "use" }] }, "me"), { mine: "Can use", count: 3 });
+  assert.deepEqual(sharingOf({}, "me"), { mine: "", count: 0 });
+  assert.deepEqual(sharingOf({ shares: "x" }, "me"), { mine: "", count: 0 });
+  assert.equal(agentRow({ name: "A", kind: "agent", shares: [{ person: "me", level: "use" }] }, "me").mine, "Can use");
 });

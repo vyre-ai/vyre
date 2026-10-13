@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, EmptyState, ErrorState, GroupedList, IconButton, Icon, ListHeader, LoadingState, Menu, Segmented, Text, allowsMock, listRows, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, EmptyState, ErrorState, GroupedList, IconButton, Icon, ListHeader, LoadingState, Menu, Segmented, Sheet, Text, allowsMock, listRows, markRef, showToast, useStore, useUiTheme } from "@vyre/ui";
 import type { FilterChip, Group } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
-import { agentResume, agentStop, agentsList } from "../settings/real";
+import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
 import { AGENT_GROUPS, agentRow, agentsDef, asRecords, loadGroups, saveGroups } from "./home-model.js";
 
 type Row = ReturnType<typeof agentRow>;
@@ -23,6 +23,10 @@ export function AgentsHome() {
   const [live, setLive] = useState<any[] | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [me, setMe] = useState<string>("");
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const st = useStore();
+  useEffect(() => { void (st.me?.() as Promise<string> | undefined)?.then((m) => setMe(String(m ?? ""))).catch(() => {}); }, [st]);
   const [tab, setTab] = useState<"agents" | "teammates">("agents");
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<FilterChip[]>([]);
@@ -33,8 +37,8 @@ export function AgentsHome() {
   useEffect(load, [load]);
   const persist = (g: Group[], p: Record<string, string>) => { const s = store(); if (s) saveGroups(s, { groups: g, placed: p }); };
 
-  const agents: any[] | null = mock ? sample.assistants.map((a) => ({ name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", status: a.paused ? "stopped" : "idle", thread: "x", model: a.model, instructions: a.role, autonomy: a.autonomy, id: a.id })) : live;
-  const rows: Row[] = useMemo(() => (agents ?? []).map(agentRow), [agents]);
+  const agents: any[] | null = mock ? sample.assistants.map((a) => ({ name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", status: a.paused ? "stopped" : "idle", thread: "x", model: a.model, instructions: a.role, autonomy: a.autonomy, id: a.id, ...(a.name === "rev" ? { made_by: "other", shares: [{ person: me || "me", level: "use" }] } : {}) })) : live;
+  const rows: Row[] = useMemo(() => (agents ?? []).map((a) => agentRow(a, me)), [agents, me]);
   const titleOf = (id: string) => AGENT_GROUPS.find(([g]) => g === id)?.[1] ?? id;
   const items = rows.map((r) => ({ ...r, group: placed[r.name] ?? titleOf(r.group) }));
   const def = useMemo(() => agentsDef(rows), [rows]);
@@ -62,6 +66,7 @@ export function AgentsHome() {
         { label: "Open", onPress: () => open(r) },
         ...(r.canPause ? [{ label: paused ? "Resume" : "Pause", onPress: () => flip(r) }] : []),
         { label: "Share", onPress: () => open(r) },
+        ...(!mock && !r.builtin && r.kind !== "assistant" ? [{ label: "Delete", onPress: () => setConfirm(r.name) }] : []),
         ...groups.filter((g) => g.name !== (placed[r.name] ?? titleOf(r.group as string))).slice(0, 6).map((g) => ({ label: `Move to ${g.name}`, onPress: () => move(r, g.name) })),
       ]} />
     );
@@ -71,7 +76,7 @@ export function AgentsHome() {
         <View className="flex-row items-center gap-s3">
           <Avatar of={markRef(r.kind === "assistant" ? "assistant" : "teammate", r.name)} size={40} />
           <View className="min-w-0 flex-1 gap-s1">
-            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{status}{r.builtin ? <Chip>Admins only</Chip> : null}</View>
+            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>
             <Text size="caption" tone="label" numberOfLines={phone ? 3 : 1}>{[r.model, r.works].join(", ")}</Text>
           </View>
@@ -82,6 +87,10 @@ export function AgentsHome() {
     );
   };
 
+  const remove = (name: string) => {
+    setBusy(name);
+    agentDelete(name).then(() => { showToast(`${name} is deleted.`); setConfirm(null); load(); }).catch((e) => { setConfirm(null); showToast(say(e)); }).finally(() => setBusy(null));
+  };
   return (
     <Page title="Agents" top sub={undefined}>
       <Segmented label="Agents" value={tab} onChange={setTab} options={[["agents", "Agents"], ["teammates", "Teammates"]]} />
@@ -109,6 +118,10 @@ export function AgentsHome() {
           ) : null}
         </View>
       )}
+      <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm ? `Delete ${confirm}?` : undefined}>
+        <Text tone="muted">It stops working for good and its notes go with it. If it is running, pause it first; the box will say so.</Text>
+        <View className="flex-row gap-s2"><Button kind="primary" label="Delete" loading={busy === confirm} onPress={() => confirm && remove(confirm)} /><Button kind="ghost" label="Cancel" onPress={() => setConfirm(null)} /></View>
+      </Sheet>
     </Page>
   );
 }

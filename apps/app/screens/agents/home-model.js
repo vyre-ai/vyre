@@ -2,7 +2,7 @@
 // The pure half of the Agents home: agents.list rows as the list shows them, the groups, and the shape the list header filters. No tool is called here.
 
 /** The three built-in groups a row falls in: [id, title]. A person's own groups come after them. */
-export const AGENT_GROUPS = /** @type {[string, string][]} */ ([["yours", "Yours"], ["team", "Your team's agents"], ["builders", "Builders"]]);
+export const AGENT_GROUPS = /** @type {[string, string][]} */ ([["yours", "Yours"], ["team", "Your team's agents"], ["shared", "Shared with you"], ["builders", "Builders"]]);
 
 /** One line of role: the first line of the instructions with the markup taken off, at most 90 characters. @param {string | null | undefined} instructions @param {string} [fallback] */
 export function roleLine(instructions, fallback = "") {
@@ -13,10 +13,19 @@ export function roleLine(instructions, fallback = "") {
 /** @param {any} a */
 export const statusOf = (a) => (a.status === "stopped" ? "Paused" : a.status === "running" || a.doing ? "Running now" : "Idle");
 
-/** @param {any} a */
-export function groupOf(a) {
+/** Builders are the built-in agents; mine are the assistant and what I made (made_by) or a personal agent; shared with me when its shares name me; the rest are the team's. @param {any} a @param {string} [me] */
+export function groupOf(a, me) {
   if (a.builtin) return "builders";
-  return a.kind === "assistant" || a.personal ? "yours" : "team";
+  if (a.kind === "assistant" || a.personal || (me && a.made_by === me)) return "yours";
+  if (me && Array.isArray(a.shares) && a.shares.some((/** @type {any} */ s) => s?.person === me)) return "shared";
+  return "team";
+}
+
+/** What I may do with an agent shared with me ("Can use", "Can edit") and how many it is shared with (only an editor is told all of them). @param {any} a @param {string} [me] */
+export function sharingOf(a, me) {
+  const sh = Array.isArray(a.shares) ? a.shares : [];
+  const mine = sh.find((/** @type {any} */ s) => me && s?.person === me);
+  return { mine: mine ? (mine.level === "edit" ? "Can edit" : "Can use") : "", count: sh.length };
 }
 
 const worksLine = (/** @type {unknown} */ projects) => {
@@ -26,11 +35,12 @@ const worksLine = (/** @type {unknown} */ projects) => {
   return n ? `Works on ${n} projects` : "No projects yet";
 };
 
-/** One agents.list row as the list shows it. @param {any} a */
-export function agentRow(a) {
+/** One agents.list row as the list shows it. @param {any} a @param {string} [me] */
+export function agentRow(a, me) {
+  const sharing = sharingOf(a, me);
   return {
     name: String(a.name), kind: String(a.kind ?? "agent"), role: roleLine(a.instructions, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
-    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects), status: statusOf(a), group: groupOf(a), canPause: !!a.thread, builtin: !!a.builtin,
+    model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
     ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
   };
 }
