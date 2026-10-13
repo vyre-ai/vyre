@@ -276,6 +276,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.wait opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
  },
  {
+  "tool": "comms.credentials",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; comms.credentials opened to a model or a module in 2c1ab0efa (13 Oct 2026); the body decides: a read of which mail credentials are set up, never a value; an agent reads within its person's reach"
+ },
+ {
+  "tool": "comms.email",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; comms.email opened to a model or a module in 2c1ab0efa (13 Oct 2026); the body decides: sends an email through the Space's mail; an agent acts within its person's reach and the send is held at the Gate"
+ },
+ {
+  "tool": "comms.service.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; comms.service.get opened to a model or a module in 2c1ab0efa (13 Oct 2026); the body decides: a read of one comms service's settings, never a secret; an agent reads within its person's reach"
+ },
+ {
   "tool": "computer.targets",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; computer.targets opened to a model or a module in 9dcd44529 (9 Oct 2026); the body decides: read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
  },
@@ -1576,6 +1588,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.caps opened to a model or a module in f45911fd9 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
  {
+  "tool": "vault.clipboard.clear",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.clipboard.clear opened to a model or a module in c8d66bc29 (26 Sep 2026); the body decides: clearing the clipboard only reduces exposure, so an agent may"
+ },
+ {
   "tool": "vault.connections.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.connections.list opened to a model or a module in 4a8e15400 (27 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
@@ -1692,8 +1708,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.search opened to a model or a module in 00484fa80 (4 Oct 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
  },
  {
+  "tool": "vault.session.close",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.session.close opened to a model or a module in c8d66bc29 (26 Sep 2026); the body decides: closing a session only takes access away, so an agent may"
+ },
+ {
   "tool": "vault.session.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.session.status opened to a model or a module in c8d66bc29 (26 Sep 2026); the body decides: judged by the vault's own per-item grants on the chain; an agent never receives a value"
+ },
+ {
+  "tool": "vault.ssh.generate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.ssh.generate opened to a model or a module in 77868b367 (26 Sep 2026); the body decides: grant-judged like vault.generate: an agent makes its own ssh key and the private half never leaves the vault"
  },
  {
   "tool": "vault.ssh.keys",
