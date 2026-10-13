@@ -118,3 +118,12 @@ test("expr: format prints a time in named formats, in a zone, after an optional 
   assert.equal(run("format(t, \"time\", z, 1, \"parsec\")", { t, z: LA }), String(t), "an unknown unit leaves the time as it was given");
   assert.equal(run("format(t, \"time\", \"Nowhere/None\")", { t }), "4:00 pm", "an unknown zone is UTC");
 });
+
+test("expr: a move that leaves the range of a time gives nothing, never a wrong time", () => {
+  assert.equal(run("addtime(t, 1, \"hours\")", { t: 8.64e15 }), null, "one hour past the last time");
+  assert.equal(run("addtime(t, -1, \"days\")", { t: -8.64e15 }), null);
+  assert.equal(run("addtime(t, 1000000000, \"months\")", { t: 0 }), null);
+  assert.equal(run("addtime(t, 99999999999, \"weeks\")", { t: 0 }), null);
+  assert.equal(run("format(t, \"date\", \"UTC\", 1, \"hours\")", { t: 8.64e15 }), String(8.64e15), "format leaves the time as given");
+  assert.equal(run("addtime(t, 1, \"hours\")", { t: 8.64e15 - 3_600_000 }), 8.64e15, "the last time itself is fine");
+});

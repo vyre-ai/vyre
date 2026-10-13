@@ -181,6 +181,11 @@ function instant(w, tz) {
 }
 /** Move a time by a signed amount of minutes, hours, days, weeks or months. Minutes and hours are exact; days, weeks and months keep the wall clock in the zone (a daylight saving change does not move "9:00 am"), and a month end stays inside the month (31 Jan plus 1 month is 28 or 29 Feb). @param {number} ms @param {number} amount @param {string} unit @param {string} tz @returns {number | null} */
 function moved(ms, amount, unit, tz) {
+  const t = movedRaw(ms, amount, unit, tz);
+  return t !== null && Number.isFinite(t) && Math.abs(t) <= 8.64e15 ? t : null;
+}
+/** @param {number} ms @param {number} amount @param {string} unit @param {string} tz @returns {number | null} */
+function movedRaw(ms, amount, unit, tz) {
   const u = String(unit).toLowerCase().replace(/s$/, "");
   if (!Number.isFinite(amount) || !Number.isInteger(amount)) return null;
   if (u === "minute") return ms + amount * 60_000;
