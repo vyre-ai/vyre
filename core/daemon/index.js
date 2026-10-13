@@ -822,6 +822,7 @@ async function startLocked(opts, root, p, release) {
       const spaceOf = (/** @type {string | undefined} */ space) => { if (!space || space === kernel.id.space) return kernel; try { const h = kernel.spaces && kernel.spaces.for(space); return h && h.hosted === true && h.kernel ? h.kernel : null; } catch { return null; } };
       /** @type {Map<string, { seq: number, roles: Map<string, any> }>} */ const roleDefs = new Map();
       registry.deps.doorGate = createDoorGate({
+        ...(Array.isArray(opts.doorScopedGroups) ? { scopedGroups: opts.doorScopedGroups } : {}), // a test seam: which role groups open at the door (default none, core/modules/door-lists.js SCOPED_GROUPS)
         chainOf: (/** @type {any} */ meta) => doorKernel.chain(meta),
         // the role from the person's membership: the same source the gateway's staff statement reads, so the swap to it is a rename
         roleOf: (/** @type {any} */ a) => { const k = spaceOf(a && a.space); const m = k ? k.grants.members.membership(a) : null; return m ? m.role : null; },

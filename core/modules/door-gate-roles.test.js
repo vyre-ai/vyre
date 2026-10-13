@@ -19,9 +19,9 @@ const MEMBER3 = "per_" + "fghijklmnopqrstuvwxyzabcde";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
 /** A team server: the owner, two members and a guest, each with a model session token. @param {any} t */
-async function rig(t) {
+async function rig(t, scoped = /** @type {string[] | undefined} */ (undefined)) {
   const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...(scoped ? { doorScopedGroups: scoped } : {}) });
   t.after(() => d.stop());
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
@@ -61,7 +61,7 @@ test("a Guest has the smaller list: sign-in, chat, shared records and files only
 });
 
 test("a custom role turns on exactly the groups it names, for the people who hold it, and no more; a change is read at the next call", { timeout: 300_000 }, async t => {
-  const { as, owner } = await rig(t);
+  const { as, owner } = await rig(t, ["files", "documents"]);
   await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["files", "documents"] } });
   await owner("roles.assign", { person: MEMBER, role: "mailer" });
   for (const tool of TOOL_GROUPS.files.concat(TOOL_GROUPS.documents)) assert.ok(!gated(await as("member", tool), tool), `${tool}: the Mailer has it`);
@@ -80,19 +80,18 @@ test("a custom role turns on exactly the groups it names, for the people who hol
   assert.ok(met(await as("member", "documents.template.list"), refusal("documents.template.list")), "a plain Member again");
 });
 
-test("a group whose handlers still use the owner's accounts is ignored at the door even when a role names it: mail, calendar, computers, browser", { timeout: 300_000 }, async t => {
+test("no group opens at the door by default, even when a role names it: the handlers still use the owner's accounts and the Space's drive", { timeout: 300_000 }, async t => {
   const { as, owner, names, tokens } = await rig(t);
-  assert.deepEqual([...SCOPED_GROUPS].sort(), ["documents", "files", "publish"]);
+  assert.deepEqual([...SCOPED_GROUPS], [], "no group is scoped to the member yet, so none opens");
   await owner("roles.create", { role: { label: "Everything", base: "member", can: ["view"], tools: ["mail", "calendar", "computers", "browser", "documents"] } });
   await owner("roles.assign", { person: MEMBER, role: "everything" });
-  for (const g of ["mail", "calendar", "computers", "browser"]) for (const tool of TOOL_GROUPS[g]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: the ${g} group is not open to a member yet`);
-  assert.ok(!gated(await as("member", "documents.template.list"), "documents.template.list"), "a scoped group named in the same role still opens");
+  for (const g of Object.keys(TOOL_GROUPS)) for (const tool of TOOL_GROUPS[g]) assert.ok(met(await as("member", tool), refusal(tool)), `${tool}: the ${g} group is not open to a member yet`);
   const list = await names(tokens.member);
-  assert.ok(!list.has("mail.accounts") && !list.has("computers.list") && !list.has("chrome.open") && list.has("documents.template.list"), "and her tool list agrees");
+  assert.ok(!list.has("mail.accounts") && !list.has("computers.list") && !list.has("chrome.open") && !list.has("documents.template.list") && !list.has("files.search"), "and her tool list agrees");
 });
 
 test("a member's tool list shows what her role allows: a Guest fewer, a custom role its groups", { timeout: 300_000 }, async t => {
-  const { owner, names, tokens } = await rig(t);
+  const { owner, names, tokens } = await rig(t, ["files", "documents"]);
   await owner("roles.create", { role: { label: "Mailer", base: "member", can: ["view"], tools: ["files"] } });
   await owner("roles.assign", { person: MEMBER, role: "mailer" });
   const plain = await names(tokens.member2), mailer = await names(tokens.member), guest = await names(tokens.guest), boss = await names(tokens.owner);

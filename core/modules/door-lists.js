@@ -278,11 +278,12 @@ export const TOOL_GROUPS = Object.freeze({
 });
 
 /**
- * The groups a role can really turn on today. A group not here is accepted by the role record but ignored at the door, because its handlers still use the OWNER's connected accounts and signed-in computer, not the
- * member's own: mail and calendar (the Space's Gmail/Google), computers and browser (an agent's computer and browser signed in as the owner). Each moves here when its handlers scope to the caller's own
- * account or project and a test as a member proves it. documents, files and publish act in the Space's own drive and as the Space (not a person's private account); a role that turns them on says so in plain words.
+ * The groups a role can really turn on today: none. A group not here is accepted by the role record but ignored at the door, because its handlers do not yet keep a member to her own account or project:
+ * mail and calendar use the Space's connected Gmail and Google (the owner's), computers and browser drive a computer and browser signed in as the owner, and documents, files and publish act in the Space's
+ * drive and as the Space (only files.drive.space.* and the member door's project files are scoped to her, and they are already on her list). A group moves here when its handlers use the caller's own account or
+ * project and a test as a member proves it. (The daemon takes a test seam, `doorScopedGroups`, to prove the role path itself.)
  */
-export const SCOPED_GROUPS = Object.freeze(["documents", "files", "publish"]);
+export const SCOPED_GROUPS = Object.freeze(/** @type {string[]} */ ([]));
 
 /** The group a tool belongs to, or undefined. */
 export const GROUP_OF = Object.freeze(new Map(Object.entries(TOOL_GROUPS).flatMap(([group, tools]) => tools.map(t => /** @type {[string, string]} */ ([t, group])))));

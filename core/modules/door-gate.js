@@ -49,7 +49,7 @@ export const refusal = (tool) => {
 };
 
 /**
- * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: (space?: string) => Promise<boolean>, roleTools?: (actor: any) => Promise<{ base: string, groups: readonly string[] } | null> }} k
+ * @param {{ chainOf: (meta: any) => Promise<any>, roleOf: (actor: any) => string | null | undefined, othersExist: (space?: string) => Promise<boolean>, roleTools?: (actor: any) => Promise<{ base: string, groups: readonly string[] } | null>, scopedGroups?: readonly string[] }} k
  *   roleTools: the person's base role and the tool groups her custom role turns on; absent or null is a plain Member (no group).
  * @returns {((tool: string, caller: string, meta: any) => Promise<{ error: { code: string, message: string } } | null>) & { hides: (caller: string, meta: any) => Promise<"member" | "pass">, visible: (caller: string, meta: any) => Promise<((tool: string) => boolean) | null> }}
  */
@@ -87,7 +87,7 @@ export function createDoorGate(k) {
   const roleMay = (tool, r) => {
     if (PLUMBING.has(tool) || SELF_GATED.has(tool)) return true;
     const group = GROUP_OF.get(tool);
-    if (group) return r.base !== "temp" && SCOPED_GROUPS.includes(group) && r.groups.includes(group);
+    if (group) return r.base !== "temp" && (k.scopedGroups || SCOPED_GROUPS).includes(group) && r.groups.includes(group);
     if (!MEMBER_MAY.has(tool)) return false;
     return r.base === "temp" ? GUEST_MAY.has(tool) : true;
   };
