@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { page404, downloadsPage } from './site/pages.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
@@ -78,6 +79,7 @@ const NAV = [
   ['Product', '/#product'],
   ['Devices', '/#devices'],
   ['Architecture', '/architecture/'],
+  ['Downloads', '/downloads/'],
   ['Direction', '/direction/'],
   ['Open source', '/#open'],
 ];
@@ -94,6 +96,7 @@ function nav(slug) {
     <div class="nav-end">
       <a class="star-pill" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star</span></a>
       <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-sm nav-login" href="https://web.vyre.run">Log in</a>
       <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
       <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     </div>
@@ -107,7 +110,7 @@ const FOOT = `<footer class="foot">
         <a class="brand" href="/" aria-label="Vyre, home">${MARK}${WORD}</a>
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
-      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
       <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
@@ -982,15 +985,10 @@ page({
   body: PRIV, ld: [crumbs([['Vyre', `${SITE}/`], ['Privacy', `${SITE}/privacy/`]])],
 });
 
-// ---------- 404 ----------
-{
-  const html404 = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
-${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
-<body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/start/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
-`;
-  writeFileSync(join(site, '404.html'), html404);
-}
+// ---------- Downloads and 404 (scripts/site/pages.mjs) ----------
+const PAGES_CTX = { nav, FOOT, FONT_PRELOAD, CSS_V, JS_V, REPO, SITE, STAR, VERSION, term, eyebrow };
+page({ ...downloadsPage(PAGES_CTX), ld: [SOFT({ '@id': `${SITE}/downloads/#app` }), crumbs([['Vyre', `${SITE}/`], ['Downloads', `${SITE}/downloads/`]])] });
+writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
 
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
@@ -1014,6 +1012,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Windows: Vyre](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
+- [Downloads](${SITE}/downloads/): every file and install line, from the latest GitHub release
 
 ## Machine-readable
 - [llms-full.txt](${SITE}/llms-full.txt): the same content in full
@@ -1149,7 +1148,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/downloads/', '0.8'], ['/architecture/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}
