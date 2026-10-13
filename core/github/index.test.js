@@ -683,7 +683,9 @@ test("github.project.local-init: an empty or plain folder becomes a repo whose s
   assert.equal(w.events.at(-1).type, "github.local-init");
   const wt = await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "plain", session: "s1" });
   assert.equal(fs.existsSync(path.join(wt.data.path, "notes.md")), true);
-  const again = await w.as("mcp:agent:kit", { granted: "*" })("github.project.local-init", { project: "plain" });
+  // an agent never sets up a repository, even for a project it is granted (13 Oct 2026); the person's own call on an existing repo answers "already"
+  assert.equal((await w.as("mcp:agent:kit", { granted: "*" })("github.project.local-init", { project: "plain" })).error.code, "denied");
+  const again = await w.as("deck")("github.project.local-init", { project: "plain" });
   assert.equal(again.data.already, true);
   // a folder inside the repo just made is not its own repo
   const sub = path.join(dir, "sub"); fs.mkdirSync(sub);
