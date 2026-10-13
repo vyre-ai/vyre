@@ -46,7 +46,7 @@ export function OnboardFlow() {
   // The first-run flow. A join link or "Add a space" opens at the Space step; the mock build opens on its setup screen; a real first run opens on Identity.
   // On a Mac or Windows shell this is a computer (it asks Compute); a phone or a browser is not.
   const [stack, setStack] = useState<string[]>(entry === "join" ? ["space.choice", "join.code"] : entry === "create" ? ["space.choice", "create.name"] : MOCK ? ["start"] : ["id.choice"]);
-  const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
+  const [ctx, setCtx] = useState<Ctx>({ ...FRESH, device: MOCK || shellKind() ? "computer" : "phone", allowed: MOCK, later: entry === "join" || entry === "create" });
   const set = useCallback((p: Partial<Ctx> | ((c: Ctx) => Partial<Ctx>)) => setCtx((c) => ({ ...c, ...(typeof p === "function" ? p(c) : p) })), []);
   const go = useCallback((id: string) => {
     // "start" is the mock's setup screen; in a real run it is the end of the flow, and the app opens.

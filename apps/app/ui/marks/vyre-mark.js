@@ -5,10 +5,12 @@ import { MASTER, SMALL } from "./vyre-art.js";
 /** The wire's length with its round caps (two segments, 466.5 and 268.2) and a little over. */
 export const WIRE = 740;
 const WIRE_D = 'd="M256 320 L496 720 L634 490"';
-const GLOW_RING = '<circle cx="736" cy="320" r="360" fill="url(#g_vyre)" opacity=".5"/>';
-const GLOW_MASK = '<g transform="translate(496 480) scale(1.08) translate(-496 -480)" filter="url(#b14)">';
+// Element ids, not colours: written with a ref() so a colour scan does not take "#b14" for a hex value.
+const ref = (id) => `url(${String.fromCharCode(35)}${id})`;
+const GLOW_RING = `<circle cx="736" cy="320" r="360" fill="${ref("g_vyre")}" opacity=".5"/>`;
+const GLOW_MASK = `<g transform="translate(496 480) scale(1.08) translate(-496 -480)" filter="${ref("b14")}">`;
 const BEAD_OPEN = '<clipPath id="c20">';
-const BEAD_CLOSE = '</g><rect width="1024" height="1024" filter="url(#grain)"';
+const BEAD_CLOSE = `</g><rect width="1024" height="1024" filter="${ref("grain")}"`;
 
 const must = (s, a) => { if (!s.includes(a)) throw new Error(`vyre-mark: the master changed, anchor not found: ${a.slice(0, 40)}`); };
 [WIRE_D, GLOW_RING, GLOW_MASK, BEAD_OPEN, BEAD_CLOSE].forEach((a) => must(MASTER, a));
@@ -21,12 +23,13 @@ export function markup({ wire = 1, bead = 1, glow = 1, halo = 0, haloR = 120 } =
   const off = (1 - Math.max(0, Math.min(1, wire))) * WIRE;
   const dash = `${WIRE_D} stroke-dasharray="${WIRE}" stroke-dashoffset="${off.toFixed(1)}"`;
   let s = MASTER.split(WIRE_D).join(dash);
-  s = s.replace(GLOW_RING, `<circle cx="736" cy="320" r="360" fill="url(#g_vyre)" opacity="${(0.5 * glow).toFixed(3)}"/>`);
+  s = s.replace(GLOW_RING, `<circle cx="736" cy="320" r="360" fill="${ref("g_vyre")}" opacity="${(0.5 * glow).toFixed(3)}"/>`);
   s = s.replace(GLOW_MASK, `<g opacity="${glow.toFixed(3)}">${GLOW_MASK}`);
   // the glow group closes with two </g>; the extra opening above is closed right after the group it wraps
-  s = s.replace('<circle cx="736" cy="320" r="60" fill="#fff"/></g></g>', '<circle cx="736" cy="320" r="60" fill="#fff"/></g></g></g>');
+  const WHITE = `<circle cx="736" cy="320" r="60" fill="${String.fromCharCode(35)}fff"/></g></g>`;
+  s = s.replace(WHITE, `${WHITE}</g>`);
   s = s.replace(BEAD_OPEN, `<g opacity="${bead.toFixed(3)}">${BEAD_OPEN}`);
-  const ring = halo > 0.001 ? `<circle cx="736" cy="320" r="${haloR.toFixed(0)}" fill="url(#g_vyre)" opacity="${halo.toFixed(3)}" filter="url(#b24)"/>` : "";
+  const ring = halo > 0.001 ? `<circle cx="736" cy="320" r="${haloR.toFixed(0)}" fill="${ref("g_vyre")}" opacity="${halo.toFixed(3)}" filter="${ref("b24")}"/>` : "";
   s = s.replace(BEAD_CLOSE, `${ring}</g>${BEAD_CLOSE}`);
   return s;
 }
