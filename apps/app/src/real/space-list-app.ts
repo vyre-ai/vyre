@@ -12,7 +12,7 @@ const PENDING = "vyre.space-list.pending";
 /** The server's side of "admit a device the identity chain lists" (lane 2): given a listed server's pinned entry, pair this device to it with no typed code. Until it lands, a server answers `server_not_ready`. */
 type ChainPairer = (e: { relay: string; route: string; box: string; name: string }) => Promise<Pairing>;
 let connecting = 0;
-let chainPairer: ChainPairer = async (e) => {
+const realChainPairer: ChainPairer = async (e) => {
   const { loadIdentity } = await import("../identity/store");
   const mine = await loadIdentity().catch(() => null);
   const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
@@ -26,7 +26,29 @@ let chainPairer: ChainPairer = async (e) => {
   });
   return p as unknown as Pairing;
 };
+/**
+ * Off until the server's chain admission (design B, lane 2) is signed and the server reports it: a listed server then answers `server_not_ready` and the person pairs it with a code. Turn it on with
+ * `setChainPairer(realChainPairer)` only behind that capability; this branch must not ship with it on alone.
+ */
+let chainPairer: ChainPairer = async () => { throw Object.assign(new Error("That server does not admit this device yet. Pair it with a code from that server."), { code: "server_not_ready" }); };
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }
+export { realChainPairer };
+
+const FROM_LIST = "vyre.space-list.fromlist";
+/** The servers this device connected to from the list (not by the person's own pairing), so Servers can say so and offer Remove. */
+export async function fromListBoxes(): Promise<string[]> {
+  try { const { keyedText } = await import("../api/relay"); const j = JSON.parse((await keyedText.get(FROM_LIST)) || "[]"); return Array.isArray(j) ? j.filter((x: unknown) => typeof x === "string") : []; } catch { return []; }
+}
+async function markFromList(box: string): Promise<void> {
+  try { const { keyedText } = await import("../api/relay"); const now = await fromListBoxes(); if (!now.includes(box)) await keyedText.set(FROM_LIST, JSON.stringify([...now, box])); } catch { /* the line is a courtesy */ }
+}
+/** Remove a server that came from the list: forget the pairing here and tell the list (a tombstone), so another device does not bring it back. */
+export async function removeFromList(box: string): Promise<void> {
+  const { removePairingFor, keyedText } = await import("../api/relay");
+  await removePairingFor(box);
+  try { await keyedText.set(FROM_LIST, JSON.stringify((await fromListBoxes()).filter((b) => b !== box))); } catch { /* none */ }
+  await recordLeft(box);
+}
 
 /** The tool the vault calls go through. The personal vault is the person's own, not a Space's: it goes to the main server by name, never routed by the Space showing. */
 async function vaultTool(): Promise<Tool> {
@@ -55,6 +77,7 @@ async function flowFor(given?: Tool) {
     onPaired: async (p) => {
       // the list already names this server: pairing it must not read the vault a second time
       connecting++;
+      void markFromList(p.box);
       try { const { afterPaired } = await import("./pairing"); await afterPaired({ relay: p.relay, route: p.route, box: p.box, name: p.name ?? "", device: (p as { device?: string }).device ?? "" }); } finally { connecting--; }
     },
   });
