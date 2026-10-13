@@ -21,6 +21,7 @@ const OPERATIONAL = {
   gate: "held items and the send log of this box",
   github: "the GitHub accounts this box is signed in to (tokens)",
   google: "the Google accounts this box is signed in to (tokens)",
+  microsoft: "the Microsoft accounts this box is signed in to and the owner-attested work emails (tokens)",
   hooks: "webhook deliveries kept briefly for watchers",
   learn: "offline queue, metrics and skill state of the learning loop (derived, rebuildable)",
   mcp: "the MCP servers this box runs and their state",
