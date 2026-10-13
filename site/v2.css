@@ -634,3 +634,11 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 @media (max-width: 720px) { .hero .stage-row .mbp { width: 100%; } .hero .stage-row .ip { width: 23%; } }
 .hero .stage-row .ip { right: 4%; }
 @media (max-width: 720px) { .hero .stage-row .ip { right: 2%; } }
+
+/* Hero dot field and glow: fade out on every side, so there is no edge and no heavy block beside the headline. */
+.hero .stage::before { inset: -10% -6% -4% -8%; -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 55%, transparent 100%); }
+.hero .stage canvas.field { -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.55) 12%, #000 30%), linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); mask-image: linear-gradient(90deg, transparent 0, rgba(0,0,0,.55) 12%, #000 30%), linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+@media (max-width: 1023px) { .hero .stage canvas.field { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 58%, transparent 96%); } }
+/* The hero clips the bleed sideways only; below the devices it has room for their shadows to fade out. */
+.hero { overflow-x: clip; overflow-y: visible; padding-bottom: clamp(96px, 10.5vw, 150px); }
+.works { position: relative; z-index: 0; background: transparent; }
