@@ -9,7 +9,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { bootKernel } from "../../kernel/boot.js";
-import { PROJECT, TEAM_MEMBER } from "../../records/core-types.js";
+import { CORE_TYPES, PROJECT, TEAM_MEMBER } from "../../records/core-types.js";
 import { createHub } from "./hub.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", NEW = "per_new";
@@ -17,7 +17,7 @@ async function rig() {
   const db = new DatabaseSync(path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-invseat-")), "kernel.db"));
   const k = await bootKernel({ db, space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presenceCheck: async () => null });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
-  await k.gateway.records.define(owner, { add_types: [PROJECT, TEAM_MEMBER] });
+  await k.gateway.records.define(owner, { add_types: [...CORE_TYPES.filter((/** @type {any} */ t) => ["organization", "contact"].includes(t.name)), PROJECT, TEAM_MEMBER] });
   const hub = createHub({ kernel: { space: SPACE, owner: OWNER, serviceChain: () => owner, records: k.gateway.records }, call: async () => ({ data: null }) });
   const x = await hub.createProject(owner, { name: "Project X" }), y = await hub.createProject(owner, { name: "Project Y" });
   const seats = async (/** @type {string} */ p) => { const r = await hub.seatOf(p, NEW); return r && r.team ? r.level : null; };
