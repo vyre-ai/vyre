@@ -49,8 +49,8 @@ import { available as spawnerThere } from "../spawner/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 import { createDoorGate } from "../modules/door-gate.js";
-import { readRoles } from "../roles/index.js";
-import { TOOL_IDS } from "../roles/catalogue.js";
+import { readRoles } from "../../lib/roles/store.js";
+import { TOOL_IDS } from "../../lib/roles/catalogue.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the

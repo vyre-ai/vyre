@@ -8,7 +8,7 @@ import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { MEMBER_MAY, OWNER_ONLY, GUEST_MAY, TOOL_GROUPS, GROUP_OF, PLUMBING, SELF_GATED, SCOPED_GROUPS } from "./door-lists.js";
 import { refusal, guestRefusal } from "./door-gate.js";
-import { TOOL_IDS } from "../roles/catalogue.js";
+import { TOOL_IDS } from "../../lib/roles/catalogue.js";
 import { request, call } from "../daemon/client.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
