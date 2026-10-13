@@ -15,6 +15,8 @@ const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArr
 
 export async function realOptions(types: { name: string; label: string; fields?: { name: string; label: string }[] }[], space?: string | null): Promise<FlowOptions> {
   const [agents, tpls, roles] = await Promise.all([ask("agents.list"), ask("work.template.list"), ask("roles.list")]);
+  // an agent may approve only if an owner or an admin made it: the agent's page says so (agents.docs.get made_by.staff); where that cannot be read it is not offered
+  const staffOf = async (name: string) => { const d: any = await ask("agents.docs.get", { agent: name }); return d?.made_by?.staff === true; };
   const templates = await Promise.all(list(tpls, "templates").filter((t) => !t.archived && t.live !== null).map(async (t) => {
     const g: any = await ask("work.template.get", { template: t.template });
     const stages = list(g?.body, "stages").map((s: any) => ({ name: String(s.name), tasks: list(s, "tasks").map((k: any) => ({ title: String(k.title), doer: String(k.doer) })) }));
@@ -22,7 +24,7 @@ export async function realOptions(types: { name: string; label: string; fields?:
   }));
   return {
     types,
-    agents: list(agents, "agents").map((a) => ({ name: String(a.name), label: String(a.label || a.name) })),
+    agents: await Promise.all(list(agents, "agents").map(async (a) => ({ name: String(a.name), label: String(a.label || a.name), staff: await staffOf(String(a.name)) }))),
     templates,
     roles: list(roles, "roles").map((r) => ({ name: String(r.name || r.id), label: String(r.label || r.name || r.id) })),
     people: [],

@@ -9,7 +9,8 @@
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
-/** @typedef {{ types: TypeOpt[], agents: Named[], templates: TemplateOpt[], roles: Named[], people: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
+/** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
+/** @typedef {{ types: TypeOpt[], agents: AgentOpt[], templates: TemplateOpt[], roles: Named[], people: Named[], recordsOf?: (type: string) => Promise<{ urn: string, label: string }[]> }} Options  `recordsOf` lists some records of an object for the tag picker */
 
 export const TRIGGERS = /** @type {const} */ ([
   { id: "created", icon: "records", label: "A record is created", hint: "For example a new refund request" },
@@ -312,5 +313,5 @@ export function fromDefinition(flow) {
   return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...(Object.keys(rest).length ? { rest } : {}) };
 }
 
-/** Who can approve: a person, a team or role, or an agent (an agent checks internal work only: a send or a stage hold still waits for a person). @param {Options} o @returns {[string, string][]} */
-export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o)];
+/** Who can approve: a person, a team or role, or an agent made by an owner or an admin (an agent checks internal work only: a send or a stage hold still waits for a person; the kernel checks the maker again each time). @param {Options} o @returns {[string, string][]} */
+export const approverChoices = (o) => [["", "Nobody"], ...whoChoices(o).filter(([v]) => !v.startsWith("agent:") || o.agents.some((a) => `agent:${a.name}` === v && a.staff === true))];

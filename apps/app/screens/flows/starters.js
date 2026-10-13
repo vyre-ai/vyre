@@ -10,7 +10,7 @@ export const SAMPLE_OPTIONS = {
     { name: "matter", label: "Matter", fields: [{ name: "client", label: "Client" }, { name: "stage", label: "Stage" }] },
   ],
   recordsOf: async (type) => [{ urn: `vyre://sample/${type}/r1`, label: "Pat Lopez" }, { urn: `vyre://sample/${type}/r2`, label: "Sam Ortiz" }],
-  agents: [{ name: "refunds", label: "Refunds" }, { name: "intake", label: "Intake" }, { name: "research", label: "Research" }],
+  agents: [{ name: "refunds", label: "Refunds", staff: true }, { name: "intake", label: "Intake", staff: true }, { name: "research", label: "Research", staff: true }],
   templates: [
     { id: "tpl_atp", name: "ATP", stages: [
       { name: "Kickoff", tasks: [

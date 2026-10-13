@@ -102,6 +102,8 @@ test("an approver, followers and their notes round-trip, and an agent may approv
   assert.deepEqual(toDefinition(fromDefinition(def)), def);
   assert.match(stepSummary(d.steps[0], O), /checked by the Manager team, followed by 2 others/);
   assert.equal(approverChoices(O).some(([v]) => v.startsWith("agent:")), true);
+  const lowly = { ...O, agents: [{ name: "x", label: "X" }, { name: "y", label: "Y", staff: false }] };
+  assert.equal(approverChoices(lowly).some(([v]) => v.startsWith("agent:")), false, "an agent not made by an owner or admin is not offered");
 });
 
 test("an agent as the approver is stored as a teammate checker and comes back", () => {
