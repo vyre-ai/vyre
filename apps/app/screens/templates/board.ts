@@ -1,6 +1,6 @@
 // The template board's words and shapes, pure (no React, no calls): the columns of a pipeline, the card of a task, the rule of a stage, the version bar and how many things differ from the live version. Tested by board.test.js.
 import { assigneeWords, doneWhenOf, kindOfDoer, stageModeOf, dueDays } from "./edit.ts";
-import { whoWords, type Body, type Stage, type Task } from "./model.ts";
+import { whoWords, type Body, type Row, type Stage, type Task } from "./model.ts";
 
 type Who = { id: string; name: string };
 
@@ -69,4 +69,22 @@ export function initialsOf(label: string): string {
   const words = label.replace(/\(.*?\)/g, " ").replace(/^the\s+/i, "").trim().split(/\s+/).filter(Boolean);
   if (!words.length) return "?";
   return (words.length > 1 ? words[0][0] + words[1][0] : words[0][0]).toUpperCase();
+}
+
+export type TemplateCard = { name: string; projects: string; start: string; stages: string[]; counts: string; status: string; group: "Live" | "Drafts" };
+const n = (k: number, one: string, many = `${one}s`): string => `${k} ${k === 1 ? one : many}`;
+
+/** A template on the list as a card. `body` is null until it has been read: then only what the list knows (the running count) is said. */
+export function cardOf(r: Row, body: Body | null, running: number): TemplateCard {
+  const one = r.noun?.one || body?.noun?.one || "project", many = r.noun?.many || body?.noun?.many || "Projects";
+  const stages = body && stageModeOf(body) !== "none" ? body.stages.map((s) => s.name) : [];
+  const tasks = body ? body.stages.reduce((k, s) => k + (s.tasks || []).length, 0) : 0;
+  const parts = [...(body ? [...(stages.length ? [n(stages.length, "stage")] : []), n(tasks, "task")] : []), ...(running ? [`${running} running`] : [])];
+  return { name: r.name, projects: cap(many), start: `Start a ${one.toLowerCase()}`, stages, counts: parts.join(" · "), status: r.live !== null ? `v${r.live}` : `Draft v${r.latest}`, group: r.live !== null ? "Live" : "Drafts" };
+}
+
+/** The list's search (a name or what its projects are called) and the Live/Draft filter. */
+export function filterRows(rows: Row[], query: string, status: string): Row[] {
+  const q = query.trim().toLowerCase();
+  return rows.filter((r) => (status === "live" ? r.live !== null : status === "draft" ? r.live === null : true) && (!q || r.name.toLowerCase().includes(q) || (r.noun ? `${r.noun.one} ${r.noun.many}`.toLowerCase().includes(q) : false)));
 }
