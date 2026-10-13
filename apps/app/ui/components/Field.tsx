@@ -36,7 +36,7 @@ export function Field({ label, name, value, onChangeText, placeholder, kind = "t
         onFocus={() => setFocus(true)}
         onBlur={() => setFocus(false)}
         style={[mono ? faces.mono : faces.regular, { outlineStyle: "none" } as any]}
-        className={cn("w-full min-w-0 rounded-field border bg-surface-3 px-s3 text-body text-text", multiline ? "min-h-row py-s2" : "h-control", focus ? "border-accent" : error ? "border-err" : "border-edge")}
+        className={cn("w-full min-w-0 rounded-field border bg-surface-3 px-s3 text-body text-text", multiline ? "min-h-row py-s2" : "h-control", focus ? "border-primary" : error ? "border-err" : "border-edge")}
       />
       {note ? <Text size="caption" tone={error ? "err" : "label"}>{note}</Text> : null}
     </View>

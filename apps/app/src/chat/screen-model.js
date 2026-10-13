@@ -9,10 +9,10 @@ export const dots = (steps) => steps.slice(-7).map((s) => ({ line: s.line, state
 
 /** The sign-in card's words by state. @param {{ site: string, state: string }} b */
 export function signinWords(b) {
-  if (b.state === "done") return { title: `Signed in to ${b.site}`, detail: "The assistant carries on from here. It never saw the page or your password." };
+  if (b.state === "done") return { title: `Signed in to ${b.site}`, detail: "The agent carries on from here. It never saw the page or your password." };
   if (b.state === "cancelled") return { title: `Sign in to ${b.site}`, detail: "You put this away." };
-  if (b.state === "expired") return { title: `Sign in to ${b.site}`, detail: "This waited too long. Ask the assistant again." };
-  return { title: `Sign in to ${b.site}`, detail: "Open the screen and sign in yourself. While you do, the assistant cannot see the page and gets no password. Hand back when you are done." };
+  if (b.state === "expired") return { title: `Sign in to ${b.site}`, detail: "This waited too long. Ask the agent again." };
+  return { title: `Sign in to ${b.site}`, detail: "Open the screen and sign in yourself. While you do, the agent cannot see the page and gets no password. Hand back when you are done." };
 }
 
 /** The host of an address or a bare host, lower case. @param {string} h */

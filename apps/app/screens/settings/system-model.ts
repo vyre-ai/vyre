@@ -8,7 +8,7 @@ const card = (title: string, state?: string): Card => ({ title, state, lines: []
 
 /** What runs here: host, role, version, platform. */
 export function machineRows(s: any): [string, string][] {
-  const role = s?.role === "box" ? "Always on. Runs your assistants and answers your devices." : s?.role === "local" ? "Your own computer. It connects to your home over your private network." : String(s?.role || "");
+  const role = s?.role === "box" ? "Always on. Runs your agents and answers your devices." : s?.role === "local" ? "Your own computer. It connects to your home over your private network." : String(s?.role || "");
   return [["Host", String(s?.host || "")], ["Role", role], ["Vyre", String(s?.version || "")], ["Platform", String(s?.platform || "")], ["Node", String(s?.node || "")]].filter(([, v]) => v) as [string, string][];
 }
 /** The name this computer shows, which can be changed (system.rename). Empty when the box does not name itself. */

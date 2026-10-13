@@ -27,7 +27,7 @@ export function Tabs<T extends string>({ items, value, onChange }: { items: [T, 
             <P.Trigger key={id} value={id} style={{ minHeight: px(map, "--control"), justifyContent: "center", paddingHorizontal: px(map, "--s-3") }}>
               <View className="items-center">
                 <Text medium style={{ fontSize: 15, lineHeight: 20 }} tone={id === value ? "default" : "muted"}>{l}</Text>
-                <View style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, borderRadius: 1, backgroundColor: id === value ? color.accent : "transparent" }} />
+                <View style={{ position: "absolute", bottom: -1, left: 0, right: 0, height: 2, borderRadius: 1, backgroundColor: id === value ? color.primary : "transparent" }} />
               </View>
             </P.Trigger>
           ))}

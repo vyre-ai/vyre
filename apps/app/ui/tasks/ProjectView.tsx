@@ -30,7 +30,7 @@ function Stages({ world, tasks, stages, current, onOpen }: { world: World; tasks
             <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setToggled((s) => ({ ...s, [g.label]: !open }))} className="min-h-row flex-row items-center gap-s2 px-s4 py-s2">
               <Icon name={open ? "chevron-down" : "chevron"} size={16} tone="label" />
               <Text strong className="flex-1">{g.label}</Text>
-              {g.current && g.stage ? <Chip tone="accent">Now</Chip> : null}
+              {g.current && g.stage ? <Chip>Now</Chip> : null}
               <Text size="caption" tone="label">{g.tasks.length ? `${g.done} of ${g.total} done` : "No tasks yet"}</Text>
             </Pressable>
             {open ? (g.tasks.length ? g.tasks.map((t) => <TaskRow key={t.id} world={world} task={t} all={tasks} onOpen={() => onOpen(t)} />) : <View className="px-s4 pb-s3"><Text tone="label">No tasks yet.</Text></View>) : null}

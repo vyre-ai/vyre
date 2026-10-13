@@ -25,7 +25,7 @@ export function heldFields(types: any[], byType: Record<string, any[]>): Held[] 
 }
 
 /** The line under a held field: what holds it, and what an assistant reads. */
-export const heldLine = (h: Held): string => `${h.typeLabel}. Assistants read "${h.label} on file, sealed".`;
+export const heldLine = (h: Held): string => `${h.typeLabel}. Agents read "${h.label} on file, sealed".`;
 
 /** Held fields grouped by record, so Jane Doe's three fields sit under one name. */
 export function heldByRecord(rows: Held[]): { urn: string; title: string; typeLabel: string; fields: Held[] }[] {
@@ -42,7 +42,7 @@ export type Share = { module: string; project: string };
 /** The input of vault.grant for what the person typed, or the first thing wrong in words. The Vault uses the item for the module; the module never sees the value. */
 export function shareInput(item: string, s: Share): { input: Record<string, unknown> } | { error: string } {
   const mod = s.module.trim();
-  if (!mod) return { error: "Say who gets it: a module or an assistant by name." };
+  if (!mod) return { error: "Say who gets it: a module or an agent by name." };
   if (!/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(mod)) return { error: "Use the name as it appears under Who has it, with no spaces." };
   const [name, watcher] = mod.split("/");
   const project = s.project.trim();

@@ -89,7 +89,7 @@ export function toDefinition(d) {
   return o;
 }
 
-const KIND_WORD = /** @type {Record<string, string>} */ ({ text: "Text", number: "Number", money: "Money", date: "Date", datetime: "Date and time", choice: "Choice", multi_choice: "Choices", boolean: "Yes or no", file: "File", address: "Address", phones: "Phone", emails: "Email", url: "Web address", rich_text: "Rich text", rating: "Rating", actor: "Person or assistant", stage: "Stage", sealed: "Sealed", link: "Link" });
+const KIND_WORD = /** @type {Record<string, string>} */ ({ text: "Text", number: "Number", money: "Money", date: "Date", datetime: "Date and time", choice: "Choice", multi_choice: "Choices", boolean: "Yes or no", file: "File", address: "Address", phones: "Phone", emails: "Email", url: "Web address", rich_text: "Rich text", rating: "Rating", actor: "Person or agent", stage: "Stage", sealed: "Sealed", link: "Link" });
 
 /** One line under a field's name. @param {Partial<Draft> & { kind: string }} f @param {TypeRef[]} types */
 export function fieldSummary(f, types) {
