@@ -82,7 +82,7 @@ export function checklist(b: Body): { id: string; label: string; done: boolean; 
     { id: "tasks", label: "Tasks", done: hasTask(b), optional: false },
     { id: "who", label: "Who does them", done: tasks.some((t) => t.doer !== DEFAULT_DOER), optional: true },
     { id: "done", label: "When a stage is done", done: b.stages.some((s) => s.done_when !== undefined), optional: true },
-    { id: "publish", label: "Publish", done: canPublish(b).ok && false, optional: false },
+    { id: "publish", label: "Publish", done: false, optional: false },
   ];
 }
 
