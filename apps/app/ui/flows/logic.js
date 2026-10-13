@@ -68,14 +68,14 @@ export function whoWords(who, o) {
 /** The step in one plain sentence (what a collapsed card shows). @param {DraftStep} s @param {Options} o @param {Draft} [d] the Flow it is in, to name a record an earlier step made */
 export function stepSummary(s, o, d) {
   switch (s.kind) {
-    case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.copy === false ? "" : " from the details it started with"}`;
+    case "create": return `Create a ${named(o.types, s.type) || "new"} record${s.fields && s.fields.length ? ` with ${s.fields.map((f) => f.field).filter(Boolean).join(", ")}` : ""}`;
     case "project": {
       const t = o.templates.find((x) => x.id === s.template);
       return `Start a project from the ${t ? t.name : "chosen"} template${s.link ? ` and link it to ${linkWords(s.link, d, o)}` : ""}`;
     }
     case "agent": return `Hand it to the ${named(o.agents, s.agent) || "chosen"} agent${s.instructions && s.instructions.trim() ? " with your instructions" : ""}`;
     case "assign": return `Ask ${whoWords(s.to, o)} to ${s.title && s.title.trim() ? lc(s.title.trim()) : "do a task"}`;
-    case "email": return `Email ${s.to && s.to.trim() ? s.to.trim() : "someone"}`;
+    case "email": return `Email ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the address from the form" : s.to.trim()) : "someone"}`;
     case "ask": return `Wait for ${whoWords(s.to, o)} to say yes${s.title && s.title.trim() ? `: ${s.title.trim()}` : ""}`;
     case "update": return `Set ${s.field && s.field.trim() ? s.field.trim() : "a field"} to ${s.value && s.value.trim() ? s.value.trim() : "a value"} on ${linkWords(s.record, d, o)}`;
     case "advanced": return s.summary || `Advanced step (${s.raw?.kind || "other"})`;
@@ -85,7 +85,8 @@ export function stepSummary(s, o, d) {
 
 /** @param {string | undefined} ref "trigger" or a step id @param {Draft} [d] @param {Options} [o] */
 export function linkWords(ref, d, o) {
-  if (!ref || ref === "trigger") return "the record that started the Flow";
+  if (!ref) return "no record";
+  if (ref === "trigger") return "the record that started the Flow";
   const made = d && d.steps.find((x) => x.id === ref);
   const type = made && o ? named(o.types, made.type) : "";
   return type ? `the new ${type} record` : "the record made before";
@@ -104,13 +105,13 @@ export function flowSentence(d, o) {
 export function stepProblem(s, o) {
   void o;
   switch (s.kind) {
-    case "create": return s.type ? null : "Choose which kind of record to create.";
+    case "create": return s.type ? (s.fields || []).some((f) => f.field && f.field.trim()) ? null : "Add at least one field." : "Choose which kind of record to create.";
     case "project": return s.template ? null : "Choose a project template.";
-    case "agent": return !s.agent ? "Choose the agent." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
+    case "agent": return !s.agent ? "Choose the agent." : !s.record ? "Choose the record to hand over. Create one in an earlier step first." : !(s.instructions || "").trim() ? "Tell the agent what to do with it." : null;
     case "assign": return !s.to ? "Choose who it goes to." : !(s.title || "").trim() ? "Say what the task is." : null;
     case "email": return !(s.to || "").trim() ? "Say who it goes to." : !(s.body || "").trim() ? "Write the email." : null;
     case "ask": return !s.to ? "Choose who is asked." : !(s.title || "").trim() ? "Say what they are asked." : null;
-    case "update": return !s.record ? "Choose which record." : !(s.field || "").trim() ? "Name the field." : null;
+    case "update": return !s.record ? "Choose which record. Create one in an earlier step first, or start from a record." : !(s.field || "").trim() ? "Name the field." : null;
     default: return null;
   }
 }
@@ -131,12 +132,20 @@ export function draftProblems(d, o) {
 const EVERY = /** @type {Record<string, { cron: string }>} */ ({ "Every hour": { cron: "0 * * * *" }, "Every day": { cron: "0 9 * * *" }, "Every Monday": { cron: "0 9 * * 1" } });
 export const EVERY_CHOICES = Object.keys(EVERY);
 
+/** A text value the person typed: a whole value like {email} reads that field of what started the Flow, anything else is the text itself. @param {string} t */
+export const val = (t) => { const m = /^\{([a-z0-9_.]+)\}$/i.exec(String(t ?? "").trim()); return m ? { expr: `trigger.${m[1]}` } : t; };
+/** The other way: what a stored value says when it is shown for editing. @param {any} v */
+const unval = (v) => { const e = exprOf(v); const m = e && /^trigger\.([a-z0-9_.]+)$/i.exec(e); return m ? `{${m[1]}}` : typeof v === "string" ? v : null; };
+
+/** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
+export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "stage";
+
 const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "flow";
 
 /** @param {Trigger} t */
 export function triggerDefinition(t) {
   switch (t.kind) {
-    case "created": return { on: "event", event: "record.created", where: `event.type == "${t.type}"` };
+    case "created": return { on: "event", event: `${t.type}.created` };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
     case "signup": return { on: "web", path: "signup" };
     case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
@@ -146,7 +155,7 @@ export function triggerDefinition(t) {
 }
 
 /** The expression for the record an earlier step made, or what started the Flow. @param {string | undefined} ref */
-const rec = (ref) => ({ expr: !ref || ref === "trigger" ? "trigger.record" : `steps.${ref}.record.id` });
+const rec = (ref) => ({ expr: !ref || ref === "trigger" ? "event.subject" : `steps.${ref}.record.id` });
 
 /** The doer string the kernel takes. @param {string} who */
 const doer = (who) => (who.startsWith("agent:") ? `teammate:${who.slice(6)}` : who);
@@ -157,11 +166,11 @@ export function stepDefinition(s, d) {
   void d;
   switch (s.kind) {
     case "advanced": return s.raw;
-    case "create": return { id: s.id, kind: "create", type: s.type, set: s.copy === false ? {} : { title: { expr: "trigger.title" }, details: { expr: "trigger" } } };
-    case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: (s.name || "").trim() || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
+    case "create": return { id: s.id, kind: "create", type: s.type, set: Object.fromEntries((s.fields || []).filter((f) => f.field && f.field.trim()).map((f) => [slug(f.field), val(f.value)])) };
+    case "project": return { id: s.id, kind: "call", action: "work.start-project", resource: "vyre://space/work", input: { template: s.template, name: val((s.name || "").trim()) || { expr: "trigger.name" }, ...(s.link ? { client: rec(s.link) } : {}) } };
     case "agent": return { id: s.id, kind: "agent", assistant: doer(`agent:${s.agent}`), title: (s.title || "").trim() || "Handle this case", instructions: s.instructions, output: { kind: "note" }, record: rec(s.record), await: true, ...(label ? { label } : {}) };
     case "assign": return { id: s.id, kind: "assign", to: doer(s.to), title: s.title, output: { kind: "note" } };
-    case "email": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: s.to, subject: s.subject || "", body: s.body } };
+    case "email": return { id: s.id, kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: val(s.to), subject: val(s.subject || ""), body: val(s.body) } };
     case "ask": return { id: s.id, kind: "ask", to: doer(s.to), title: s.title };
     case "update": return { id: s.id, kind: "update", type: s.type || "record", record: rec(s.record), set: { [slug(s.field || "field")]: s.value || "" } };
     default: throw new Error(`no step kind ${s.kind}`);
@@ -179,9 +188,9 @@ export function newStep(kind, d, o) {
   while (d.steps.some((s) => s.id === `${kind}${n}`)) n++;
   const id = `${kind}${n}`;
   const lastMade = [...d.steps].reverse().find((s) => s.kind === "create");
-  const link = lastMade ? lastMade.id : "trigger";
+  const link = lastMade ? lastMade.id : isRecordTrigger(d.trigger) ? "trigger" : "";
   switch (kind) {
-    case "create": return { id, kind, type: d.trigger.type || "", copy: true };
+    case "create": return { id, kind, type: d.trigger.kind === "created" ? "" : d.trigger.type || "", fields: [{ field: "", value: "" }] };
     case "project": return { id, kind, template: o.templates[0]?.id || "", name: "", link };
     case "agent": return { id, kind, agent: o.agents[0]?.name || "", title: "", instructions: "", record: link };
     case "assign": return { id, kind, to: "role:" + (o.roles[0]?.name || "owner"), title: "" };
@@ -223,7 +232,7 @@ export function firstStageTasks(t, o) {
 
 const exprOf = (/** @type {any} */ v) => (v && typeof v === "object" && typeof v.expr === "string" ? v.expr : null);
 /** "trigger.record" is what started the Flow, "steps.<id>.record.id" a record an earlier step made. @param {any} v @returns {string | null} */
-const refOf = (v) => { const e = exprOf(v); if (e === "trigger.record") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.id$/i.exec(e); return m ? m[1] : null; };
+const refOf = (v) => { const e = exprOf(v); if (e === "event.subject") return "trigger"; const m = e && /^steps\.([a-z0-9_]+)\.record\.id$/i.exec(e); return m ? m[1] : null; };
 const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.keys(o).every((k) => allowed.includes(k));
 
 /** @param {any} t @returns {Trigger} */
@@ -232,8 +241,8 @@ function triggerFrom(t) {
   if (!t || typeof t !== "object") return raw;
   if (t.on === "manual" && keys(t, ["on"])) return { kind: "manual" };
   if (t.on === "stage" && keys(t, ["on", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
-  if (t.on === "event" && t.event === "record.created" && keys(t, ["on", "event", "where"])) {
-    const m = /^event\.type == "([^"]+)"$/.exec(t.where || "");
+  if (t.on === "event" && keys(t, ["on", "event"])) {
+    const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || "");
     return m ? { kind: "created", type: m[1] } : raw;
   }
   if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
@@ -251,17 +260,17 @@ function stepFrom(s) {
   switch (s.kind) {
     case "create": {
       const set = s.set || {};
-      const copy = exprOf(set.title) === "trigger.title" && exprOf(set.details) === "trigger" && Object.keys(set).length === 2;
-      return copy || !Object.keys(set).length ? { id: s.id, kind: "create", type: s.type, copy } : adv;
+      const fields = Object.entries(set).map(([field, v]) => ({ field, value: unval(v) }));
+      return fields.every((f) => f.value !== null) && keys(s, ["id", "kind", "type", "set"]) ? { id: s.id, kind: "create", type: s.type, fields: /** @type {any} */ (fields.length ? fields : [{ field: "", value: "" }]) } : adv;
     }
     case "call": {
       const i = s.input || {};
       if (s.action === "work.start-project" && s.resource === "vyre://space/work" && typeof i.template === "string" && keys(i, ["template", "name", "client"])) {
         const link = i.client === undefined ? "" : refOf(i.client);
-        const name = typeof i.name === "string" ? i.name : exprOf(i.name) === "trigger.name" ? "" : null;
+        const name = exprOf(i.name) === "trigger.name" ? "" : unval(i.name);
         return link === null || name === null ? adv : { id: s.id, kind: "project", template: i.template, name, link: link || undefined };
       }
-      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && typeof i.to === "string") return { id: s.id, kind: "email", to: i.to, subject: i.subject || "", body: i.body || "" };
+      if (s.action === "comms.send" && i.via === "email" && keys(i, ["via", "to", "subject", "body"]) && unval(i.to) !== null && unval(i.subject || "") !== null && unval(i.body) !== null) return { id: s.id, kind: "email", to: unval(i.to), subject: unval(i.subject || ""), body: unval(i.body) };
       return adv;
     }
     case "agent": {

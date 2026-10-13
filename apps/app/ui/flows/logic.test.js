@@ -6,12 +6,12 @@ import { fromDefinition, flowSentence, toDefinition, draftProblems, newStep, rem
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
-  assert.equal(flowSentence(REFUND_DRAFT, O), "When a record is created in RefundRequests, create a RefundRequests record from the details it started with, then hand it to the Refunds agent with your instructions.");
+  assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions.");
 });
 
 test("the ATP starter says what it does", () => {
   const s = flowSentence(ATP_DRAFT, O);
-  assert.match(s, /^When a person signs up, create a Client record/);
+  assert.match(s, /^When a person signs up, create a Client record with Name, Email/);
   assert.match(s, /start a project from the ATP template and link it to the new Client record/);
 });
 
@@ -74,4 +74,21 @@ test("a stored group rides along", () => {
   const d = fromDefinition({ ...toDefinition(REFUND_DRAFT), group: "Money" });
   assert.equal(d.group, "Money");
   assert.equal(toDefinition(d).group, "Money");
+});
+
+test("a record trigger is the type's own event, and a step reads the record from the event", () => {
+  const d = { name: "On refund", trigger: { kind: "created", type: "refund_requests" }, steps: [{ id: "agent1", kind: "agent", agent: "refunds", title: "t", instructions: "x", record: "trigger" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.trigger, { on: "event", event: "refund_requests.created" });
+  assert.deepEqual(def.steps[0].record, { expr: "event.subject" });
+  assert.deepEqual(checkFlow(def), []);
+  assert.deepEqual(toDefinition(fromDefinition(def)), def);
+});
+
+test("braces take a value from what started the Flow and come back as braces", () => {
+  const d = { name: "Mail", trigger: { kind: "signup" }, steps: [{ id: "email1", kind: "email", to: "{email}", subject: "Hello", body: "Hi {name}" }] };
+  const def = toDefinition(d);
+  assert.deepEqual(def.steps[0].input.to, { expr: "trigger.email" });
+  assert.equal(def.steps[0].input.body, "Hi {name}");
+  assert.equal(fromDefinition(def).steps[0].to, "{email}");
 });

@@ -10,7 +10,7 @@ import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { StepCard } from "./StepCard";
-import { EVERY_CHOICES, STEP_CHOICES, TRIGGERS, choiceOf, firstStageTasks, flowSentence, moveStep, newStep, removeStep, stepProblem, stepSummary, triggerOf, triggerPhrase, whoChoices } from "./logic.js";
+import { EVERY_CHOICES, isRecordTrigger, STEP_CHOICES, TRIGGERS, choiceOf, firstStageTasks, flowSentence, moveStep, newStep, removeStep, stepProblem, stepSummary, triggerOf, triggerPhrase, whoChoices } from "./logic.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
 export type { Draft, DraftStep, Options };
@@ -20,7 +20,7 @@ const pick = (list: { name: string; label: string }[]): [string, string][] => li
 /** Where a step can read a record from: what started the Flow, or a record an earlier step made. */
 function sources(d: Draft, before: number, o: Options): [string, string][] {
   const made = d.steps.slice(0, before).filter((s) => s.kind === "create").map((s): [string, string] => [s.id, `The ${o.types.find((t) => t.name === s.type)?.label ?? "new"} record made in step ${d.steps.indexOf(s) + 1}`]);
-  return [["trigger", "The record that started the Flow"], ...made];
+  return [...(isRecordTrigger(d.trigger) ? [["trigger", "The record that started the Flow"] as [string, string]] : []), ...made];
 }
 
 /**
@@ -71,14 +71,25 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
               {s.kind === "create" ? (
                 <>
                   <Select label="Kind of record" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setStep(s.id, { type })} />
-                  <Row dense title="Copy the details it started with" sub="Title, name and the rest of what came in." end={<Switch label="Copy the details" on={s.copy !== false} onChange={(copy) => setStep(s.id, { copy })} />} />
+                  <View className="gap-s2">
+                    <Text size="caption" strong tone="label">Fields</Text>
+                    {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
+                      <View key={fi} className="flex-row items-end gap-s2">
+                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" /></View>
+                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" /></View>
+                        <Button kind="ghost" size="sm" icon="x" label="Remove field" onPress={() => setStep(s.id, { fields: s.fields.filter((_: any, k: number) => k !== fi) })} />
+                      </View>
+                    ))}
+                    <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => setStep(s.id, { fields: [...(s.fields ?? []), { field: "", value: "" }] })} /></View>
+                    <Text size="caption" tone="label">A value in braces, like {"{email}"}, is taken from what started the Flow: the form's field or the record's.</Text>
+                  </View>
                 </>
               ) : null}
               {s.kind === "project" ? (
                 <>
                   <Select label="Project template" value={s.template ?? ""} options={options.templates.map((x) => [x.id, x.name] as [string, string])} placeholder="Choose a template" onChange={(template) => setStep(s.id, { template })} />
                   <Field label="Project name" value={s.name ?? ""} onChangeText={(name) => setStep(s.id, { name })} placeholder="Named after the record" help="Leave blank to name it after the record." />
-                  <Select label="Link the project to" value={s.link ?? "trigger"} options={links} onChange={(link) => setStep(s.id, { link })} />
+                  <Select label="Link the project to" value={s.link ?? ""} options={[["", "Nothing"], ...links]} onChange={(link) => setStep(s.id, { link })} />
                   <Tasks tpl={options.templates.find((x) => x.id === s.template)} o={options} />
                 </>
               ) : null}
@@ -88,7 +99,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
                   <Field label="Task title" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Handle this refund request" />
                   <Field label="Your instructions" multiline lines={5} value={s.instructions ?? ""} onChangeText={(instructions) => setStep(s.id, { instructions })} placeholder="What to do with this case"
                     help="They add to the agent's own instructions, which say who to escalate to and which email alias to use outside." />
-                  <Select label="The record to hand over" value={s.record ?? "trigger"} options={links} onChange={(record) => setStep(s.id, { record })} />
+                  <Select label="The record to hand over" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Text size="caption" tone="label">The agent gets the record and its details.</Text>
                 </>
               ) : null}
@@ -101,7 +112,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
               ) : null}
               {s.kind === "email" ? (
                 <>
-                  <Field label="To" value={s.to ?? ""} onChangeText={(to) => setStep(s.id, { to })} placeholder="An address, or the client" />
+                  <Field label="To" value={s.to ?? ""} onChangeText={(to) => setStep(s.id, { to })} placeholder="An address, or {email} from the form" />
                   <Field label="Subject" value={s.subject ?? ""} onChangeText={(subject) => setStep(s.id, { subject })} />
                   <Field label="Message" multiline lines={5} value={s.body ?? ""} onChangeText={(body) => setStep(s.id, { body })} />
                   <Text size="caption" tone="label">Sent through your space's sending service. You say yes to each one before it goes.</Text>
@@ -116,7 +127,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly }: { draft: Dra
               ) : null}
               {s.kind === "update" ? (
                 <>
-                  <Select label="Which record" value={s.record ?? "trigger"} options={links} onChange={(record) => setStep(s.id, { record })} />
+                  <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Select label="Kind of record" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose a record type" onChange={(type) => setStep(s.id, { type })} />
                   <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />
                   <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />

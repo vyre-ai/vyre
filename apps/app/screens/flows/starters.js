@@ -26,9 +26,9 @@ export const SAMPLE_OPTIONS = {
 /** @type {import("../../ui/flows/logic.js").Draft} */
 export const REFUND_DRAFT = {
   name: "Refund request", group: "Money",
-  trigger: { kind: "created", type: "refund_requests" },
+  trigger: { kind: "form", path: "refund-request" },
   steps: [
-    { id: "create1", kind: "create", type: "refund_requests", copy: true },
+    { id: "create1", kind: "create", type: "refund_requests", fields: [{ field: "Client", value: "{name}" }, { field: "Email", value: "{email}" }, { field: "Amount", value: "{amount}" }, { field: "Reason", value: "{reason}" }] },
     { id: "agent2", kind: "agent", agent: "refunds", title: "Handle this refund request", record: "create1",
       instructions: "Check the request against our refund policy. Refund up to $500 yourself and email the client from the support alias. Anything larger goes to the manager for a yes first. Close the record when it is paid." },
   ],
@@ -39,8 +39,8 @@ export const ATP_DRAFT = {
   name: "New ATP client", group: "Clients",
   trigger: { kind: "signup" },
   steps: [
-    { id: "create1", kind: "create", type: "client", copy: true },
+    { id: "create1", kind: "create", type: "client", fields: [{ field: "Name", value: "{name}" }, { field: "Email", value: "{email}" }] },
     { id: "project2", kind: "project", template: "tpl_atp", name: "", link: "create1" },
-    { id: "email3", kind: "email", to: "the client", subject: "Welcome to your AI Transformation Partnership", body: "Hello, your ATP project is open and your first call is being booked." },
+    { id: "email3", kind: "email", to: "{email}", subject: "Welcome to your AI Transformation Partnership", body: "Hello, your ATP project is open and your first call is being booked." },
   ],
 };
