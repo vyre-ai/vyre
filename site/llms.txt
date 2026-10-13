@@ -16,6 +16,7 @@ Current release: 0.5.0. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Windows: Vyre](https://vyre.run/windows/): tray app with an Alt+Space panel
 - [Linux server](https://vyre.run/linux/): where Vyre runs
 - [Phone](https://vyre.run/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
+- [Downloads](https://vyre.run/downloads/): every file and install line, from the latest GitHub release
 
 ## Machine-readable
 - [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full

@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs(site): a /downloads page (Mac Apple silicon and Intel, Windows, Android, iPhone steps, Linux and Mac server line, web app, signature note), a Log in button in the nav, and a 404 with the halftone V drifting back and a Needs you card of links; built by scripts/site/pages.mjs.
 - docs(site): vyre.run shows the real app, not drawn screens: animated WebP recordings of the app (dark and paper, laptop and phone, with a still poster for reduced motion) in drawn MacBook Pro and iPhone Pro frames, one 12-column hero grid, and the hand-made fake screens removed from the home, Mac, Windows and phone pages.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
