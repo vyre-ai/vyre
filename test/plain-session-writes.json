@@ -185,14 +185,6 @@
    "class": "refused",
    "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
   },
-  "github.session.redo": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
-  },
-  "github.session.undo": {
-   "class": "refused",
-   "why": "refused in the body for a plain session: a session pushes and undoes its own branch only"
-  },
   "glass.files.mkdir": {
    "class": "refused",
    "why": "refused in the body: a model with no agent behind it has no computer of its own, so it may browse no files"
