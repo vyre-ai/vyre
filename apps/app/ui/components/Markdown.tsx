@@ -16,7 +16,8 @@ export function openOutside(href: string) {
   else void Linking.openURL(href);
 }
 
-type Ctx = { onCopy?: (code: string) => void; onLink: (href: string) => void; textNode?: (v: string) => React.ReactNode; color: Record<string, string>; phone: boolean };
+export type RefNode = { lead: "@" | "#"; name: string; urn: string };
+type Ctx = { onCopy?: (code: string) => void; onLink: (href: string) => void; textNode?: (v: string) => React.ReactNode; renderRef?: (r: RefNode) => React.ReactNode; color: Record<string, string>; phone: boolean };
 
 function Inline({ nodes, ctx, base }: { nodes: Node[]; ctx: Ctx; base?: { bold?: boolean; italic?: boolean } }) {
   return (
@@ -27,6 +28,7 @@ function Inline({ nodes, ctx, base }: { nodes: Node[]; ctx: Ctx; base?: { bold?:
         if (n.t === "code") return <Text key={i} mono size="read" style={{ fontSize: 14, backgroundColor: ctx.color["surface-3"] }}>{`\u00A0${n.v}\u00A0`}</Text>;
         if (n.t === "b") return <Text key={i} size="read" strong style={base?.italic ? { fontStyle: "italic" } : undefined}><Inline nodes={n.c} ctx={ctx} base={{ ...base, bold: true }} /></Text>;
         if (n.t === "i") return <Text key={i} size="read" strong={base?.bold} style={{ fontStyle: "italic" }}><Inline nodes={n.c} ctx={ctx} base={{ ...base, italic: true }} /></Text>;
+        if (n.t === "ref") return ctx.renderRef ? <Fragment key={i}>{ctx.renderRef(n as RefNode)}</Fragment> : <Inline key={i} nodes={n.c} ctx={ctx} base={base} />;
         if (n.t === "a") return <Text key={i} size="read" accessibilityRole="link" className="hover:underline" onPress={() => ctx.onLink(n.href)} style={{ textDecorationLine: "underline" }}><Inline nodes={n.c} ctx={ctx} base={base} /></Text>;
         return null;
       })}
@@ -84,12 +86,12 @@ function Block({ b, ctx, depth, tail }: { b: Node; ctx: Ctx; depth: number; tail
 
 /**
  * Markdown as the design system draws it. `onCopy` is how a code block's Copy reaches the clipboard (the web's own when none is given); `textNode` draws a run of plain words (chat uses it to turn a Vault reference
- * into its chip); `onLink` replaces the default of opening outside. A tree is made once per text.
+ * into its chip); `renderRef` draws a reference to something in the Space (a `vyre://` link whose words start with @ or #; none given, its words show plain); `onLink` replaces the default of opening outside. A tree is made once per text.
  */
-export function Markdown({ text, onCopy, onLink, textNode, tail }: { text: string; onCopy?: (code: string) => void; onLink?: (href: string) => void; textNode?: (v: string) => React.ReactNode; tail?: React.ReactNode }) {
+export function Markdown({ text, onCopy, onLink, textNode, renderRef, tail }: { text: string; onCopy?: (code: string) => void; onLink?: (href: string) => void; textNode?: (v: string) => React.ReactNode; renderRef?: (r: RefNode) => React.ReactNode; tail?: React.ReactNode }) {
   const { color, phone } = useUiTheme();
   const tree = useMemo(() => parse(text), [text]);
-  const ctx: Ctx = { onCopy, onLink: onLink ?? openOutside, textNode, color: color as unknown as Record<string, string>, phone };
+  const ctx: Ctx = { onCopy, onLink: onLink ?? openOutside, textNode, renderRef, color: color as unknown as Record<string, string>, phone };
   if (!tree.length) return tail ? <Text size="read">{tail}</Text> : null;
   const last = tree.length - 1, inLast = tree[last].t === "p" || tree[last].t === "h";
   // `tail` (the soft caret of a reply still arriving) ends the last line of words; after a code block or a table it sits on a line of its own

@@ -4,7 +4,7 @@
 // into the words ({ pick: "Clients (all)", urn?, kind? }). A branch with a `pick` can be chosen whole or opened; a branch without one only opens.
 // The path is the list of keys from the top to the open branch. Typing at the top searches every level at once.
 
-/** @typedef {{ pick: string, urn?: string, kind?: string }} Pick */
+/** @typedef {{ pick: string, urn?: string, kind?: string, id?: string }} Pick */
 /** @typedef {{ key: string, label: string, sub?: string, sealed?: number, family?: string, pick?: Pick, kids?: NestNode[] }} NestNode */
 /** @typedef {{ key: string, label: string, sub?: string, sealed?: number, family?: string, pick?: Pick, drill: boolean, trail: string[], group?: string, path?: string }} NestRow */
 

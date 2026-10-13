@@ -1,14 +1,14 @@
 // A document in a large overlay (about 92% of the screen on a wide one, the whole screen on a phone): what Edit on an agent's or a project's Instructions opens, and what a row in a project's Files opens.
 // A text or markdown file is written in the shared markdown editor and saved as you go (about 1.5 s after typing stops, and again on close); a file the viewer only draws (a PDF, a sheet, a picture) is the
 // shared FileViewer, read only. Undo and redo are kept here (Cmd or Ctrl+Z, Shift+Cmd+Z), so the toolbar's formatting buttons are undone too.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Modal, Platform, View, useWindowDimensions } from "react-native";
 import * as P from "@rn-primitives/dialog";
 import { Button } from "../components/Button";
 import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
 import { FileViewer } from "./FileViewer";
-import { MarkdownEditor } from "./MarkdownDoc";
+import { MarkdownEditor, type AssistProps } from "./MarkdownDoc";
 import { canEdit, viewerKind, type ViewKind } from "./kinds.js";
 import { textOfBytes } from "./viewer-model.js";
 import { nextSaveDelay, pushHistory, redoOf, undoOf, type History } from "./autosave.js";
@@ -30,6 +30,10 @@ export type DocOverlayProps = {
   spacing?: number;
   onOpenInFiles?: () => void;
   onSaved?: () => void;
+  /** The @ and # picker the editor shows beside the words (the chat composer's, from the app); none: the editor has no picker, and a reference already in the text still shows as a chip. */
+  assist?: ComponentType<AssistProps>;
+  /** A press on a reference chip: the address (vyre://...) of the person, agent, record, file or tag. */
+  onOpenRef?: (urn: string) => void;
 };
 
 type Status = "idle" | "dirty" | "saving" | "saved" | "failed";
@@ -173,7 +177,7 @@ function Writer(p: DocOverlayProps & { kind: ViewKind }) {
   return (
     <View style={{ flex: 1 }}>
       <Bar p={p} status={status} undo={undo} redo={redo} canUndo={hist.past.length > 0} canRedo={hist.future.length > 0} retry={() => void save()} close={() => void close()} />
-      {value === null ? <View style={{ padding: 24 }}><Text tone="muted">{why || "Loading..."}</Text></View> : <View style={pad}><MarkdownEditor value={value} onChange={change} onSave={() => void save()} /></View>}
+      {value === null ? <View style={{ padding: 24 }}><Text tone="muted">{why || "Loading..."}</Text></View> : <View style={pad}><MarkdownEditor value={value} onChange={change} onSave={() => void save()} assist={p.assist} onOpenRef={p.onOpenRef ? (u) => { void saveRef.current().then((ok) => { if (ok) p.onOpenRef?.(u); }); } : undefined} /></View>}
     </View>
   );
 }

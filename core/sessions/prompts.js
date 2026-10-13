@@ -11,6 +11,7 @@
 // Vyre's own launch text survives both: it is how a session knows it runs under Vyre.
 
 import { redact } from "../transcripts/sanitize.js";
+import { parseRefs, renderForPrompt } from "../../lib/doc-refs.js";
 
 export const PROMPTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_prompts (
   scope TEXT NOT NULL, version INTEGER NOT NULL, mode TEXT NOT NULL, text TEXT NOT NULL,
@@ -42,6 +43,21 @@ export function scopeOf(s) {
 
 /** @returns {PromptRow} */
 const DOC_PROMPT_MAX = 24000;
+/**
+ * The instructions with each @ or # reference (a markdown link to a vyre:// address, lib/doc-refs.js) turned into a line the model can use, "@Sam (person, vyre://acme/person/p_1)". `canRead` is the caller's
+ * read check, asked once per address; a reference it refuses, or one that fails to answer, keeps its name and loses the address, so the prompt never carries what the reader could not open.
+ * @param {{ agent?: { name: string, text: string }, project?: { name: string, text: string } } | null | undefined} x
+ * @param {(ref: import("../../lib/doc-refs.js").DocRef) => Promise<boolean>} canRead
+ */
+export async function withRefsResolved(x, canRead) {
+  if (!x) return x;
+  const known = new Map();
+  const ask = async (/** @type {import("../../lib/doc-refs.js").DocRef} */ r) => { if (!known.has(r.urn)) known.set(r.urn, await canRead(r).then(Boolean, () => false)); };
+  for (const d of [x.agent, x.project]) if (d && typeof d.text === "string") for (const r of parseRefs(d.text)) await ask(r);
+  const one = (/** @type {{ name: string, text: string } | undefined} */ d) => (d && typeof d.text === "string" ? { ...d, text: renderForPrompt(d.text, (r) => known.get(r.urn) === true) } : d);
+  return { ...(x.agent ? { agent: one(x.agent) } : {}), ...(x.project ? { project: one(x.project) } : {}) };
+}
+
 /**
  * The instructions blocks of a session's prompt: the agent's AGENTS.md, then the project's. Each is the file's words under one line that says whose they are; a long one is cut with a pointer to the file.
  * @param {{ agent?: { name: string, text: string }, project?: { name: string, text: string } } | null | undefined} x
