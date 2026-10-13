@@ -91,6 +91,26 @@ test("a new template is made by the owner or an admin, a member only uses it; wh
   assert.equal(JSON.parse(proj.data.template_snapshot).noun.one, "Matter", "the project keeps the name its template gave it");
 });
 
+test("an assistant of a member makes no template and a member cannot put a draft live; an assistant of an admin still makes one, and a template a member owns still lists and starts projects", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const kit = { kind: "agent", id: "kit", space: w.space };
+  const via = async (/** @type {any} */ chain, /** @type {string} */ tool, /** @type {any} */ input) => { const r = await w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.ownerChain, {})).token, in_space_chain: chain }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
+  const anaKit = { ...w.chainOf(ANA), hops: [...w.chainOf(ANA).hops, { actor: kit }] };
+  const ownerKit = { ...w.ownerChain, hops: [...w.ownerChain.hops, { actor: kit }] };
+  await w.owner("agents.create", { name: "research", kind: "agent", projects: [] });
+  await assert.rejects(via(anaKit, "work.template.define", { body: TEMPLATE }), /owner or an admin makes a new template/, "her assistant does not make one for her");
+  const made = await via(ownerKit, "work.template.define", { body: { ...TEMPLATE, name: "By the admin's assistant" } });
+  assert.equal(made.state, "draft", "an admin's assistant still can");
+  // a draft she owns (an older one) is not hers to put live
+  const hers = await w.owner("work.template.define", { body: { ...TEMPLATE, name: "Hers" } });
+  const herChain = w.chainOf(ANA);
+  await assert.rejects(via(herChain, "work.template.golive", { template: hers.template, version: hers.version }), /owner or an admin puts/, "a member does not publish a template, even one she owns");
+  await w.owner("work.template.golive", { template: hers.template, version: hers.version });
+  assert.ok((await w.as(ANA, "templates", {})).templates.some((/** @type {any} */ x) => x.template === hers.template), "the live one is in her list");
+  const started = await w.as(ANA, "start-project", { template: hers.template, name: "Rivera" });
+  assert.ok(started.project, "and she starts a project from it");
+});
+
 test("a person who is not a member, and a chain that is not one person's, get nothing", { timeout: 90_000 }, async t => {
   const w = await world(t);
   await assert.rejects(w.as(ZED, "project-create", { name: "Nope" }), /not found|not_found/i);
