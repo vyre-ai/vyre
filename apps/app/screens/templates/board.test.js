@@ -76,3 +76,28 @@ test("initials for an avatar", () => {
   assert.equal(initialsOf("Research (assistant)"), "R");
   assert.equal(initialsOf(""), "?");
 });
+
+test("a template's card: its name, what its projects are called, its stage strip, its counts and the verb on its button", async () => {
+  const { cardOf } = await import("./board.ts");
+  const row = { template: "tpl_e", name: "Estate plan", live: 2, latest: 3, versions: 3, owner: null, tags: [], noun: { one: "Matter", many: "Matters" } };
+  const c = cardOf(row, body(), 4);
+  assert.deepEqual([c.name, c.projects, c.start, c.stages, c.counts, c.status, c.group], ["Estate plan", "Matters", "Start a matter", ["Opening", "Review", "Done"], "3 stages · 3 tasks · 4 running", "v2", "Live"]);
+  const d = cardOf({ ...row, live: null, noun: undefined, name: "Onboarding" }, { ...body(), noun: undefined, stage_mode: "none" }, 0);
+  assert.deepEqual([d.projects, d.start, d.stages, d.counts, d.status, d.group], ["Projects", "Start a project", [], "3 tasks", "Draft v3", "Drafts"]);
+  assert.equal(cardOf(row, null, 1).counts, "1 running", "before the body is read there is only what the list knows");
+});
+
+test("the list's search and filter: by name or what its projects are called, and Live or Draft", async () => {
+  const { filterRows } = await import("./board.ts");
+  const rows = [
+    { template: "a", name: "Estate plan", live: 1, latest: 1, versions: 1, owner: null, tags: [], noun: { one: "Matter", many: "Matters" } },
+    { template: "b", name: "Ad campaign", live: null, latest: 1, versions: 1, owner: null, tags: [], noun: { one: "Campaign", many: "Campaigns" } },
+    { template: "c", name: "ATP", live: 2, latest: 2, versions: 2, owner: null, tags: [] },
+  ];
+  assert.deepEqual(filterRows(rows, "", "all").map((r) => r.template), ["a", "b", "c"]);
+  assert.deepEqual(filterRows(rows, "matt", "all").map((r) => r.template), ["a"]);
+  assert.deepEqual(filterRows(rows, "AD", "all").map((r) => r.template), ["b"]);
+  assert.deepEqual(filterRows(rows, "", "live").map((r) => r.template), ["a", "c"]);
+  assert.deepEqual(filterRows(rows, "", "draft").map((r) => r.template), ["b"]);
+  assert.deepEqual(filterRows(rows, "zzz", "all"), []);
+});
