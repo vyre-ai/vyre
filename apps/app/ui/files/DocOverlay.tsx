@@ -3,6 +3,7 @@
 // shared FileViewer, read only. Undo and redo are kept here (Cmd or Ctrl+Z, Shift+Cmd+Z), so the toolbar's formatting buttons are undone too.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Platform, View, useWindowDimensions } from "react-native";
+import * as P from "@rn-primitives/dialog";
 import { Button } from "../components/Button";
 import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
@@ -38,13 +39,27 @@ export function DocOverlay(p: DocOverlayProps) {
   const kind: ViewKind = p.kind ?? viewerKind(p.name);
   const writable = canEdit(kind) && !p.readOnly && !!p.source.save;
   const box = phone ? { width, height } : { width: Math.round(width * 0.92), height: Math.round(height * 0.92) };
+  const card = (
+    <View accessibilityRole="none" style={{ ...box, backgroundColor: color["surface-3"], borderRadius: phone ? 0 : 14, borderWidth: phone ? 0 : 1, borderColor: color["edge-strong"], overflow: "hidden" }}>
+      {writable ? <Writer {...p} kind={kind} /> : <ReadOnly {...p} kind={kind} />}
+    </View>
+  );
+  // On the web the same dialog primitive the Sheet uses (it lifts over the app and keeps focus inside); on a device a Modal.
+  if (Platform.OS === "web") {
+    return (
+      <P.Root open={p.open} onOpenChange={(o) => { if (!o) p.onClose(); }}>
+        <P.Portal>
+          <P.Overlay style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: color.scrim }} />
+          <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
+            <P.Content>{card}</P.Content>
+          </View>
+        </P.Portal>
+      </P.Root>
+    );
+  }
   return (
-    <Modal visible={p.open} transparent animationType="fade" onRequestClose={p.onClose} accessibilityViewIsModal>
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.scrim }}>
-        <View accessibilityRole="none" style={{ ...box, backgroundColor: color["surface-3"], borderRadius: phone ? 0 : 14, borderWidth: phone ? 0 : 1, borderColor: color["edge-strong"], overflow: "hidden" }}>
-          {writable ? <Writer {...p} kind={kind} /> : <ReadOnly {...p} kind={kind} />}
-        </View>
-      </View>
+    <Modal visible={p.open} transparent animationType="fade" onRequestClose={p.onClose}>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.scrim }}>{card}</View>
     </Modal>
   );
 }
