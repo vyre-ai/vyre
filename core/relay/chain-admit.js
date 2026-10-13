@@ -94,7 +94,7 @@ export function createChainAdmit(o) {
       if (isRelayKey(entry)) return refuse("relay_key: the relay's own key is never a device");
       let good = false;
       try { good = await verifyWith(entry.pub, chainHelloMessage(box, h), h.sig, entry); } catch { good = false; }
-      if (!good) return refuse("bad_signature: the entry key did not sign this box, identity, entry, time, nonce, channel and presence key");
+      if (!good) return refuse(`bad_signature: the entry key did not sign this box, identity, entry, time, nonce, channel and presence key (this server's box id starts ${String(box).slice(0, 6)}, ${String(box).length} characters; channel ${h.channel})`);
       if (nonces.has(h.nonce)) return { ok: false, why: "replayed" };
       nonces.set(h.nonce, t + 2 * WINDOW_MS);
       while (nonces.size > NONCE_MAX) nonces.delete(/** @type {string} */ (nonces.keys().next().value));
