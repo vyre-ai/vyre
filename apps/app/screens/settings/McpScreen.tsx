@@ -1,33 +1,15 @@
 // Your AI keys: make a key for one of your AIs and name it. The AI then acts as you in Vyre, with the access you have and no more; the name is what shows in Activity and approvals afterwards.
 // A key is for `vyre mcp` on this computer, or hosted: a URL and the key for any MCP client over HTTP. Each key has a Revoke that ends it at once. Sending, publishing and paying still wait for your yes.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, MenuRow, Row, SecretField, Segmented, Switch, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { changeLine, usedLine, type Change, type Connection, type Made } from "./mcp-model";
 import { mcp } from "./mcp";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); };
-
-/** A secret shown once: dots, Copy, and Reveal for 60 seconds (the vault's rule). A small box on purpose, so it is easy to swap for the library's SecretField when that lands. */
-function SecretBox({ value }: { value: string }) {
-  const [shown, setShown] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const reveal = () => { setShown(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setShown(false), 60_000); };
-  return (
-    <View className="gap-s2">
-      <Text mono selectable={shown}>{shown ? value : "\u2022".repeat(24)}</Text>
-      <View className="flex-row flex-wrap gap-s2">
-        <Button size="sm" label="Copy the key" onPress={() => copy(value)} />
-        {shown ? <Button size="sm" kind="ghost" label="Hide" onPress={() => { setShown(false); if (timer.current) clearTimeout(timer.current); }} /> : <Button size="sm" kind="ghost" label="Reveal for 60 seconds" onPress={reveal} />}
-      </View>
-      <Text size="caption" tone="label">Shown once. You won't see it again.</Text>
-    </View>
-  );
-}
 
 type Snip = "claude" | "codex" | "json";
 /** After a key is made: where it goes, what to paste, and one Copy. The key itself is masked and shown once. */
@@ -38,7 +20,7 @@ function MadeCard({ made, onDone }: { made: Made; onDone: () => void }) {
       <Text strong>{`${made.name} has a key`}</Text>
       <Text size="caption" tone="label">{made.local ? "Paste the line for your AI once. The key is in a file only your user account can read." : "Paste one of these into the AI's own settings."}</Text>
       {made.url ? <Text mono selectable>{made.url}</Text> : null}
-      {!made.local ? <SecretBox value={made.key} /> : null}
+      {!made.local ? <View className="gap-s2"><SecretField label="Key" read={() => made.key} /><Text size="caption" tone="label">Shown once. You won't see it again.</Text></View> : null}
       <Segmented label="What to paste" options={[["claude", "Claude Code"], ["codex", "Codex"], ["json", "JSON"]]} value={snip} onChange={setSnip} />
       <View className="flex-row flex-wrap gap-s2">
         <Button label={`Copy the ${snip === "claude" ? "Claude Code line" : snip === "codex" ? "Codex line" : "JSON config"}`} onPress={() => copy(made.snippets[snip])} />
@@ -62,6 +44,7 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
   const [ending, setEnding] = useState(sample?.ending ?? "");
   const [name, setName] = useState("");
   const [hosted, setHosted] = useState(false);
+  const [only, setOnly] = useState("");
   const load = useCallback(() => {
     setErr("");
     mcp.list().then(setConns).catch((e) => { setConns([]); setErr(say(e, "Your AI keys could not be read.")); });
@@ -93,27 +76,31 @@ export default function McpScreen({ sample }: { sample?: McpSample } = {}) {
           {(conns || []).map((c, i) => (
             <View key={c.id}>
               {i ? <Divider /> : null}
-              <View className="gap-s2 p-s3">
-                <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.name}</Text><Chip>{c.revoked ? "Revoked" : "Active"}</Chip></View>
-                <Text size="caption" tone="muted">{`${c.hosted ? "Hosted" : `This computer (${c.where})`}. ${usedLine(c, now)}.`}</Text>
-                {c.revoked ? null : ending === c.id ? (
-                  <View className="gap-s2">
-                    <Text size="caption">{`Revoke ${c.name}? Its next call is refused.`}</Text>
-                    <View className="flex-row flex-wrap gap-s2">
-                      <Button size="sm" label="Revoke" disabled={busy === c.id} onPress={() => void act(c.id, async () => { await mcp.revoke(c.id); setEnding(""); })} />
-                      <Button size="sm" kind="ghost" label="Cancel" onPress={() => setEnding("")} />
-                    </View>
+              <MenuRow items={c.revoked ? [{ label: "View activity", onPress: () => setOnly(only === c.name ? "" : c.name) }] : [{ label: "View activity", onPress: () => setOnly(only === c.name ? "" : c.name) }, { label: "Revoke", danger: true, onPress: () => setEnding(c.id) }]}>
+                {(menu) => (
+                  <View className="gap-s2 p-s3">
+                    <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{c.name}</Text><Chip>{c.revoked ? "Revoked" : "Active"}</Chip>{menu}</View>
+                    <Text size="caption" tone="muted">{`${c.hosted ? "Hosted" : `This computer (${c.where})`}. ${usedLine(c, now)}.`}</Text>
+                    {ending === c.id && !c.revoked ? (
+                      <View className="gap-s2">
+                        <Text size="caption">{`Revoke ${c.name}? Its next call is refused.`}</Text>
+                        <View className="flex-row flex-wrap gap-s2">
+                          <Button size="sm" label="Revoke" disabled={busy === c.id} onPress={() => void act(c.id, async () => { await mcp.revoke(c.id); setEnding(""); })} />
+                          <Button size="sm" kind="ghost" label="Cancel" onPress={() => setEnding("")} />
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
-                ) : <View className="flex-row"><Button size="sm" kind="ghost" label="Revoke" onPress={() => setEnding(c.id)} /></View>}
-              </View>
+                )}
+              </MenuRow>
             </View>
           ))}
         </Card>
       </Sec>
-      <Sec title="Changed lately">
+      <Sec title={only ? `Changed lately by ${only}` : "Changed lately"}>
         <Card flush>
-          {!changes.length ? <EmptyState title="Nothing yet" body="What your AIs change shows here, by key name and tool, never what was in it." /> : null}
-          {changes.slice(0, 12).map((c, i) => <View key={`${c.at}-${i}`}>{i ? <Divider /> : null}<Row dense title={changeLine(c, now)} /></View>)}
+          {!changes.filter((c) => !only || c.name === only).length ? <EmptyState title="Nothing yet" body="What your AIs change shows here, by key name and tool, never what was in it." /> : null}
+          {changes.filter((c) => !only || c.name === only).slice(0, 12).map((c, i) => <View key={`${c.at}-${i}`}>{i ? <Divider /> : null}<Row dense title={changeLine(c, now)} /></View>)}
         </Card>
       </Sec>
     </Page>
