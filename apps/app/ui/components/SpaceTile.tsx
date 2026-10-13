@@ -3,8 +3,9 @@ import { Image, View } from "react-native";
 import { useUiTheme } from "../theme";
 import { Text } from "./Text";
 import { spaceTile, TILE_PALETTE } from "../marks/space-tile.js";
+import { useSpaceLogos } from "../marks/useSpaceLogos";
 
-export type SpaceTileSize = 20 | 24 | 28 | 32 | 36 | 40 | 56;
+export type SpaceTileSize = 12 | 14 | 16 | 20 | 24 | 28 | 32 | 36 | 40 | 44 | 56;
 
 /**
  * A space's mark: the person's logo cropped to a rounded square (or a circle), else a monogram of the space's initials on a calm tinted tile from the
@@ -13,7 +14,8 @@ export type SpaceTileSize = 20 | 24 | 28 | 32 | 36 | 40 | 56;
 export function SpaceTile({ space, size = 32, shape = "squircle" }: { space: { id: string; name: string; logo?: string | null }; size?: SpaceTileSize; shape?: "squircle" | "round" }) {
   const { resolved } = useUiTheme();
   const [failed, setFailed] = useState(false);
-  const t = spaceTile(space, { failed });
+  const kept = useSpaceLogos((s) => s.logos[space.id]);
+  const t = spaceTile({ ...space, logo: space.logo ?? kept }, { failed });
   const radius = shape === "round" ? size : Math.round(size * 0.28);
   const box = { width: size, height: size, borderRadius: radius, overflow: "hidden" as const };
   if (t.kind === "logo") {
