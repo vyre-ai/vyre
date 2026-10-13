@@ -65,7 +65,7 @@ export const ATP_DRAFT = {
 /** @type {import("../../ui/flows/logic.js").Draft} */
 export const REMINDER_DRAFT = {
   name: "Appointment reminder", group: "Clients",
-  trigger: { kind: "created", type: "appointment" },
+  trigger: { kind: "changed", type: "appointment", field: "starts_at", again: "replace" },
   steps: [
     { id: "wait1", kind: "wait", mode: "until", field: "{after.starts_at}", when: "before", amount: 1, unit: "days" },
     { id: "sms2", kind: "sms", to: "{after.phone}", body: "Hello {after.client}, a reminder that your appointment is tomorrow." },

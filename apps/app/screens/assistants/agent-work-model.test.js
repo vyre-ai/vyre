@@ -50,3 +50,11 @@ test("an empty filter says what to do next", { skip: !strip }, async () => {
   assert.match(m.emptyWork("rex", "jobs"), /scheduled task/);
   assert.match(m.emptyWork("rex", "people"), /Talk to rex/);
 });
+
+test("a task shows the thread that works it, open ones first", { skip: !strip }, async () => {
+  const m = await import("./agent-work-model.ts");
+  const t = m.taskWork({ tasks: [{ id: "a", title: "Old", state: "done", form: { thread: "th1" } }, { id: "b", title: "Refund Jane", state: "working", form: { thread: "th2" } }, { id: "c", title: "New", state: "ready" }, null] });
+  assert.deepEqual(t.map((x) => [x.id, x.thread]), [["b", "th2"], ["c", null], ["a", "th1"]]);
+  assert.equal(t[1].sub, "Ready · No thread yet");
+  assert.deepEqual(m.taskWork("nope"), []);
+});
