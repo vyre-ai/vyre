@@ -50,16 +50,19 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.account.unlock", PERSON_SURFACES, "Unlock your own vault with your master password and the Secret Key your device holds.",
     obj({ password: str, secretKey: str }, ["password", "secretKey"]), mine((id, i) => people.unlock(id, i)));
   tool("vault.me.account.reset", PERSON_SURFACES, "Set a new master password with the recovery secret from your kit, for a forgotten password.",
-    obj({ recovery: str, password: str }, ["recovery", "password"]), mine((id, i) => people.reset(id, i)));
+    obj({ recovery: str, password: str }, ["recovery", "password"]), mine((id, i) => people.reset(id, i)),
+    presence("Set a new password for your own vault", () => "Set a new password for your own vault with your recovery kit"));
   tool("vault.me.account.lock", PERSON_SURFACES, "Lock your own vault now.", obj({}), mine(id => people.lock(id)));
   tool("vault.me.account.status", PERSON_SURFACES, "Whether you have a vault here and whether it is unlocked.", obj({}), mine(id => people.status(id)));
 
   tool("vault.me.put", PERSON_SURFACES, "Add an item to your own vault (an AI sign-in, a mail or calendar connection, a note).",
-    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => people.put(id, i)));
+    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => people.put(id, i)),
+    presence("Add an item to your own vault", ({ name }) => `Add ${String(name).slice(0, 64)} to your own vault`));
   tool("vault.me.get", PERSON_SURFACES, "Read one item of your own vault, value included.", obj({ name: str }, ["name"]), mine((id, i) => people.get(id, i)),
     presence("Read an item of your own vault", ({ name }) => `Show ${String(name).slice(0, 64)} from your own vault`));
   tool("vault.me.list", PERSON_SURFACES, "The names and kinds in your own vault. Never a value.", obj({ filter: str }), mine((id, i) => people.list(id, i)));
-  tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)));
+  tool("vault.me.update", PERSON_SURFACES, "Change an item of your own vault.", obj({ name: str, description: str, fields }, ["name"]), mine((id, i) => people.update(id, i)),
+    presence("Change an item of your own vault", ({ name }) => `Change ${String(name).slice(0, 64)} in your own vault`));
   // The JSON store other modules use for a member's own entries (people.js personalStore): the mcp module and the space list call these with the member's inherited token.
   const store = (/** @type {string} */ id) => people.personalStore(id);
   // A module (mcp, the space list) may call the store on the member's own turn: its hop inherits the member's token, so memberOf finds the one person in the chain. A module call with no person in its chain, or with an agent hop, is refused there.
@@ -76,5 +79,6 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
   tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
   tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
-  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)));
+  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)),
+    presence("Delete an item of your own vault", ({ name }) => `Delete ${String(name).slice(0, 64)} from your own vault`));
 }
