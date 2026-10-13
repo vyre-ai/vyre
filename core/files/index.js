@@ -27,6 +27,8 @@ import { drive } from "./drive.js";
 import { registerSpaceDrive } from "./space-drive.js";
 import { registerSpaceLinks } from "./space-links.js";
 import { registerLinked } from "./linked.js";
+import { googleDriveProvider } from "./linked-gdrive.js";
+import { driveClient } from "../google/drive-seam.js";
 import { dirs } from "./dirs.js";
 
 const run = promisify(execFile);
@@ -414,7 +416,10 @@ export default {
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).
     registerSpaceLinks(ctx);
     // Files > Linked: live folders from a source, shown at Linked/<name> (core/files/linked.js). Providers are added as they land (Google Drive first).
-    const linked = registerLinked(ctx, { providers: [] });
+    // Google Drive is the first source. It is made as the calling person through the google module's modules-only tool google.drive.linked (google/drive-seam.js picks their account), the
+    // same module-to-module route the calendar sync and the watchers already use, so files holds no Google credential and reads no Google table.
+    const gdrive = googleDriveProvider({ client: driveClient(input => ctx.call("google.drive.linked", input)) });
+    const linked = registerLinked(ctx, { providers: [gdrive] });
     // Each person's index of a linked folder is brought up to date on a timer, as that person (a pair is known once they have synced).
     const resync = setInterval(() => { linked.syncKnown().catch(() => {}); }, 10 * 60_000);
     resync.unref();
