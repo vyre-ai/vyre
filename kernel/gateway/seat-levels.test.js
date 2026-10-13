@@ -44,6 +44,7 @@ async function rig() {
     const r = role === "temp" ? { person: p, role, scope: ["project", "team-member", "memo", "task"].map(t => `vyre://${SPACE}/${t}/*`), expires: Date.now() + 3_600_000 } : { person: p, role };
     await k.gateway.grants.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) });
   }
+  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read"] } } });   // the work module reads a project's team for the files guard
   const R = k.gateway.records, T = k.gateway.ask, D = k.gateway.drive;
   await R.define(owner, { add_types: [PROJECT, TEAM_MEMBER, TASK, MEMO].map(t => ({ ...t, fields: t.fields.filter(f => f.name !== "client" && f.name !== "contact") })) });
   const person = id => ({ actor: { kind: "person", id, space: SPACE } });

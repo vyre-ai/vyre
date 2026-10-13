@@ -47,9 +47,9 @@ export function folderGuard(base, space, oracle) {
       // every allowed read by an agent is in the log with its chain; a read that cannot be logged is not made
       if (agent && at && d.effect === "allow") { try { oracle.noteReach?.(input.chain, { project: at, agent: agent.actor.id, action: input.action }, input.resource); } catch { return deny(d); } }
     }
-    // a viewer (seat level, lib/seat-levels.js) reads a project and writes nothing in it: not its files, and not a record filed under it (a create is judged in ownership.js mayAttrs); gate.js says it in words
+    // a viewer (seat level, lib/seat-levels.js) reads a project and writes nothing in it: not its files, and not a record filed under it (a create is judged in ownership.js mayAttrs); gate.js says it in words (also where the base denies a member the Drive action, which the chat-participant allowance below would otherwise open)
     const writes = typeof input.action === "string" && /^(drive\.(write|restore|delete)|records\.(update|remove|restore))$/.test(input.action), me = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor.id : null;
-    if (d.effect !== "deny" && writes && me && oracle.projectViewer) { const at = projectFilesOf(input.resource, space) || projectReachOf(input, space, oracle); if (at && await oracle.projectViewer(me, at)) return Object.freeze({ ...deny(d), reason: "read_only" }); }
+    if (writes && me && oracle.projectViewer) { const at = projectFilesOf(input.resource, space) || projectReachOf(input, space, oracle); if (at && await oracle.projectViewer(me, at)) return Object.freeze({ ...deny(d), reason: "read_only" }); }
     if ((!where && !project) || typeof input.action !== "string" || !input.action.startsWith("drive.")) return d;
     if (hops.length && hops[0].actor.kind === "service") return input.action === "drive.write" ? d : deny(d);
     const person = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null, agents = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent").map((/** @type {any} */ h) => h.actor);
