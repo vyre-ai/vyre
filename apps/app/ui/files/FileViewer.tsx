@@ -181,6 +181,11 @@ export function FileViewer(p: FileViewerProps) {
 
   return (
     <View style={{ flex: 1, minHeight: 0, backgroundColor: color.surface }}>
+      {p.bare && (canEditHere || editing) ? (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8, paddingHorizontal: 12, minHeight: 44, borderBottomWidth: 1, borderBottomColor: color.edge }}>
+          {editing ? <><Button size="sm" kind="ghost" label="Cancel" onPress={() => ask(() => { setEditing(false); setDraft(text); })} /><Button size="sm" kind="primary" label={saving ? "Saving" : "Save"} disabled={!dirty || saving} onPress={save} /></> : <Button size="sm" kind="secondary" icon="edit" label="Edit" onPress={() => setEditing(true)} />}
+        </View>
+      ) : null}
       {p.bare ? null : (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 52, borderBottomWidth: 1, borderBottomColor: color.edge }}>
           <Icon name="file" />
