@@ -94,3 +94,27 @@ test("an agent can be the approver of an internal step (not of a send)", async (
   assert.ok(t, "the task was made");
   assert.deepEqual([t.checker.kind, t.checker.id], ["agent", "research"]);
 });
+
+test("an agent's approval never satisfies a human gate: the outward step after it still waits for a person's yes", async () => {
+  const w = await world();
+  w.kernel.agentMakers = { research: ALEX.id }; w.kernel.roleOfPerson = () => "admin";
+  const { id } = await install(w, base([
+    { id: "go", kind: "assign", to: "person:" + BOB.id, title: "Draft the notice", output: { kind: "note" }, checker: "teammate:research", await: true },
+    { id: "send", kind: "call", action: "email.send", resource: `vyre://${w.cat.space}/message/outbox`, input: { to: "jane@example.test", subject: "Notice" } },
+  ]));
+  await w.runner.start(id, {}, w.kernel.as(ALEX));
+  await settle(w);
+  await w.kernel.pump();
+  const t = w.kernel.tasks.find(x => x.title === "Draft the notice");
+  assert.ok(t, "the task was made");
+  await w.kernel.tasksApi.start(w.kernel.as(BOB), t.id);
+  await w.kernel.tasksApi.complete(w.kernel.as(BOB), t.id, { note: "done", sources: ["https://example.test/a"] });
+  const agent = w.kernel.chains.fromFacts({ kind: "agent_session", agent: "research", session: "s", thread: "t", vouched: true });
+  const done = await w.kernel.tasksApi.decide(agent, t.id, { outcome: "approved" });
+  assert.equal(done.state, "done");
+  assert.equal(done.approved_by.kind, "agent");
+  await settle(w);
+  const [run] = await w.runner.listRuns({ flow: id });
+  assert.notEqual(run.state, "done", "the outward send is not satisfied by the agent's approval");
+  assert.notEqual(run.steps.send && run.steps.send.status, "done");
+});
