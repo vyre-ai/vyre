@@ -4,8 +4,11 @@ import { whoWords, type Body, type Row, type Stage, type Task } from "./model.ts
 
 type Who = { id: string; name: string };
 
-/** What this screen is called, in one place (the owner is choosing the name). */
-export const TEMPLATES_LABEL = "Templates";
+/** What this screen is called, in one place: the owner calls a project template a playbook. UI words only; the tools and records keep their names (work.template.*). */
+export const TEMPLATES_LABEL = "Playbooks";
+export const PLAYBOOK = { one: "playbook", many: "playbooks" };
+/** The route of the list, or of one playbook (the old /u/templates routes still open the same screens). */
+export const playbookPath = (id?: string): string => (id ? `/u/playbooks/${id}` : "/u/playbooks");
 
 const cap = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
 

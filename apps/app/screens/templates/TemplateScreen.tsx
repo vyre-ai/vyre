@@ -7,7 +7,7 @@ import { usePhone } from "../places/Page";
 import { useMembers } from "../spaces/state";
 import { StartSheet } from "../projects/StartSheet";
 import { errWords, projectIdOf, startWords, stateWord, type Body, type Version } from "./model";
-import { changeCount, TEMPLATES_LABEL, versionBar } from "./board";
+import { changeCount, playbookPath, TEMPLATES_LABEL, versionBar } from "./board";
 import { Board } from "./PipelineBoard";
 import { TaskPanel } from "./TaskPanel";
 import { TemplateEditor } from "./TemplateEditor";
@@ -15,7 +15,7 @@ import { useMayMakeTemplates } from "./role";
 import { templates } from "./templates";
 
 /**
- * /u/templates/:id: one template as a pipeline. The stages are columns and the tasks cards in them; a card opens its settings beside the board; everything is edited in place on a working copy, and the bar
+ * /u/playbooks/:id (and the old /u/templates/:id): one playbook as a pipeline. The stages are columns and the tasks cards in them; a card opens its settings beside the board; everything is edited in place on a working copy, and the bar
  * above says what is live and how many things differ from it. Publish makes the working copy a new version and puts it live (the owner or an admin); nothing changes for a project already running. Test mode
  * is a dry run of the saved version: every brief and doer on a sample, nothing created or sent.
  */
@@ -75,18 +75,18 @@ export default function TemplateScreen() {
   const title = draft?.name || cur?.name || TEMPLATES_LABEL;
   const panel = draft && selected ? <TaskPanel body={draft} si={selected.si} ti={selected.ti} onChange={setDraft} onClose={() => setSelected(null)} people={people} agents={agents} /> : null;
   return (
-    <Frame back="/u/templates" title={title} sub={cur ? `${draft?.noun ? `Its projects are called ${draft.noun.many}. ` : ""}${stateWord(cur.state)}, version ${cur.version}` : undefined}
+    <Frame back={playbookPath()} title={title} sub={cur ? `${draft?.noun ? `Its projects are called ${draft.noun.many}. ` : ""}${stateWord(cur.state)}, version ${cur.version}` : undefined}
       actions={cur ? <>
         <View className="flex-row items-center gap-s2"><Switch on={test !== null || testing} onChange={(v: boolean) => void doTest(v)} label="Test mode" /><Text size="caption" tone="muted">Test mode</Text></View>
         {live ? <Button kind="primary" size="sm" label={`Start a ${noun.toLowerCase()}`} onPress={() => setStartOpen(true)} /> : null}
       </> : undefined}>
-      {err ? <Card flush><ErrorState title="That template did not load" reason={err} retry={load} /></Card> : null}
+      {err ? <Card flush><ErrorState title="That playbook did not load" reason={err} retry={load} /></Card> : null}
       {!cur && !err ? <LoadingState rows={4} /> : null}
       {versions && versions.length > 1 ? <View className="flex-row flex-wrap gap-s2">{versions.map((v) => <Button key={v.version} kind={v.version === pick ? "primary" : "ghost"} size="sm" label={`v${v.version} ${stateWord(v.state)}`} onPress={() => setPick(v.version)} />)}</View> : null}
       {cur && draft ? (
         <>
           <Card><View className="flex-row flex-wrap items-center gap-s2 p-s3">
-            <View className="min-w-0 flex-1"><Text strong>{bar.line}</Text>{!mayMake ? <Text size="caption" tone="label">Only an owner or an admin changes a template.</Text> : null}</View>
+            <View className="min-w-0 flex-1"><Text strong>{bar.line}</Text>{!mayMake ? <Text size="caption" tone="label">Only an owner or an admin changes a playbook.</Text> : null}</View>
             {mayMake ? <>
               <Button kind="ghost" size="sm" label="Save draft" loading={busy === "save"} disabled={dirtyFromShown === 0} onPress={() => void saveDraft()} />
               <Button kind="primary" size="sm" label="Publish" loading={busy === "publish"} disabled={!bar.canPublish} onPress={() => void publish()} />
@@ -106,7 +106,7 @@ export default function TemplateScreen() {
           {mayMake ? <Sec title="Settings"><TemplateEditor body={draft} onChange={setDraft} part="settings" /></Sec> : null}
         </>
       ) : null}
-      <StartSheet noun={noun} open={startOpen} busy={starting} onClose={() => setStartOpen(false)} onStart={(n) => void start(n)} />
+      <StartSheet noun={noun} playbook={title} open={startOpen} busy={starting} onClose={() => setStartOpen(false)} onStart={(n) => void start(n)} />
     </Frame>
   );
 }

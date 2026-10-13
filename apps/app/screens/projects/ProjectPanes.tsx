@@ -9,6 +9,7 @@ import { spaceList } from "../drive/real";
 import { showingJoined } from "../../src/real/team-join";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { treeOf, type Body } from "../templates/model";
+import { playbookPath } from "../templates/board";
 
 type Chat = { chat: string; title?: string; status?: string; last_active?: string };
 
@@ -68,12 +69,12 @@ export function MemoryPane({ id }: { id: string }) {
 export function StagesPane({ snapshot, stage, template }: { snapshot: string; stage?: string; template?: string }) {
   const router = useRouter();
   let body: Body | null = null;
-  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Template"), stages: j.stages || [] }; } catch { body = null; }
+  try { const j = JSON.parse(snapshot); body = { name: String(j.name || template || "Playbook"), stages: j.stages || [] }; } catch { body = null; }
   if (!body) return <EmptyState title="No stages" body="This project's stages could not be read." />;
   const tree = treeOf(body);
   return (
     <View className="gap-s3">
-      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the template" onPress={() => router.push(`/u/templates/${template}` as never)} /></View> : null}
+      {template ? <View className="flex-row"><Button kind="ghost" size="sm" label="Open the playbook" onPress={() => router.push(playbookPath(template) as never)} /></View> : null}
       <Card flush>
         {tree.map((l, i) => {
           const here = l.depth === 0 && stage && l.text.replace(/^\d+\.\s*/, "") === stage;

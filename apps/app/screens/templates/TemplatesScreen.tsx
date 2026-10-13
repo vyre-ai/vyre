@@ -8,7 +8,7 @@ import { Frame, Sec } from "../places/Frame";
 import { StartSheet } from "../projects/StartSheet";
 import { errWords, projectIdOf, startWords, type Body, type Row as TemplateRow } from "./model";
 import { blank } from "./edit";
-import { cardOf, filterRows, TEMPLATES_LABEL } from "./board";
+import { cardOf, filterRows, playbookPath, PLAYBOOK, TEMPLATES_LABEL } from "./board";
 import { duplicateBody } from "./use";
 import { TemplateEditor } from "./TemplateEditor";
 import { useMayMakeTemplates } from "./role";
@@ -17,7 +17,7 @@ import { templates } from "./templates";
 type Lib = Awaited<ReturnType<typeof templates.library>>;
 
 /**
- * /u/templates: the list of this Space's templates as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a matter". Live and drafts sit in
+ * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a matter". Live and drafts sit in
  * two groups; a quiet "..." has Duplicate. "+ New" offers a blank one, one from a Kit, or "Describe it" to the Engineer.
  */
 export default function TemplatesScreen() {
@@ -41,16 +41,16 @@ export default function TemplatesScreen() {
   const shown = filterRows(rows || [], query, status);
   const items = shown.map((r) => ({ r, c: cardOf(r, bodies[r.template] ?? null, running.get(r.template) || 0), group: cardOf(r, null, 0).group }));
   const act = async (name: string, fn: () => Promise<void>) => { setBusy(name); try { await fn(); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); } };
-  const create = () => act("new", async () => { const v = await templates.define(draft!, undefined, "made in the studio"); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(`/u/templates/${v.template}` as never); });
-  const install = (id: string) => act(id, async () => { const v = await templates.install(id); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(`/u/templates/${v.template}` as never); });
-  const copy = (r: TemplateRow) => act(r.template, async () => { const v = await templates.get(r.template); const c = await templates.define(duplicateBody(v.body!), undefined, `a copy of ${r.name}`); showToast(`${c.name} is a draft.`); router.push(`/u/templates/${c.template}` as never); });
+  const create = () => act("new", async () => { const v = await templates.define(draft!, undefined, "made in the studio"); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
+  const install = (id: string) => act(id, async () => { const v = await templates.install(id); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
+  const copy = (r: TemplateRow) => act(r.template, async () => { const v = await templates.get(r.template); const c = await templates.define(duplicateBody(v.body!), undefined, `a copy of ${r.name}`); showToast(`${c.name} is a draft.`); router.push(playbookPath(c.template) as never); });
   const start = (name: string) => act("start", async () => { const r = await templates.start(starting!.template, name); setStarting(null); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); });
   const have = new Set((rows || []).map((r) => r.name));
   const card = (r: TemplateRow, c: ReturnType<typeof cardOf>) => (
     <MenuRow items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
       {(menu) => (
         <Card><View className="gap-s3 p-s4">
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${c.name}`} onPress={() => router.push(`/u/templates/${r.template}` as never)}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${c.name}`} onPress={() => router.push(playbookPath(r.template) as never)}>
             <View className="flex-row items-center gap-s3">
               <IconTile icon="box" />
               <View className="min-w-0 flex-1">
@@ -64,30 +64,30 @@ export default function TemplatesScreen() {
           {c.stages.length ? <Text size="caption" tone="label" numberOfLines={1}>{c.stages.join("  ›  ")}</Text> : null}
           <View className="flex-row flex-wrap items-center gap-s2">
             <Text size="caption" tone="muted" numberOfLines={1}>{c.counts || " "}</Text>
-            <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="ghost" size="sm" label="Open" onPress={() => router.push(`/u/templates/${r.template}` as never)} />}</View>
+            <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="ghost" size="sm" label="Open" onPress={() => router.push(playbookPath(r.template) as never)} />}</View>
           </View>
         </View></Card>
       )}
     </MenuRow>
   );
   return (
-    <Frame title={TEMPLATES_LABEL} sub={rows ? `${rows.length} ${rows.length === 1 ? "template" : "templates"}` : undefined}
-      actions={mayMake ? <Menu trigger={<Button kind="primary" size="sm" icon="plus" label="New" />} items={[
-        { label: "Blank", onPress: () => setDraft(blank()) },
+    <Frame title={TEMPLATES_LABEL} sub={rows ? `${rows.length} ${rows.length === 1 ? PLAYBOOK.one : PLAYBOOK.many}` : undefined}
+      actions={mayMake ? <Menu trigger={<Button kind="primary" size="sm" icon="plus" label="New playbook" />} items={[
+        { label: "New blank playbook", onPress: () => setDraft(blank()) },
         { label: "From a kit", onPress: () => setShowKits(true) },
-        { label: "Describe it to the Engineer", onPress: () => router.push("/u/engineer" as never) },
+        { label: "Describe a playbook to the Engineer", onPress: () => router.push("/u/engineer" as never) },
       ]} /> : undefined}>
-      {draft ? <Sec title="A new template"><TemplateEditor body={draft} onChange={setDraft} onSave={() => void create()} onCancel={() => setDraft(null)} saving={busy === "new"} /></Sec> : null}
+      {draft ? <Sec title="A new playbook"><TemplateEditor body={draft} onChange={setDraft} onSave={() => void create()} onCancel={() => setDraft(null)} saving={busy === "new"} /></Sec> : null}
       <View className="flex-row flex-wrap items-center gap-s2">
         <View className="min-w-menu flex-1"><Field label="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} /></View>
         <Segmented label="Show" value={status} onChange={setStatus} options={[["all", "All"], ["live", "Live"], ["draft", "Draft"]]} />
       </View>
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
       {rows === null && !err ? <LoadingState rows={3} /> : null}
-      {rows && !rows.length ? <Card><EmptyState title="Nothing here yet" body="Make one with New, or add one from a Kit." /></Card> : null}
+      {rows && !rows.length ? <Card><EmptyState title="Nothing here yet" body="Make one with New playbook, or add one from a Kit." /></Card> : null}
       {rows && rows.length && !items.length ? <Card><EmptyState title="No match" body="Try another word, or show All." /></Card> : null}
       {items.length ? (
-        <GroupedList groups={[{ name: "Live" }, { name: "Drafts" }].filter((g) => items.some((i) => i.group === g.name))} items={items.map((i) => ({ ...i, group: i.group }))} itemNoun="templates"
+        <GroupedList groups={[{ name: "Live" }, { name: "Drafts" }].filter((g) => items.some((i) => i.group === g.name))} items={items.map((i) => ({ ...i, group: i.group }))} itemNoun="playbooks"
           renderItems={(list) => <View className="flex-row flex-wrap gap-s3">{list.map((i) => <View key={i.r.template} style={{ flexGrow: 1, flexBasis: 340 }}>{card(i.r, i.c)}</View>)}</View>} />
       ) : null}
       {showKits && lib.length ? (
@@ -99,7 +99,7 @@ export default function TemplatesScreen() {
             ))}
           </Card>
         </Sec>
-      ) : showKits ? <Card><EmptyState title="No Kits to add from" body="None of your Kits ships a template yet." /></Card> : null}
+      ) : showKits ? <Card><EmptyState title="No Kits to add from" body="None of your Kits ships a playbook yet." /></Card> : null}
       <StartSheet noun={starting ? (bodies[starting.template]?.noun?.one || starting.noun?.one || "project") : "project"} open={starting !== null} busy={busy === "start"} onClose={() => setStarting(null)} onStart={(n) => void start(n)} />
     </Frame>
   );

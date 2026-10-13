@@ -7,6 +7,7 @@ import { projectIdOf } from "../templates/model";
 import { newThingCall } from "./new.js";
 import { templates } from "../templates/templates";
 import { newChoices } from "../templates/use";
+import { playbookPath } from "../templates/board";
 import { startWords } from "../templates/model";
 import type { Row as TemplateRow } from "../templates/model";
 import { StartSheet } from "./StartSheet";
@@ -65,10 +66,10 @@ export default function ProjectsScreen() {
         <PlaceTag of="showing" />
         {q.error && !q.data ? <ErrorState title="Projects did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <LoadingState rows={5} />
-          : <><View className="flex-row"><Button kind="ghost" size="sm" icon="box" label="Templates" onPress={() => router.push("/u/templates" as never)} /></View><ProjectsList tagOf={(sid) => tagFor(cards, sid || showing, showing)} world={q.data.world} items={q.data.items} onOpen={open} onNew={create} choices={choices} onChoose={choose} />{phone ? <View style={{ height: 40 }} /> : null}</>}
+          : <><View className="flex-row"><Button kind="ghost" size="sm" icon="box" label="Playbooks" onPress={() => router.push(playbookPath() as never)} /></View><ProjectsList tagOf={(sid) => tagFor(cards, sid || showing, showing)} world={q.data.world} items={q.data.items} onOpen={open} onNew={create} choices={choices} onChoose={choose} />{phone ? <View style={{ height: 40 }} /> : null}</>}
       </LargeTitleScreen>
       {phone && q.data ? <View style={{ position: "absolute", right: 16, bottom: 16 }}><NewMenu floating items={q.data.items} onNew={create} choices={choices} onChoose={choose} /></View> : null}
-      <StartSheet noun={picked?.noun?.one || picked?.name || "project"} open={from !== null} busy={starting} onClose={() => setFrom(null)} onStart={(n) => void start(n)} />
+      <StartSheet noun={picked?.noun?.one || picked?.name || "project"} playbook={picked?.name} open={from !== null} busy={starting} onClose={() => setFrom(null)} onStart={(n) => void start(n)} />
     </View>
   );
 }

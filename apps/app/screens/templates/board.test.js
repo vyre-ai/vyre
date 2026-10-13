@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { boardColumns, changeCount, versionBar, taskCard, doneRule, TEMPLATES_LABEL, initialsOf } from "./board.ts";
+import { boardColumns, changeCount, versionBar, taskCard, doneRule, TEMPLATES_LABEL, initialsOf, playbookPath } from "./board.ts";
 
 const people = [{ id: "alex", name: "Alex Rivera" }];
 const agents = [{ id: "research", name: "Research" }];
@@ -17,7 +17,7 @@ const body = () => ({
   ],
 });
 
-test("the screen's name is one constant", () => { assert.equal(typeof TEMPLATES_LABEL, "string"); assert.ok(TEMPLATES_LABEL.length > 0); });
+test("the screen's name is one constant, and the owner calls these playbooks", () => { assert.equal(TEMPLATES_LABEL, "Playbooks"); assert.equal(playbookPath(), "/u/playbooks"); assert.equal(playbookPath("tpl_estate"), "/u/playbooks/tpl_estate"); });
 
 test("a board has one column per stage, each with its tasks as cards and its rule in words", () => {
   const cols = boardColumns(body(), people, agents);
