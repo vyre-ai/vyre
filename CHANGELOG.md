@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app): Space selects a choice in ChoiceList and Segmented (it only did with Enter before), found in the keyboard pass of the onboarding flow: Tab order is Back, then the choices, then the primary, and every control shows the browser's focus ring.
 - feat(app): the onboarding Invite step uses InviteRolePicker (built-in and custom roles, projects, a Guest's end date) and shows the made invite as the InviteMade card; the role goes to the invite call as the wire role with its projects and days. Stage 0278ddadf merged in.
 - test(app): `scripts/onboard-walk.mjs` clicks every path of the onboarding flow (a new person, a returning person with each identity failure, joining on a phone, joining a space that does and does not allow computers, creating one that does and does not, Back retracing the steps) in headless Chromium on the sample-world web export, and the app workflow's web job runs it after the render check, so a release cannot ship a dead end.
 - feat(app): the onboarding flow (/onboard) is the first run. The setup gate sends an unpaired phone there, /u/install, /u/install/create, /u/install/join and /u/install/setup (the old page with the Lumen download) redirect to it, a join link opens it at the Join step, a real run opens on Identity (the mock keeps its setup screen) and a Mac or Windows shell counts as a computer for the Compute step. The Invite copy says projects, not matters.
