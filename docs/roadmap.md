@@ -26,20 +26,47 @@ This is direction, not a promise of dates. Each line has an ID; a line is ticked
 - [x] R050-12 Sign in by name replaces the pairing code; updates need the owner's yes.
 
 ## 0.5.1
-- [ ] R051-01 Integrations: install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
-- [ ] R051-02 Agent deadlines: a due time on an agent step with a failure path, and a failure panel on every step in the editor.
-- [ ] R051-03 One chat per Flow, with a divider per run.
-- [ ] R051-04 Credentials lent to a woken agent for one job, use only.
-- [ ] R051-05 Per-record privacy for custom record types, write-once fields, and totals.
-- [ ] R051-06 Flow email with CC, BCC and attachments; date helpers (add to a date, a date-time picker in the Wait step).
-- [ ] R051-07 A partner-style audit screen: who changed what on a record, from the signed event log.
-- [ ] R051-08 One Chrome extension: vault fill, Chrome control for chats, and a chat in the browser side panel.
+Plan and acceptance tests: [roadmap/0.5.1.md](../roadmap/0.5.1.md).
+- [ ] R051-01 One chat per Flow, with a divider per run.
+- [ ] R051-02 Credentials lent to a woken agent for one job, use only.
+- [ ] R051-03 Agent step deadlines that stop the agent, with a timeout path.
+- [ ] R051-04 Failure panel on every step in the Flows editor.
+- [ ] R051-05 Flows split into a library behind a golden replay.
+- [ ] R051-06 Per-record privacy for custom record types.
+- [ ] R051-07 Write-once fields and totals.
+- [ ] R051-08 Flow email with CC, BCC and attachments.
+- [ ] R051-09 An audit screen for admins: who changed what on a record.
+- [ ] R051-10 Members add a token or API key as their own AI account.
+- [ ] R051-11 Load-flake hardening, so every test is green under load.
+- [ ] R051-12 Flows composer and dates follow-ups.
+- [ ] R051-13 Flow text and lists: brace escape, list fields, For each limit.
+- [ ] R051-14 Flows over MCP for members.
+- [ ] R051-15 Agent wake hardening.
+- [ ] R051-16 Security follow-ups from review.
+- [ ] R051-17 Mentions follow-ups.
+- [ ] R051-18 Docs re-check of known gaps.
 
-## 0.5.2 (or 0.5.1)
-- [ ] R052-01 Skills screen: browse, write, version and roll back skills by scope.
-- [ ] R052-02 Plugins screen: install and enable per agent and project, carried to each provider where the parts translate.
-- [ ] R052-03 An eval that runs the same tasks with and without Vyre, as a release gate.
-- [ ] R052-04 Fewer tools loaded up front and shorter agent docs, without losing capability.
+## 0.5.2
+Plan and acceptance tests: [roadmap/0.5.2.md](../roadmap/0.5.2.md).
+- [ ] R052-01 Integration contract: what an Integration may declare.
+- [ ] R052-02 Integrations section: install, verify, configure, uninstall.
+- [ ] R052-03 Make an Integration from an API.
+- [ ] R052-04 Clio Integration.
+- [ ] R052-05 Lawmatics Integration.
+- [ ] R052-06 GoHighLevel Integration.
+- [ ] R052-07 DecisionVault Integration.
+- [ ] R052-08 Skills screen: browse, write, version and roll back.
+- [ ] R052-09 Plugins screen: install and enable per agent and project.
+- [ ] R052-10 Vyre tax eval as a release gate.
+- [ ] R052-11 Fewer tools loaded up front, the right one picked.
+- [ ] R052-12 Shorter agent docs without losing capability.
+- [ ] R052-13 Less friction around actions.
+- [ ] R052-14 Model switching mid-chat that is instant and cheap.
+- [ ] R052-15 One Chrome extension that signs in like a device.
+- [ ] R052-16 Vault unlock in the extension.
+- [ ] R052-17 Chrome control for chats.
+- [ ] R052-18 Chat in the browser side panel.
+- [ ] R052-19 Security review of the extension.
 
 ## 0.3.0
 - [x] R030-01 One setup: reserve a name at vyre.run/setup, paste the code in the app, Join a team / Add a server / My Home.

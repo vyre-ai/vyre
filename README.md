@@ -128,12 +128,18 @@ Step by step: [Install](docs/get-started/install.md). The first hour: [Your firs
 
 This is direction, not a promise of dates. The line-by-line list is in [docs/roadmap.md](docs/roadmap.md); what is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](docs/known-gaps.md).
 
-**Next (0.5.1):**
+**Next (0.5.1):** reliable Flows. See [roadmap/0.5.1.md](roadmap/0.5.1.md).
 
-- **Integrations.** One place to install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
-- **Skills and Plugins screens.** Browse, write, version and roll back skills, and install plugins per agent and project, carried to each provider where the parts translate.
-- **Agent deadlines.** A step that gives work to an agent gets a deadline and a failure path you build in the editor, so a stuck agent hands the work to someone else.
-- **One Chrome extension.** Vault fill, Chrome control for chats and a chat in the browser side panel, in a single extension that signs in like a device.
+- **One chat per Flow.** Every run of a Flow in one conversation.
+- **Agent deadlines.** A step that gives work to an agent gets a deadline that stops the agent, and a failure path you build in the editor.
+- **Records and audit.** Per-record privacy for custom types, write-once fields, and an audit screen for admins.
+
+**After that (0.5.2):** connect and economise. See [roadmap/0.5.2.md](roadmap/0.5.2.md).
+
+- **Integrations.** Install separately built, signed modules for outside services, each bringing its own Flow steps and connection.
+- **Skills and Plugins screens.** Browse, write, version and roll back skills, and install plugins per agent and project.
+- **Agent efficiency.** An eval that gates releases, fewer tools up front, shorter agent docs.
+- **One Chrome extension.** Vault fill, Chrome control for chats and a chat in the browser side panel.
 
 **Later:** Screen Share, and an iPhone app outside sideloading.
 

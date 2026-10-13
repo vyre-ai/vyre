@@ -12,7 +12,7 @@ These docs describe what the code does today. This page lists where Vyre 0.5 sto
 
 ## Next, in 0.5.1
 
-The 0.5.1 plan is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
+The 0.5.1 plan is in [roadmap/0.5.1.md](../roadmap/0.5.1.md) and the 0.5.2 plan in [roadmap/0.5.2.md](../roadmap/0.5.2.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
 
 ## Known gaps in 0.5
 
