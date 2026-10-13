@@ -96,8 +96,22 @@ export function formOf(id) {
   if (p.how === "oauth") return { id, title, how: "oauth", fields: [], help: p.help, signIn: title.replace(/\s*\(sign in\)/, "") };
   const file = p.how === "file" ? p.fields.find((f) => f.name === "json") : undefined;
   return { id, title, how: p.how, help: p.help, ...(file ? { file: { name: file.name, label: file.label } } : {}),
-    fields: p.fields.filter((f) => f !== file).map((f) => ({ name: f.name, label: f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) };
+    fields: orderFields(id, p.fields.filter((f) => f !== file)).map((f) => ({ name: f.name, label: f.optional && !(FIRST[id] ?? []).includes(f.name) ? optionalLabel(f.label) : f.label, secret: f.secret, ...(f.optional ? { optional: true } : {}) })) };
 }
+
+/** Fields a provider's own console shows first, in its order, even where the catalog marks one optional (Twilio: account number, auth token, the number texts come from). The rest follow, required before optional. @type {Record<string, string[]>} */
+const FIRST = { twilio: ["account", "value", "from"] };
+
+/** @param {string} id @param {{ name: string, optional?: boolean }[]} fields */
+const orderFields = (id, fields) => {
+  const first = FIRST[id] ?? [];
+  const lead = first.map((n) => fields.find((f) => f.name === n)).filter(Boolean);
+  const rest = fields.filter((f) => !first.includes(f.name));
+  return [...lead, ...rest.filter((f) => !f.optional), ...rest.filter((f) => f.optional)];
+};
+
+/** "API key id (only if ...)" becomes "API key id (optional, only if ...)"; a label with no aside gets " (optional)". @param {string} l */
+const optionalLabel = (l) => (/\(/.test(l) ? l.replace("(", "(optional, ") : `${l} (optional)`);
 
 /** A field's label without its aside in brackets. @param {string} l */
 const short = (l) => l.replace(/\s*\(.*$/, "").replace(/^./, (c) => c.toUpperCase());
