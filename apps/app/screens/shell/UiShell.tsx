@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "expo-router";
 import { EmptyState, LoadingState, Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
 import { useNavDef, useSidebar } from "./sidebar";
 import { PanelLoader, usePanel } from "./panels";
+import { useSpaceLogos } from "../../ui/marks/useSpaceLogos";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
 import { whoIsThere } from "./gate.js";
@@ -70,6 +71,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const waiting = world.data ? nowCount(world.data) : 0;
   const nav = { ...arranged, items: arranged.items.map((it) => (it.id === "now" && waiting ? { ...it, badge: waiting } : it)) };
   const look = looks[space === "all" ? "mine" : space];
+  useEffect(() => { useSpaceLogos.getState().set(Object.fromEntries(Object.entries(looks).filter(([, l]) => l.logo).map(([id, l]) => [id, l.logo as string]))); }, [looks]);
   const go = (href: string) => router.push(href as never);
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);

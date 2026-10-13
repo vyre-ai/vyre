@@ -57,6 +57,7 @@ export { useRail } from "./shell/useRail";
 export { panelFor, backTo, withSide, PANELS } from "./shell/sidebar-stack.js";
 export { Tip } from "./components/Tip";
 export { SpaceTile } from "./components/SpaceTile";
+export { LogoPicker } from "./components/LogoPicker";
 export { spaceTile, initialsOf, TILE_PALETTE } from "./marks/space-tile.js";
 export type { NavItem, NavDef, ShellSpace, ShellProps } from "./shell/Shell";
 export { FilterPills } from "./components/FilterPills";
