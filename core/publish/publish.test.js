@@ -834,3 +834,18 @@ test("publish: a call on an MCP key does the steps, is held at go, and cannot de
   assert.ok(no.error, "a key never decides");
   assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Preview");
 });
+
+test("publish: a member does not see a hold on a site they cannot read", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "work"] });
+  b.pf.projectPeople = { acme: { people: ["per_alex"], personal_of: null } };
+  const as = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => { b.pf.actAs["*"] = who; return b.call(tool, input); };
+  b.pf.actAs["*"] = "per_alex";
+  const acme = await previewed(b, { name: "acme-site", project: "acme" });
+  const open = await previewed(b, { name: "space-site", project: undefined });
+  const mine = await b.ok("publish.go", { deployment: acme }, "mcp:agent:juno");
+  const theirs = await b.ok("publish.go", { deployment: open }, "mcp:agent:juno");
+  const seen = async (/** @type {string} */ who) => (await as(who, "publish.holds")).data.holds.map((/** @type {any} */ h) => h.task);
+  assert.deepEqual((await seen("per_alex")).sort(), [mine.task, theirs.task].sort(), "the project's people see both");
+  assert.deepEqual(await seen("per_sam"), [theirs.task], "a member off the project sees only the Space's site");
+  assert.deepEqual((await seen("per_kit")).sort(), [mine.task, theirs.task].sort(), "a Space admin sees any project's hold");
+});

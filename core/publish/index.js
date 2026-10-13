@@ -564,10 +564,15 @@ export default {
         const b = await begin(i, meta);
         const st = storeFor(b.space.id);
         /** @type {any[]} */ const out = [];
+        const memo = new Map();
         for (const t of await st.list("tasks")) {
           if (t.state !== "needs_check") continue;
           const h = await st.get("holds", t.id);
           if (!h) continue;
+          // a hold is shown to who may read its site: the same read check status makes, and a project's site only to that project's people (and the Space's owner and admins)
+          const dep = await st.get("deployments", h.deployment);
+          if (!dep || !(await mayReadJob(b.space.id, b.person, dep, memo))) continue;
+          try { await b.pub.status(b.chain, h.deployment); } catch { continue; }
           out.push({ task: t.id, action: h.action, title: t.title, deployment: h.deployment, thread: h.thread ?? null, plan: t.plan, plan_hash: t.payload_hash, requested_by: t.requested_by, at: h.created_at });
         }
         return { holds: out.sort((x, y) => x.at - y.at) };
