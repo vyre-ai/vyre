@@ -20,8 +20,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     /// Every key this Mac holds for the home (identity, Secure Enclave, key agreement, presence): one Keychain item, read once per launch (KeyBundle.swift).
     lazy var keys = KeyBundle.keychain(home: home)
     lazy var presence = CapsulePresence(home: home, vyred: vyred, store: BundleHandleStore(bundle: keys, slot: .presence))
-    /// The first run: with no vyred and no server, "Where should Vyre run?" (FirstRunWindow.swift); later launches open straight into the app.
-    lazy var firstRun = FirstRunController(model: model, home: home)
+    /// The Mac app is a thin shell (Shell.swift): Lumen's command bar, hot keys and panel run only with VYRE_LUMEN=1.
+    let lumen = Shell.lumenEnabled()
+    /// The shell's one window opens once, at the first look at vyred.
+    var openedAtLaunch = false
     /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
     let local: LocalAnswersProvider
     /// Commands modules declare for the Capsule (ViewCommandsProvider.swift).
@@ -58,15 +60,15 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         let bindings = CommandBindings(home: home)
         model.attach(bindings: bindings)
         model.onShow = { [weak self] words in
-            guard let self else { return }
+            guard let self, self.lumen else { return }
             self.panel.show(front: PanelController.frontApp())
             self.model.text = words
         }
-        if !(ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1") { bindings.start() }
+        if lumen, !(ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1") { bindings.start() }
         extensions = ExtensionHost(model: model)
         extensions.panel = panel
         panel.extensions = extensions
-        extensions.load(extensionTypes)
+        if lumen { extensions.load(extensionTypes) }
         // The standard shortcuts need a main menu to live in (MainMenu.swift); never shown.
         menuActions.hide = { [weak self] in self?.panel.hide() }
         menuActions.settings = { [weak self] in self?.panel.hide(); self?.menuBar?.open() }
@@ -82,18 +84,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         VyreAppWindow.shared.identity = MacIdentity(store: BundleSeedStore(bundle: keys))
         VyreAppWindow.shared.enclave = MacEnclave(store: BundleHandleStore(bundle: keys, slot: .enclave))
         VyreAppWindow.shared.agreement = MacAgree(store: BundleHandleStore(bundle: keys, slot: .agree))
-        VyreAppWindow.shared.openBoxless = { [weak self] in self?.firstRun.opensBoxless() ?? false }
-        VyreAppWindow.shared.makeServer = { [weak self] in self?.firstRun.makeThisMacServer() }
+        VyreAppWindow.shared.vyredUp = { [weak self] in self?.health.vyredUp ?? false }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"
         hotkeys.fire = { [weak self] front in self?.panel.toggle(front: front) }
         hotkeys.onChange = { [weak self] ok, message in self?.reportHotkeys(ok: ok, message: message) }
-        if !headless { hotkeys.start() }
+        if lumen, !headless { hotkeys.start() }
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)
         // Human-only calls (ADR 0004): "Confirm it's you" in the panel, then the Capsule's key signs.
         presence.ask = { [weak self] a in
-            guard let self else { return false }
+            guard let self, self.lumen else { return false }
             if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
             return await self.model.askPresence(a)
         }
@@ -114,7 +115,11 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)
             // The first look at vyred decides the first run; it never runs under the tests or the footprint checks (no windows there).
-            if !headless, ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" { self?.firstRun.vyredChanged(up: st == .open) }
+            // The shell's one window opens at the first look at vyred; never under the tests or the footprint checks (no windows there).
+            if let self, !self.openedAtLaunch, !headless, ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" {
+                self.openedAtLaunch = true
+                VyreAppWindow.shared.showShell()
+            }
             if st == .open {
                 self?.hotkeys.reportRetry()
                 Task { await self?.presence.pinSelf() }
@@ -125,10 +130,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         if !headless { makeStatusItem() }
         // The agent half (Agent/): the waiting list and its attention dot, the wired providers,
         // capsule.requested, and the driven mode.
-        followWaiting()
-        wiring.attach(model)
+        if lumen { followWaiting(); wiring.attach(model) }
         wiring.requested = { [weak self] action in
-            guard let self else { return }
+            guard let self, self.lumen else { return }
             switch action {
             case "hide": self.panel.hide()
             case "toggle": self.panel.toggle()
@@ -137,17 +141,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         }
         Drive.start(self)
         // Kept open while hidden, on purpose: a timer on the box has to ring here.
-        if !headless { planner.start() }
+        if lumen, !headless { planner.start() }
         // A module says its commands changed: read them again (never polled).
         viewSub = vyred.on("capsule.changed") { [weak self] _ in self?.viewCommands.read(force: true) }
         loosenedSub = vyred.on("settings.loosened") { [weak self] e in self?.model.noticeLoosened(e.payload) }
         enrolWithCore()
-        if !headless { LumenOpen.showIfFirst() }
+        if lumen, !headless { LumenOpen.showIfFirst() }
         // Once the launch has settled, draw the panel once in the dark (never shown): the first summon is then warm.
-        if ProcessInfo.processInfo.environment["VYRE_CAPSULE_NO_PREWARM"] != "1" {
+        if lumen, ProcessInfo.processInfo.environment["VYRE_CAPSULE_NO_PREWARM"] != "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in MainActor.assumeIsolated { self?.panel.prewarm() } }
         }
-        if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
+        if lumen, ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 
     /// The first key on a Mac that runs vyre-core: the installer's code from fd 3 (CoreEnroll.swift).
@@ -160,15 +164,14 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             guard let out = await CoreEnroll.enrol(handoff, presence: presence, config: CoreEnroll.readConfig()) else { return }
             guard let self else { return }
             self.model.line = out.words
-            if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
-            if !out.enrolled { Notifier.shared.post(title: "Lumen", body: out.words) }
+            if self.lumen, !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            if !out.enrolled { Notifier.shared.post(title: self.lumen ? "Lumen" : "Vyre", body: out.words) }
         }
     }
 
-    /// `open Vyre.app` while it runs opens the Capsule: a way in that needs no hot key at all.
+    /// `open Vyre.app` while it runs opens the window (the Capsule's panel only when Lumen is on and the window is already up).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if firstRun.reopen() { return false }
-        panel.toggle()
+        if lumen, VyreAppWindow.shared.isOpen { panel.toggle() } else { VyreAppWindow.shared.showShell() }
         return false
     }
 
@@ -176,6 +179,12 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     func makeStatusItem() {
         let bar = MenuBarItem(health: health)
+        if !lumen {
+            bar.alwaysMenu = true
+            bar.menu = { [unowned self] in self.shellMenu() }
+            menuBar = bar
+            return
+        }
         bar.content = { [unowned self] in
             // Who is who, as last read; read again so the next open is current.
             Task { await self.model.loadIdentities() }
@@ -193,6 +202,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var hotkeyWords: String {
         [hotkeys.doubleControl ? "⌃⌃" : nil, hotkeys.chord.map(Self.pretty)].compactMap { $0 }.joined(separator: " or ")
     }
+
+    /// The thin shell's menu: Open Vyre, Quit Vyre.
+    func shellMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: Shell.menuTitles[0], action: #selector(openWindow), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: Shell.menuTitles[1], action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        return menu
+    }
+
+    @objc func openWindow() { VyreAppWindow.shared.showShell() }
 
     func plainMenu() -> NSMenu {
         let menu = NSMenu()

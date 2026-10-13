@@ -23,7 +23,7 @@ const NAV: NavDef = {
     { id: "chat", label: "Chat", icon: "chat", href: "/u/chats" },
     { id: "projects", label: "Projects", icon: "projects", href: "/u/projects" },
     { id: "records", label: "Records", icon: "records", href: "/u/records/contact" },
-    { id: "drive", label: "Drive", icon: "drive", href: "/u/drive" },
+    { id: "drive", label: "Files", icon: "drive", href: "/u/files" },
   ],
   groups: [
     { name: "AI", items: [{ id: "assistants", label: "Agents", icon: "assistants", href: "/u/assistants" }, { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" }] },

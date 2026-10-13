@@ -1743,7 +1743,7 @@
   },
   "vault.account.create": {
    "module": "vault",
-   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+   "reason": "callers list in code (cli, local, mobile, device): no model caller; presence proof required"
   },
   "vault.account.enroll-touchid": {
    "module": "vault",
@@ -2620,6 +2620,22 @@
   "vault.me.update": {
    "module": "vault",
    "reason": "own-scope check: tools/me.js memberOf reads the one non-owner person from the kernel chain (never the input) and refuses the owner, no person, two people and any agent hop; callers are a person's surfaces only"
+  },
+  "vault.account.export-secret-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); a presence proof is required"
+  },
+  "vault.account.import-secret-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); a presence proof is required, and the key must be this account's own"
+  },
+  "vault.account.reset": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); the recovery secret and a presence proof are both required"
+  },
+  "mcpconn.guide": {
+   "module": "mcpconn",
+   "reason": "read-only: returns the fixed walk-through text for setting Vyre up (harness/mcp/setup-vyre.md), nothing about the person"
   }
  }
 }

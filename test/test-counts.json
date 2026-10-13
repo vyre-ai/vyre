@@ -881,7 +881,6 @@
  "test/link-guard.test.js": 2,
  "test/link-person.test.js": 1,
  "test/lock-changes.test.js": 1,
- "test/mac-app-sudo.test.js": 3,
  "test/mcp-server-tools.test.js": 2,
  "test/mobile-tailnet.test.js": 1,
  "test/module-api-compat.test.js": 7,

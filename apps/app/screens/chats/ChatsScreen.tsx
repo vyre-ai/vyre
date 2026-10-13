@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AvatarStack, Banner, Button, Card, Chip, Divider, EmptyState, LoadingState, Row, Text, markRef } from "@vyre/ui";
+import { Banner, Button, Card, EmptyState, LoadingState, Text } from "@vyre/ui";
+import { useChatMenu } from "./useChatMenu";
+import { useChatPrefs } from "../../src/state/chat-prefs";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
 import { useGap } from "../../src/state/setup-gap";
@@ -35,11 +37,16 @@ export default function ChatsScreen() {
     asked.current = true;
     void ensurePersistent("assistant").then((r) => { if ("chat" in r) void refresh(); }).catch(() => { asked.current = false; });
   }, [chats.from, chats.rows]);
-  const rows = chatsOrdered(chatsShown(chats.rows));
+  const prefs = useChatPrefs();
+  // Your own pins go first (after your assistant's chat), in the order the list already has.
+  const ordered = chatsOrdered(chatsShown(chats.rows));
+  const rows = [...ordered.filter((c) => c.pinned === "assistant"), ...ordered.filter((c) => c.pinned !== "assistant" && prefs.pinned.includes(c.id)), ...ordered.filter((c) => c.pinned !== "assistant" && !prefs.pinned.includes(c.id))];
+  const { menu, sheets } = useChatMenu(chats.rows);
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
       <PlaceTag of="showing" />
+      {sheets}
       {view.banner && gap ? (
         <Banner icon="info">
           <View className="gap-s2">
@@ -55,7 +62,7 @@ export default function ChatsScreen() {
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
-          <ChatsList tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
+          <ChatsList menu={menu} tag={chatsTag} rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
         )}
     </Page>
   );

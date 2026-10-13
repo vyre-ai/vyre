@@ -202,6 +202,16 @@
   "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.account.create changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
  },
  {
+  "tool": "vault.account.create",
+  "was": "denied",
+  "callers": [
+   "device",
+   "mobile"
+  ],
+  "ruling": "team/ROADMAP.md rc.4 install flow, 13 Oct 2026, the user: the app sets up the personal vault with the master password",
+  "reason": "team/ROADMAP.md rc.4 install flow, 13 Oct 2026, the user: the app sets up the personal vault with the master password; vault.account.create changed in work/wire-identity/vault: the person's phone or paired device sets the master password too; the answer carries the recovery secret and never the Secret Key, and the person's yes is asked"
+ },
+ {
   "tool": "vault.account.enroll-touchid",
   "was": "presence_required",
   "callers": [
@@ -617,10 +627,11 @@
   "tool": "vault.vaults.create",
   "was": "denied",
   "callers": [
-   "device"
+   "device",
+   "mobile"
   ],
   "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
-  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.vaults.create changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.vaults.create changed in 86dad5619: a person on a paired device or the phone now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
  },
  {
   "tool": "vault.vaults.rotate",

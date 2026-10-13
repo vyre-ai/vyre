@@ -58,7 +58,9 @@ export function register(ctx, h) {
   const only = (/** @type {any} */ meta, what) => {
     const { caller } = meta;
     h.guard(caller, what);
-    if (!h.modelMay(meta)) throw Object.assign(new Error("only the person changes an agent's files, context and vault list"), { code: "denied" });
+    // Person surfaces only: an agent (a caller labelled with one, or a verified agent behind the call), a model, a guest never reads or edits an agent's configuration through these tools; an agent gets its own
+    // instructions and context when its session starts.
+    if (!h.modelMay(meta) || (meta && meta.agent) || /:agent:|^mcp|^harness|guest/.test(String(caller || ""))) throw Object.assign(new Error("only a person changes or reads an agent's files, context, sharing and vault list; an agent gets its own at the start of its session"), { code: "denied" });
   };
   /**
    * What the caller may do with this agent: "edit" (its creator, the owner, an admin, or anyone given Can edit, by name or by role), "use" (given Can use), or "none".
@@ -219,11 +221,15 @@ export function register(ctx, h) {
       const a = h.must(agent);
       await writeOk(meta, a);
       const access = await sharedWith(a);
-      const sp = ctx.kernel && ctx.kernel.space ? await ctx.call("spaces.members.list", { space: ctx.kernel.space }).catch(() => null) : null;
-      const people = sp && !sp.error && sp.data && Array.isArray(sp.data.members) ? sp.data.members.map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.person), role: String(m.role || "") })) : [];
-      const rl = await ctx.call("roles.list", {}).catch(() => null);
-      const rrows = rl && !rl.error && rl.data ? (Array.isArray(rl.data) ? rl.data : rl.data.roles || []) : [];
-      const roles = rrows.map((/** @type {any} */ r) => ({ id: String(r.id || r.role || r.name), name: String(r.name || r.label || r.id) })).filter((/** @type {any} */ r) => r.id && r.id !== "owner");
+      // the people who could be picked: the Space's members, read through the kernel on the CALLER's own chain (it shows a manager and above everyone, a member only what she may see). A role is not
+      // offered: an agent is shared with a person for now.
+      let people = [];
+      try {
+        const chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null;
+        const ms = chain && ctx.kernel.grants && ctx.kernel.grants.members ? await ctx.kernel.grants.members.list(chain) : [];
+        people = (Array.isArray(ms) ? ms : []).map((/** @type {any} */ m) => ({ id: String(m.person), name: String(m.name || m.display_name || m.person), role: String(m.role || "") }));
+      } catch { people = []; }
+      const roles = [];
       return { access, people, roles };
     },
   });
@@ -271,5 +277,15 @@ export function register(ctx, h) {
   const sharedLine = async a => (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => `${g.subject} (${g.level})`);
   /** An agent that is gone takes its sharing with it. @param {any} a */
   const clearShared = async a => { if (ctx.kernel && ctx.kernel.mint) for (const g of await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:` })) await ctx.kernel.mint.end({ id: g.id, reason: "the agent was removed" }); };
-  return { brief, levelOf, sharedLine, clearShared };
+  /**
+   * Who made an agent and who it is shared with, for the list: the maker's person id, and [{ person, level }]. The owner, an admin, the maker and anyone with Can edit see every share; anyone
+   * else sees only their own, so a list never shows who else was given an agent. @param {any} meta @param {any} a @param {boolean} staff
+   */
+  const sharesFor = async (meta, a, staff) => {
+    const all = (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => ({ person: g.subject, level: g.level }));
+    if (staff || (await levelOf(meta, a)) === "edit") return { made_by: a.owner || null, shares: all };
+    const me = await h.chainPerson(meta);
+    return { made_by: a.owner || null, shares: me ? all.filter((/** @type {any} */ g) => g.person === me) : [] };
+  };
+  return { brief, levelOf, sharedLine, clearShared, sharesFor };
 }

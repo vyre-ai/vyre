@@ -16,7 +16,6 @@ import { Thumb } from "./Thumb";
 import { ArtifactShot } from "./ArtifactShot";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
-import { codeBlocks, copyForms } from "./polish.js";
 import { itemLabel, partsOf } from "./secure-paste.js";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
@@ -26,9 +25,10 @@ import { timeLineOf } from "../time/show.js";
 import { metaOf } from "./stamp.js";
 import { useRouter } from "expo-router";
 import { artifactHref, artifactOf } from "./extras.js";
-import { readSelection } from "./highlight.js";
 import { FanoutSet } from "./FanoutSet";
-import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
+import { Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
+import { MessageBar, type BarGroup } from "./MessageBar";
+import { messageKey, stepMessage } from "./message-keys.js";
 
 const S = StyleSheet.create({
   s1: { marginBottom: 2 },
@@ -91,15 +91,16 @@ function ActionRow({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Message({ who, family, meta, sub, dress, children, wide, provider }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
+function Message({ who, family, meta, sub, dress, children, wide, provider, mine }: { mine?: boolean; who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
   const [hover, setHover] = useState(false);
   const [held, setHeld] = useState(false);
+  const [focus, setFocus] = useState(false);
   const { color } = useUiTheme();
   return (
-    <View {...({ dataSet: { from: who } } as object)} style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
+    <View {...({ dataSet: { from: who, msg: "1", mine: mine ? "1" : "0" }, tabIndex: 0, onFocus: () => setFocus(true), onBlur: () => setFocus(false) } as object)} style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
-      <ActionsOn.Provider value={hover || held || showActions()}>
+      <ActionsOn.Provider value={hover || held || focus || showActions()}>
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: wide ? "row" : "column", gap: wide ? 12 : 4, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
         {wide ? <Face name={who} family={family} size={32} provider={provider} /> : null}
         <View style={S.s3}>
@@ -140,60 +141,6 @@ export function UserText({ text, pending }: { text: string; pending: boolean }) 
         <Icon name="shield" size={14} tone="ok" />
         <Text size="caption" tone="muted">{names.length === 1 ? "Secured in the Vault" : `${names.length} keys secured in the Vault`}</Text>
       </View>
-    </View>
-  );
-}
-
-function HighlightAction({ from, text, ctx }: { from: string; text: string; ctx: BlockCtx }) {
-  const { color } = useUiTheme();
-  const picked = useRef("");
-  if (!ctx.onHighlight) return null;
-  return (
-    <View style={S.s4}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={{ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
-        <Text size="caption" tone="label">Ask about this</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function MessageActions({ uuid, text, ctx }: { uuid: string; text: string; ctx: BlockCtx }) {
-  const { color } = useUiTheme();
-  if (!ctx.onRetryMessage && !ctx.onEditMessage && !ctx.onBranchFrom) return null;
-  const h = ctx.wide ? 28 : 44;
-  const act = (label: string, run?: () => void) => run ? (
-    <Pressable key={label} accessibilityRole="button" accessibilityLabel={`${label} this message`} onPress={run} style={{ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
-      <Text size="caption" tone="label">{label}</Text>
-    </Pressable>
-  ) : null;
-  return (
-    <View style={S.s4}>
-      {act("Edit", ctx.onEditMessage && (() => ctx.onEditMessage?.(uuid, text)))}
-      {act("Retry", ctx.onRetryMessage && (() => ctx.onRetryMessage?.(uuid)))}
-      {act("Branch", ctx.onBranchFrom && (() => ctx.onBranchFrom?.(uuid)))}
-    </View>
-  );
-}
-
-
-/** Copy, Copy as Markdown, and one Copy code for each fenced block of a finished answer (12.1). */
-function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
-  const [said, setSaid] = useState("");
-  const h = ctx.wide ? 28 : 44;
-  const forms = copyForms(text);
-  const blocks = codeBlocks(text);
-  const go = (label: string, body: string) => { void copy(body, ctx); setSaid(label); setTimeout(() => setSaid(""), 1500); };
-  const btn = (label: string, body: string, name = label) => (
-    <Pressable key={label} accessibilityRole="button" accessibilityLabel={name} onPress={() => go(label, body)} style={{ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 4 }}>
-      <Icon name="copy" tone="label" />
-      <Text size="caption" tone="label">{said === label ? "Copied" : label}</Text>
-    </Pressable>
-  );
-  return (
-    <View style={S.s4}>
-      {btn("Copy", forms.plain, "Copy this answer")}
-      {btn("Copy as Markdown", forms.markdown)}
-      {blocks.map((b, i) => btn(blocks.length > 1 ? `Copy code ${i + 1}` : "Copy code", b.code))}
     </View>
   );
 }
@@ -388,17 +335,56 @@ function Replyable({ ctx, message, name, text, children }: { ctx: BlockCtx; mess
   );
 }
 
-/** Reactions and the Reply / React / Pin tools, only in a chat that has people in it (a group). */
-function GroupTools({ store, k, ctx, name }: { store: ChatStore; k: string; ctx: BlockCtx; name: string }) {
+/** The actions a group adds to a message's bar: Reply always (when the chat can reply), React and Pin only in a chat with people in it. */
+function groupOf(store: ChatStore, k: string, ctx: BlockCtx, name: string): BarGroup {
   const g = store.group;
   const m = k.slice(2);
-  if (!g.participants().length) return ctx.onReplyTo ? <MessageTools big={!ctx.wide} pinned={false} onReply={() => ctx.onReplyTo?.(m, name, "")} /> : null;
-  return (
-    <>
-      <Reactions items={g.reactions(m)} big={!ctx.wide} onToggle={(e, mine) => store.social.react(m, e, mine)} />
-      <MessageTools big={!ctx.wide} pinned={g.pinned(m)} onReply={ctx.onReplyTo ? () => ctx.onReplyTo?.(m, name, "") : undefined} onReact={(e) => store.social.react(m, e)} onPin={(p) => store.social.pin(m, p)} />
-    </>
-  );
+  const reply = ctx.onReplyTo ? () => ctx.onReplyTo?.(m, name, "") : undefined;
+  if (!g.participants().length) return { onReply: reply };
+  return { onReply: reply, onReact: (e) => store.social.react(m, e), pinned: g.pinned(m), onPin: (p) => store.social.pin(m, p) };
+}
+
+/** The reactions already on a message (shown always, only in a group). */
+function ReactionsRow({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCtx }) {
+  const g = store.group;
+  if (!g.participants().length) return null;
+  const m = k.slice(2);
+  return <Reactions items={g.reactions(m)} big={!ctx.wide} onToggle={(e, mine) => store.social.react(m, e, mine)} />;
+}
+
+/**
+ * The transcript's keyboard (web): Alt+Up in the message box selects the last message; Up and Down move; R reply, C copy, Shift+C copy as Markdown, A ask about it, E edit yours, B branch, P pin, M its menu;
+ * Esc goes back to the box. Off while a panel or find is open.
+ */
+export function useMessageKeys(off: boolean) {
+  const offRef = useRef(off);
+  offRef.current = off;
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (offRef.current) return;
+      const el = document.activeElement as HTMLElement | null;
+      const all = () => Array.from(document.querySelectorAll<HTMLElement>("[data-msg]"));
+      const typing = !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT");
+      if (typing) {
+        if (e.altKey && e.key === "ArrowUp" && el.tagName === "TEXTAREA") { const l = all(); if (l.length) { e.preventDefault(); l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: "nearest" }); } }
+        return;
+      }
+      const msg = el?.closest?.("[data-msg]") as HTMLElement | null;
+      if (!msg) return;
+      const mine = msg.getAttribute("data-mine") === "1";
+      const a = messageKey({ key: e.key, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey }, { mine });
+      if (!a) return;
+      e.preventDefault();
+      const l = all();
+      if (a === "up" || a === "down") { const to = l[stepMessage(l.indexOf(msg), l.length, a)]; to?.focus(); to?.scrollIntoView({ block: "nearest" }); return; }
+      if (a === "leave") { document.querySelector<HTMLElement>('textarea[aria-label="Message"]')?.focus(); return; }
+      msg.querySelector("[data-msgbar]")?.dispatchEvent(new CustomEvent("vyre-msg", { detail: { action: a } }));
+    };
+    // Capture phase: a multiline box stops its keys from bubbling to the document.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
 }
 
 function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCtx }) {
@@ -411,17 +397,18 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const mine = store.group.isMine(k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
-        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
+        <Message mine={mine} who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} />
           {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
           {it.pending ? null : (
             <ActionRow>
-              {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
-              <HighlightAction from={w.name} text={it.text} ctx={ctx} />
-              <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
+              <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} mine={mine} group={groupOf(store, k, ctx, w.name)} />
             </ActionRow>
+          )}
+          {it.pending ? null : (
+            <ReactionsRow store={store} k={k} ctx={ctx} />
           )}
         </Message>
         </Replyable>
@@ -438,13 +425,10 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
-          {it.done ? (
-            <ActionRow>
-              <AnswerActions text={it.text} ctx={ctx} />
-              <HighlightAction from={w.name} text={it.text} ctx={ctx} />
-              <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
-            </ActionRow>
-          ) : <GroupTools store={store} k={k} ctx={ctx} name={w.name} />}
+          <ActionRow>
+            <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} done={it.done} group={groupOf(store, k, ctx, w.name)} />
+          </ActionRow>
+          <ReactionsRow store={store} k={k} ctx={ctx} />
         </Message>
         </Replyable>
       );

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ViewControls } from "./ViewControls";
 import { NewViewSheet } from "./NewViewSheet";
+import { ImportSheet } from "./ImportSheet";
 import { useEffectiveList } from "./views-actions";
 import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -35,11 +36,15 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [query, setQuery] = useState("");
+  const [chips, setChips] = useState<any[]>([]);
+  const [preset, setPreset] = useState<{ filters: any[] } | undefined>(undefined);
   const space = useSpaces((s) => s.space);
   const canShare = useSidebar((s) => s.canSetDefault);
   const entries = useEffectiveList();
   // The pins (sidebar links) open this screen with a view in the address: follow it.
-  useEffect(() => { setViewName(openedView); setPicked(null); setCleared(false); }, [openedView, type]);
+  useEffect(() => { setViewName(openedView); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   const cards = useMembers((st) => st.spaces);
@@ -60,7 +65,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : "list";
-  const rows = world.byType[def.name] || [];
+  const all = world.byType[def.name] || [];
+  const lctx = { me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
+  const rows = listRows(def, all, chips, query, lctx);
   const filter = (vd as any)[shown]?.filter as string | undefined;
   const narrowed = filter && !cleared ? viewRows(rows, filter).length : rows.length;
   const move = async (rec: any, to: string) => {
@@ -78,17 +85,18 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
     frame(vd.plural, <>
-      <View className="flex-row items-center gap-s3">
-        <View className="min-w-0 flex-1">
+      <ListHeader noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)}
+        title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
               items={[{ label: `All ${vd.plural.toLowerCase()}`, selected: !viewName, onPress: () => { setViewName(undefined); setPicked(null); setCleared(false); } }, ...named.map((n) => ({ label: n.label, selected: viewName === n.name, onPress: () => { setViewName(n.name); setPicked(null); setCleared(false); } }))]} />
           ) : <Text size="page" strong>{vd.plural}</Text>}
-          <Text size="caption" tone="label">{rows.length} {rows.length === 1 ? def.label.toLowerCase() : vd.plural.toLowerCase()}</Text>
-        </View>
-      </View>
+        </>}
+        onSave={() => { const r = chipsToFilters(chips, def); setPreset({ filters: r.filters }); setMaking(true); }}
+        saveNote={chipsToFilters(chips, def).skipped ? `${chipsToFilters(chips, def).skipped} of these filters cannot be kept by a saved view yet and are left out.` : undefined} />
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
+        <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
@@ -110,7 +118,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
-      <NewViewSheet open={making} onClose={() => setMaking(false)} types={world.types} type={type} space={space} canShare={canShare}
+      <ImportSheet open={importing} onClose={() => setImporting(false)} def={def} noun={vd.plural.toLowerCase()} onDone={reload} />
+      <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
     </>, { own: true, onRefresh: reload })
   );

@@ -92,7 +92,7 @@ export default function RealDrive() {
   ) : <LoadingState rows={3} />;
 
   return (
-    <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+    <Frame title="Files" sub="The space's files with their versions, and the box's own folders.">
       <PlaceTag of="home" />
       <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
       {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
