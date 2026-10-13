@@ -2,7 +2,7 @@
 title: Field rows
 summary: The fields of a type as rows, each with one line that says everything set on it.
 audience: builders
-owner: records-ux
+owner: app-design
 status: draft
 ---
 
