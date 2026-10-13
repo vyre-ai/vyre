@@ -30,7 +30,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 ## Triggers
 - watcher: keys on, watcher, where; reads trigger; e.g. `{on:watcher,watcher:new-mail}`
 - time: keys on, cron, every_ms, at, tz, hours, holidays, catch_up; reads trigger; e.g. `{on:time,cron:0 9 * * 1-5}`
-- event | stage: keys on, event, where, type, stage; reads trigger, event; e.g. `{on:event,event:payment.received,where:trigger.amount > 0}`
+- event | stage: keys on, event, where, field, when_record_changes, type, stage; reads trigger, event; e.g. `{on:event,event:payment.received,where:trigger.amount > 0}`
 - web: keys on, path; reads trigger; e.g. `{on:web,path:intake}`
 - manual: keys on, input; reads trigger; e.g. `{on:manual}`
 

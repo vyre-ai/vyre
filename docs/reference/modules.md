@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 35 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 37 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
@@ -34,7 +34,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
-| [`comms`](#comms) | `core/comms` | `box` | 2 | 2 | none |
+| [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
@@ -43,13 +43,13 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 49 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
-| [`google`](#google) | `core/google` | `box`, `local` | 24 | 7 | capsule, cli, deck |
+| [`google`](#google) | `core/google` | `box`, `local` | 25 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 12 | 4 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 7 | 5 | cli |
@@ -73,9 +73,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 30 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 31 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
@@ -106,7 +106,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 180 | 59 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 181 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -132,7 +132,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [35](tools.md#agents), 7 of them only for other modules
+- Tools: [37](tools.md#agents), 9 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
@@ -323,10 +323,10 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Folder: `core/comms`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [2](tools.md#comms), 1 of them only for other modules
+- Tools: [6](tools.md#comms), 1 of them only for other modules
 - Emits: [2 events](events.md#comms)
 - Shows on: no surface
-- Needs credentials: `[object Object]`
+- Needs credentials: `[object Object]`, `[object Object]`
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`
 
@@ -427,9 +427,10 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [49](tools.md#files)
+- Tools: [67](tools.md#files), 1 of them only for other modules
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
+- Needs vault: `dropbox`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## flows
@@ -443,7 +444,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"flow-act","actions":["flows.act-standing"]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"flow-act","actions":["flows.act-standing"]},{"prefix":"flow","actions":["flows.run","flows.define"]}]}`
 
 ## gate
 
@@ -495,7 +496,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Folder: `core/google`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [24](tools.md#google), 2 of them only for other modules
+- Tools: [25](tools.md#google), 3 of them only for other modules
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
@@ -763,7 +764,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [30](tools.md#projects)
+- Tools: [31](tools.md#projects), 1 of them only for other modules
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
 - Needs kernel: `{"reach":true,"actions":["records.read"]}`
@@ -787,8 +788,8 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [24](tools.md#publish)
-- Emits: [8 events](events.md#publish)
+- Tools: [26](tools.md#publish)
+- Emits: [10 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
 - Needs vault: `per-deployment`
@@ -1149,7 +1150,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [180](tools.md#vault), 23 of them only for other modules
+- Tools: [181](tools.md#vault), 24 of them only for other modules
 - Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.use","vault.edit"]}]}`

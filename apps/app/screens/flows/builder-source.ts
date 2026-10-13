@@ -60,7 +60,8 @@ export function useFlowOptions(): FlowOptions | null {
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    realOptions(defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name) })) })), space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
+    const types = defs.map((d) => ({ name: d.name, label: d.label || d.name, fields: (d.fields ?? []).map((f: any) => ({ name: String(f.name), label: String(f.label || f.name) })) }));
+    realOptions(types, space, () => setTick((n) => n + 1)).then((o) => { if (live) setOpts(o); });
     return () => { live = false; };
   }, [defs, space, tick]);
   return opts;
