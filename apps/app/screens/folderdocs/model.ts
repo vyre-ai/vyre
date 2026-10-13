@@ -1,11 +1,11 @@
 // The pure half of the Instructions and Context editors that an agent's page and a project's page share: what a folder's docs and context items are, and the lines drawn for them. No calls here.
 import { sizeLine } from "../assistants/config-model.ts";
 
-export type DocFile = "AGENTS.md" | "CLAUDE.md";
+export type DocFile = "AGENTS.md";
 export type Item = { name: string; kind: "file" | "note" | "link"; size: number; files?: string };
 
 /** What the instructions editor calls: an agent's and a project's docs, the same shape. */
-export type DocsApi = Pick<FolderApi, "id" | "docs" | "saveDoc" | "kept" | "canEdit">;
+export type DocsApi = Pick<FolderApi, "id" | "docs" | "saveDoc" | "canEdit">;
 
 /** What one folder's editors call. A project's and an agent's are the same shape, over different tools. */
 export type FolderApi = {
@@ -18,13 +18,12 @@ export type FolderApi = {
   addNote: (name: string, text: string) => Promise<unknown>;
   addLink: (name: string, filesPath: string) => Promise<unknown>;
   remove: (name: string) => Promise<unknown>;
-  /** CLAUDE.md is kept the same as AGENTS.md (a project): one file is shown, saved to both. */
-  kept?: boolean;
   /** Whether this person may change them (Can edit); false hides every write. */
   canEdit?: boolean;
 };
 
-export const KEPT_NOTE = "CLAUDE.md is kept the same as AGENTS.md, so every tool reads the same words.";
+/** The one instructions file, as it is named under the title. Every tool and model reads it. */
+export const DOC_NAME = "AGENTS.md";
 export const READ_ONLY_NOTE = "You can read this. Changing it takes Can edit.";
 
 /** One row of context: its name as a person reads it, and one line under it. */

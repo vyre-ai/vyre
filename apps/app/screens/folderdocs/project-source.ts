@@ -10,9 +10,8 @@ export function projectFolderApi(call: Call, project: string, canEdit = true): F
   }
   return {
     id: `project:${project}`,
-    kept: true,
     canEdit,
-    docs: async () => { const d = await ask<any>("projects.docs.get"); return { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? ""), "CLAUDE.md": String(d?.files?.["CLAUDE.md"] ?? "") }; },
+    docs: async () => { const d = await ask<any>("projects.docs.get"); return { "AGENTS.md": String(d?.files?.["AGENTS.md"] ?? "") }; },
     saveDoc: (file: DocFile, text: string) => ask("projects.docs.set", { file, text }),
     context: async (): Promise<Item[]> => { const d = await ask<any>("projects.refs.list"); return Array.isArray(d?.items) ? d.items : []; },
     addFile: (name, base64) => ask("projects.refs.add", { name, base64 }),

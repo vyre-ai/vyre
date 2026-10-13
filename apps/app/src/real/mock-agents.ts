@@ -9,7 +9,6 @@ When a new inquiry arrives:
 
 Ask when something is missing. Do not guess a date, a name or an amount.
 `;
-const CLAUDE_MD = "Write short sentences. Use the client's own words for their situation.\n";
 
 const REFUNDS_MD = `You handle refund requests for Juniper Studio.
 
@@ -22,7 +21,7 @@ Never promise a refund in a reply. A person sends every message.
 type State = { role: string; docs: Record<string, string>; files: { name: string; size: number; at: number }[]; links: string[]; routes: { provider: string; account?: string }[]; vault: string[]; instructions: string; lent: { id: string; agent: string; item: string; origin: string; expires: number }[] };
 const intake = (): State => ({
   role: "Intake assistant",
-  docs: { "AGENTS.md": AGENTS_MD, "CLAUDE.md": CLAUDE_MD },
+  docs: { "AGENTS.md": AGENTS_MD },
   files: [{ name: "intake-checklist.pdf", size: 184320, at: 1760000000000 }, { name: "price-list.xlsx", size: 42000, at: 1760100000000 }],
   links: ["/Users/alex/Vyre/Files/Intake forms"],
   routes: [{ provider: "claude", account: "acc_login" }, { provider: "claude", account: "acc_key" }],
@@ -32,7 +31,7 @@ const intake = (): State => ({
 });
 const refunds = (): State => ({
   role: "Refunds agent",
-  docs: { "AGENTS.md": REFUNDS_MD, "CLAUDE.md": "Be calm and exact. Quote the policy, never paraphrase an amount.\n" },
+  docs: { "AGENTS.md": REFUNDS_MD },
   files: [{ name: "refund-policy.pdf", size: 96000, at: 1760200000000 }],
   links: [],
   routes: [{ provider: "claude", account: "acc_login" }, { provider: "openrouter", account: "acc_or" }],
@@ -60,7 +59,7 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "agents.update": (i) => { if (typeof i.instructions === "string") w(i).instructions = i.instructions; return agentOf(String(i.name ?? i.agent)); },
   "agents.ask": () => ({ thread: "thr_intake_1", project: "juniper" }),
   "agents.docs.get": (i) => ({ files: { ...w(i).docs } }),
-  "agents.docs.set": (i) => { w(i).docs[i.file] = i.text; if (i.file === "AGENTS.md") w(i).instructions = i.text; return { ok: true, file: i.file }; },
+  "agents.docs.set": (i) => { if (i.file !== "AGENTS.md") throw new Error("Instructions live in AGENTS.md. Write them there; CLAUDE.md only points at it."); w(i).docs["AGENTS.md"] = i.text; w(i).instructions = i.text; return { ok: true, file: i.file }; },
   "agents.context.list": (i) => ({ files: w(i).files.slice(), links: w(i).links.slice() }),
   "agents.context.add": (i) => { w(i).files = [...w(i).files.filter((f) => f.name !== i.name), { name: i.name, size: Math.round((String(i.base64).length * 3) / 4), at: Date.now() }]; return { ok: true, name: i.name }; },
   "agents.context.remove": (i) => { w(i).files = w(i).files.filter((f) => f.name !== i.name); return { ok: true }; },
@@ -80,7 +79,7 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   "agents.access.get": () => ({ access: access.slice(), people: [{ id: "per_dana", name: "Dana Reyes", role: "member" }, { id: "per_sam", name: "Sam Okafor", role: "admin" }, { id: "per_lee", name: "Lee Park", role: "member" }], roles: [{ id: "member", name: "Members" }, { id: "paralegal", name: "Paralegals" }] }),
   "agents.access.set": (i) => { access = access.filter((a) => !(a.kind === i.kind && a.subject === i.subject)); if (i.level) access.push({ kind: i.kind, subject: i.subject, level: i.level, by: "per_you" }); return { ok: true }; },
   "tasks.list": (i) => i.checker ? { tasks: [{ id: "t_ref_2", title: "Check the refund draft for order 4471", state: "needs_check" }] } : { tasks: [{ id: "t_int_1", title: "Draft the first reply to Priya Shah", state: "working" }, { id: "t_int_2", title: "Check the conflict list", state: "ready" }] },
-  "projects.docs.get": () => ({ files: { "AGENTS.md": projectDoc, "CLAUDE.md": projectDoc }, kept_same: true }),
+  "projects.docs.get": () => ({ files: { "AGENTS.md": projectDoc } }),
   "projects.docs.set": (i) => { projectDoc = i.text; return { ok: true, file: i.file }; },
   "projects.refs.list": () => ({ items: projectRefs.slice() }),
   "projects.refs.add": (i) => { projectRefs = [...projectRefs.filter((r) => !r.name.startsWith(i.name)), i.files ? { name: `${i.name}.link`, kind: "link", size: 60, files: i.files } : i.text ? { name: `${i.name}.md`, kind: "note", size: i.text.length } : { name: i.name, kind: "file", size: 1000 }]; return { ok: true }; },
