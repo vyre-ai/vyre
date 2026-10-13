@@ -17,7 +17,8 @@ const STARTERS: Starter[] = [
 /** Settings, Customize: the model of the space (every record type, its counts and links), and Add a type. A type opens to its fields, groups and stages. */
 export function CustomizeScreen() {
   const router = useRouter();
-  const { defs, load, loading, error, create } = useKernelTypes();
+  const { defs, load, loading, error, create, busy } = useKernelTypes();
+  const working = Object.values(busy);
   const showing = useSpaces((s) => s.space);
   const { data: world } = useRecordsWorld();
   const [sheet, setSheet] = useState<null | { id: string; name: string; work: boolean }>(null);
@@ -30,8 +31,9 @@ export function CustomizeScreen() {
   return (
     <Page title="Customize" sub="Record types, fields and groups" back="/u/settings">
       {error ? <Banner tone="warn">{error}</Banner> : null}
+      {working.length ? <Banner><Text strong>{`Setting up ${working.join(", ")} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
       {loading && !defs.length ? <LoadingState rows={3} /> : <ModelMap types={types} onOpen={(n) => router.push(`/u/settings/customize/${n}` as never)} />}
-      <View className="flex-row"><Button kind="primary" icon="plus" label="Add a type" onPress={() => setSheet({ id: "blank", name: templateName("blank"), work: true })} /></View>
+      <View className="flex-row"><Button kind="primary" icon="plus" label="Add a type" loading={working.length > 0} disabled={working.length > 0} onPress={() => setSheet({ id: "blank", name: templateName("blank"), work: true })} /></View>
       <Sheet open={!!sheet} onClose={() => setSheet(null)} title="Add a type">
         {sheet ? (
           <View className="gap-s3">

@@ -24,9 +24,9 @@ export type Rules = { visible: Rule | null; required: Rule | null };
  * One field, all of it: name and kind, then only what the kind needs (options for a choice, a relation for a link), then rules (required, unique, hidden), the conditions
  * (shown when, required when) and who sees it. It is a pane, drawn in a sheet on a phone and beside the field list on a desk. Errors show after the first Save.
  */
-export function FieldEditor({ draft, onChange, owner, types, roles, siblings, rules, onRules, tried, onSave, onCancel, editing, groups, sealLocked }: {
+export function FieldEditor({ draft, onChange, owner, types, roles, siblings, rules, onRules, tried, onSave, onCancel, editing, groups, sealLocked, busy }: {
   draft: Draft; onChange: (d: Draft) => void; owner: TypeRef; types: TypeRef[]; roles: RoleRef[]; siblings: FieldRef[]; rules: Rules; onRules: (r: Rules) => void;
-  tried: boolean; onSave: () => void; onCancel: () => void; editing?: boolean; /** The type's group names, in order; given, the editor offers a Group picker. */ groups?: string[]; /** Why sealing is not offered (a field that already holds values cannot be sealed in place), in words. */ sealLocked?: string;
+  tried: boolean; onSave: () => void; onCancel: () => void; editing?: boolean; /** The type's group names, in order; given, the editor offers a Group picker. */ groups?: string[]; /** Why sealing is not offered (a field that already holds values cannot be sealed in place), in words. */ sealLocked?: string; /** The type is being saved in Records: Save waits. */ busy?: boolean;
 }) {
   const { errors } = checkField(draft, editing ? siblings.filter((s) => s.name !== draft.name) : siblings, types);
   const err = (k: string) => (tried ? errors[k] : undefined);
@@ -74,7 +74,7 @@ export function FieldEditor({ draft, onChange, owner, types, roles, siblings, ru
       </View>
 
       <View className="flex-row gap-s2">
-        <Button kind="primary" label={editing ? "Save field" : `Add to ${owner.plural}`} onPress={onSave} />
+        <Button kind="primary" label={editing ? "Save field" : `Add to ${owner.plural}`} loading={busy} disabled={busy} onPress={onSave} />
         <Button kind="ghost" label="Cancel" onPress={onCancel} />
       </View>
     </View>
