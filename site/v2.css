@@ -105,7 +105,7 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 .icon-btn { width: 38px; height: 38px; display: inline-grid; place-items: center; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
 .icon-btn:hover { background: var(--sunk); }
 .menu-btn { display: none; }
-@media (max-width: 880px) {
+@media (max-width: 980px) {
   .nav-links { position: fixed; inset: 68px 0 auto 0; flex-direction: column; align-items: stretch; background: var(--bg); border-bottom: 1px solid var(--line); padding: 8px var(--gut) 20px; margin: 0; display: none; }
   .nav-links.open { display: flex; }
   .nav-links a { padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -345,7 +345,10 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .crumbs a { color: var(--ink-3); }
 
 /* FAQ */
-.faq { border-top: 1px solid var(--line); max-width: 860px; }
+.faq { border-top: 1px solid var(--line); }
+.faq-wrap { align-items: start; }
+.faq-wrap .feat-copy { position: sticky; top: 96px; }
+@media (max-width: 880px) { .faq-wrap .feat-copy { position: static; } }
 .faq details { border-bottom: 1px solid var(--line); }
 .faq summary { list-style: none; cursor: pointer; padding: 20px 40px 20px 0; font-size: 18px; font-weight: 500; letter-spacing: -.01em; position: relative; }
 .faq summary::-webkit-details-marker { display: none; }
@@ -387,7 +390,6 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .part li { margin: .5em 0; }
 .part li b, .part li strong, .part p strong { color: var(--ink); font-weight: 600; }
 @media (max-width: 600px) { .part { grid-template-columns: 1fr; gap: 4px; } }
-.nf { min-height: 60vh; display: grid; place-items: center; text-align: center; padding: 80px 0; }
 
 /* CTA pairs under a centred heading sit centred */
 .hero .btn-row, .closing .btn-row { justify-content: center; }
@@ -512,3 +514,60 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 .ar-data p:last-child { margin: 0; font-size: 14.5px; color: var(--ink-2); }
 
 .note .btn + .btn { margin-left: 8px; }
+
+/* The Vyre mark (site/favicon.svg, inlined) */
+.vmark { display: block; width: 100%; height: auto; overflow: visible; }
+.vmark circle { transform-box: fill-box; }
+.vmark circle.adrift { animation: adrift 7s ease-in-out infinite alternate; }
+@keyframes adrift { from { translate: 0 0; } to { translate: 1.6px -2.4px; } }
+/* Log in beside Set up Vyre; both live in the menu on a phone */
+.nav-login { --cutbg: var(--bg); }
+.nav-links .only-m { display: none; }
+@media (max-width: 980px) { .nav-end .nav-login { display: none; } .nav-links .only-m { display: block; } }
+@media (max-width: 1060px) and (min-width: 981px) { .star-pill span { display: none; } .star-pill { padding: 0 12px; } }
+
+/* 404 */
+.nf { padding: clamp(48px, 8vw, 104px) 0 clamp(64px, 9vw, 120px); }
+.nf { overflow-x: clip; }
+.nf-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(28px, 6vw, 80px); align-items: center; }
+.nf-art { width: min(100%, 440px); justify-self: center; padding: 8%; }
+.nf-copy .display { font-size: clamp(34px, 5vw, 60px); }
+.nf-card { margin-top: 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.nf-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--sunk); }
+.nf-head b { font-weight: 600; letter-spacing: -.01em; }
+.nf-links { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.nf-links li { border-top: 1px solid var(--line); }
+.nf-links li:nth-child(-n+2) { border-top: 0; }
+.nf-links li:nth-child(even) { border-left: 1px solid var(--line); }
+.nf-links a { display: grid; gap: 2px; padding: 14px 18px; text-decoration: none; height: 100%; transition: background .15s; }
+.nf-links a:hover { background: var(--sunk); }
+.nf-links b { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.nf-links span { font-size: 13px; color: var(--ink-3); line-height: 1.4; }
+@media (max-width: 880px) { .nf-grid { grid-template-columns: 1fr; } .nf-art { width: min(70%, 300px); } }
+@media (max-width: 560px) { .nf-links { grid-template-columns: 1fr; } .nf-links li:nth-child(2) { border-top: 1px solid var(--line); } .nf-links li:nth-child(even) { border-left: 0; } }
+
+/* Downloads */
+.dl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dl { background: var(--panel); border: 1px solid var(--line); padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 10px; }
+.dl-ic .ic { width: 34px; height: 34px; color: var(--ink); }
+.dl h3 { margin: 4px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -.015em; }
+.dl > p { margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.5; }
+.dl-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; }
+.dl-acts .btn { --cutbg: var(--panel); }
+.dl-foot { font-size: 14px; color: var(--ink-3); }
+.dl-foot .term { margin: 0 0 10px; font-size: 13px; padding: 10px 12px; }
+@media (max-width: 1000px) { .dl-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .dl-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .vmark circle.adrift { animation: none; } }
+
+/* The hero mark: the app icon, assembling from its dots, on the same centre line as the headline */
+.hero-mark { width: clamp(104px, 13vw, 168px); margin: 0 auto clamp(22px, 3vw, 34px); filter: drop-shadow(0 0 .6px rgba(241,238,230,.5)) drop-shadow(0 14px 22px rgba(8,8,10,.28)); }
+:root:not([data-theme="dark"]) .hero-mark { filter: drop-shadow(0 14px 22px rgba(8,8,10,.22)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hero-mark { filter: drop-shadow(0 0 .6px rgba(241,238,230,.5)) drop-shadow(0 14px 22px rgba(8,8,10,.28)); } }
+
+.phead .feat .display { font-size: clamp(34px, 4.6vw, 58px); }
+.phead .feat .feat-copy .lead { max-width: 30em; }
+
+/* Nav: one line at every width above the menu breakpoint */
+.nav-links a { white-space: nowrap; }
+@media (max-width: 1180px) and (min-width: 981px) { .nav .wrap { gap: 14px; } .nav-links a { padding: 12px 8px; letter-spacing: .06em; } .nav-end { gap: 8px; } }

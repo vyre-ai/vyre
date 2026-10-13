@@ -1,7 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
-- docs(site): vyre.run shows the real app, not drawn screens: animated WebP recordings of the app (dark and paper, laptop and phone, with a still poster for reduced motion) in drawn MacBook Pro and iPhone Pro frames, one 12-column hero grid, and the hand-made fake screens removed from the home, Mac, Windows and phone pages.
+- docs(site): vyre.run shows the real app, not drawn screens: animated WebP recordings of the app (dark and paper, laptop and phone, a still poster for reduced motion) in drawn MacBook Pro and iPhone Pro frames; the halftone V mark (the app icon, inlined vector) assembles from its dots in the hero and on a new 404 page that lists where to go; a Downloads page (Mac, Windows, Android, iPhone, Linux and Mac server lines, web app, checksums) and a Log in button to web.vyre.run in the nav; one content grid on every page, with the FAQ on it.
 - fix(app-out): the hosted app's manifest and Worker accept [ and ] in a file path, which the web export uses for a dynamic route's chunk (`[flow]-<hash>.js`); a leading slash and `..` stay refused (the 0.5.0 release run stopped on it).
 - fix(tests): the relay's per-route ticket cap test fills the cap and lets it land before sending the one over, so the registrations no longer race (it failed 1 run in CI on an unchanged relay).
 - docs: the README shows the app in sharp animated WebP and 2x screenshots instead of 256-colour GIFs; unused old README images removed.
