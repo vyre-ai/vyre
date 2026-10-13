@@ -153,3 +153,11 @@ test("an agent, a model or a guest caller is refused on every agent configuratio
   }
   assert.equal((await owner("agents.docs.get", { agent: "intake" })).error, undefined, "the person's own surface still works");
 });
+
+test("the people an editor can pick come from the kernel's member list on her own chain", { timeout: 120_000 }, async t => {
+  const { ada } = await world(t);
+  await ada("agents.create", { name: "intake", kind: "agent", projects: [] });
+  const got = (await ada("agents.access.get", { agent: "intake" })).data;
+  assert.ok(got.people.some((/** @type {any} */ p) => p.id === BEN), JSON.stringify(got.people));
+  assert.deepEqual(got.roles, []);
+});
