@@ -121,6 +121,7 @@ export const PERSON_ONLY = new Map([
   ["files.drive.link.revoke", "takes an outsider's link away: the person's own decision about who reaches a file"],
   ["wink.server.probe", "the person's own device calls out to a server it paired: a network call as the person's device"],
   ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
+  ["pluginagent.setup.begin", "would let an assistant widen its own authority: turns on Set up mode for Claude Code on a computer, the person's own yes"],
   ["pluginagent.revoke", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.decline", "the person's own decision about what Claude Code on a computer may reach"],
   ["pluginagent.on", "the person's own decision about what Claude Code on a computer may reach"],

@@ -91,6 +91,10 @@ test("Set up mode runs the setup tools as the person's delegate: what the person
   const types = await call("records.types", {}, as);
   assert.ok(!types.error, JSON.stringify(types).slice(0, 200));
 
+  // Bringing sessions in rides the same mode: the scan answers, on the real daemon, for Claude Code and no one else.
+  const scan = await call("import.sessions.list", {}, as);
+  assert.ok(!scan.error && Array.isArray(scan.data.sessions), "import.sessions.list: " + JSON.stringify(scan).slice(0, 300));
+
   // The kernel keeps what no model chain does, even for the person's delegate.
   assert.equal((await call("roles.assign", { person: "per_x", role: "member" }, as)).error.code, "not_in_grant", "a role is never a model's");
   assert.equal((await call("vault.list", {}, as)).error.code, "not_in_grant");
