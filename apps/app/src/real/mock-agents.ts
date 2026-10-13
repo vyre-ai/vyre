@@ -70,7 +70,7 @@ export const mockAgentTools: Record<string, (i: any) => unknown> = {
   // One list for the Agents screen and the agent page, so every row opens: the sample world's assistants and agents (settings/data.ts), then the two that carry sample pages.
   "agents.list": () => [
     ...loadAssistants().map((a) => ({ uid: `agt_${a.id}`, name: a.name, kind: a.family === "assistant" ? "assistant" : "agent", model: a.model, effort: "medium", projects: ["juniper"], computer: false, status: a.paused ? "stopped" : "idle", thread: "x", autonomy: a.autonomy, id: a.id,
-      instructions: W[a.id]?.instructions ?? String(a.role), made_by: a.id === "iris" ? WHO.chris : a.id === "rev" ? WHO.chris : WHO.alex, ...(a.id === "rev" ? { shares: [{ person: WHO.alex, level: "use" }] } : {}) })),
+      instructions: W[a.id]?.instructions ?? String(a.role), description: ROLES[a.id] ?? a.role, made_by: a.id === "iris" ? WHO.chris : a.id === "rev" ? WHO.chris : WHO.alex, ...(a.id === "rev" ? { shares: [{ person: WHO.alex, level: "use" }] } : {}) })),
     ...["intake", "refunds"].map((n) => ({ ...agentOf(n), made_by: WHO.alex })),
   ],
   "agents.usage": (i) => [{ agent: String(i.agent ?? "intake"), auth: "subscription", turns: 41, threads: 6, duration_ms: 5_400_000, last_at: Date.now() - 3_600_000, tokens: { input: 210000, output: 38000 } }],
