@@ -235,7 +235,9 @@ export default {
           return m && m.data && typeof m.data.role === "string" ? m.data.role : null;
         } catch { return null; }
       },
-      fetchState: async identity => { const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
+      // a member added by id has no stored name here: the hello's claimed Vyre name is learned first (spaces.person.learn checks with the directory that the name is theirs), so the chain can be found. Only identities that
+      // already have a role here get this far (chain-admit asks roleOf first).
+      fetchState: async (identity, name) => { if (name) await ctx.call("spaces.person.learn", { id: identity, name }).catch(() => null); const r = /** @type {any} */ (await ctx.call("spaces.identity.state", { person: identity })); const st = r && r.data !== undefined ? r.data : r; return st && Array.isArray(st.entries) && st.entries.length && Number.isInteger(st.seq) ? st : null; },
     }));
 
     // ---- the link ----

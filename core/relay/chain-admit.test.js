@@ -244,3 +244,17 @@ test("a malformed hello is refused before anything is fetched", async () => {
   }
   assert.equal(a.r.fetches, 0);
 });
+
+test("the Vyre name the hello claims reaches the chain lookup, and only after the identity has a role here", async () => {
+  /** @type {Array<[string, string | undefined]>} */ const asked = [];
+  const k = key();
+  const entry = { eid: EID("d"), kind: "device", pub: k.pub, since: T0 - 3 * DAY, founder: false };
+  const mk = (/** @type {string | null} */ role) => createChainAdmit({ boxId: async () => BOX, now: () => T0, roleOf: async () => role, fetchState: async (id, name) => { asked.push([id, name]); return { id, seq: 1, head: "h", entries: [entry] }; } });
+  const h = { identity: IDENT, entry: EID("d"), ts: T0, nonce: "m".repeat(20), channel: CH, name: "paralegal" };
+  const sig = k.sign(chainHelloMessage(BOX, h));
+  assert.equal((await mk("member").check({ ...h, sig }, CH)).ok, true);
+  assert.deepEqual(asked, [[IDENT, "paralegal"]]);
+  asked.length = 0;
+  assert.equal((await mk(null).check({ ...h, nonce: "o".repeat(20), sig }, CH)).why, "bad_proof");
+  assert.deepEqual(asked, [], "a stranger's claimed name is never looked up");
+});
