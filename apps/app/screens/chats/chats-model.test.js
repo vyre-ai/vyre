@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, chatsView, sampleChats } from "./chats-model.js";
+import { byTag, withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, chatsView, sampleChats } from "./chats-model.js";
 
 test("work.chat.list rows become one row type; the id comes from the record address; a row with no open flag is not openable", () => {
   const rows = chatsFrom({ rows: [
@@ -138,4 +138,14 @@ test("the assistant's and the Engineer's pinned chats cannot be forked; any othe
   assert.equal(canFork({ pinned: "engineer" }), false);
   assert.equal(canFork({ pinned: "" }), true);
   assert.equal(canFork(undefined), true);
+});
+
+test("chats carry their tags, and a tag narrows the list", () => {
+  const rows = chatsFrom({ chats: [{ chat: "a", title: "A", tags: '["trust","urgent"]' }, { chat: "b", title: "B", tags: '["trust"]' }, { chat: "c", title: "C" }] });
+  assert.deepEqual(rows.map((r) => r.tags), [["trust", "urgent"], ["trust"], []]);
+  const all = byTag(rows, "");
+  assert.equal(all.rows.length, 3);
+  assert.deepEqual(all.tags, [{ tag: "trust", count: 2 }, { tag: "urgent", count: 1 }]);
+  assert.deepEqual(byTag(rows, "urgent").rows.map((r) => r.id), ["a"]);
+  assert.deepEqual(byTag(rows, "nothing").rows, []);
 });

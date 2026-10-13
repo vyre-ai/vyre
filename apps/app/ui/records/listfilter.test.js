@@ -64,3 +64,11 @@ test("chips that a saved view can hold become view filters; the rest are counted
   assert.deepEqual(r.filters, [{ field: "stage", op: "is", value: "Intake" }, { field: "value", op: "atleast", value: "1000" }, { field: "next", op: "before", value: "2026-11-01" }]);
   assert.equal(r.skipped, 1);
 });
+
+test("a tag filter reads as words and holds only for the whole tag", () => {
+  const def = { fields: [{ name: "tags", kind: "text", label: "Tags" }] };
+  const chip = { field: "tags", op: "contains", operand: '"trust"' };
+  assert.equal(chipWords(def, chip), "Tagged #trust");
+  assert.equal(chipHolds(def, chip, { data: { tags: '["trust","x"]' } }), true);
+  assert.equal(chipHolds(def, chip, { data: { tags: '["trusted"]' } }), false);
+});

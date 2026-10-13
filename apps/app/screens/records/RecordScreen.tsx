@@ -3,6 +3,7 @@ import { ScrollView, View } from "react-native";
 import { Linking } from "react-native";
 import { useRouter } from "expo-router";
 import { Appear, allowsMock, Banner, Button, Chip, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { href } from "../../../../lib/tags.js";
 import { useShell } from "../shell/shared";
 import { useSidebar } from "../shell/sidebar";
 import { RecordTimeline } from "./RecordTimeline";
@@ -18,7 +19,8 @@ export function RecordScreen({ id }: { id: string }) {
   const SPACES = useShell((s) => s.data.spaces);
   const { data: world, loading, error, reload } = useRecordsWorld();
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
-  const env = useFieldEnv(world, open);
+  const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
+  const env = useFieldEnv(world, open, openTag);
   const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const events = useRecordEvents(rec?.urn);

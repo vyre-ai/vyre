@@ -6,6 +6,8 @@ import { Field } from "../components/Field";
 import { Button } from "../components/Button";
 import { Select } from "../components/Select";
 import { actorIdOf, allowedStages, currencySymbol, isEmpty, isoDay, listOf, parseDay, parseNum, urnOf } from "./logic.js";
+import { TagRow } from "../components/TagRow";
+import { tagsOf, withTag, withoutTag } from "../tags/model.js";
 import type { EditProps } from "./types";
 
 const NONE = "";
@@ -180,4 +182,11 @@ export function RatingEdit({ p, emit }: EditProps) {
       ))}
     </View>
   );
+}
+
+/** The free tags of a record: chips to take off and a field to add one, offering the Space's tags. It emits the stored text, so the record page's Save writes what lib/tags.js writes. */
+export function TagsEdit({ p, env, emit }: EditProps) {
+  const [text, setText] = useState<string>(typeof p.value === "string" ? p.value : "");
+  const set = (next: string) => { setText(next); emit(next); };
+  return <TagRow tags={tagsOf(text)} known={env.tags} onAdd={(t) => set(withTag(text, t))} onRemove={(t) => set(withoutTag(text, t))} />;
 }

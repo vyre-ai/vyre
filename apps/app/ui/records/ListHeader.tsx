@@ -12,8 +12,10 @@ import { Text } from "../components/Text";
 import { KIND_LOGIC, normalizeKind } from "../fields/logic.js";
 import { CREATED, DATE_PRESETS, chipWords, datePreset, filterableFields } from "./listfilter.js";
 import type { Chip as FilterChip } from "./listfilter.js";
+import { isTagsField, tagChip } from "../tags/model.js";
+import { normalize } from "../../../../lib/tags.js";
 
-export type ListCtx = { me?: string; actors?: { id: string; name: string }[]; links?: Record<string, { title: string; type?: string }>; now?: number };
+export type ListCtx = { /** Every tag the records carry: the tag filter offers them. */ tags?: string[]; me?: string; actors?: { id: string; name: string }[]; links?: Record<string, { title: string; type?: string }>; now?: number };
 
 /**
  * The one header of an object list: its title (a slot, so a named view keeps its menu), "6 of 38", a search that "/" focuses and Escape clears, "+ Filter", the filters as chips that
@@ -86,12 +88,20 @@ function FilterBuilder({ open, onClose, def, ctx, onAdd }: { open: boolean; onCl
     if (kind === "link" || kind === "ref") return Object.entries(ctx.links || {}).filter(([, t]) => !field.to || !t.type || t.type === field.to).map(([urn, t]) => ({ id: urn, label: t.title }));
     return [];
   };
+  const tagField = !!field && isTagsField(field);
+  const pickTag = (t: string) => { const c = tagChip(t); onAdd({ field: c.field, op: c.op, operand: c.operand }); };
   const ready = !!cur && (cur.operand === "none" || (cur.operand === "two" ? !!a && !!b : cur.operand === "option" ? a !== "" : String(a).trim() !== ""));
   const add = () => { if (!ready || !cur) return; onAdd({ field: field.name, op, ...(cur.operand === "none" ? {} : { operand: cur.operand === "two" ? [String(a), String(b)] : kind === "actor" ? { actor: { id: a } } : (kind === "link" || kind === "ref") ? { urn: a } : a }) }); };
   return (
     <Sheet open={open} onClose={onClose} title={field ? `Filter by ${field.label}` : "Filter by"}>
       {!field ? (
         <GroupedList groups={groups} items={items} itemNoun="fields" renderItems={(fs) => <Card flush>{fs.map((f: any) => <Row key={f.name} dense title={f.label} sub={f.name === CREATED.name ? "When it was made" : (KIND_LOGIC[normalizeKind(f.kind)] || KIND_LOGIC.text).label} chevron onPress={() => choose(f)} />)}</Card>} />
+      ) : tagField ? (
+        <View className="gap-s3">
+          {(ctx.tags || []).length ? <View className="flex-row flex-wrap gap-s2">{(ctx.tags || []).map((t) => <Chip key={t} onPress={() => pickTag(t)}>{`#${t}`}</Chip>)}</View> : <Text tone="label">Nothing is tagged yet.</Text>}
+          <Field label="Another tag" value={String(a)} onChangeText={setA} onSubmit={() => { if (normalize(String(a))) pickTag(String(a)); }} />
+          <View className="flex-row gap-s2"><Button kind="primary" label="Add filter" disabled={!normalize(String(a))} onPress={() => pickTag(String(a))} /><Button kind="ghost" label="Back" onPress={() => setField(null)} /></View>
+        </View>
       ) : (
         <View className="gap-s3">
           <View className="flex-row flex-wrap gap-s2">{ops.map((o) => <Chip key={o.id} selected={op === o.id} onPress={() => { setOp(o.id); setA(""); setB(""); }}>{o.label}</Chip>)}</View>

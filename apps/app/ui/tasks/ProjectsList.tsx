@@ -5,6 +5,7 @@ import { newMenuItems, templateNoun, templateStage } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
+import { tagsOf, tally } from "../tags/model.js";
 import { StatusPill } from "../components/StatusPill";
 import { EmptyState } from "../components/States";
 import { Fab } from "../components/Fab";
@@ -70,12 +71,13 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const { phone, color } = useUiTheme();
   const [space, setSpace] = useState("all");
   const [type, setType] = useState("all");
+  const [tag, setTag] = useState("");
   const [q, setQ] = useState("");
   const [active, setActive] = useState(-1);
   const search = useRef<TextInput>(null);
   const work = workTypes(items);
   const word = q.trim().toLowerCase();
-  const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
+  const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!tag || tagsOf(i.row.data?.tags).includes(tag)) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
   const ownerOf = (i: Item) => { const f = i.def.fields.find((x: any) => x.kind === "actor"); return f ? aid(i.row.data?.[f.name]?.actor) : ""; };
   const stageOf = (i: Item) => { const pinned = templateStage(i.row.data); if (pinned) return pinned; const sf = stageFieldOf(i.def); const stages: string[] = sf ? stageNames(i.def, sf) : []; return { stages, at: sf ? stages.indexOf(String(i.row.data?.[sf.name] ?? "")) : -1 }; };
   const tasksOf = (i: Item) => taskFraction(world.tasks.filter((t) => t.record === i.row.urn));
@@ -84,7 +86,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) : null) || i.def.label;
   const snapshotIcon = (i: Item): string | undefined => { try { return JSON.parse(String(i.row.data?.template_snapshot ?? "{}")).icon; } catch { return undefined; } };
   const playbookName = playbook ? playbookLabel || templateNoun(items.find((i) => i.row.data?.template === playbook)?.row.data) || playbook : "";
-  const sub = (i: Item) => [typeLabel(i), manySpaces || !tagOf ? spaceName(world, spaceId(i)) : ""].filter(Boolean).join(" · ");
+  const sub = (i: Item) => [typeLabel(i), manySpaces || !tagOf ? spaceName(world, spaceId(i)) : "", tagsOf(i.row.data?.tags).slice(0, 3).map((t) => `#${t}`).join(" ")].filter(Boolean).join(" · ");
   // "/" focuses the search; Up, Down and Enter walk the rows (the search box and the page both listen).
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -96,7 +98,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
     document.addEventListener("keydown", on);
     return () => document.removeEventListener("keydown", on);
   }, []);
-  useEffect(() => setActive(-1), [word, space, type, playbook]);
+  useEffect(() => setActive(-1), [word, space, type, tag, playbook]);
   const keys = (e: any) => {
     const ev = e.nativeEvent;
     if (ev.key === "ArrowDown" && shown.length) { e.preventDefault?.(); setActive((a) => Math.min(shown.length - 1, a + 1)); }
@@ -108,7 +110,8 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const filter = (
     <Menu
       trigger={<IconButton icon="filter" label="Filter" kind="secondary" touch={phone} />}
-      items={[{ label: "All types", selected: type === "all", onPress: () => setType("all") }, ...work.map((t) => ({ label: viewDefOf(t).plural, selected: type === t.name, onPress: () => setType(t.name) }))]}
+      items={[{ label: "All types", selected: type === "all", onPress: () => setType("all") }, ...work.map((t) => ({ label: viewDefOf(t).plural, selected: type === t.name, onPress: () => setType(t.name) })),
+        ...tally(items.map((i) => i.row)).slice(0, 12).map((t) => ({ label: `Tagged #${t.tag} (${t.count})`, selected: tag === t.tag, onPress: () => setTag(tag === t.tag ? "" : t.tag) }))]}
     />
   );
   const rowMenu = (i: Item) => (
@@ -171,6 +174,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
       {world.spaces.length > 1 ? <Segmented fill={phone} label="Space" value={space} onChange={setSpace} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} /> : null}
       <View className="flex-row flex-wrap gap-s2">
         {type !== "all" ? <Chip icon="x" onPress={() => setType("all")}>{`Type: ${viewDefOf(work.find((t) => t.name === type) ?? work[0]).plural}`}</Chip> : null}
+        {tag ? <Chip icon="x" onPress={() => setTag("")}>{`Tagged #${tag}`}</Chip> : null}
         {playbook ? <Chip icon="x" onPress={() => onClearPlaybook?.()}>{`Playbook: ${playbookName}`}</Chip> : null}
       </View>
       {shown.length ? <Card flush>{shown.map((i, k) => (phone ? phoneRow(i, k) : wideRow(i, k)))}</Card> : <Card><EmptyState title="Nothing here yet" body="A record of a type that holds work shows up here with its tasks and its team." /></Card>}

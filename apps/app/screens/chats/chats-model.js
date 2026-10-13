@@ -1,11 +1,12 @@
 // @ts-check
 import { ageOf } from "./chat-model.js";
 import { AIS } from "../../../../lib/ai-ids.js";
+import { parse as parseTags } from "../../../../lib/tags.js";
 // The Chats list as one row type (CONTRACT-one-chat.md section 1): a chat is a record with a title, who is in it (people and assistants), the models on its slots, a project, a status and a last
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
 
-/** @typedef {{ pinned?: "" | "assistant" | "engineer", id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean }} ChatRow */
+/** @typedef {{ pinned?: "" | "assistant" | "engineer", id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, tags?: string[] }} ChatRow */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 /** A list the box sends as an array, or (work.chat.list) as one comma-joined string. */
@@ -32,7 +33,7 @@ export function chatsFrom(data) {
     if (!id) continue;
     out.push({
       id, title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
-      providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
+      tags: parseTags(d.tags), providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
       pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });
   }
@@ -139,3 +140,14 @@ export function chatRowsOf(list, now, places) {
 
 /** Whether a chat may be forked: the assistant's and the Engineer's pinned chats are each one chat and are never forked. @param {{ pinned?: string } | null | undefined} row */
 export const canFork = (row) => row?.pinned !== "assistant" && row?.pinned !== "engineer";
+
+/**
+ * The chats that carry a tag, and the tags to offer: every tag on the listed chats, most used first. `tag` empty keeps every chat.
+ * @param {ChatRow[]} rows @param {string} tag @returns {{ rows: ChatRow[], tags: { tag: string, count: number }[] }}
+ */
+export function byTag(rows, tag) {
+  /** @type {Map<string, number>} */ const n = new Map();
+  for (const r of rows) for (const t of r.tags || []) n.set(t, (n.get(t) ?? 0) + 1);
+  const tags = [...n].map(([t, count]) => ({ tag: t, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  return { rows: tag ? rows.filter((r) => (r.tags || []).includes(tag)) : rows, tags };
+}
