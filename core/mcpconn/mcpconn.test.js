@@ -118,11 +118,11 @@ test("connect once, then the client is the person: setup tools work, the person'
   assert.equal((await post({ jsonrpc: "2.0", method: "notifications/initialized" }, h.data.key)).status, 202);
   const list = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
   assert.ok(list.body.result.tools.some((/** @type {any} */ x) => x.name === "tools_call"), "the same tool surface `vyre mcp` offers");
-  const did = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "tools_call", arguments: { tool: "projects.create", arguments: { name: "Northwind", home: path.join(work, "northwind") } } } });
+  const did = await rpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "tools_call", arguments: { tool: "memory.remember", arguments: { text: "Northwind is a client" } } } });
   assert.equal(did.status, 200);
   assert.ok(!did.body.result.isError, JSON.stringify(did.body).slice(0, 300));
   const hostedAct = (await call("mcpconn.activity", {}, opts)).data;
-  assert.ok(hostedAct.some((/** @type {any} */ a) => a.name === "Zapier agent" && a.tool === "projects.create" && a.says === "via Zapier agent"), JSON.stringify(hostedAct).slice(0, 300));
+  assert.ok(hostedAct.some((/** @type {any} */ a) => a.name === "Zapier agent" && a.tool === "memory.remember" && a.says === "via Zapier agent"), JSON.stringify(hostedAct).slice(0, 300));
   const rows = (await call("mcpconn.list", {}, opts)).data;
   assert.deepEqual(rows.filter((/** @type {any} */ c) => !c.revoked && c.hosted).map((/** @type {any} */ c) => [c.name, c.where]), [["Zapier agent", "hosted"]]);
   assert.ok(rows.find((/** @type {any} */ c) => c.name === "Zapier agent").lastUsed, "last used is kept");
@@ -153,8 +153,9 @@ test("connect once, then the client is the person: setup tools work, the person'
   const { hostedKeyMay } = await import("../modules/agent-reach.js");
   const risky = [...d.registry.tools.keys()].filter(t => /shell|exec|install|passkey|spawn|desktop|computer|chrome|glass|screen|hands/.test(t) && hostedKeyMay(t));
   assert.deepEqual(risky, [], "a hosted key reaches a tool that can run code or drive a screen");
-  for (const ok of ["recall.search", "memory.ask", "records.list", "projects.list", "projects.create", "planner.agenda", "import.sessions.list", "threads.send"]) if (d.registry.tools.has(ok)) assert.ok(hostedKeyMay(ok), `${ok} is what a hosted key is for`);
+  for (const ok of ["recall.search", "memory.ask", "memory.remember", "records.list", "records.update", "projects.list", "work.chat.create", "threads.send", "flows.run", "files.drive.search", "mail.send", "tasks.list"]) if (d.registry.tools.has(ok)) assert.ok(hostedKeyMay(ok), `${ok} is what a hosted key is for`);
   assert.ok(!hostedKeyMay("some.new-tool"), "a tool nobody placed is refused to a hosted key");
+  for (const no of ["records.define", "records.forget", "flows.define", "flows.kit.propose", "projects.create", "files.drive.share", "approvals.answer", "tasks.decide"]) assert.ok(!hostedKeyMay(no), `${no} is not for a hosted key`);
   // the same call on a LOCAL key is not refused for being hosted
   assert.ok(!JSON.stringify(await call("roles.list", {}, as2)).includes("hosted key"), "a local key keeps its reach");
   // revoke is one call, and the next request is a 401
