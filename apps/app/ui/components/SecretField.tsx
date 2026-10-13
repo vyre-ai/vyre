@@ -9,7 +9,7 @@ export const SECRET_CLIPBOARD_MS = 30_000;
 
 /**
  * A key and value row where the value is never drawn until the person clicks Reveal. It shows for 60 seconds and hides again (Hide hides at once); Copy puts it on the clipboard
- * and empties the clipboard 30 seconds later. `read` fetches the value only at the click, so a screen holds no value before then. An assistant is never given this component's value.
+ * and empties the clipboard 30 seconds later. `read` fetches the value only at the click, so a screen holds no value before then. An agent is never given this component's value.
  * See docs/design/system/components/secret-field.md.
  */
 export function SecretField({ label, read, onAudit, revealMs = SECRET_REVEAL_MS }: {
@@ -52,7 +52,7 @@ export function SecretField({ label, read, onAudit, revealMs = SECRET_REVEAL_MS 
           <Button kind="ghost" size="sm" icon="copy" label="Copy" onPress={copy} />
         </View>
       </View>
-      <Text size="caption" tone="label">{note || (shown !== null ? `Shown for ${left} seconds, then hidden again. Assistants never see it.` : "Hidden until you reveal it. Every reveal is logged.")}</Text>
+      <Text size="caption" tone="label">{note || (shown !== null ? `Shown for ${left} seconds, then hidden again. Agents never see it.` : "Hidden until you reveal it. Every reveal is logged.")}</Text>
     </View>
   );
 }
