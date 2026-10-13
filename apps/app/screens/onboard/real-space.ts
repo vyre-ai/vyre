@@ -69,6 +69,8 @@ export async function setUpSpace(o: { spaceName: string; membersOwnComputers: bo
   const made = { id, slug, name: o.spaceName.trim() };
   active.set(made);
   onStep(1);
+  const v = await tool<{ locked?: boolean }>("vault.state").catch(() => null);
+  if (v?.locked) throw Object.assign(new Error("Your vault is locked here. Unlock it with your master password, then try again."), { code: "vault_locked" });
   await tool("vault.vaults.create", { name: slug });
   onStep(2);
   await tool("spaces.members.computers", { space: id, allow: o.membersOwnComputers });
