@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   var doc = document, root = doc.documentElement;
+  root.classList.add('js');
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
@@ -21,17 +22,53 @@
   }
   if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { paintAll(); });
 
-  // Nav
+  // Nav: sticky bar gets a hairline after scrolling; Product, Solutions and Resources open on hover (with a short delay), click and Enter; Escape closes.
   var nav = doc.querySelector('.nav');
   function onScroll() { if (nav) nav.classList.toggle('scrolled', window.scrollY > 8); }
   onScroll(); window.addEventListener('scroll', onScroll, { passive: true });
   var mb = doc.getElementById('menu'), links = doc.getElementById('links');
-  if (mb && links) {
-    mb.addEventListener('click', function () {
-      var open = links.classList.toggle('open');
-      mb.setAttribute('aria-expanded', open ? 'true' : 'false');
+  var grps = [].slice.call(doc.querySelectorAll('.nav-grp')), desk = window.matchMedia('(min-width: 881px)');
+  function setGrp(g, on) {
+    var t = g.querySelector('.nav-top'); g.classList.toggle('open', on);
+    if (t) t.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+  function closeGrps(except) { grps.forEach(function (g) { if (g !== except) { clearTimeout(g._t); setGrp(g, false); } }); }
+  function setMenu(open) {
+    if (!mb || !links) return;
+    links.classList.toggle('open', open); root.classList.toggle('menu-open', open);
+    mb.setAttribute('aria-expanded', open ? 'true' : 'false'); mb.setAttribute('aria-label', open ? 'Close menu' : 'Menu');
+  }
+  grps.forEach(function (g) {
+    var t = g.querySelector('.nav-top'); setGrp(g, false);
+    g.addEventListener('mouseenter', function () {
+      if (!desk.matches) return;
+      clearTimeout(g._t);
+      var other = grps.some(function (x) { return x !== g && x.classList.contains('open'); });
+      g._t = setTimeout(function () { closeGrps(g); setGrp(g, true); g._hov = true; }, other ? 0 : 70);
     });
-    links.addEventListener('click', function (e) { if (e.target.tagName === 'A') { links.classList.remove('open'); mb.setAttribute('aria-expanded', 'false'); } });
+    g.addEventListener('mouseleave', function () {
+      if (!desk.matches) return;
+      clearTimeout(g._t); g._t = setTimeout(function () { setGrp(g, false); }, 160);
+    });
+    t.addEventListener('click', function (e) {
+      e.preventDefault(); clearTimeout(g._t);
+      var on = !g.classList.contains('open'); closeGrps(g); setGrp(g, on);
+    });
+    g.addEventListener('focusout', function (e) {
+      if (desk.matches && e.relatedTarget && !g.contains(e.relatedTarget)) setGrp(g, false);
+    });
+  });
+  doc.addEventListener('click', function (e) { if (desk.matches && !e.target.closest('.nav-grp')) closeGrps(); });
+  doc.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var openG = grps.filter(function (g) { return g.classList.contains('open'); })[0];
+    if (openG) { var t = openG.querySelector('.nav-top'); closeGrps(); if (openG.contains(doc.activeElement)) t.focus(); }
+    if (links && links.classList.contains('open')) { setMenu(false); if (mb) mb.focus(); }
+  });
+  if (mb && links) {
+    mb.addEventListener('click', function () { setMenu(!links.classList.contains('open')); });
+    links.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('a'); if (a && !a.classList.contains('nav-top')) setMenu(false); });
+    desk.addEventListener('change', function () { setMenu(false); closeGrps(); });
   }
 
   // Copy buttons
