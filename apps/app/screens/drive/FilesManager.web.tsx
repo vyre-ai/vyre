@@ -7,11 +7,12 @@ import { useWindowDimensions, View } from "react-native";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
 import { Breadcrumb } from "./Breadcrumb";
+import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, rootsOf, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort, type TreeNode } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
@@ -263,40 +264,27 @@ async function download(r: FileRow) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** The right panel: what the file is, its preview (a slot for FileViewer), and its versions. */
+/** The right panel: the shared FileViewer for a file in the Space or a linked folder (any kind, versions, Show changes, Download, Edit for text), and for the Space the older versions to put back. */
 function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: ReturnType<typeof abilities>; onChanged: () => void }) {
-  const [text, setText] = useState<string | null>(null);
-  const [note, setNote] = useState("");
   const [versions, setVersions] = useState<{ id: string; line: string; restorable: boolean; ver?: number }[] | null>(null);
   useEffect(() => {
-    setText(null); setNote(""); setVersions(null);
-    if (!row) return;
+    setVersions(null);
+    if (!row || row.root !== "space" || !ability.versions) return;
     let live = true;
-    if (row.kind === "text" && row.size <= 262144 && (row.root === "space" || row.root === "linked")) bytesFor(row).then((b) => live && setText(textOf(bytesOf(b)))).catch((e) => live && setNote(say(e)));
-    if (ability.versions && row.root === "space") spaceVersions(undefined, row.path).then((v: Version[]) => live && setVersions([...v].reverse().map((x, k) => ({ id: String(x.ver), line: `Version ${x.ver}${k === 0 ? ", current" : ""}, ${sizeWord(x.size)}, ${when(x.at)}`, restorable: k > 0, ver: x.ver })))).catch(() => live && setVersions([]));
-    else if (ability.versions && row.root === "linked" && row.link) linked.versions(row.link, row.path).then((v: LinkedVersion[]) => live && setVersions([...v].reverse().map((x) => ({ id: x.rev, line: `${when(x.modified)}${x.by ? `, ${x.by}` : ""}`, restorable: false })))).catch(() => live && setVersions([]));
+    spaceVersions(undefined, row.path).then((v: Version[]) => live && setVersions([...v].reverse().map((x, k) => ({ id: String(x.ver), line: `Version ${x.ver}${k === 0 ? ", current" : ""}, ${sizeWord(x.size)}, ${when(x.at)}`, restorable: k > 0, ver: x.ver })))).catch(() => live && setVersions([]));
     return () => { live = false; };
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!row) return <Card><EmptyState title="Select a file" body="Its preview, versions and details show here." /></Card>;
+  const source = row.root === "space" ? driveSource(row.path) : row.root === "linked" && row.link ? linkedFileSource(row.link, row.path) : null;
   return (
-    <Card>
-      <View className="gap-s3">
-        <View className="flex-row items-center gap-s2"><IconTile name={ICON[row.kind] as never} /><Text strong numberOfLines={2} className="flex-1">{row.name}</Text></View>
-        <Text size="caption" tone="muted">{[KIND_WORD[row.kind], sizeWord(row.size), when(row.modified)].filter(Boolean).join(", ")}</Text>
-        {/* The preview slot. ui/files/FileViewer (native-mount) replaces this block for every type. */}
-        {text != null ? <Text mono size="caption" selectable numberOfLines={24}>{text}</Text> : <Text tone="muted" size="caption">{row.kind === "text" ? "" : "No preview here yet."}</Text>}
-        {note ? <Banner tone="warn"><Text>{note}</Text></Banner> : null}
-        {ability.download && (row.root === "space" || row.root === "linked") ? <View className="self-start"><Button kind="ghost" size="sm" label="Download" onPress={() => download(row).catch((e) => showToast(say(e)))} /></View> : null}
-        {ability.versions ? (
-          <>
-            <Text size="caption" strong tone="label">Versions</Text>
-            {versions === null ? <Text tone="muted">Loading.</Text> : versions.length === 0 ? <Text tone="muted">No versions listed.</Text> : (
-              <Card flush>{versions.map((v, k) => <View key={v.id}>{k ? <Divider /> : null}<Row dense title={v.line} end={v.restorable && v.ver ? <Button size="sm" kind="ghost" label="Put back" onPress={() => spaceRestore(undefined, row.path, v.ver!).then((r) => { showToast(`Version ${v.ver} is back as version ${r.version}.`); onChanged(); }).catch((e) => showToast(say(e)))} /> : undefined} /></View>)}</Card>
-            )}
-          </>
-        ) : null}
-      </View>
-    </Card>
+    <View className="gap-s3">
+      {source ? <FileViewer key={row.key} name={row.path} source={source} onSaved={onChanged} /> : (
+        <Card><View className="gap-s2"><Text strong numberOfLines={2}>{row.name}</Text><Text size="caption" tone="muted">{[KIND_WORD[row.kind], sizeWord(row.size), when(row.modified)].filter(Boolean).join(", ")}</Text><Text tone="muted" size="caption">Files on your server open as text from the older Files tabs on a phone; there is no preview here yet.</Text></View></Card>
+      )}
+      {versions && versions.length > 1 ? (
+        <Card flush>{versions.map((v, k) => <View key={v.id}>{k ? <Divider /> : null}<Row dense title={v.line} end={v.restorable && v.ver ? <Button size="sm" kind="ghost" label="Put back" onPress={() => spaceRestore(undefined, row.path, v.ver!).then((r) => { showToast(`Version ${v.ver} is back as version ${r.version}.`); onChanged(); }).catch((e) => showToast(say(e)))} /> : undefined} /></View>)}</Card>
+      ) : null}
+    </View>
   );
 }
 
