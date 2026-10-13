@@ -22,7 +22,7 @@ import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
-import { recordTrigger } from "./triggers.js";
+import { recordTrigger, eventPatterns, fieldPasses, onRecordChange } from "./triggers.js";
 import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
@@ -628,10 +628,25 @@ export class FlowRunner {
     const work = [];
     for (const f of await this.#triggerFlows()) {
       if (!triggerScope(f.flow.trigger, env)) continue;
-      work.push(this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env));
+      work.push(this.#replaceThenStart(f, env));
     }
     work.push(this.#deliver(env));
     return Promise.all(work);
+  }
+
+  /**
+   * A record event starts the Flow. If the Flow says a changed record starts over (`when_record_changes`), this Flow's runs for the same record that are only WAITING (a timer or an event) are cancelled first, so a
+   * rescheduled appointment leaves one live run with the new time. A run mid-step, held at a gate, or waiting for a person's yes is never touched.
+   * @param {any} f @param {any} env
+   */
+  async #replaceThenStart(f, env) {
+    if (onRecordChange(f.flow.trigger) === "replace" && typeof env.subject === "string") {
+      for (const r of await this.store.listRuns({ flow: f.id, state: "waiting", limit: this.limits.scan })) {
+        if (r.gate || !r.waiting || !["time", "event"].includes(r.waiting.kind) || !r.trigger || !r.trigger.event || r.trigger.event.subject !== env.subject) continue;
+        await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
+      }
+    }
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env);
   }
 
   /**
@@ -2014,7 +2029,7 @@ export const typeMatches = (pattern, type) => pattern === type || (pattern.endsW
  */
 export function triggerScope(t, env) {
   let scope = null;
-  if (t.on === "event" && typeMatches(t.event, env.type)) scope = { trigger: env.data ?? {}, event: env };
+  if (t.on === "event" && eventPatterns(t).some(e => typeMatches(e, env.type)) && fieldPasses(t, env)) scope = { trigger: env.data ?? {}, event: env };
   else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
   if (!scope) return null;
   if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
