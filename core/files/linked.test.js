@@ -103,14 +103,42 @@ test("sync is the person's own: it indexes what the source shows them and answer
   assert.equal(r.linked.providers.get("fake").calls.find(c => c[0] === "list")[1], "per_alex", "asked as the person");
 });
 
-test("another person's search sees none of it until they sync it through their own identity", async () => {
+test("a member links, lists, syncs, reads and searches her own folder, as her own account", async () => {
+  const r = seeded(); r.state.chain = person("per_bo");
+  const l = await r.run("files.linked.link", { name: "Bo-docs", provider: "fake", source: { folder: "F1" } });
+  assert.equal(l.linked_by, "per_bo");
+  assert.deepEqual((await r.run("files.linked.list")).links.map(x => x.name), ["Bo-docs"]);
+  assert.equal((await r.run("files.linked.sync", { id: l.id })).status, "ok");
+  assert.equal((await r.run("files.linked.search", { q: "launch" })).hits.length, 1);
+  assert.equal(Buffer.from((await r.run("files.linked.read", { id: l.id, path: "b.txt" })).base64, "base64").toString(), "budget numbers");
+  assert.equal(r.linked.providers.get("fake").calls.find(c => c[0] === "list")[1], "per_bo", "asked as the member, not the owner");
+  assert.equal((await r.run("files.linked.tree")).folders.length, 1);
+});
+
+test("a member neither sees nor touches another member's folder; the owner sees every one", async () => {
+  const r = seeded(); r.state.chain = person("per_bo");
+  const l = await r.run("files.linked.link", { name: "Bo-docs", provider: "fake", source: { folder: "F1" } });
+  await r.run("files.linked.sync", { id: l.id });
+  r.state.chain = person("per_cy");
+  assert.deepEqual((await r.run("files.linked.list")).links, []);
+  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, []);
+  assert.deepEqual((await r.run("files.linked.tree")).folders, []);
+  assert.deepEqual((await r.run("files.linked.mentions.search", { q: "launch" })).items, []);
+  for (const [n, i] of [["status", {}], ["sync", {}], ["ls", {}], ["read", { path: "b.txt" }], ["versions", { path: "b.txt" }], ["write", { path: "b.txt", base64: "eA==" }], ["rename", { path: "b.txt", to: "c.txt" }], ["delete", { path: "b.txt" }]])
+    assert.equal(await code(r.run("files.linked." + n, { id: l.id, ...i })), "not_found", n);
+  assert.equal(await code(r.run("files.linked.unlink", { id: l.id })), "denied");
+  r.state.chain = person("per_alex");
+  assert.equal((await r.run("files.linked.list")).links.length, 1, "the owner sees it");
+});
+
+test("a guest and an agent with no person behind them are refused where the tool is the person's", async () => {
   const r = seeded();
   const l = await r.run("files.linked.link", { name: "Docs", provider: "fake", source: { folder: "F1" } });
-  await r.run("files.linked.sync", { id: l.id });
-  r.state.chain = person("per_bo");
-  assert.deepEqual((await r.run("files.linked.search", { q: "launch" })).hits, []);
-  await r.run("files.linked.sync", { id: l.id });
-  assert.equal((await r.run("files.linked.search", { q: "launch" })).hits.length, 1);
+  for (const chain of [{ hops: [{ actor: { kind: "guest", id: "g1", space: SPACE } }] }, { hops: [{ actor: { kind: "agent", id: "kit", space: SPACE } }] }, null]) {
+    r.state.chain = chain;
+    for (const [n, i] of [["list", {}], ["search", { q: "x" }], ["tree", {}], ["link", { name: "X", provider: "fake", source: { folder: "F" } }], ["sync", { id: l.id }], ["read", { id: l.id, path: "b.txt" }]])
+      assert.equal(await code(r.run("files.linked." + n, i)), "denied", n);
+  }
 });
 
 test("unlinking drops the index, and sync or search for a gone link is not_found", async () => {
