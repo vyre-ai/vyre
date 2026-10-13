@@ -1140,8 +1140,24 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): removes watchers from a project"
  },
  {
+  "tool": "publish.domain.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.domain.add opened to a model or a module in d3e4e365a (3 Oct 2026); the body decides: allowed on drafts: the body refuses a non-person on a Production site, the claim needs a DNS proof, and going live stays held for a person's yes"
+ },
+ {
+  "tool": "publish.domain.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.domain.status opened to a model or a module in f207afbde (13 Oct 2026); the body decides: a read of public DNS record data only"
+ },
+ {
+  "tool": "publish.domain.verify",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.domain.verify opened to a model or a module in d3e4e365a (3 Oct 2026); the body decides: allowed on drafts: the body refuses a non-person on a Production site, the claim needs a DNS proof, and going live stays held for a person's yes"
+ },
+ {
   "tool": "publish.go",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.go opened to a model or a module in cd3f9e63b (10 Oct 2026); the body decides: gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and the one decision also approves the preview"
+ },
+ {
+  "tool": "publish.holds",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.holds opened to a model or a module in f207afbde (13 Oct 2026); the body decides: a read, filtered by deploy.read per site"
  },
  {
   "tool": "publish.job.attention",
@@ -1150,6 +1166,10 @@
  {
   "tool": "publish.job.runs",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.job.runs opened to a model or a module in 2ca8c7e66 (11 Oct 2026); the body decides: gate: the caller must be an active member (checked through spaces.membership in code); the output is the job's own runs with secrets already scrubbed"
+ },
+ {
+  "tool": "publish.preview",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; publish.preview opened to a model or a module in d3e4e365a (3 Oct 2026); the body decides: a draft-only build in the fixed image list, nothing public; the owner decided on 13 Oct 2026 that an agent does every step of putting a site live"
  },
  {
   "tool": "publish.quick",
