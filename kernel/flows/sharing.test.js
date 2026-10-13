@@ -63,17 +63,20 @@ test("changing a Flow someone else made takes Can edit", async () => {
   assert.equal(shared.ok, true, JSON.stringify(shared.errors));
 });
 
-test("sharing a Flow: its creator shares it, someone else cannot, and a level is use, edit or none", async () => {
+test("sharing a Flow: its creator shares it, someone else cannot, Can edit lets a person change it", async () => {
   const w = await world();
   const given = new Map();
   const t = createFlows({ kernel: w.kernel, chains: { forFlow: x => w.kernel.chainFor(x), forModule: x => w.kernel.moduleChain(x), forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports,
-    access: { list: async () => [...given].map(([subject, level]) => ({ kind: "person", subject, level })), set: async (_f, person, level) => { level ? given.set(person, level) : given.delete(person); return { ok: true }; } } });
+    access: { list: () => [...given].map(([subject, level]) => ({ kind: "person", subject, level })), set: (_f, g) => { g.level ? given.set(g.subject, g.level) : given.delete(g.subject); }, level: (_f, chain) => given.get(chain.hops[0].actor.id) ?? "none" } });
   const made = await t.tools["flows.define"](chainOf(ALEX), { flow: base([make("one")]) });
-  await assert.rejects(() => t.tools["flows.access.set"](chainOf(BOB), { id: made.id, subject: "per_carl", level: "use" }), /Can edit/);
+  await assert.rejects(() => t.tools["flows.access.set"](chainOf(BOB), { id: made.id, subject: "per_carl", level: "use" }), /creator/);
+  await assert.rejects(() => t.tools["flows.define"](chainOf(BOB), { id: made.id, flow: base([make("one"), make("two")]) }), /Can edit/);
+  await t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: "use" });
+  await assert.rejects(() => t.tools["flows.define"](chainOf(BOB), { id: made.id, flow: base([make("one"), make("two")]) }), /Can edit/);
   await t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: "edit" });
+  const edited = await t.tools["flows.define"](chainOf(BOB), { id: made.id, flow: base([make("one"), make("two")]) });
+  assert.equal(edited.ok, true, JSON.stringify(edited.errors));
   assert.deepEqual((await t.tools["flows.access.get"](chainOf(ALEX), { id: made.id })).access, [{ kind: "person", subject: BOB.id, level: "edit" }]);
   await assert.rejects(() => t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: "admin" }), /level/);
-  await assert.rejects(() => t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, kind: "role", subject: "member", level: "use" }), /person/);
-  await t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, subject: BOB.id, level: null });
-  assert.deepEqual((await t.tools["flows.access.get"](chainOf(ALEX), { id: made.id })).access, []);
+  await assert.rejects(() => t.tools["flows.access.set"](chainOf(ALEX), { id: made.id, kind: "group", subject: "x", level: "use" }), /person or a role/);
 });
