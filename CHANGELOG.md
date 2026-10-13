@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- docs: DEVELOPMENT-RULES.md at the repository root holds every development rule in ten groups (architecture, security, UI and design, data and records, Flows, agents and prompts, writing, tests and CI, releases, git and commits), each with why it exists and the guard test or CI check that enforces it, or "review only"; the README and the contributing page link to it.
 - fix(tests): test/peer-race.test.js keeps its fake chain unreadable for all 12 reads of a call (three reads a look, four looks) now that an unreadable chain is retried; assertions unchanged.
 - security (GHSA-32h6-gq86-772f): fixed in 0.5.0. A call from a device removed from a Space is refused, and facts the kernel refuses never fall back to a module's service chain (commits 9af8d7c8 and 94a65fd9, merged on the stage in c2b4ca3d and c3a33ef0).
 - fix(daemon): an unreadable process chain on a socket call (a /proc read that raced on a busy box) is retried like an empty peer read, same count and backoff, so a busy box no longer refuses its own terminal with "could not tell who is calling"; after the retries the refusal is unchanged (fail closed, no fallback).
