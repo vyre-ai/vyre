@@ -11,3 +11,13 @@ export function isCredentialFile(rel) {
   if (NAMES.has(name)) return true;
   return name.startsWith(".credentials.") || /^\.claude\.json[.~-]/.test(name);
 }
+
+/** What of the agent's home folder may leave the computer at all: exactly what a restore accepts back (core/runner/sync.js restore), the provider's transcripts. Nothing that is not restored needs to leave. */
+const TRANSCRIPT = /^projects\/[^/]+\/[A-Za-z0-9_-]{1,100}\.jsonl$/;
+
+/** Whether a file under a synced root may be uploaded. The work "files" root is the person's own project (everything but nothing is filtered there); the agent home root is an allowlist (transcripts), with the credential denylist as the second layer. @param {string} rootDir @param {string} rel path from the workspace, e.g. home/.claude/projects/p/s.jsonl */
+export function mayUpload(rootDir, rel) {
+  if (rootDir === "files") return true;
+  const inRoot = String(rel).startsWith(rootDir + "/") ? String(rel).slice(rootDir.length + 1) : String(rel);
+  return TRANSCRIPT.test(inRoot) && !isCredentialFile(inRoot);
+}

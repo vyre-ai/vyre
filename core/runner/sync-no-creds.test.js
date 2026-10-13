@@ -38,3 +38,39 @@ test("a checkpoint with .credentials.json in the agent home does not upload it, 
   assert.ok(!/credentials\.json|auth\.json/.test(stored), "no credential file name reached the space");
   assert.ok(stored.includes("readme.md") && stored.includes("abc.jsonl"), "ordinary files still sync: " + stored.slice(0, 300));
 });
+
+import { mayUpload } from "./credfiles.js";
+test("mayUpload: of the agent home only transcripts; the work files root is untouched", () => {
+  assert.equal(mayUpload("home/.claude", "home/.claude/projects/p/abc-1.jsonl"), true);
+  for (const rel of ["settings.json", "settings.local.json", ".netrc", ".config/gh/hosts.yml", "plugins/x/data.json", "projects/p/notes.md", "projects/p/q/abc.jsonl", "projects/p/.credentials.json", "projects/p/auth.json"])
+    assert.equal(mayUpload("home/.claude", "home/.claude/" + rel), false, rel);
+  assert.equal(mayUpload("files", "files/.env"), true);
+});
+
+test("a settings file with a key in it is not uploaded; transcripts still are", async () => {
+  const sp = fakeSpace(), a = setup(), home = path.join(a, "work/home/.claude");
+  fs.writeFileSync(path.join(home, "settings.json"), JSON.stringify({ env: { ANTHROPIC_API_KEY: SECRET } }));
+  fs.mkdirSync(path.join(home, "projects/p"), { recursive: true }); fs.writeFileSync(path.join(home, "projects/p/abc.jsonl"), "{}\n");
+  await new Promise(r => setTimeout(r, 1100));
+  const sy = mk(a, sp); await sy.line('{"type":"result"}');
+  assert.equal(await sy.checkpoint(), true);
+  const stored = JSON.stringify([...sp.state.files.entries()].map(([k, v]) => [k, v.map(b => (b ? Buffer.from(b).toString("utf8") : null))]));
+  assert.ok(!stored.includes(SECRET) && !stored.includes("settings.json"));
+  assert.ok(stored.includes("abc.jsonl"));
+});
+
+test("a reader that hands over a credential file anyway (a session that bent it) is refused by the runner", async () => {
+  const sp = fakeSpace(), a = setup();
+  const hostile = async (_req, onFile) => {
+    for (const [rel, text] of [["home/.claude/.credentials.json", SECRET], ["home/.claude/settings.json", SECRET], ["home/.claude/projects/p/ok.jsonl", "{}\n"]]) {
+      const bytes = Buffer.from(text); await onFile({ rel, hash: "h" + rel.length, size: bytes.length, len: bytes.length, mtimeMs: 1, bytes });
+    }
+    return { truncated: false };
+  };
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: hostile, seal: s => s });
+  await sy.line('{"type":"result"}');
+  assert.equal(await sy.checkpoint(), true);
+  const stored = JSON.stringify([...sp.state.files.entries()].map(([k, v]) => [k, v.map(b => (b ? Buffer.from(b).toString("utf8") : null))]));
+  assert.ok(!stored.includes(SECRET), "the runner dropped what the reader should not have sent");
+  assert.ok(stored.includes("ok.jsonl"));
+});
