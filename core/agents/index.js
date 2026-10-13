@@ -336,6 +336,27 @@ export default {
       if (p !== "*" && !(Array.isArray(p) && p.every(x => typeof x === "string"))) throw new Error('projects must be "*" or a list of project slugs');
     };
 
+
+    /**
+     * An agent a non-staff person makes or edits can never exceed her: projects only ones she can read herself, never "*"; a computer, the personal-memory flag and credentials are the owner's and the admins'.
+     * @param {any} meta @param {{ projects?: any, computer?: any, auth?: any, personal?: any }} i
+     */
+    const clamp = async (meta, i) => {
+      if (await seesFull(meta)) return;
+      const deny = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "denied" });
+      if (i.projects === "*") throw deny("only the owner or an admin gives an agent every project; pick the projects you work in");
+      if (Array.isArray(i.projects) && i.projects.length) {
+        const me = await personOf(meta);
+        for (const slug of i.projects) {
+          const may = me ? await ctx.call("work.project.may-read", { project: String(slug), person: me }).catch(() => null) : null;
+          if (!(may && !may.error && may.data && may.data.ok === true)) throw deny(`you cannot read the project ${slug} yourself, so an agent of yours cannot have it`);
+        }
+      }
+      if (i.computer) throw deny("only the owner or an admin gives an agent a computer");
+      if (i.personal === true) throw deny("only the owner or an admin lets an agent read personal memory");
+      if (i.auth && typeof i.auth === "object" && Object.keys(i.auth).length) throw deny("an agent's credentials are the owner's to pick; leave them out and it runs on the AI account of whoever asks it, or ask the owner");
+    };
+
     /** Only the assistant may drive other sessions, from inside its own thread. */
     // A label never grants: an agent is the assistant only by what vyred verified (meta.agent, meta.agentKind from the stored row); a label that
     // names an agent with nothing verified behind it is refused.
@@ -535,6 +556,7 @@ export default {
         if (String(i.name).trim().toLowerCase() === "assistant" && kind !== "assistant") throw new Error("assistant is the name of your assistant: pick another name for this agent");
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
+        await clamp(meta, i);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
         // created, rather than one whose memory access silently does not match what it says.
@@ -574,6 +596,7 @@ export default {
         // A built-in agent keeps its shape: only its words, model and effort change.
         if (a.builtin) { const extra = Object.keys(i).filter(k => i[k] !== undefined && !["name", "agent", "instructions", "model", "effort"].includes(k)); if (extra.length) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "denied" }); }
         checkProjects(i.projects);
+        await clamp(meta, { projects: i.projects, computer: i.computer, auth: i.auth, personal: i.personal });
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
         const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };

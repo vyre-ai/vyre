@@ -77,3 +77,14 @@ test("a link is judged against the person adding it: a member cannot link a fold
   assert.equal(ok.error, undefined, JSON.stringify(ok));
   assert.deepEqual((await owner("agents.context.list", { agent: "intake" })).data.links.length, 1);
 });
+
+test("a member's agent never exceeds her: not every project, not a project she is not on, no computer, no credentials, no personal memory; an admin may", { timeout: 120_000 }, async t => {
+  const { ben, ada, project } = await world(t);
+  for (const [what, extra] of [["every project", { projects: "*" }], ["a project she is not on", { projects: [project.slug] }], ["a computer", { projects: [], computer: true }], ["credentials", { projects: [], auth: { vault: "claude-setup-token" } }], ["personal memory", { projects: [], personal: true }]]) {
+    const r = await ben("agents.create", { name: "mine", kind: "agent", ...extra });
+    assert.equal(r.error && r.error.code, "denied", `${what}: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  assert.equal((await ben("agents.create", { name: "mine", kind: "agent", projects: [] })).error, undefined, "a plain agent is hers");
+  assert.equal((await ben("agents.update", { name: "mine", computer: true })).error.code, "denied", "and she cannot raise it later");
+  assert.equal((await ada("agents.create", { name: "adas", kind: "agent", projects: [project.slug], computer: true })).error, undefined, "an admin may");
+});
