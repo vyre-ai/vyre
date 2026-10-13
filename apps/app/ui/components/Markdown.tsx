@@ -28,7 +28,7 @@ function Inline({ nodes, ctx, base }: { nodes: Node[]; ctx: Ctx; base?: { bold?:
         if (n.t === "code") return <Text key={i} mono size="read" style={{ fontSize: 14, backgroundColor: ctx.color["surface-3"] }}>{`\u00A0${n.v}\u00A0`}</Text>;
         if (n.t === "b") return <Text key={i} size="read" strong style={base?.italic ? { fontStyle: "italic" } : undefined}><Inline nodes={n.c} ctx={ctx} base={{ ...base, bold: true }} /></Text>;
         if (n.t === "i") return <Text key={i} size="read" strong={base?.bold} style={{ fontStyle: "italic" }}><Inline nodes={n.c} ctx={ctx} base={{ ...base, italic: true }} /></Text>;
-        if (n.t === "ref") return ctx.renderRef ? <Fragment key={i}>{ctx.renderRef(n as RefNode)}</Fragment> : <Inline key={i} nodes={n.c} ctx={ctx} base={base} />;
+        if (n.t === "ref") return ctx.renderRef ? <Fragment key={i}>{ctx.renderRef(n as unknown as RefNode)}</Fragment> : <Inline key={i} nodes={n.c} ctx={ctx} base={base} />;
         if (n.t === "a") return <Text key={i} size="read" accessibilityRole="link" className="hover:underline" onPress={() => ctx.onLink(n.href)} style={{ textDecorationLine: "underline" }}><Inline nodes={n.c} ctx={ctx} base={base} /></Text>;
         return null;
       })}

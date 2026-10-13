@@ -9,7 +9,7 @@ export function RefChip({ lead, name, kind, onOpen }: { lead: "@" | "#"; name: s
   const { color } = useUiTheme();
   const body = (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, backgroundColor: color["surface-3"] }}>
-      <Icon name={refIcon(lead, kind) as IconName} size={13} tone={lead === "@" ? "accent" : "text-2"} />
+      <Icon name={refIcon(lead, kind) as IconName} size={14} tone={lead === "@" ? "accent" : "text-2"} />
       <Text size="read" strong style={{ color: lead === "@" ? color.accent : color.text }}>{name}</Text>
     </View>
   );
