@@ -124,11 +124,11 @@ export function stepSummary(s, o, d) {
     case "upsert": return `Create or update a ${named(o.types, s.type) || "new"} record, matched by ${(s.matchFields || []).map((/** @type {any} */ f) => f.field).filter(Boolean).join(", ") || "a field"}`;
     case "remove": return `Remove ${linkWords(s.record, d, o)}`;
     case "stage": return `Move ${linkWords(s.record, d, o)} to ${(s.to || "").trim() || "a stage"}`;
-    case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${dateWords(s.field, d, o)}`;
+    case "wait": if (s.mode === "until") return `Wait until ${s.when === "at" ? "" : `${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"} ${s.when === "after" ? "after" : "before"} `}${tokenWords(s.field, d, o)}`;
       return `Wait ${s.amount || 1} ${Number(s.amount || 1) === 1 ? String(s.unit || "hours").replace(/s$/, "") : s.unit || "hours"}`;
     case "formula": return `Work out ${(s.formula || "").trim() || "a value"}`;
     case "web": return `${s.method === "GET" || !s.method ? "Fetch" : "Send"} ${s.path || "/"} ${s.method === "GET" || !s.method ? "from" : "to"} ${named(o.connections || [], s.connector) || "a web service"}`;
-    case "sms": return `Text ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? "the number from the form" : s.to.trim()) : "someone"}`;
+    case "sms": return `Text ${s.to && s.to.trim() ? (/^\{.*\}$/.test(s.to.trim()) ? (d && isRecordTrigger(d.trigger) ? tokenWords(s.to, d, o, "the number from the record") : "the number from the form") : s.to.trim()) : "someone"}`;
     case "classify": return `Sort the text into ${String(s.labels || "").split(",").map((x) => x.trim()).filter(Boolean).join(" or ") || "groups"}`;
     case "extract": return `Pull out ${(s.fields || []).map((/** @type {any} */ f) => f.name).filter(Boolean).join(", ") || "facts"} from the text`;
     case "subflow": return `Run the flow ${named(o.flows || [], s.flow) || "chosen"}`;
@@ -272,13 +272,15 @@ export function stepDefinition(s, d) {
 /** Field rows as a stored object: the field's slug and a typed value. @param {any[] | undefined} rows */
 const pairs = (rows) => Object.fromEntries((rows || []).filter((/** @type {any} */ f) => f.field && f.field.trim()).map((/** @type {any} */ f) => [slug(f.field), val(f.value)]));
 const UNITS = /** @type {Record<string, number>} */ ({ minutes: 60_000, hours: 3_600_000, days: 86_400_000 });
-/** A date field in words, for a label: the field's own name where the Flow's record has it, else the token as typed. @param {string | undefined} f @param {Draft | undefined} d @param {Options} o */
-function dateWords(f, d, o) {
+/** A field token in words, for a label: the field's own name where the Flow's record has it, else the token as typed. @param {string | undefined} f @param {Draft | undefined} d @param {Options} o @param {string} [none] */
+function tokenWords(f, d, o, none = "a date") {
   const m = /^\{(?:after\.)?([a-z0-9_]+)\}$/i.exec(String(f || "").trim());
-  if (!m) return "a date";
+  if (!m) return none;
   const ty = d && (d.trigger.kind === "created" || d.trigger.kind === "stage") ? o.types.find((x) => x.name === d.trigger.type) : undefined;
   return `{${ty?.fields?.find((x) => x.name === m[1])?.label || m[1]}}`;
 }
+/** What a Wait until can wait for: the values before this step, each named plainly, as [token, label]. @param {Draft} d @param {string} stepId @param {Options} o @returns {[string, string][]} */
+export const dateChoices = (d, stepId, o) => valueSources(d, stepId, o).map(([tok, words]) => /** @type {[string, string]} */ ([tok, words.replace(/ of the record that started it$/, "").replace(/ from the form$/, "")]));
 export const WAIT_MODES = /** @type {[string, string][]} */ ([["for", "For a while"], ["until", "Until a date"]]);
 export const WHEN_CHOICES = /** @type {[string, string][]} */ ([["before", "before"], ["after", "after"], ["at", "at that time"]]);
 export const UNIT_CHOICES = /** @type {[string, string][]} */ ([["minutes", "minutes"], ["hours", "hours"], ["days", "days"]]);

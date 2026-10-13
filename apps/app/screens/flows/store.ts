@@ -23,7 +23,7 @@ type S = {
 const base = flowsRepo.kits();
 export const useFlowsState = create<S>((set) => ({
   applied: false, setApplied: (applied) => set({ applied }),
-  off: {}, setOn: (id, on) => set((s) => ({ off: { ...s.off, [id]: !on } })),
+  off: { reminder: true }, setOn: (id, on) => set((s) => ({ off: { ...s.off, [id]: !on } })),
   made: [{ id: "refund", draft: REFUND_DRAFT }, { id: "atp", draft: ATP_DRAFT }, { id: "reminder", draft: REMINDER_DRAFT }],
   saveMade: (id, draft) => {
     const key = id ?? `flow-${Date.now().toString(36)}`;
