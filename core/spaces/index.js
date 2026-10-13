@@ -37,7 +37,6 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
-import { entryView } from "./entry-view.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch } from "../../lib/release-build.js";
@@ -82,7 +81,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
-import { httpFetch } from "../../lib/http.js";
+import { httpFetch } from "../../lib/http.js"; import { entryView } from "./entry-view.js";
 import { chosenServer } from "./chosen-server.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
