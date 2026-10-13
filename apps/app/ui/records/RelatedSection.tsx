@@ -11,7 +11,7 @@ import { markRef } from "../marks/useMark";
 export type RelatedRow = { id: string; title: string; sub?: string; chip?: string };
 
 /** The records that link to this one, by type ("Assets 3"), each a row that opens, with Add under it. A type with none says so and offers the same Add. */
-export function RelatedSection({ title, noun, rows, onOpen, onAdd }: { title: string; noun: string; rows: RelatedRow[]; onOpen: (id: string) => void; onAdd: () => void }) {
+export function RelatedSection({ title, noun, rows, onOpen, onAdd }: { title: string; noun: string; rows: RelatedRow[]; onOpen: (id: string) => void; /** Omitted, there is no Add under the list. */ onAdd?: () => void }) {
   return (
     <View className="gap-s2">
       <SectionLabel meta={String(rows.length)} first>{title}</SectionLabel>
@@ -25,7 +25,7 @@ export function RelatedSection({ title, noun, rows, onOpen, onAdd }: { title: st
           ))}
         </Card>
       ) : <Text tone="label">{`No ${title.toLowerCase()} yet.`}</Text>}
-      <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label={`Add ${noun}`} onPress={onAdd} /></View>
+      {onAdd ? <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label={`Add ${noun}`} onPress={onAdd} /></View> : null}
     </View>
   );
 }

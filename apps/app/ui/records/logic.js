@@ -82,3 +82,29 @@ export function createPayload(fields, values) {
   }
   return { plain, sealed };
 }
+
+/** The related records of a page by type, in the order each type first appears. @param {{ urn: string, title: string, type: string }[]} related @param {Record<string, { label: string, plural: string }>} types */
+export function groupRelated(related, types) {
+  /** @type {{ type: string, label: string, plural: string, rows: { urn: string, title: string, type: string }[] }[]} */ const out = [];
+  for (const r of related) {
+    let g = out.find((x) => x.type === r.type);
+    if (!g) { const t = types[r.type]; g = { type: r.type, label: t?.label ?? r.type, plural: t?.plural ?? `${r.type}s`, rows: [] }; out.push(g); }
+    g.rows.push(r);
+  }
+  return out;
+}
+
+/** Up to three facts for under a record's name, from its plain filled fields (never the first text field, which is the name, a stage, a sealed or hidden one). @param {{ fields: any[] }} def @param {{ data?: Record<string, any> }} rec @returns {[string, string][]} */
+export function factsOf(def, rec) {
+  const first = def.fields.find((f) => f.kind === "text");
+  /** @type {[string, string][]} */ const out = [];
+  for (const f of def.fields) {
+    if (out.length === 3) break;
+    if (f === first || f.hidden || f.seal || !["text", "choice", "number", "money", "date"].includes(f.kind)) continue;
+    const v = rec.data?.[f.name];
+    if (blank(v)) continue;
+    const s = f.kind === "money" ? `$${Number(v.amount).toLocaleString("en-US")}` : String(v);
+    out.push([f.label, s]);
+  }
+  return out;
+}

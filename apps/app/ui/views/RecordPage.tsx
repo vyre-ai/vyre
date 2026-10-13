@@ -3,6 +3,8 @@ import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
+import { RelatedSection } from "../records/RelatedSection";
+import { groupRelated } from "../records/logic.js";
 import { Row } from "../components/Row";
 import { Chip } from "../components/Chip";
 import { Banner } from "../components/Banner";
@@ -167,14 +169,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story }: { de
   );
   const side = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-1")}>
-      <Card title="Linked records" flush>
-        {related.length ? related.map((l, i) => (
-          <View key={l.urn}>
-            {i > 0 ? <Divider /> : null}
-            <Row lead={<Avatar of={{ kind: l.type === "contact" ? "person" : "project", id: l.urn, name: l.title }} />} title={l.title} sub={l.type[0].toUpperCase() + l.type.slice(1)} onPress={() => onOpen(l.urn)} />
-          </View>
-        )) : <View className="px-s4 pb-s4"><Text tone="label">Nothing linked.</Text></View>}
-      </Card>
+      {related.length ? groupRelated(related, Object.fromEntries(world.types.map((t: any) => [t.name, { label: t.label, plural: viewDefOf(t).plural }]))).map((g) => (
+        <RelatedSection key={g.type} title={g.plural} noun={g.label.toLowerCase()} rows={g.rows.map((l) => ({ id: l.urn, title: l.title, sub: g.label }))} onOpen={onOpen} />
+      )) : <Card title="Linked records"><Text tone="label">Nothing linked.</Text></Card>}
       <Card title="Files" flush>
         {files.length ? files.map((x: any, i: number) => (
           <View key={x.field}>
