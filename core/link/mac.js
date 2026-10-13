@@ -30,6 +30,7 @@ import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js"
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
+import { PERSON_SURFACES as LEAF_SURFACES } from "../../lib/person-surfaces.js";
 import { CLASSES, classOf, engineFor } from "../../lib/computer-classes.js";
 import { allowed as filesAllowed, only as filesOnly, saveName as filesSaveName } from "../../lib/computer-files.js";
 import { checkAnswer, checkCall, Nonces, NONCES_FILE } from "./assert.js";
@@ -37,12 +38,12 @@ import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
-import { agentClaim, callerKind } from "../modules/index.js";
+import { agentClaim, callerKind, ownerDevice } from "../modules/index.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
 const PEOPLE = new Set(["cli", "local", "capsule", "deck"]);
 /** The person's own surfaces and the owner's devices (what link.status, which shows the pairing code, and link.call, which drives the box as this Mac, answer to). A model session is not one. */
-const PERSON_SURFACES = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
+const PERSON_SURFACES = Object.freeze([...LEAF_SURFACES, "tailnet", "device"]);   // the one list plus the owner's devices; a bare "mobile" is no surface: the phone arrives as its paired device
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -720,14 +721,15 @@ export function macSide(ctx, seam = {}) {
   };
 
   ctx.tool("link.call", {
-    effect: "write", callers: [...PERSON_SURFACES, "module"],
+    effect: "write", callers: [...LEAF_SURFACES, "module"],
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
     // The box sees this Mac as the owner's device, so a model or an agent must never ride it: only the person's own surfaces and modules call it (reviewer-2 HD-3). A model that needs a box tool
     // asks through its own tools, which the box gates by the model's own caller.
-    callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
     run: async ({ tool, input }, meta) => {
       firstPartyOnly(meta, "link.call");
+      // "deck" in callers also admits any paired device or tailnet node (callerAllowed), and this call forwards as THIS Mac's session: such a caller needs the person's own session first, as a reach-person tool asks
+      if (ownerDevice(String((meta && meta.caller) || "")) && !(meta && meta.person)) throw Object.assign(new Error("link.call is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
       // A module hop made for a model (meta.origin) is a model's call: it never rides this Mac's paired-device identity to the box.
       if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("this call is the person's own; a module acting for a model session may not use it, so ask the person to do it"), { code: "denied" });
       const r = await remote(tool, input || {}, meta && meta.caller);
