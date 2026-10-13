@@ -124,11 +124,11 @@ test("vault.me.release hands her Dropbox token to the files module only, for the
   const { call, people } = rig(t);
   await call("vault.me.account.create", { password: PW }, BOB);
   await call("vault.me.account.create", { password: PW }, EVE);
-  await call("vault.me.put", { name: "dropbox", kind: "api-key", fields: { token: "sl.bob-dropbox-token-0001" } }, BOB);
+  await call("vault.me.put", { name: "dropbox", kind: "api-key", fields: { value: "sl.bob-dropbox-token-0001" } }, BOB);
   await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
   const asFiles = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.release", input, who, { caller: "module:files", ...extra });
-  assert.deepEqual((await asFiles({ name: "dropbox", field: "token" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" });
-  assert.deepEqual((await asFiles({ name: "dropbox" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" }, "field defaults to token");
+  assert.deepEqual((await asFiles({ name: "dropbox", field: "value" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" });
+  assert.deepEqual((await asFiles({ name: "dropbox" }, BOB)).data, { person: BOB, value: "sl.bob-dropbox-token-0001" }, "field defaults to value");
   // another module, a person's surface, a model: refused
   for (const caller of ["module:mcp", "module:sessions", "cli", "device:abcdef", "mcp", "harness", "mcp:agent:juno"]) assert.equal((await call("vault.me.release", { name: "dropbox" }, BOB, { caller })).error?.code, "denied", caller);
   // only her dropbox item, never another of hers

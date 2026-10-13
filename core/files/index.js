@@ -421,7 +421,7 @@ export default {
     // Google Drive is the first source. It is made as the calling person through the google module's modules-only tool google.drive.linked (google/drive-seam.js picks their account), the
     // same module-to-module route the calendar sync and the watchers already use, so files holds no Google credential and reads no Google table.
     const gdrive = googleDriveProvider({ client: driveClient(input => ctx.call("google.drive.linked", input)) });
-    // Dropbox is the second. Its token is the calling person's OWN Vault item named "dropbox" (field token): the owner's through the Vault's module release, a member's through vault.me.release, which
+    // Dropbox is the second. Its token is the calling person's OWN Vault item named "dropbox" (field value): the owner's through the Vault's module release, a member's through vault.me.release, which
     // resolves the person from the call's chain. There is no other fallback, so a member never reaches the owner's item. Only this module may call files.dropbox.linked (dropbox-seam.js holds the
     // fixed host list, the 25 MB read cap and the refusal of delete_v2).
     const dropboxTokenFor = async (/** @type {string} */ person) => {
@@ -429,10 +429,10 @@ export default {
       try {
         const owner = ctx.kernel && ctx.kernel.owner;
         if (owner !== undefined && String(person) === String(owner)) {
-          const v = await ctx.vault.fetch("dropbox", { field: "token" });
+          const v = await ctx.vault.fetch("dropbox", { field: "value" });
           if (typeof v === "string" && v) return v;
         } else {
-          const r = await ctx.call("vault.me.release", { name: "dropbox", field: "token" });
+          const r = await ctx.call("vault.me.release", { name: "dropbox", field: "value" });
           if (!r.error && r.data && r.data.person === String(person) && typeof r.data.value === "string" && r.data.value) return r.data.value;
         }
       } catch { /* no item, a locked vault or no grant: the same plain sentence */ }

@@ -93,8 +93,8 @@ export function register({ ctx, people, tool }) {
       if (!allowed || !allowed.includes(String(input && input.name))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const id = await memberOf(ctx.kernel, meta);
       const it = await people.get(id, { name: String(input.name) });
-      const value = it.fields[String(input.field || "token")];
-      if (typeof value !== "string" || !value) throw new Error(`no ${String(input.field || "token")} on ${input.name}`);
+      const value = it.fields[String(input.field || "value")];
+      if (typeof value !== "string" || !value) throw new Error(`no ${String(input.field || "value")} on ${input.name}`);
       return { person: id, value };
     },
   });
