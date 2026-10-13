@@ -42,6 +42,15 @@ const strip = (s) => String(s).replace(/<[^>]+>/g, '').replace(/&middot;/g, '·'
 const MARK = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg>`;
 const WORD = `<svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ic = (d, w = 28) => `<svg class="ic" width="${w}" height="${w}" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+// ---------- device frames and real app clips ----------
+// Every screen on the site is a recording of the app itself (site/media, from the app's preview build with sample data), one clip per theme.
+// The frames are drawn in CSS (v2.css: .mbp, .ip, .appwin). A visitor who asks for less motion gets the still poster.
+const clip = (name, w, h) => ['dark', 'light'].map((t) => `<picture class="th-${t}"><source media="(prefers-reduced-motion: reduce)" srcset="/media/${name}-${t}.png"><img src="/media/${name}-${t}.webp" width="${w}" height="${h}" alt="" loading="lazy" decoding="async"></picture>`).join('');
+const BARS = '<svg viewBox="0 0 64 12" aria-hidden="true"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".8"/><rect x="5" y="5.5" width="3" height="6.5" rx=".8"/><rect x="10" y="3" width="3" height="9" rx=".8"/><rect x="15" y="0" width="3" height="12" rx=".8"/></g><path d="M27 4.2a8 8 0 0 1 11 0M29.2 6.9a4.8 4.8 0 0 1 6.6 0M32.5 9.6l.01 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><g><rect x="43" y=".8" width="19" height="10.4" rx="3" fill="none" stroke="currentColor" opacity=".5"/><rect x="44.6" y="2.4" width="13.5" height="7.2" rx="1.6" fill="currentColor"/><rect x="62.6" y="4" width="1.4" height="4" rx=".7" fill="currentColor" opacity=".5"/></g></svg>';
+const laptop = (name, label) => `<figure class="mbp" role="img" aria-label="${esc(label)} Sample data."><div class="mbp-lid"><div class="mbp-bezel"><div class="mbp-screen"><div class="mbp-menubar" aria-hidden="true"><span><b>Vyre</b><i>File</i><i>Edit</i><i>View</i><i>Window</i></span><span>Wed 9:41</span></div><i class="mbp-notch" aria-hidden="true"></i><div class="mbp-app">${clip(name, 1440, 900)}</div></div></div></div><div class="mbp-deck" aria-hidden="true"><i class="mbp-keys"></i><i class="mbp-keys k2"></i></div><div class="mbp-lip" aria-hidden="true"><i></i></div></figure>`;
+const phoneFrame = (name, label, style = '') => `<figure class="ip"${style ? ` style="${style}"` : ''} role="img" aria-label="${esc(label)} Sample data."><i class="ip-btn a" aria-hidden="true"></i><i class="ip-btn u" aria-hidden="true"></i><i class="ip-btn d" aria-hidden="true"></i><i class="ip-btn p" aria-hidden="true"></i><div class="ip-body"><div class="ip-glass"><div class="ip-status" aria-hidden="true"><span>9:41</span><span class="ip-sig">${BARS}</span></div><i class="ip-island" aria-hidden="true"></i><div class="ip-app">${clip(name, 390, 844)}</div></div></div></figure>`;
+const appwin = (name, label) => `<figure class="appwin" role="img" aria-label="${esc(label)} Sample data."><div class="appwin-bar" aria-hidden="true"><span>Vyre</span><span class="cap"><i>&#8211;</i><i>&#9633;</i><i>&#215;</i></span></div><div class="appwin-app">${clip(name, 1440, 900)}</div></figure>`;
+
 const I = {
   mac: ic('<rect x="3.5" y="5" width="21" height="14" rx="2"/><path d="M10 23h8M14 19v4"/>'),
   win: ic('<path d="M4 6.5l8.5-1.2v8.2H4zM14 5l10-1.4v9.9H14zM4 15h8.5v8.2L4 22zM14 15h10v9.4L14 23z"/>'),
@@ -214,18 +223,10 @@ const homeBody = `
       <canvas class="field" aria-hidden="true"></canvas>
       <div class="stage-in">
         <div class="stage-row">
-          <div class="phone" aria-hidden="true">
-            <div class="notch"></div>
-            <div class="scr">
-              <div class="hdr"><span>alex.vyre.run</span><span>2 waiting</span></div>
-              <p class="ph">Needs you</p>
-              <div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10</small><div class="acts"><span>Approve</span><span>Deny</span></div></div>
-              <div class="need">Pay invoice 204, $320<small>Standing permission needs your touch</small></div>
-              <div class="faceid">&#9679; Face ID to approve</div>
-            </div>
-          </div>
+          ${laptop('lap-chat', 'The Vyre app on a laptop: a chat where the agent juno has run the tests and now asks for a yes before it emails a client.')}
+          ${phoneFrame('ph-now', 'The Vyre app on a phone, on the Now screen: what needs you today.')}
         </div>
-        <p class="demo-tag">Sample data. Nothing you type here leaves this page.</p>
+        <p class="demo-tag">Recorded from the app. Sample data.</p>
       </div>
     </div>
   </div>
@@ -273,15 +274,7 @@ const homeBody = `
       <p class="lead">A chat belongs to Vyre, not to one model. Change the model whenever you like and the thread, its files and its recall stay.</p>
       ${list([['The model picker', 'Choose the provider, account, model and effort from the composer.'], ['@codex, @grok', 'Add a name to one message to ask another model. The chat stays where it was.'], ['Agents in roles', 'Anyone in the Space can make an agent and share it with a person or a role as use-only or full. Give one the work, another the review, another the plan.'], ['See who answered', 'Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="The model picker listing Claude, Codex, Grok and OpenRouter, each from your own account. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Answer with</span></div>
-      <div class="rows">
-        <div class="row"><span class="mk">C</span><div class="grow"><b>Claude</b><small>Your Claude account</small></div><span class="st on">answering</span></div>
-        <div class="row"><span class="mk">X</span><div class="grow"><b>Codex</b><small>Your ChatGPT sign-in</small></div><span class="st">@codex</span></div>
-        <div class="row"><span class="mk">G</span><div class="grow"><b>Grok</b><small>Your xAI account</small></div><span class="st">@grok</span></div>
-        <div class="row"><span class="mk">O</span><div class="grow"><b>OpenRouter</b><small>Your key &middot; any model it offers</small></div><span class="st"></span></div>
-        <div class="sysline">Switched to Codex. The thread and its files came with it.</div>
-      </div></div></div>
+    <div class="mock rv">${laptop('lap-picker', 'The Vyre chat box with the Who answers menu open: Everyone, juno, Claude, Codex and Grok.')}</div>
   </div>
 </section>
 
@@ -293,17 +286,7 @@ const homeBody = `
       <p class="lead">A Flow starts from a trigger and runs steps. A step can give work to a person or to an agent. The agent wakes with the task, the record and the Flow it came from.</p>
       ${list([['Finish, hand on or say stuck', 'An agent ends a task as done, hands it on, or marks it stuck with a plain reason. A task is never left open in silence.'], ['People in the loop', 'A step can name an assignee, an approver and followers. A person approves a Flow before it runs, and every run has its own page.'], ['Readable dates', 'Text in a step fills in values, such as {today} or {after.starts_at - 1 day as date}, with a date picker to insert them.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="A Flow card: when an intake form arrives, find or create the contact, give the first draft to an agent, ask a person to approve, then send. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Flow &middot; New intake</span></div>
-      <dl class="kv">
-        <dt>Starts</dt><dd>A form is submitted</dd>
-        <dt>Step 1</dt><dd>Find or create the contact</dd>
-        <dt>Step 2</dt><dd>Give the first draft to kit, an agent</dd>
-        <dt>Step 3</dt><dd>Ask Alex to approve it</dd>
-        <dt>Step 4</dt><dd>Send, held for Alex’s yes</dd>
-      </dl>
-      <div class="sysline">Approved by <b>Alex</b> before it runs &middot; each run has its own page</div>
-    </div></div>
+    <div class="mock rv">${laptop('lap-flows', 'The Flows screen in the Vyre app: each Flow written out in plain words, grouped, with a switch.')}</div>
   </div>
 </section>
 
@@ -316,12 +299,7 @@ const homeBody = `
       <p class="lead">When you ask for something, that is the yes. Touch ID or Face ID is only for pairing, vault secrets and anything that sends, posts or pays on its own.</p>
       ${list([['No pop-up for what you asked', 'An action that matches your request goes ahead. An action nobody asked for waits.'], ['A floor no setting removes', 'Some rules cannot be switched off, and an agent cannot loosen one without telling you, with an Undo.'], ['Signed releases', 'Updates are checked against a pinned key. A box refuses an unsigned or older release and keeps running.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="Two requests. The first, which you asked for, goes ahead. The second, a payment nobody asked for, waits for Face ID. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Session &middot; Northwind</span></div>
-      <div class="msg"><div class="who"><span class="mk" style="width:20px;height:20px;font-size:9px">A</span>You</div>Send Northwind the new order form.</div>
-      <div class="msg"><div class="who"><span class="mk vi" style="width:20px;height:20px;font-size:9px">k</span>kit</div>Sent. You asked for it, so it went straight out. <span class="pill ok" style="margin-left:6px">done</span></div>
-      <div class="msg"><div class="who"><span class="mk vi" style="width:20px;height:20px;font-size:9px">k</span>kit</div>A supplier invoice is due: $320. Nobody asked me to pay it, so it waits. <div class="held"><span class="pill acc">&#9679; Face ID to approve</span><span class="pill">Deny</span></div></div>
-    </div></div>
+    <div class="mock rv">${laptop('lap-chat', 'A Vyre chat: juno runs the tests, then waits for a yes with Face ID before it sends a note to a client.')}</div>
   </div>
 </section>
 
@@ -333,13 +311,7 @@ const homeBody = `
       <p class="lead">The vault holds passwords, API keys, logins with one-time codes, cards, notes and SSH keys, in groups. Each member also has a vault of their own.</p>
       ${list([['Share and take back', 'Share an item with a person as Can use or Can edit, then revoke it.'], ['A placeholder, not the value', 'A model sees a placeholder. The real value is put in outside the model, at the moment of sending.'], ['A person says yes', 'Revealing a value, or sending with it, takes a person’s yes.']])}
     </div>
-    <div class="mock rv"><div class="win" role="img" aria-label="A vault item whose value stays sealed, shared with an agent as Can use. Sample data.">
-      <div class="win-bar"><i></i><i></i><i></i><span class="t">Vault &middot; Billing</span></div>
-      <div class="row"><span class="mk sq">&#128274;</span><div class="grow"><b>Northwind billing portal</b><small>Login &middot; one-time code</small></div><span class="sealed">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span></div>
-      <div class="row"><span class="mk vi">k</span><div class="grow"><b>kit</b><small>Can use</small></div><span class="st on">shared</span></div>
-      <div class="row"><span class="mk">A</span><div class="grow"><b>Alex</b><small>Can edit</small></div><span class="st">owner</span></div>
-      <div class="sysline">kit used it for the 9 am export. It never saw the value.</div>
-    </div></div>
+    <div class="mock rv">${laptop('lap-vault', 'The Vyre vault: a login whose value stays hidden, used by the agent juno with Can use.')}</div>
   </div>
 </section>
 
@@ -353,16 +325,7 @@ const homeBody = `
       ${list([['Needs rows', 'Approve, deny or answer by swipe. Push tells you when an agent is waiting.'], ['Chats, agents, Find and Drive', 'Browse your shared folders and ask your memory from the same app.'], ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept.']])}
       <p class="sm" style="margin-top:18px">Nothing else to install. <a href="/phone/">More on the phone app</a></p>
     </div>
-    <div class="mock rv" style="display:flex;justify-content:center"><div class="phone" style="width:min(100%,300px)" role="img" aria-label="The Vyre phone app on the Needs screen, with two items waiting. Sample data.">
-      <div class="notch"></div>
-      <div class="scr">
-        <div class="hdr"><span>alex.vyre.run</span><span>online</span></div>
-        <p class="ph">Needs you</p>
-        <div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10 &middot; 18 min</small><div class="acts"><span>Approve</span><span>Deny</span></div></div>
-        <div class="need">juno drafted a reply to Northwind<small>Q3 report &middot; email to a client &middot; 6 min</small></div>
-        <div class="need">Which export format should kit use?<small>A question from kit</small></div>
-        <div class="faceid">&#9679; Face ID to approve</div>
-      </div></div></div>
+    <div class="mock rv" style="display:flex;justify-content:center">${phoneFrame('ph-now', 'The Vyre phone app on the Now screen, with what needs you.', 'width:min(100%,300px)')}</div>
   </div>
 </section>
 
@@ -507,7 +470,7 @@ devicePage({
   h1: 'The Vyre app, <b>in its own window on your Mac.</b>',
   lead: 'Download it, open it, and the app walks you through connecting to your server. Your agents run on your server; the Mac app is the window.',
   ogSub: 'The Vyre app in its own window on your Mac, with Touch ID for approvals.',
-  art: `<div class="win" role="img" aria-label="The Vyre app on a Mac. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre</span></div><div class="body" style="padding:18px 20px 20px"><div class="sends">Connected to your server &middot; Northwind Bakery</div></div></div><p class="demo-tag">Sample data.</p>`,
+  art: `${laptop('lap-chat', 'The Vyre app on a Mac, in a chat with an agent.')}`,
   what: { h: 'The same app, <b>with a Mac window.</b>', items: [
     ['One window', 'Opens on launch and when you open the app again. The menu bar icon has Open Vyre and Quit Vyre.'],
     ['Touch ID', 'Approve what needs your yes with Touch ID.'],
@@ -536,7 +499,7 @@ devicePage({
   h1: 'Vyre, <b>in your Windows tray.</b>',
   lead: 'A tray icon and an Alt+Space panel, connected to your Vyre server. Pair a PC with 13 words or a QR code from your other device.',
   ogSub: 'A tray icon and an Alt+Space panel, connected to your own Vyre server.',
-  art: `<div class="win" role="img" aria-label="The Vyre panel on Windows. Sample data."><div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre</span></div><div class="body" style="padding:18px 20px 20px"><div class="ask"><span class="k">Alt+Space</span><span>what did Northwind ask for on the order form?</span></div><div class="sends" style="margin-top:12px">From memory &middot; no model used &middot; Call, 12 Sep</div></div></div><p class="demo-tag">Sample data.</p>`,
+  art: `${appwin('lap-vault', 'The Vyre app in a window on Windows: the vault.')}`,
   what: { h: 'The same window, <b>on your PC.</b>', items: [
     ['A tray app', 'A Vyre icon in your tray, and an Alt+Space panel to ask from.'],
     ['Pair with 13 words or a QR code', 'Type the words or scan the code from your other device, then confirm the server’s address and key fingerprint.'],
@@ -596,7 +559,7 @@ devicePage({
   h1: 'Your agents, <b>in your pocket.</b>',
   lead: 'Install the Vyre app from a file, scan a code to pair it, and approve what your agents wait on with Face ID or a fingerprint.',
   ogSub: 'Install the Vyre app from a file, scan a code to pair, and approve what your agents wait on.',
-  art: `<div style="display:flex;justify-content:center"><div class="phone" style="width:min(100%,290px)" role="img" aria-label="The Vyre phone app, Needs screen. Sample data."><div class="notch"></div><div class="scr"><div class="hdr"><span>alex.vyre.run</span><span>2 waiting</span></div><p class="ph">Needs you</p><div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10</small><div class="acts"><span>Approve</span><span>Deny</span></div></div><div class="need">Which export format should kit use?<small>A question from kit</small></div><div class="faceid">&#9679; Face ID to approve</div></div></div></div><p class="demo-tag">Sample data.</p>`,
+  art: `<div style="display:flex;justify-content:center">${phoneFrame('ph-chat', 'The Vyre phone app in a chat with an agent.', 'width:min(100%,300px)')}</div>`,
   what: { h: 'Vyre, <b>in your pocket.</b>', items: [
     ['Now, Chats, Agents, Find, Drive', 'Ask your memory from Find. Browse the folders your server shares from Drive.'],
     ['Needs rows', 'Approve, deny or answer by swipe. Open the app to see what is waiting.'],
