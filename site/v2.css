@@ -359,7 +359,8 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 
 /* Footer */
 .foot { border-top: 1px solid var(--line); padding: 56px 0 40px; background: var(--panel); }
-.foot-grid { display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 32px; }
+.foot-grid { display: grid; grid-template-columns: 1.6fr repeat(5, 1fr); gap: 28px; }
+@media (max-width: 1060px) { .foot-grid { grid-template-columns: repeat(3, 1fr); } .foot-grid > :first-child { grid-column: 1 / -1; } }
 .foot .fh { margin: 0 0 14px; font: 500 11px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
 .foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .foot a { text-decoration: none; font-size: 15px; color: var(--ink-2); }

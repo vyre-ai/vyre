@@ -1,6 +1,29 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
-<link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin><link rel="stylesheet" href="/v2.css?v=e6189ef337"><script src="/v2.js?v=6ee13e8305" defer></script></head>
+<link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin><link rel="stylesheet" href="/v2.css?v=f4e0badbc2"><style>
+.nf2{position:relative;min-height:calc(100vh - 160px);padding:clamp(40px,7vw,88px) 0 clamp(56px,8vw,96px);overflow:hidden}
+.nf2 .wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:clamp(28px,5vw,72px);align-items:center}
+.nf2 .art{position:relative;aspect-ratio:1/1;width:100%;max-width:460px;justify-self:center;background:#0E0D0C;border:1px solid var(--line-2);border-radius:0;clip-path:none;overflow:visible}
+.nf2 .art::after{content:"";position:absolute;top:-1px;right:-1px;width:44px;height:44px;pointer-events:none;background:linear-gradient(225deg,var(--bg) 0 48.5%,var(--line-2) 48.5% 51.5%,transparent 51.5%)}
+.nf2 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.nf2 .lbl{margin:0 0 18px;color:var(--accent)}
+.nf2 h1.display{font-size:clamp(34px,5.4vw,64px)}
+.nf2 .lead{max-width:30em}
+.nf2 .btn-row{margin-top:28px}
+.needs{margin-top:34px;background:var(--panel);border:1px solid var(--line);max-width:34em}
+.needs .nh{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);font:500 11px/1.4 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.needs .nh i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}
+.needs ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr}
+.needs li{border-top:1px dashed var(--line-2);margin-top:-1px}
+.needs li:nth-child(odd){border-right:1px dashed var(--line-2)}
+.needs a{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;color:var(--ink);text-decoration:none;font-size:15px;font-weight:500;letter-spacing:-.01em}
+.needs a span{color:var(--ink-3);font-weight:400;transition:transform .2s var(--ease)}
+.needs a:hover,.needs a:focus-visible{background:var(--accent-wash)}
+.needs a:hover span{transform:translateX(3px);color:var(--accent)}
+@media (max-width:820px){.nf2 .wrap{grid-template-columns:1fr}.nf2 .art{max-width:300px;order:-1}}
+@media (max-width:480px){.needs ul{grid-template-columns:1fr}.needs li:nth-child(odd){border-right:0}}
+@media (prefers-reduced-motion:reduce){.needs a span{transition:none}}
+</style><script>document.documentElement.className='js'</script><script src="/v2.js?v=6ee13e8305" defer></script></head>
 <body><a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="wrap">
@@ -14,7 +37,16 @@
       <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     </div>
   </div>
-</header><main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/start/">Set up Vyre</a></div></div></main><footer class="foot">
+</header><main id="main" class="nf2"><div class="wrap">
+<div>
+<p class="lbl">404 &middot; Page not found</p>
+<h1 class="display">No agent could find this page, <b>and none of them guessed.</b></h1>
+<p class="lead">The page may have moved, or the link may be wrong. Here is where the real ones are.</p>
+<div class="btn-row"><a class="btn btn-fill" href="/">Back to vyre.run</a><a class="btn" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></div>
+<div class="needs" role="group" aria-label="Where to go"><p class="nh"><i aria-hidden="true"></i>Needs you</p><ul><li><a href="/">Home<span aria-hidden="true">&rarr;</span></a></li><li><a href="/architecture/">Architecture<span aria-hidden="true">&rarr;</span></a></li><li><a href="/start/">Set up Vyre<span aria-hidden="true">&rarr;</span></a></li><li><a href="/downloads/">Downloads<span aria-hidden="true">&rarr;</span></a></li><li><a href="https://github.com/vyre-ai/vyre/tree/main/docs">Docs<span aria-hidden="true">&rarr;</span></a></li><li><a href="/agenthome">Point your agent<span aria-hidden="true">&rarr;</span></a></li><li><a href="/direction/">Roadmap<span aria-hidden="true">&rarr;</span></a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Release notes<span aria-hidden="true">&rarr;</span></a></li></ul></div>
+</div>
+<div class="art" role="img" aria-label="The Vyre mark, drawn in dots, drifting back into place."><canvas id="lost"></canvas></div>
+</div></main><footer class="foot">
   <div class="wrap">
     <div class="foot-grid">
       <div>
@@ -22,10 +54,32 @@
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="https://vyre.run/docs/roadmap/README">Roadmap</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
-      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">Product</p><ul><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/vault/">Vault</a></li><li><a href="/computer/">Computer</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/docs/roadmap/README">Roadmap</a></li><li><a href="/start/">Get started</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="/privacy/">Privacy</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <div class="foot-base"><span>Vyre 0.5.0 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
   </div>
-</footer></body></html>
+</footer><script>(function(){
+var c=document.getElementById('lost'),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;if(!c)return;
+var S=96,off=document.createElement('canvas');off.width=off.height=S;var o=off.getContext('2d'),k=S/24*.78,ox=(S-24*k)/2+1.2*k,oy=(S-24*k)/2+.6*k;
+o.translate(ox,oy);o.scale(k,k);o.strokeStyle='#fff';o.fillStyle='#fff';o.lineWidth=2.6;o.lineCap='round';o.lineJoin='round';
+o.beginPath();o.moveTo(3.5,5.5);o.lineTo(12,19.5);o.lineTo(17.96,9.69);o.stroke();o.beginPath();o.arc(20.5,5.5,2.3,0,7);o.fill();
+var data=o.getImageData(0,0,S,S).data,n=56,dots=[],seed=7;
+function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
+for(var j=0;j<n;j++)for(var i=0;i<n;i++){var sx=Math.floor((i+.5)/n*S),sy=Math.floor((j+.5)/n*S),v=data[(sy*S+sx)*4+3]/255;
+if(v>.2)dots.push({hx:(i+.5)/n,hy:(j+.5)/n,r:Math.pow(v,.8),sx:rnd(),sy:rnd(),dl:rnd()*.35,acc:i>n*.74&&j<n*.34})}
+function fit(){var d=Math.min(2,devicePixelRatio||1),w=c.clientWidth,h=c.clientHeight;c.width=w*d;c.height=h*d;var x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return{x:x,w:w,h:h}}
+var g=fit(),t0=null,DUR=3200;
+function ease(p){return 1-Math.pow(1-p,3)}
+function draw(p,t){var x=g.x,w=g.w,cell=w/n;x.clearRect(0,0,g.w,g.h);
+dots.forEach(function(d){var q=Math.max(0,Math.min(1,(p-d.dl)/(1-d.dl))),e=ease(q),
+wob=(1-e)*Math.sin(t/420+d.sx*40)*.015;
+var px=(d.sx+(d.hx-d.sx)*e+wob)*w,py=(d.sy+(d.hy-d.sy)*e+wob)*g.h,r=cell*.5*(.28+.72*d.r)*(.5+.5*e)*(.88+.12*Math.sin(t/900+d.hy*9));
+x.fillStyle=d.acc?'#B8A4FF':'#F1EEE6';x.globalAlpha=.35+.65*e;x.beginPath();x.arc(px,py,Math.max(.4,r),0,6.2832);x.fill()});x.globalAlpha=1}
+if(reduce){draw(1,0);addEventListener('resize',function(){g=fit();draw(1,0)});return}
+var vis=true;if('IntersectionObserver' in window)new IntersectionObserver(function(es){vis=es[0].isIntersecting}).observe(c);
+(function tick(t){if(t0===null)t0=t;if(vis)draw(Math.min(1,(t-t0)/DUR),t);requestAnimationFrame(tick)})(0);
+addEventListener('resize',function(){g=fit()});
+})();</script></body></html>

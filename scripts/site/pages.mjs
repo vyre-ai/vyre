@@ -13,7 +13,8 @@ export const ASSETS = {
 const NF_CSS = `
 .nf2{position:relative;min-height:calc(100vh - 160px);padding:clamp(40px,7vw,88px) 0 clamp(56px,8vw,96px);overflow:hidden}
 .nf2 .wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:clamp(28px,5vw,72px);align-items:center}
-.nf2 .art{position:relative;aspect-ratio:1/1;width:100%;max-width:460px;justify-self:center;background:#0E0D0C;border:1px solid var(--line)}
+.nf2 .art{position:relative;aspect-ratio:1/1;width:100%;max-width:460px;justify-self:center;background:#0E0D0C;border:1px solid var(--line-2);border-radius:0;clip-path:none;overflow:visible}
+.nf2 .art::after{content:"";position:absolute;top:-1px;right:-1px;width:44px;height:44px;pointer-events:none;background:linear-gradient(225deg,var(--bg) 0 48.5%,var(--line-2) 48.5% 51.5%,transparent 51.5%)}
 .nf2 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .nf2 .lbl{margin:0 0 18px;color:var(--accent)}
 .nf2 h1.display{font-size:clamp(34px,5.4vw,64px)}

@@ -118,8 +118,9 @@ const FOOT = `<footer class="foot">
         <p class="tag">The agentic command center for AI-native teams. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li><li><a href="/downloads/">Downloads</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/vault/">Vault</a></li><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="/computer/">Computer</a></li><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="https://vyre.run/docs/roadmap/README">Roadmap</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
-      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">Product</p><ul><li><a href="/records/">Records</a></li><li><a href="/flows/">Flows</a></li><li><a href="/agents/">Agents</a></li><li><a href="/vault/">Vault</a></li><li><a href="/computer/">Computer</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/for/">Industries</a></li><li><a href="/compare/">Compare</a></li><li><a href="/architecture/">Architecture</a></li><li><a href="/direction/">Direction</a></li><li><a href="/docs/roadmap/README">Roadmap</a></li><li><a href="/start/">Get started</a></li><li><a href="/updates/">Weekly update</a></li><li><a href="/privacy/">Privacy</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="/docs/">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
@@ -1009,16 +1010,6 @@ writeFileSync(join(site, '404.html'), page404(PAGES_CTX));
 const IND = buildIndustries({ page, esc, eyebrow, crumbs, SITE, VERSION });
 // ---------- weekly update (scripts/site/updates.mjs) ----------
 page({ ...UPDATES_PAGE, ld: [crumbs([['Vyre', `${SITE}/`], ['Weekly update', `${SITE}/updates/`]])] });
-// ---------- 404 ----------
-{
-  const html404 = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
-${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
-<body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/start/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
-`;
-  writeFileSync(join(site, '404.html'), html404);
-}
-
 // ---------- machine-readable files ----------
 const list2 = (arr) => arr.map((x) => `- ${x}`).join('\n');
 const SUMMARY = 'Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person\'s yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.';
