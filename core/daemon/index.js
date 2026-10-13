@@ -171,15 +171,17 @@ function teamSpaceOfToken(token) {
 /** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
 const pluginTokensOf = new WeakMap();
 /** @param {any} registry @param {string} agent @returns {Promise<string | undefined>} */
-async function pluginToken(registry, agent) {
+async function pluginToken(registry, agent, setup = false) {
   const open = registry.deps && registry.deps.kernelSession;
   if (typeof open !== "function") return undefined;
   let mine = pluginTokensOf.get(registry);
   if (!mine) { mine = new Map(); pluginTokensOf.set(registry, mine); }
-  let f = mine.get(agent);
-  if (!f) { const s = await open({ thread: `plugin:${agent}`, agent }); f = s && s.token; if (!f) return undefined; mine.set(agent, f); }
+  // Set up mode (core/pluginagent): the tools it adds run on the person's own chain with the kernel's default-assistant hop, which can do what the person can and never a role, a grant or a send. Its own session, so ending Set up mode ends it.
+  const key = setup ? `${agent}#setup` : agent;
+  let f = mine.get(key);
+  if (!f) { const s = await open(setup ? { thread: `plugin:${agent}:setup`, agent: null, rec: { agent_kind: "assistant" } } : { thread: `plugin:${agent}`, agent }); f = s && s.token; if (!f) return undefined; mine.set(key, f); }
   const t = await f();
-  if (!t) mine.delete(agent);
+  if (!t) mine.delete(key);
   return t;
 }
 export const REPO = path.resolve(HERE, "..", "..");
@@ -1406,6 +1408,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
   /** @type {string | null} */ let pluginAgent = null;
+  let pluginSetup = false;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
   } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
@@ -1557,6 +1560,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
       const ask = await registry.call("pluginagent.allows", { tools: carried ? [name, carried] : [name] }, "module:vyred").catch(() => null);
       const ok = ask && ask.data && Array.isArray(ask.data.allowed) && ask.data.allowed.includes(name) && (!carried || ask.data.allowed.includes(carried));
+      // Only the daemon sets this, from the grant's own answer: the tool is one that Set up mode added, and carried tools never ride link.call into it.
+      if (ok && !carried && ask.data.setup && ask.data.setup.includes(name)) { pluginSetup = true; Object.assign(via, { pluginSetup: true }); }
       if (!ok) return send(res, 403, { error: { code: "not_in_grant", message: `Claude Code on this computer was not given ${carried || name}: it reads memory, recall and the sessions of your projects, and suggests to memory` } });
     }
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
@@ -1633,7 +1638,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // The plugin agent's token is vyred's, set here and never the client's: its session is opened by the daemon for that agent and renewed before it runs out.
     if (pluginAgent) {
       delete req.headers["x-vyre-kernel-session"];
-      const t = await pluginToken(registry, pluginAgent).catch(() => null);
+      const t = await pluginToken(registry, pluginAgent, pluginSetup).catch(() => null);
       if (t) req.headers["x-vyre-kernel-session"] = t;
     }
     const sessionToken = await kernelSession(req, kernelOf);

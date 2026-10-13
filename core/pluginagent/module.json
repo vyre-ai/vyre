@@ -18,10 +18,11 @@
       { "name": "pluginagent.setup.end", "reach": "anyone", "effect": "write" },
       { "name": "pluginagent.setup.status", "reach": "anyone", "effect": "read" },
       { "name": "pluginagent.allows", "reach": "modules", "effect": "read" },
+      { "name": "pluginagent.note", "reach": "modules", "effect": "write" },
       { "name": "pluginagent.vouch", "reach": "modules", "effect": "read" }
     ]
   },
-  "watches": { "emits": ["pluginagent.asked", "pluginagent.granted", "pluginagent.revoked", "pluginagent.declined", "pluginagent.setup"] },
+  "watches": { "emits": ["pluginagent.asked", "pluginagent.granted", "pluginagent.revoked", "pluginagent.declined", "pluginagent.setup", "pluginagent.did"] },
   "shows": { "cli": [] },
   "teaches": { "tips": [] },
   "settings": []

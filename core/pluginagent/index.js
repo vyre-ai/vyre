@@ -37,9 +37,10 @@ export const ALLOWED = Object.freeze(new Set([
 export const SETUP_ALLOWED = Object.freeze(new Set([
   "projects.create", "projects.rename", "projects.add-threads", "projects.add-workspace",
   "agents.create", "agents.update", "agents.list",
-  "records.types", "records.define",
+  // Record types, templates, roles and Flows are a Kit: the person approves its install card once (flows.kit.propose), as the kernel's rule for an assistant asks. records.define and roles.* stay the person's own.
+  "records.types", "records.kits.library", "records.kits.get",
+  "flows.kit.library", "flows.kit.library.get", "flows.kit.card", "flows.kit.test", "flows.kit.propose", "flows.kit.list",
   "flows.define", "flows.compile-text", "flows.list",
-  "roles.catalogue", "roles.list", "roles.create", "roles.update", "roles.assign",
   "work.template.define", "work.template.get",
   "import.sessions.list", "import.sessions.run", "import.status",
   "pluginagent.setup.end",
@@ -226,7 +227,18 @@ export default {
       description: "vyred asks, for a call or a tool listing by the plugin agent: which of these tools does the grant name? Answers { allowed: [tool] } for the ones it does, the rest are refused with not_in_grant.",
       internal: true, callers: ["module"],
       input: obj({ tools: { type: "array", items: { type: "string" }, maxItems: 5000 } }, ["tools"]),
-      run: async (/** @type {any} */ i) => ({ allowed: (Array.isArray(i.tools) ? i.tools : []).map(String).filter(t => ALLOWED.has(t) || (setupUntil() > 0 && SETUP_ALLOWED.has(t))) }),
+      run: async (/** @type {any} */ i) => {
+        const on = setupUntil() > 0, asked = (Array.isArray(i.tools) ? i.tools : []).map(String);
+        // `setup`: the ones allowed only because Set up mode is on; the daemon runs those as the person's delegate and records each as set up by Claude Code.
+        return { allowed: asked.filter(t => ALLOWED.has(t) || (on && SETUP_ALLOWED.has(t))), setup: asked.filter(t => on && SETUP_ALLOWED.has(t) && !ALLOWED.has(t)) };
+      },
+    });
+
+    ctx.tool("pluginagent.note", {
+      description: "vyred records that Claude Code, in Set up mode, ran a tool as the person's delegate: an event for the Activity log, the tool's name only, never its input.",
+      internal: true, callers: ["module"],
+      input: obj({ tool: { type: "string", maxLength: 120 }, ok: { type: "boolean" } }, ["tool"]),
+      run: async (/** @type {any} */ i) => { try { ctx.events.emit("pluginagent.did", { tool: String(i.tool).slice(0, 120), ok: i.ok !== false, computer: computerName(), says: "set up by your Claude Code" }); } catch { /* an event never decides */ } return { noted: true }; },
     });
 
     ctx.tool("pluginagent.vouch", {
