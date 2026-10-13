@@ -78,7 +78,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
     );
   };
 
-  const list = err ? <ErrorState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /> : items === null ? <LoadingState /> : (
+  const list = err ? <ErrorState title="The vault did not answer" reason={err} retry={load} /> : items === null ? <LoadingState /> : (
     <View className="gap-s3">
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (
