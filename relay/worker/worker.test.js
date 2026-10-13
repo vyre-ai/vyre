@@ -19,7 +19,7 @@ const { newRouteKey, routeId, authMessage, signRoute, CLOSE } = wire;
 
 /** @param {any} t @param {{ hibernateEveryEvent?: boolean, limits?: object, env?: object }} [o] */
 function world(t, o = {}) {
-  const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket, CODES: W.CodeSlot }, hibernateEveryEvent: o.hibernateEveryEvent,
+  const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket, CODES: W.CodeSlot, SIGNIN: W.SigninSlot }, hibernateEveryEvent: o.hibernateEveryEvent,
     env: { ...(o.limits ? { RELAY_LIMITS: JSON.stringify(o.limits) } : {}), ...(o.env || {}) } });
   t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
   return rt;
@@ -105,7 +105,7 @@ for (const hibernateEveryEvent of [false, true]) {
     const ready = await b.s.json();
     assert.equal(ready.t, "ready");
     assert.deepEqual(ready.waiting, []);
-    assert.deepEqual(ready.features, ["registered", "revoke", "code"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
+    assert.deepEqual(ready.features, ["registered", "revoke", "code", "signin"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
 
     const dev = sock(rt, `/v1/device?route=${b.route}`);
     await dev.open();
@@ -905,3 +905,33 @@ test("worker: the Mac app's origin vyreapp://box is answered by the browser rout
     assert.equal((await rt.fetch(`${H}${p}?route=NOTAROUTE`, { upgrade: "websocket", origin })).status, 400, p);
   }
 });
+
+const LOCS = "a".repeat(43), SEEDS = "b".repeat(22);
+const signin = (rt, body, ip = "198.51.100.7") => worker.fetch(new Request("http://relay.test/v1/signin", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify(body) }), rt.env);
+
+for (const hibernateEveryEvent of [false, true]) {
+  const mode = hibernateEveryEvent ? " (hibernating between events)" : "";
+  test(`worker: sign in by name reaches the box that serves the name and answers the same when none does${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    await b.s.json();
+    const none = await signin(rt, { loc: "z".repeat(43), s: SEEDS });
+    b.s.ws.send(JSON.stringify({ t: "signin.watch", loc: LOCS }));
+    await rt.settle();
+    const served = await signin(rt, { loc: LOCS, s: SEEDS });
+    assert.equal(served.status, none.status);
+    assert.deepEqual(await served.json(), await none.json());
+    assert.deepEqual(await b.s.json(), { t: "signin.ask", loc: LOCS, s: SEEDS });
+    assert.equal(rt.object(`si:${LOCS}`, "SIGNIN").ctx.storage.map.size > 0, true);
+    assert.ok(!JSON.stringify([...rt.object(`si:${LOCS}`, "SIGNIN").ctx.storage.map.values()]).includes(SEEDS), "the relay keeps no secret");
+  });
+
+  test(`worker: a name is asked about three times a minute, then refused in words; a bad request reaches nothing${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const codes = [];
+    for (let i = 0; i < 5; i++) codes.push((await signin(rt, { loc: LOCS, s: SEEDS }, `198.51.100.${i + 1}`)).status);
+    assert.deepEqual(codes, [202, 202, 202, 429, 429]);
+    assert.match(String((await (await signin(rt, { loc: LOCS, s: SEEDS }, "198.51.100.99")).json()).error), /wait a minute/);
+    for (const bad of [{}, { loc: "x", s: SEEDS }, { loc: LOCS, s: "short" }]) assert.equal((await signin(rt, bad)).status, 400);
+  });
+}
