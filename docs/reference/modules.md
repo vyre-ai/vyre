@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 35 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 36 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
@@ -75,7 +75,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 30 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 24 | 8 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 26 | 0 | cli |
@@ -132,7 +132,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [35](tools.md#agents), 7 of them only for other modules
+- Tools: [36](tools.md#agents), 8 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
@@ -788,8 +788,8 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [24](tools.md#publish)
-- Emits: [8 events](events.md#publish)
+- Tools: [26](tools.md#publish)
+- Emits: [10 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
 - Needs vault: `per-deployment`
@@ -1070,7 +1070,7 @@ The app's way into a Space's tasks: one tool per Store call over the kernel's ta
 - Folder: `core/tasks-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#tasks), 3 of them only for other modules
+- Tools: [9](tools.md#tasks)
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
