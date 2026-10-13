@@ -779,7 +779,7 @@ export class Vault {
 
   /** The Secret Key for the person's own device to carry (escrow or a new device). Only the tool's caller list and presence stand between this and a caller; it is never logged. */
   async exportSecretKey(who = "cli") {
-    if (!this.hasAccount()) throw Object.assign(new Error("this vault has no account password yet: set one with vault.account.create"), { code: "no_account" });
+    if (!this.hasAccount()) throw Object.assign(new Error("this vault has no account password yet: set one in the Vault page, then try again"), { code: "no_account" });
     const text = await this.secretKey();
     this.audit("secretkey-export", null, who, true, null);
     return { secretKey: text, acct: parseSecretKey(text).acct };
@@ -788,7 +788,7 @@ export class Vault {
   /** Put the account's Secret Key into this device's store, so the master password opens the vault here. It must be this account's key; a wrong or mistyped one is refused and nothing is stored. */
   async importSecretKey({ secretKey }, who = "cli") {
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw Object.assign(new Error("this vault has no account password yet"), { code: "no_account" });
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet: set one in the Vault page, then try again"), { code: "no_account" });
     let p;
     try { p = parseSecretKey(secretKey); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_secret_key" }); }
     p.bytes.fill(0);
