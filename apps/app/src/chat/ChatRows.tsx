@@ -426,7 +426,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
           <ActionRow>
-            <MessageBar text={it.text} from={w.name} ctx={ctx} done={it.done} group={groupOf(store, k, ctx, w.name)} />
+            <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} done={it.done} group={groupOf(store, k, ctx, w.name)} />
           </ActionRow>
           <ReactionsRow store={store} k={k} ctx={ctx} />
         </Message>
