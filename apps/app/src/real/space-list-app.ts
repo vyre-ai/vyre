@@ -23,7 +23,7 @@ let chainPairer: ChainPairer = async (e) => {
   const crypto = relayCrypto();
   return makeChainPairer({
     connect, crypto, keyStore: relayKeyStore(), about, deviceName,
-    chainHelloFor: mine ? (pub, box) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), name: deviceName() }) : null,
+    chainHelloFor: mine ? (pub, box) => chainHello({ sha256: (b: Uint8Array) => crypto.sha256(b), devicePub: pub, box, identity: mine.id, entry: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m), ...(/^[a-z0-9.-]{3,253}$/.test(String(mine.name || "").toLowerCase()) ? { name: String(mine.name).toLowerCase() } : {}) }) : null,
   })(e);
 };
 export function setChainPairer(f: ChainPairer): void { chainPairer = f; }

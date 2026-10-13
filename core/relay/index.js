@@ -192,7 +192,7 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage, owner_paired FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage, owner_paired, via_chain FROM relay_devices WHERE removed_at IS NULL AND kind NOT IN ('setup', 'server') ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -779,7 +779,7 @@ export default {
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
     const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
-      online: pathOf(d) !== null, path: pathOf(d), ownerPaired: Boolean(d.owner_paired), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      online: pathOf(d) !== null, path: pathOf(d), ownerPaired: Boolean(d.owner_paired), ...(d.via_chain ? { viaChain: true } : {}), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
