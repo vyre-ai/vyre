@@ -70,6 +70,18 @@ refuses files over 50 MB by default. Larger files fail to open until you raise t
 `FileSizeLimitInBytes` under `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters` and
 restart the WebClient service (this needs an administrator, so Vyre does not do it for you).
 
+### Vyre in File Explorer
+
+Settings, "Show Vyre in File Explorer" (also in the tray menu) puts a "Vyre" folder in File Explorer's
+navigation pane, the way OneDrive does. Every file you may open shows there; its bytes download when
+you open it. A file you save or change goes to your server as a new version, a rename is a move, and
+deleting a file moves it to the trash on your server (an owner or admin can bring it back; nothing is
+lost). It goes through this PC's own pairing, so there is no Tailscale and no shared key, and you see
+only what your account may read. Lock and temporary files (Office's ~$ files, .tmp files, desktop.ini) stay on
+the PC. A name Windows cannot hold (a colon, a question mark) shows with %3A, %3F in its place and
+goes up under its real name. Two files whose names differ only in capital letters show as `name.txt`
+and `name (2).txt`. Vyre Drive as a network drive still works beside it.
+
 Pairing this PC shows a code as 13 words and a QR. "Copy the words" puts the words on the clipboard for a
 Vyre open on the same PC. The words stay on the clipboard (Vyre does not read it back), and clipboard history or cloud
 clipboard sync on Windows may keep a copy. The code stops working after 5 minutes or on first use, so a

@@ -20,6 +20,7 @@ import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
 import { FindHost, openFind } from "../find/FindHost";
 import { startKeepingAppearance } from "../../src/state/keep-appearance";
+import { installMountBridge } from "../../src/shell/mount-bridge";
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
 export function UiShell({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const { space, looks, setShowing } = useSpaces();
   const { data: DATA, set, fail } = useShell();
   useEffect(() => { startKeepingAppearance(); }, []);
+  useEffect(() => { installMountBridge(); }, []);
   // The sidebar: the arrangement for the showing Space, loaded when the box is reached and again whenever the box says it changed (this device or another).
   const arranged = useNavDef(space);
   const loadSidebar = useSidebar((x) => x.load);

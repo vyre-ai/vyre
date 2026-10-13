@@ -91,7 +91,11 @@ fn shell_signal(version: &str, boxless: bool) -> String {
     agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
     agree: function (epk) {{ return inv("agree_secret", {{ epk: epk }}); }}
   }});
-  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: {boxless}, version: {v}, identity: identity }}), writable: false, configurable: false }});
+  var mount = Object.freeze({{
+    state: function () {{ return inv("mount_state", {{}}); }},
+    set: function (on) {{ return inv("mount_set", {{ on: !!on }}); }}
+  }});
+  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: {boxless}, version: {v}, identity: identity, mount: mount }}), writable: false, configurable: false }});
 }})();"#)
 }
 

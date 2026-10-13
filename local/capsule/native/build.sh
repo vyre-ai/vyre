@@ -89,7 +89,43 @@ PLIST
     # One stable identity keeps Accessibility and Input Monitoring grants across updates. The
     # identifier pins the designated requirement; VYRE_SIGN_IDENTITY names a local certificate
     # when there is one, otherwise the signature is ad hoc.
-    codesign --force --sign "${VYRE_SIGN_IDENTITY:--}" --identifier sh.vyre.capsule "$app" >/dev/null
+    # VYRE_MOUNT_APPEX=1 adds the Finder extension (Vyre in Finder's sidebar, Appex/VyreFiles.swift) and gives the app the app group it shares with it. It is off by default: the app group is a
+    # restricted entitlement that needs a provisioning profile (the Apple developer account), so a build without one stays exactly as it was. Whether Finder accepts an ad hoc signed extension is
+    # unproven (the owner's native mounting decision).
+    ent_args=""
+    if [ "${VYRE_MOUNT_APPEX:-}" = 1 ]; then
+      appex="$app/Contents/PlugIns/VyreFiles.appex"
+      mkdir -p "$appex/Contents/MacOS"
+      # shellcheck disable=SC2046
+      swiftc -O -target "$target" -parse-as-library -module-name VyreFiles -Xlinker -e -Xlinker _NSExtensionMain -framework FileProvider -framework UniformTypeIdentifiers \
+        -o "$appex/Contents/MacOS/VyreFiles" $(find "$here/Sources/Mount" -name '*.swift' | LC_ALL=C sort) "$here/Appex/VyreFiles.swift"
+      cat > "$appex/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>sh.vyre.capsule.files</string>
+  <key>CFBundleName</key><string>Vyre Files</string>
+  <key>CFBundleDisplayName</key><string>Vyre</string>
+  <key>CFBundleExecutable</key><string>VyreFiles</string>
+  <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>CFBundleShortVersionString</key><string>${version:-0.0.0}</string>
+  <key>CFBundleVersion</key><string>${version:-0.0.0}</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSExtension</key>
+  <dict>
+    <key>NSExtensionPointIdentifier</key><string>com.apple.fileprovider-nonui</string>
+    <key>NSExtensionPrincipalClass</key><string>VyreFileProvider</string>
+    <key>NSExtensionFileProviderSupportsEnumeration</key><true/>
+  </dict>
+</dict>
+</plist>
+PLIST
+      codesign --force --sign "${VYRE_SIGN_IDENTITY:--}" --identifier sh.vyre.capsule.files --entitlements "$here/VyreFiles.entitlements" "$appex" >/dev/null
+      ent_args="--entitlements $here/VyreMount.entitlements"
+    fi
+    # shellcheck disable=SC2086
+    codesign --force --sign "${VYRE_SIGN_IDENTITY:--}" --identifier sh.vyre.capsule $ent_args "$app" >/dev/null
     echo "built $app"
     ;;
   *) echo "usage: build.sh test [filter] | app" >&2; exit 2 ;;

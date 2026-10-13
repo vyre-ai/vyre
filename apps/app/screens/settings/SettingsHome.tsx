@@ -12,6 +12,7 @@ import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { backupLine, storedLine } from "../shell/basic.js";
 import { MakeServer } from "./MakeServer";
+import { FilesInFinder } from "./FilesInFinder";
 import { PersonalHost } from "./PersonalHost";
 import { VERSION } from "./data";
 import { MOCK, tool } from "../../src/real/box";
@@ -47,7 +48,7 @@ export function SettingsHome() {
       <BlockScreen screen={screen} handlers={{
         open: (_b, row) => router.push(row.id as never),
         // the Mac's "make this Mac a server" card sits under the Devices group, where it always has
-        slot: (_b, at) => (at === "after:Devices" && macShell()?.identity?.makeServer ? <View className="pt-s4"><MakeServer /></View> : null),
+        slot: (_b, at) => (at === "after:Devices" ? <>{macShell()?.identity?.makeServer ? <View className="pt-s4"><MakeServer /></View> : null}<View className="pt-s4"><FilesInFinder /></View></> : null),
       }} />
       {showing?.basic ? <PersonalHost /> : null}
       {backup || stored ? <Sec title="Backup"><Card flush>{stored ? <Row dense lead={<IconTile name="vault" />} title={stored} /> : null}{stored && backup ? <Divider inset={60} /> : null}{backup ? <Row dense lead={<IconTile name="shield" />} title={backup} /> : null}</Card></Sec> : null}

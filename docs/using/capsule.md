@@ -62,6 +62,15 @@ Lumen lives in the menu bar as "Vyre Lumen". Click its mark for a small panel th
 are, whether Vyre is running (with a **Start Vyre** button when it is not), how your box is
 reached, and buttons to open Lumen, turn on Control twice and quit.
 
+## Vyre in Finder
+
+Settings, "Show Vyre in Finder" puts "Vyre" in Finder's sidebar, the way iCloud Drive does (a build
+that carries the Finder extension; the Vyre app has to be running). Files you may open show there and
+download when you open them; what you save, rename or move goes to your server, and deleting a file
+moves it to the trash on your server, where an owner or admin can bring it back. It uses this Mac's
+own pairing, so it needs no Tailscale and no shared key, and it shows only what your account may read.
+An empty folder you make is kept with a hidden marker file.
+
 ## Allow double-Control
 
 The double-Control listener needs Input Monitoring, and macOS grants it to `Vyre.app`. Option-Space

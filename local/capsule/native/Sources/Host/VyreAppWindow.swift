@@ -48,7 +48,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private(set) var boxless = false
 
     private(set) var window: NSWindow?
-    private var web: WKWebView?
+    var web: WKWebView?
     private let proxy = BoxSchemeHandler()
     /// The page's open streams (BoxSocket.swift), by the id the page's WebSocket shim gave them.
     private var sockets: [Int: BoxSocket] = [:]
@@ -184,6 +184,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             guard let said = SignSummary.of(message: m, fields: args["fields"] as? [String: Any], space: args["space"] as? String) else { return reply(id, ["error": "Vyre cannot tell what this would sign, so it did not."]) }
             guard let sig = await e.sign(m, reason: String(said.prefix(300))) else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
             reply(id, ["signature": MacIdentity.b64url(sig)])
+        case "mount.state":
+            reply(id, await MountBridge.shared.state())
+        case "mount.set":
+            if let e = await MountBridge.shared.set(args["on"] as? Bool ?? false) { reply(id, ["error": e]) } else { reply(id, ["ok": true]) }
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
@@ -351,6 +355,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           makeServer: function () { return call("setup.server").then(function () {}); },
           enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           enclaveSign: function (message, prompt, card) { return call("enclave.sign", { message: message, prompt: prompt, fields: card && card.fields, space: card && card.space }).then(function (r) { return r.signature; }); }
+        },
+        mount: {
+          state: function () { return call("mount.state"); },
+          set: function (on) { return call("mount.set", { on: !!on }).then(function () {}); }
         },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },
