@@ -18,8 +18,8 @@ export function ChatsPane({ refId, slug, name }: { refId: string; slug: string; 
   const [rows, setRows] = useState<ChatRow[] | null>(null);
   const [n, setN] = useState(0);
   useEffect(() => {
-    // The sample world has no box: its chats are the sample ones filed under this project's name (or a few, so the page shows what a busy project looks like).
-    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const mine = all.filter((c) => c.project === name); setRows(mine.length ? mine : all.slice(0, 3)); return; }
+    // The sample world has no box: its chats are the sample ones filed under this project's name .
+    if (allowsMock()) { const all = chatsOrdered(sampleChats(Date.now())); const mine = all.filter((c) => c.project === name); setRows(mine); return; }
     void callT("work.chat.list", { project: refId, limit: 50 }).then((r) => setRows(r.error ? [] : chatsOrdered(chatsFrom(r.data))));
   }, [refId, n, name]);
   const { menu, sheets } = useChatMenu(rows ?? [], () => setN((x) => x + 1));

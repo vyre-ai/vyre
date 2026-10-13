@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { ScrollView, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Button, EmptyState, allowsMock, ErrorState, Field, IconButton, Menu, PageHeader, Sheet, ProjectView, Segmented, SkeletonRows, Text, projectHeader, showToast, useProject, useTaskActions } from "@vyre/ui";
+import { Button, EmptyState, Icon, allowsMock, ErrorState, Field, IconButton, Menu, PageHeader, Sheet, ProjectView, Segmented, SkeletonRows, Text, projectHeader, projectStrip, showToast, useProject, useTaskActions } from "@vyre/ui";
 import { templates } from "../templates/templates";
 import { useMayMakeTemplates } from "../templates/role";
 import { TeamTab } from "../teammates/TeamTab";
@@ -14,6 +14,19 @@ import { projectFolder } from "../folderdocs/project";
 import { mockFolderApi } from "../folderdocs/mock-folder";
 import { ProjectAccess } from "./ProjectAccess";
 import { ProjectHeaderStrip } from "./ProjectHeaderStrip";
+
+/** A rail section that opens and closes (closed at first, so Files and Memory are in view): its name, a chevron, and its body when open. */
+function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View className="gap-s2">
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${label}, ${open ? "close" : "open"}`} onPress={() => setOpen((o) => !o)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28 }}>
+        <Icon name="chev" size={12} tone="label" /><Text size="caption" strong tone="label">{label}</Text>
+      </Pressable>
+      {open ? children : null}
+    </View>
+  );
+}
 
 /** /u/project/:id: a record of a type that holds work, as a project: stages made of tasks, the team, linked records, chats and files. */
 export default function ProjectScreen() {
@@ -36,6 +49,7 @@ export default function ProjectScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/u/projects" as never));
   const f = q.data?.found;
   const h = f && q.data ? projectHeader(q.data.world, f.def, f.row) : null;
+  const strip = f && q.data ? projectStrip(q.data.world, f.def, f.row) : null;
   const pid = f ? projectId(f.row) : "";
   const data = (f?.row as { data?: Record<string, unknown> } | undefined)?.data;
   const slug = String(data?.slug || "");
@@ -47,14 +61,14 @@ export default function ProjectScreen() {
   const stages = data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null;
   const rail = (r: RailId) => {
     if (r === "stages") return stages;
-    if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} /> : <EmptyState title="No instructions here" body="This project has no id the Drive can keep a folder under." />;
-    if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} /> : <EmptyState title="No context here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No instructions here" body="This project has no id the Drive can keep a folder under." />;
+    if (r === "context") return ref ? <ContextEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No context here" body="This project has no id the Drive can keep a folder under." />;
     if (r === "access") return slug ? <ProjectAccess slug={slug} /> : null;
     if (r === "files") return pid ? <FilesPane id={pid} /> : <EmptyState title="No files here" body="This project has no id the Drive can keep files under." />;
     return pid ? <MemoryPane id={pid} /> : <EmptyState title="No memory here" body="This project has no id memory can be kept under." />;
   };
   const chats = ref ? <ChatsPane refId={ref} slug={slug} name={h?.title} /> : <EmptyState title="No chats here" body="This project has no id the box can file chats under." />;
-  const section = (r: RailId) => { const body = rail(r); return body ? <View key={r} className="gap-s2">{r === "instructions" || r === "context" ? null : <Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>}{body}</View> : null; };
+  const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
   const pageBody = (): React.ReactNode => {
     if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
@@ -78,7 +92,7 @@ export default function ProjectScreen() {
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
           : (
             <>
-              <ProjectHeaderStrip data={data} slug={slug} onManage={() => setTab("team")} />
+              <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
               {wide
                 ? <Segmented label="Project" value={at === "timeline" || at === "team" ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ["timeline", "Timeline"], ["team", "Team"]]} />
                 : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs()} />}

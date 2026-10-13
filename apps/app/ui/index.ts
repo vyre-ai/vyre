@@ -73,7 +73,7 @@ export { FilterPills } from "./components/FilterPills";
 export { ActorMark } from "./tasks/ActorMark";
 export { TaskCard } from "./tasks/TaskCard";
 export { TaskDetail } from "./tasks/TaskDetail";
-export { taskHeader, projectHeader, faceOf } from "./tasks/headers";
+export { taskHeader, projectHeader, projectStrip, faceOf } from "./tasks/headers";
 export { TaskFacts, DraftBlock } from "./tasks/TaskFacts";
 export { NowView } from "./tasks/NowView";
 export { NeedsPage, DoingPage } from "./tasks/NowPages";
