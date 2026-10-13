@@ -862,6 +862,8 @@ export default {
     ctx.tool("relay.pair.start", {
       description: "Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj(),
+      // The same presence gate it always had, so the stored decisions (kernel/golden) do not move: a person at the surface is asked first, then the handler refuses in words.
+      presence: { summary: async () => "Pair a new device with this box" },
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
       run: async () => { throw classicGone("The pairing code from relay.pair.start"); },
     });
@@ -944,10 +946,10 @@ export default {
       run: async input => {
         const loc = String(input.loc);
         if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
-        await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink();
-        if (link) await link.ready();
-        if (input.on === false) link?.signinUnwatch(loc); else link?.signinWatch(loc);
-        return { watching: input.on !== false, supported: Boolean(link && link.signins()) };
+        // A watch only listens: it never turns the relay on or starts its link. With the relay off there is nothing to watch on; the wink module asks again when relay.connected fires.
+        if (!settings().enabled || !link) return { watching: false, supported: false };
+        if (input.on === false) link.signinUnwatch(loc); else link.signinWatch(loc);
+        return { watching: input.on !== false, supported: link.signins() };
       },
     });
     ctx.tool("relay.code.alloc", {
@@ -1153,6 +1155,8 @@ export default {
       description: "Gone: redeeming a classic bearer pairing code to become a device of another box. Refuses and says how to join now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj({ url: { type: "string" }, name: str, becomeDevice: { type: "boolean" } }, ["url"]),
       callers: ["cli", "local", "deck", "capsule"],
+      // The same presence gate it always had (not on a Mac without vyre-core, where it always refused), so the stored decisions do not move.
+      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => "Join another box with a pairing code" },
       run: async () => { throw classicGone("Joining another box with a pairing code"); },
     });
 
@@ -1361,6 +1365,7 @@ export default {
       input: obj({ id: str }, ["id"]),
       run: async input => {
         const row = /** @type {any} */ (db.prepare("SELECT kind, trusted, paired_at, presence_key, removed_at, owner_paired, via_chain FROM relay_devices WHERE id = ?").get(String(input.id)));
+        let via = null; try { via = row && row.via_chain && row.removed_at == null ? JSON.parse(row.via_chain) : null; } catch { via = null; }
         // a chain device is judged against the CURRENT chain at each call (read again at most every 5 minutes): off the list it is removed here; with the chain unreadable past the grace it is refused without being removed;
         // `limited` is recomputed from the entry now, never read from what was true when it was admitted
         let now_ = null;

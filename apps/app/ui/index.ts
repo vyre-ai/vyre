@@ -86,6 +86,7 @@ export type { World } from "./tasks/model";
 export { nowCount } from "./tasks/model";
 // Field renderers (one display and one edit per kind) and the views generated from type definitions (records).
 export { Select } from "./components/Select";
+export { SortableList, dropIndex } from "./components/SortableList";
 export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS, filterOps, matches, sortKey, sortRows, kindLabel } from "./fields/registry";
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
 export { PinnedViews } from "./views";

@@ -50,3 +50,14 @@ test("the pretend answers", () => {
   assert.equal(wordsMatch("river amber stone"), false);
   assert.equal(addressOf("Harlow Legal"), "harlow-legal");
 });
+
+test("Continue with GitHub: a linked id goes to the master password, a new one picks a name, a login becomes a valid name or nothing", async () => {
+  const { GITHUB_MOCK, afterGithub, nameFromLogin } = await import("./flow-model.js");
+  assert.equal(afterGithub(GITHUB_MOCK.linked), "master.enter");
+  assert.equal(afterGithub(GITHUB_MOCK.fresh), "id.new");
+  assert.ok(reach("id.choice").has("master.enter") && reach("id.choice").has("id.new"));
+  assert.equal(nameFromLogin("Sam_Builds"), "sam-builds");
+  assert.equal(nameFromLogin("12345"), "");
+  assert.equal(nameFromLogin("ab"), "");
+  assert.equal(nameFromLogin("x".repeat(40)).length, 20);
+});
