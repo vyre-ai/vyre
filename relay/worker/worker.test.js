@@ -523,7 +523,12 @@ test("worker: a control socket cannot register a ticket beyond the per-route cap
   // collide the way `f${i}`.padEnd(...,"0") would (i=6 and i=60 padded with "0" are the same
   // string).
   const loc = i => `f${String(i).padStart(3, "0")}`.padEnd(43, "z");
-  for (let i = 0; i < 61; i++) b.s.ws.send(JSON.stringify({ t: "ticket", loc: loc(i), record: "s".repeat(64), mac: "g".repeat(43), exp: Date.now() + 60_000 }));
+  const send = i => b.s.ws.send(JSON.stringify({ t: "ticket", loc: loc(i), record: "s".repeat(64), mac: "g".repeat(43), exp: Date.now() + 60_000 }));
+  // Fill the cap first and let every registration land, then send one more: sent all at once, the
+  // registrations race and any one of them can be the one over the cap.
+  for (let i = 0; i < 60; i++) send(i);
+  await rt.settle();
+  send(60);
   await rt.settle();
   // The 61st registration is over the cap; its locator resolves nothing.
   const over = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: loc(60) }) }), rt.env);
