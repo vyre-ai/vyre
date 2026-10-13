@@ -447,7 +447,6 @@ export function ChatScreen(p: ChatScreenProps) {
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}
           onAttachFile={() => void att.choose(false)}
-          onAttachPhoto={() => void att.choose(true)}
           {...p.composer}
         />
       </View>

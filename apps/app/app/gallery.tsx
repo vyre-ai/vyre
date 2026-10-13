@@ -228,7 +228,7 @@ const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", labe
 function ComposerCompare() {
   const [model, setModel] = useState("opus");
   const [where, setWhere] = useState<"mac" | "server">("server");
-  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, onAttachPhoto: () => {} };
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
   return (
     <View style={{ gap: 24 }}>
       <View style={{ gap: 6 }}><Text size="caption" tone="label">Before</Text><ChatComposerLegacy {...common} phone={false} /></View>

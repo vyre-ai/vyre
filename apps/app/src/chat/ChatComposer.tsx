@@ -43,6 +43,10 @@ export type ComposerProps = {
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
   onAttachFile?: () => void;
+  /** Files in the Vyre space the person can attach by picking from a list (the structured Files layout); with `onAttachVyreFile` this makes "From Vyre Files". */
+  vyreFiles?: readonly { id: string; name: string; path: string }[];
+  onAttachVyreFile?: (id: string) => void;
+  /** Kept so callers still compile; a photo is just a file now. */
   onAttachPhoto?: () => void;
   /** The files added to the next message, as chips (name, a line under it, and where it is), and how to take one off. Sending with files and no words is allowed. */
   attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed"; thumb?: string }[];
@@ -69,7 +73,9 @@ function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress
 }
 
 const POP_ID = "composer-pop";
-type Pop = null | "plus" | "answering" | "model";
+type Pop = null | "plus" | "files" | "vyrefiles" | "answering" | "model";
+/** An icon for a file by its name: a picture, sound, film or document. Pictures with a thumbnail show the thumbnail instead. */
+const fileIcon = (name: string): IconName => (/\.(png|jpe?g|gif|webp|heic|svg)$/i.test(name) ? "eye" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) ? "mic" : /\.(mp4|mov|webm|mkv)$/i.test(name) ? "play" : "file");
 type Row = PickerItem & { run: () => void };
 
 export function ChatComposer(p: ComposerProps) {
@@ -128,8 +134,6 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
-        { key: "file", group: "Add", label: "Attach a file", leading: <Icon name="file" size={18} />, hint: "Cmd U", run: () => { closePop(); p.onAttachFile?.(); } },
-        { key: "photo", group: "Add", label: "Attach a photo", leading: <Icon name="eye" size={18} />, run: () => { closePop(); p.onAttachPhoto?.(); } },
         { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
@@ -143,6 +147,13 @@ export function ChatComposer(p: ComposerProps) {
       }
       return rows;
     }
+    if (pop === "files") {
+      const rows: Row[] = [];
+      if (p.vyreFiles && p.onAttachVyreFile) rows.push({ key: "vyre", label: "From Vyre Files", sub: "Pick from this space's files", leading: <Icon name="drive" size={18} />, hint: "Right", run: () => { setPop("vyrefiles"); setMenuQ(""); setActive(0); } });
+      rows.push({ key: "computer", label: "From your computer", sub: "Any file: picture, document, video, audio", leading: <Icon name="upload" size={18} />, hint: "Cmd U", run: () => { closePop(); p.onAttachFile?.(); } });
+      return rows;
+    }
+    if (pop === "vyrefiles") return (p.vyreFiles ?? []).map((f) => ({ key: f.id, label: f.name, sub: f.path, leading: <Icon name={fileIcon(f.name)} size={18} />, run: () => { closePop(); p.onAttachVyreFile?.(f.id); } }));
     if (pop === "answering") {
       const rows: Row[] = [];
       if (slots.length > 1) {
@@ -213,7 +224,7 @@ export function ChatComposer(p: ComposerProps) {
     const stop = () => { e.preventDefault?.(); e.stopPropagation?.(); };
     const sc = composerShortcut(ev);
     if (sc === "answering") { stop(); openPop("answering"); return; }
-    if (sc === "attach") { stop(); p.onAttachFile?.(); return; }
+    if (sc === "attach") { stop(); if (p.vyreFiles && p.onAttachVyreFile) openPop("files"); else p.onAttachFile?.(); return; }
     if (sc && sc.startsWith("ai:") && slots.length > 1) {
       stop();
       if (sc === "ai:all") askEveryone(); else { const sl = slots[Number(sc.slice(3))]; if (sl) toggleAi(sl.id); }
@@ -224,13 +235,15 @@ export function ChatComposer(p: ComposerProps) {
       if (act === "next" || act === "prev") { stop(); setActive((a) => moveActive(a, act === "next" ? 1 : -1, rows.length)); return; }
       if (act === "pick") { stop(); pickRow(active); return; }
       if (act === "close") {
-        if (pop) { stop(); if (pop === "model") { setPop("answering"); setActive(0); } else closePop(); return; }
+        if (pop) { stop(); if (pop === "model") { setPop("answering"); setActive(0); } else if (pop === "vyrefiles") { setPop("files"); setMenuQ(""); setActive(0); } else closePop(); return; }
         if (ev.key === "Escape" && trig) { stop(); setDismissed(trig.range.start); }
         return; // Backspace on an empty query goes on to delete the trigger character.
       }
       if (pop) {
         if (ev.key === "ArrowRight" && pop === "answering") { const r = shownMenu[active]; if (r?.group === "Model") { stop(); r.run(); } return; }
+        if (ev.key === "ArrowRight" && pop === "files") { const r = shownMenu[active]; if (r?.key === "vyre") { stop(); r.run(); } return; }
         if (ev.key === "ArrowLeft" && pop === "model") { stop(); setPop("answering"); setActive(0); return; }
+        if (ev.key === "ArrowLeft" && pop === "vyrefiles") { stop(); setPop("files"); setActive(0); return; }
         if (ev.key === "Backspace") { stop(); setMenuQ((q) => q.slice(0, -1)); return; }
         if (ev.key.length === 1 && !ev.metaKey && !ev.ctrlKey && !ev.altKey) { stop(); setMenuQ((q) => q + ev.key); return; }
         return;
@@ -287,8 +300,8 @@ export function ChatComposer(p: ComposerProps) {
   );
   const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
 
-  const footer = pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc";
-  const header = pop === "plus" ? "Add" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
+  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? "Applies to the next message. Right opens a model" : pop === "model" ? "Left goes back" : trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc";
+  const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "plus" ? "More" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "People and assistants" : trig?.kind === "record" ? "Records" : undefined;
   const aiMenu = slots.length > 1 || !!p.models?.length;
 
   return (
@@ -314,7 +327,7 @@ export function ChatComposer(p: ComposerProps) {
               <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
             ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-                <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : "file"}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
+                <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : fileIcon(a.name)}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
             )))}
             {toks.map((t) => <ChipToken key={t.lead + t.name} icon={t.lead === "@" ? "mention" : "hash"} label={t.name} tone="accent" onRemove={() => { setText(removeToken(text, t.lead, t.name)); input.current?.focus(); }} />)}
@@ -331,7 +344,8 @@ export function ChatComposer(p: ComposerProps) {
         ) : field}
         {expanded ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Tip label="Add, mention, run on" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: attach, mention, tag, where it runs" onPress={() => openPop("plus")} /></Tip>
+            <Tip label="Files" hint="Cmd U" side="top"><Tool big={big} icon="clip" label="Files: from Vyre Files or your computer" onPress={() => (p.vyreFiles && p.onAttachVyreFile ? openPop("files") : p.onAttachFile?.())} /></Tip>
+            <Tip label="Mention, tag, where it runs" hint="@ # /" side="top"><Tool big={big} icon="plus" label="More: mention, tag, where it runs" onPress={() => openPop("plus")} /></Tip>
             {aiMenu ? <Tip label="Who answers" hint="Cmd /" side="top"><AnsweringControl ais={ais.length ? ais : [{ id: "m", label: summary }]} summary={summary} open={pop === "answering" || pop === "model"} hint="Cmd /" onPress={() => openPop("answering")} /></Tip> : null}
             <View style={{ flex: 1, minWidth: 8 }} />
             {sendBtn}
