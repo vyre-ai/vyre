@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 21 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 34 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
@@ -69,7 +69,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 25 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
@@ -104,7 +104,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 161 | 58 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 164 | 59 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -130,11 +130,11 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [21](tools.md#agents), 6 of them only for other modules
+- Tools: [34](tools.md#agents), 6 of them only for other modules
 - Emits: [4 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true,"hidden_from":["member","manager","temp"]},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"tags","kind":"text","label":"Tags","hidden_from":["member","manager","temp"]}]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true,"hidden_from":["member","manager","temp"]},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"folder","kind":"text","label":"Folder"},{"name":"projects","kind":"text","label":"Projects"},{"name":"users","kind":"text","label":"Who may use it"},{"name":"tags","kind":"text","label":"Tags","hidden_from":["member","manager","temp"]}]}],"membership":true,"mints":[{"prefix":"agent","actions":["agents.use","agents.edit"]}]}`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -717,7 +717,7 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#presence), 6 of them only for other modules
+- Tools: [21](tools.md#presence), 7 of them only for other modules
 - Emits: [7 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1125,8 +1125,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [161](tools.md#vault), 23 of them only for other modules
-- Emits: [58 events](events.md#vault)
+- Tools: [164](tools.md#vault), 23 of them only for other modules
+- Emits: [59 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

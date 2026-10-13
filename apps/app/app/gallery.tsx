@@ -34,6 +34,8 @@ import { FieldPaneDemo, ModelMapDemo, StarterDemo, TypeSetupDemo } from "../scre
 import { DRAFTS } from "../screens/records-setup/data";
 import { DocumentsBar } from "../screens/records/DocumentsBar";
 import { GroupedTasksDemo, ImportDemo, RecordFormDemo, RecordPageDemo } from "../screens/records-setup/RecordDemos";
+import { ChatComposer } from "../src/chat/ChatComposer";
+import { ChatPanel, type PanelPage } from "../src/chat/ChatPanel";
 
 const MD_SAMPLE = [
   "## The short answer", "",
@@ -243,10 +245,53 @@ function FlowKit() {
   );
 }
 
+const CMP_PEOPLE = [
+  { name: "Dana Wine", family: "person" as const }, { name: "Anna Reyes", family: "person" as const },
+  { name: "Claude", family: "assistant" as const, doing: "Drafting the estate letter" }, { name: "Codex", family: "assistant" as const }, { name: "Grok", family: "assistant" as const },
+];
+const CMP_RECORDS = [
+  { name: "Wine estate plan", type: "Matter", sealed: 2, urn: "urn:rec:1", kind: "record" }, { name: "Q3 intake", type: "Project", sealed: 0, urn: "urn:rec:2", kind: "project" },
+  { name: "Trust certificate.pdf", type: "File", sealed: 0, urn: "urn:rec:3", kind: "file" }, { name: "Quarterly review", type: "Tag", sealed: 0, urn: "urn:rec:4", kind: "tag" },
+];
+const CMP_SLOTS = [{ id: "s1", label: "kit on Claude", provider: "claude" }, { id: "s2", label: "kit on Codex", provider: "codex" }, { id: "s3", label: "Grok", provider: "grok" }];
+const CMP_MODELS = [{ id: "opus", label: "Opus", fit: 94 }, { id: "sonnet", label: "Sonnet", fit: 88 }, { id: "haiku", label: "Haiku", fit: 71 }];
+
+/** The composer, before and after, side by side: /gallery?f=composer. The "after" is live: try / @ # and Cmd+/ with the keyboard only. */
+function ComposerCompare() {
+  const [model, setModel] = useState("opus");
+  const [where, setWhere] = useState<"mac" | "server">("server");
+  const common = { state: "idle", people: CMP_PEOPLE, records: CMP_RECORDS, models: CMP_MODELS, model, onModel: (id: string) => setModel(id), slots: CMP_SLOTS, runsOn: where, onRunsOn: () => setWhere((w) => (w === "mac" ? "server" : "mac")), onSend: () => {}, onAttachFile: () => {}, vyreFiles: [{ id: "f1", name: "Trust certificate.pdf", path: "Projects/Wine estate/Received" }, { id: "f2", name: "Site visit.mp4", path: "Projects/Wine estate/Made" }, { id: "f3", name: "Deed scan.png", path: "Projects/Wine estate/Received" }], onAttachVyreFile: () => {} };
+  return (
+    <View style={{ gap: 24 }}>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">After (live)</Text><ChatComposer {...common} phone={false} /></View>
+      <View style={{ gap: 6 }}><Text size="caption" tone="label">Chat panel (live, keyboard: arrows, letters, Enter, Esc)</Text><PanelSample phone={false} /></View>
+      <View style={{ gap: 6, maxWidth: 390 }}><Text size="caption" tone="label">After, phone width</Text><ChatComposer {...common} phone autoFocus={false} /></View>
+    </View>
+  );
+}
+
+/** The one chat panel, open on a page: /gallery?f=composer shows it beside the composer; ?f=chat-panel&page=project|effort|... one page. */
+function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
+  const [page, setPage] = useState<PanelPage>(first);
+  const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
+  const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
+  const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];
+  return (
+    <View style={{ height: 780, position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#8883", borderRadius: 12, width: phone ? 390 : undefined }}>
+      <ChatPanel open phone={false} page={page} onPage={setPage} onClose={() => setPage("root")} participants={part} viewer="person:alex" info={{ record: null, sealed: 0, runsOn: "server" }}
+        muted={false} pinned={false} onMute={() => {}} onPin={() => {}} onMove={() => {}} onLinkRecord={() => {}}
+        project={{ current: cur, projects, move: async (to) => { setCur(projects.find((x) => x.slug === to) ?? null); return null; } }}
+        thread="demo" chat="demo" shared replyMode="every" otherPlace="mac" />
+    </View>
+  );
+}
+
 export default function Gallery() {
-  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
+  const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string; page?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
   if ((q.theme === "dark" || q.theme === "paper") && useAppearance.getState().person.theme !== q.theme) useAppearance.getState().setPerson({ theme: q.theme });
+  if (q.f === "composer") return <ThemeProvider><Page><View nativeID="fixture"><ComposerCompare /></View></Page></ThemeProvider>;
+  if (q.f === "chat-panel") return <ThemeProvider><Page><View nativeID="fixture"><PanelSample phone={false} page={(q.page as PanelPage) || "root"} /></View></Page></ThemeProvider>;
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
   // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
