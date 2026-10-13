@@ -35,3 +35,23 @@ if (process.env.VYRE_PERF_TRACE) {
   }, 500);
   iv.unref();
 }
+
+if (process.env.VYRE_PERF_TRACE) {
+  const f = process.env.VYRE_PERF_TRACE + ".events";
+  const T0 = Date.now();
+  const note = line => { try { fs.appendFileSync(f, `${((Date.now() - T0) / 1000).toFixed(2)}s ${line}\n`); } catch {} };
+  let prev = process.cpuUsage();
+  const civ = setInterval(() => {
+    const c = process.cpuUsage(prev); prev = process.cpuUsage();
+    const ms = Math.round((c.user + c.system) / 1000);
+    if (ms >= 40) note(`CPU ${ms}ms in 250ms`);
+  }, 250);
+  civ.unref();
+  for (const name of ["setTimeout", "setInterval"]) {
+    const real = globalThis[name];
+    globalThis[name] = function (fn, ms, ...a) {
+      if (Number(ms) >= 1000) { const st = (new Error().stack || "").split("\n").slice(2, 5).map(x => x.trim().replace(/^at /, "").replace(/.*\/vyre\//, "")).join(" < "); note(`${name} ${ms}ms ${st}`); }
+      return real.call(this, fn, ms, ...a);
+    };
+  }
+}
