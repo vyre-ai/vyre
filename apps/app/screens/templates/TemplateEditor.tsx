@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Divider, Field, Select, Switch, Text } from "@vyre/ui";
+import { Button, Card, Divider, Field, GroupedList, Select, Switch, Text } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import type { Body } from "./model";
 import * as E from "./edit";
@@ -59,10 +59,11 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
             <Select label="Who may move a project on early" value={s.owner || ""} options={owners} onChange={(v: string) => onChange(E.setStageOwner(body, si, v))} />
             <Field label="It moves on when (optional)" value={s.moves_on_when || ""} onChangeText={(v: string) => onChange(E.setMovesOn(body, si, v))} placeholder="the tasks are done" />
             <Text tone="muted">{(s.tasks || []).length ? "These tasks are made, and given to who is named, the moment a project enters this stage." : "No tasks yet. Add the work of this stage; each is given to a role, the project lead, a person or an assistant when a project enters it."}</Text>
-            {(s.tasks || []).map((t, ti) => (
+            <GroupedList groups={E.groupsOf(s)} items={s.tasks || []} itemNoun="tasks" onChange={(n) => onChange(E.setStageGroups(body, si, n))} renderItems={(list) => (<View className="gap-s2">{list.map((t) => { const ti = (s.tasks || []).indexOf(t); return (
               <View key={ti} className="gap-s2 rounded-field border border-edge p-s3">
                 <Field label={`Task ${ti + 1}`} value={t.title} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { title: v }))} placeholder="Gather documents" />
                 <Field label="Details (optional)" value={t.brief || ""} onChangeText={(v: string) => onChange(E.setTask(body, si, ti, { brief: v }))} multiline lines={3} />
+                {E.groupsOf(s).length ? <Select label="Group" value={t.group || ""} options={[["", "No group"], ...E.groupsOf(s).map((g): [string, string] => [g.name, g.name])]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { group: v }))} /> : null}
                 <Select label="Assigned to" value={t.doer} options={doers.some(([v]) => v === t.doer) ? doers : [...doers, [t.doer, E.assigneeWords(t.doer, people, agents)]]} onChange={(v: string) => onChange(E.setTask(body, si, ti, { doer: v }))} />
                 <Field label="Due after (days, optional)" value={E.dueDays(t)} onChangeText={(v: string) => onChange(E.setDueDays(body, si, ti, v))} placeholder="3" />
                 {E.kindOfDoer(t.doer) === "agent" ? <Field label="Needs a person's yes before it (optional)" value={E.approvalOf(t)} onChangeText={(v: string) => onChange(E.setApproval(body, si, ti, v))} placeholder="sending anything to the client" /> : null}
@@ -75,7 +76,7 @@ export function TemplateEditor({ body, onChange, onSave, onCancel, saving }: { b
                   <Button kind="ghost" size="sm" label="Remove task" onPress={() => onChange(E.removeTask(body, si, ti))} />
                 </View>
               </View>
-            ))}
+            ); })}</View>)} />
             <View className="flex-row flex-wrap gap-s2">
               <Button kind="ghost" size="sm" label="Add a task" onPress={() => onChange(E.addTask(body, si))} />
               <Button kind="ghost" size="sm" label="Move stage up" disabled={si === 0} onPress={() => onChange(E.moveStage(body, si, -1))} />
