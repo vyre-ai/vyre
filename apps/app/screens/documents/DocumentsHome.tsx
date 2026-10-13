@@ -90,7 +90,7 @@ export function DocumentsHome() {
   };
   const remind = (n: number) => tool("documents.signing.remind", { submission: n }).then(() => showToast("Reminder sent.")).catch((e) => showToast(say(e)));
 
-  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
+  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Word templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
   return (
     <Page title="Documents" top sub={undefined}>
       <Segmented<Tab> label="Documents" value={tab} onChange={setTab} options={tabs} />
