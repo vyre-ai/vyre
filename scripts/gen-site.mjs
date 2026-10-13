@@ -220,18 +220,17 @@ const HOME_FAQ = [
 
 const homeBody = `
 <section class="hero" aria-labelledby="hero-h">
-  <div class="wrap">
+  <div class="wrap hero-grid">
     <div class="copy">
-      <div class="hero-mark" aria-hidden="true">${vmark('hero', 'assemble', 'data-spread="near"')}</div>
-      ${eyebrow('Open source. Apache 2.0. Self-hosted. Any model.')}
-      <h1 id="hero-h" class="display">Vyre: <b>the agentic command center for AI-native teams</b></h1>
-      <p class="mission">Our mission is to help every professional services team become AI-native.</p>
-      <p class="lead">In an AI-native team, people set the direction and make the calls, and agents do the work: they draft, track, follow up and keep every job moving. Vyre gives both one place to work together, on servers the team owns, where anything that leaves the team waits for a person’s yes.</p>
+      <p class="eyebrow eb-mark"><span class="eb-v" aria-hidden="true">${vmark('eb', 'assemble', 'data-spread="near"')}</span>Open source. Apache 2.0. Self-hosted. Any model.</p>
+      <h1 id="hero-h" class="display">The agentic command center <b>for AI-native teams</b></h1>
+      <p class="mission">Help every professional services team become AI-native.</p>
+      <p class="lead">People set the direction and make the calls; agents do the work. Vyre gives both one place, on servers your team owns, where anything that leaves the team waits for a person’s yes.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/start/">Set up Vyre</a>
-        <a class="btn" href="/architecture/">See the architecture</a>
+        <a class="btn" href="${MAP_URL}">Ask your AI agent</a>
       </div>
-      <p class="hero-note">Free. Needs one AI account. <a href="${MAP_URL}">Point your AI agent at the repo</a>.</p>
+      <p class="hero-note">Free. Needs one AI account. <a href="/architecture/">See the architecture</a>.</p>
     </div>
     <div class="stage">
       <canvas class="field" aria-hidden="true"></canvas>
