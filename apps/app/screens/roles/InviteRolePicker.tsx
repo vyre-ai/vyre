@@ -12,9 +12,9 @@ import { MOCK_PROJECTS } from "./mock.js";
  * projects to add them to and, for a Guest, when it ends. `role` is what the box is sent; Guest is "temp". Reads the space's roles itself and falls back to the built-ins
  * when the box does not list roles.
  */
-export function InviteRolePicker({ actor, role, onRole, projects, onProjects, days, onDays, withCustom = MOCK }: {
+export function InviteRolePicker({ actor, role, onRole, projects, onProjects, days, onDays, withCustom = true }: {
   actor: string | undefined; role: string; onRole: (id: string) => void; projects: string[]; onProjects: (ids: string[]) => void; days: string; onDays: (v: string) => void;
-  /** Offer the space's own roles too. The real invite tool takes only the built-in roles today, so a real invite lists those alone. */ withCustom?: boolean;
+  /** Offer the space's own roles too. spaces.invites.create takes a custom role's id as `role`. */ withCustom?: boolean;
 }) {
   const [roles, setRoles] = useState<Role[]>(() => builtInRoles());
   const [known, setKnown] = useState<{ id: string; name: string }[]>(MOCK ? MOCK_PROJECTS : []);
