@@ -773,7 +773,31 @@ export class Vault {
     await this.migratePersonal();
     this.audit("account-reset", null, who, true, "new password set with the recovery kit");
     this.emit("vault.unlocked", { vault: PERSONAL });
+    this.emit("vault.secretkey.changed", { acct: rec.acct, why: "reset" });
     return { reset: true, acct: rec.acct };
+  }
+
+  /** The Secret Key for the person's own device to carry (escrow or a new device). Only the tool's caller list and presence stand between this and a caller; it is never logged. */
+  async exportSecretKey(who = "cli") {
+    if (!this.hasAccount()) throw Object.assign(new Error("this vault has no account password yet"), { code: "no_account" });
+    const text = await this.secretKey();
+    this.audit("secretkey-export", null, who, true, null);
+    return { secretKey: text, acct: parseSecretKey(text).acct };
+  }
+
+  /** Put the account's Secret Key into this device's store, so the master password opens the vault here. It must be this account's key; a wrong or mistyped one is refused and nothing is stored. */
+  async importSecretKey({ secretKey }, who = "cli") {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet"), { code: "no_account" });
+    let p;
+    try { p = parseSecretKey(secretKey); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_secret_key" }); }
+    p.bytes.fill(0);
+    if (p.acct !== rec.acct) throw Object.assign(new Error("that Secret Key belongs to another account"), { code: "wrong_account" });
+    await this.secretKeys.remove?.();
+    await this.secretKeys.put(String(secretKey).toUpperCase().replace(/\s/g, ""));
+    this.audit("secretkey-import", null, who, true, null);
+    this.emit("vault.secretkey.changed", { acct: rec.acct, why: "import" });
+    return { imported: true, acct: rec.acct };
   }
 
   /** Open the personal vault with the password and this device's Secret Key. */

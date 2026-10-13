@@ -80,3 +80,21 @@ test("a wrong, mistyped or too-weak reset is refused in its own code, and five w
   assert.equal(waiting.error.code, "throttled", "even the right kit waits after five wrong ones");
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "nothing opened");
 });
+
+test("the Secret Key can be carried to a device: exported to the person's own device, imported only when it is this account's, and a reset announces the change without the key", async t => {
+  const { reg } = await daemon(t);
+  const made = (await reg("vault.account.create", { password: PW }, "cli")).data;
+  for (const [who, caller] of /** @type {[string, string][]} */ ([["a model", "mcp"], ["a module", "module:probe"]])) {
+    assert.ok((await reg("vault.account.export-secret-key", {}, caller)).error, `${who} is refused`);
+    assert.ok((await reg("vault.account.import-secret-key", { secretKey: made.secretKey }, caller)).error, `${who} is refused`);
+  }
+  const out = (await reg("vault.account.export-secret-key", {}, "mobile")).data;
+  assert.equal(out.secretKey, made.secretKey);
+  assert.equal((await reg("vault.account.import-secret-key", { secretKey: "V2-NOTAKEY" }, "mobile")).error.code, "bad_secret_key");
+  const other = await daemon(t);
+  const stranger = (await other.reg("vault.account.create", { password: PW }, "cli")).data;
+  assert.equal((await reg("vault.account.import-secret-key", { secretKey: stranger.secretKey }, "mobile")).error.code, "wrong_account");
+  assert.ok((await reg("vault.account.import-secret-key", { secretKey: made.secretKey }, "mobile")).data.imported, "its own key is accepted");
+  await reg("vault.account.lock", {}, "cli");
+  assert.ok((await reg("vault.account.unlock", { password: PW }, "cli")).data, "and the password still opens it");
+});

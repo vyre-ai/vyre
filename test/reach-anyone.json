@@ -1737,6 +1737,14 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
+  "vault.account.export-secret-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); a presence proof is required"
+  },
+  "vault.account.import-secret-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); a presence proof is required, and the key must be this account's own"
+  },
   "vault.account.reset": {
    "module": "vault",
    "reason": "callers list in code (cli, local, mobile, device: no model, module or browser caller); the recovery secret and a presence proof are both required"

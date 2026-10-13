@@ -32,6 +32,15 @@ export function register({ vault, tool }) {
     obj({ recovery: password, password }, ["recovery", "password"]), (input, { caller }) => vault.resetAccount(input, caller),
     presence("Set a new password for your personal vault", () => "Set a new password for your personal vault with your recovery kit"));
 
+  // The person's own device carries the Secret Key (escrow, a new device); never a model or a module. The person's yes is asked.
+  tool("vault.account.export-secret-key", [...PEOPLE, ...DEVICES], "Give your own device your account's Secret Key to carry to a new device or an escrow. Never shown on screen.",
+    obj({}), (_input, { caller }) => vault.exportSecretKey(caller),
+    presence("Take your vault's Secret Key", () => "Take the Secret Key of your personal vault to carry it to another device"));
+
+  tool("vault.account.import-secret-key", [...PEOPLE, ...DEVICES], "Put your account's Secret Key on this device, so your master password opens the vault here.",
+    obj({ secretKey: password }, ["secretKey"]), (input, { caller }) => vault.importSecretKey(input, caller),
+    presence("Put your vault's Secret Key on this device", () => "Put the Secret Key of your personal vault on this device"));
+
   tool("vault.account.unlock", [...PEOPLE, "deck", "capsule"], "Unlock your personal vault (logins, cards, notes, one-time codes) with its password, or with Touch ID once enrolled.",
     obj({ password, method: { type: "string", enum: ["password", "touchid"] } }), (input, { caller }) => {
       if (input.method !== "touchid" && typeof input.password !== "string") throw new Error("give the password, or method touchid");
