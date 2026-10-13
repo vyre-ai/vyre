@@ -155,7 +155,6 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
-        { key: "files", group: "Attach", label: "Files", sub: "From Vyre Files or your computer", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
         { key: "at", group: "Insert", label: "Mention a person or assistant", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];

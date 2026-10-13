@@ -19,7 +19,7 @@ import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
 import { useVyreFiles } from "./useVyreFiles";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
-import { ChatRow, SkeletonThread } from "./ChatRows";
+import { ChatRow, SkeletonThread, useMessageKeys } from "./ChatRows";
 import { FlowDraftNote, useFlowDraft } from "./FlowDraftNote";
 import { groupToolRuns } from "./tool-runs.js";
 import type { BlockCtx } from "./Blocks";
@@ -210,6 +210,7 @@ export function ChatScreen(p: ChatScreenProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+  useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
   const ctx = useMemo<BlockCtx>(
     () => ({

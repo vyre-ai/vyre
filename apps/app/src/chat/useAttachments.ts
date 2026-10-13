@@ -15,8 +15,17 @@ export function useAttachments(chat: string | undefined) {
   const set = useCallback((next: Chip[]) => { live.current = next; setChips(next); }, []);
 
   const add = useCallback(async (files: Picked[]) => {
-    if (!chat) { setProblem("Start the chat with a message before adding files."); return; }
     setProblem(null);
+    // No thread yet (the sample world, or a chat still being made): the file is held as a ready chip and goes with the first message.
+    if (!chat) {
+      for (const f of files) {
+        const why = whyNot(live.current, f);
+        if (why) { setProblem(why); continue; }
+        const key = `a${++n.current}`;
+        set([...live.current, { ...uploading(key, f), state: "ready", attachment: { id: key, name: f.name, mime: f.mime, bytes: f.bytes } } as Chip]);
+      }
+      return;
+    }
     for (const f of files) {
       const why = whyNot(live.current, f);
       if (why) { setProblem(why); continue; }
