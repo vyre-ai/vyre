@@ -71,3 +71,20 @@ test("stages in any order or none: finishing the tasks never moves the project o
   }
   void ALEX;
 });
+
+test("a sign-off by the project lead: the person in the Lead seat moves the stage on, another member cannot", async () => {
+  const w = await mk(); const t = tpl(); t.stages[0].done_when = "sign_off"; t.stages[0].sign_off = "lead";
+  assert.deepEqual(problems(t), []);
+  const k = w.kernel, sys = k.sysChain();
+  const r = await k.records.create(sys, "project", { name: "Rivera", slug: "r-lead", status: "active", template: "tpl_m", template_version: "1", template_stage: "Opening", template_snapshot: snapshotOf(t, { id: "tpl_m", version: 1 }) });
+  await k.records.create(sys, "team-member", { name: "per_bob", actor: { actor: { kind: "person", id: BOB.id, space: w.cat.space } }, kind: "person", level: "lead", project: { urn: r.urn } });
+  await w.stages.enter({ urn: r.urn, type: "project", id: r.id, stage: "Opening", entry: "start" });
+  await settle(w);
+  await finish(w, "A");
+  assert.equal(await stageOf(w, r), "Opening", "the tasks are done and it waits for the lead");
+  const gate = [...w.stages.entries()].find((/** @type {any} */ e) => e.stage === "Opening");
+  await assert.rejects(w.stages.advance(gate.run, { kind: "person", id: "per_other" }, "ok"), /only the stage's owner/);
+  await w.stages.advance(gate.run, { kind: "person", id: BOB.id }, "Signed off");
+  await settle(w);
+  assert.equal(await stageOf(w, r), "Review");
+});
