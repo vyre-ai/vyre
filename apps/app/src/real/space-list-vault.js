@@ -1,7 +1,7 @@
 // @ts-check
 // Read and write the list (space-list.js) as one personal note in the vault, through the vault's own tools handed in as `tool` (name, input). Reading is one person-present reveal; writing is an update (a put
 // the first time). A locked vault, or a reveal that is refused, is an empty list with the reason, and nothing is written over a list that could not be read.
-import { FIELD, ITEM, entriesFromDevice, mergeLists, notOlder, parseList, serializeList, toPair, unpinned } from "./space-list.js";
+import { FIELD, ITEM, entriesFromDevice, mergeLists, notOlder, pruneTombstones, parseList, serializeList, toPair, unpinned } from "./space-list.js";
 
 /** @typedef {(name: string, input?: Record<string, unknown>) => Promise<any>} Tool */
 
@@ -39,7 +39,7 @@ export async function syncList(tool, device, seen = 0) {
   const mine = { v: /** @type {const} */ (1), seq: there.seq, entries: entriesFromDevice(device), removed: [] };
   const merged = mergeLists(there, mine);
   const changed = JSON.stringify(merged.entries) !== JSON.stringify(there.entries);
-  const list = changed ? { ...merged, seq: there.seq + 1 } : merged;
+  const list = pruneTombstones(changed ? { ...merged, seq: there.seq + 1 } : merged);
   if (changed) await writeList(tool, list);
   return { list, toPair: toPair(list, have), unpinned: unpinned(list, have), seen: Math.max(seen, list.seq) };
 }

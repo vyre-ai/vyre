@@ -15,7 +15,9 @@ const VERSION = 1;
 /** @typedef {{ kind: "server", id: string, name: string, relay: string, route: string, box: string }} ServerEntry */
 /** @typedef {{ kind: "team", id: string, name: string, home: { relay: string, route: string, box: string } }} TeamEntry */
 /** @typedef {ServerEntry | TeamEntry} Entry */
-/** @typedef {{ id: string, seq: number }} Tombstone */
+/** @typedef {{ id: string, seq: number, at?: number }} Tombstone */
+/** How long a removal is remembered. Ordering is by seq; the time only says when it may be forgotten. */
+export const TOMBSTONE_DAYS = 90;
 /** @typedef {{ v: 1, seq: number, entries: Entry[], removed: Tombstone[] }} List */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
@@ -43,7 +45,7 @@ export function parseList(text) {
   try { j = JSON.parse(String(text ?? "")); } catch { return empty(); }
   if (!j || typeof j !== "object" || j.v !== VERSION) return empty();
   const entries = (Array.isArray(j.entries) ? j.entries : []).map(entryOf).filter((/** @type {Entry | null} */ e) => e !== null);
-  const removed = (Array.isArray(j.removed) ? j.removed : []).filter((/** @type {any} */ x) => x && typeof x.id === "string" && Number.isInteger(x.seq)).map((/** @type {any} */ x) => ({ id: x.id, seq: x.seq }));
+  const removed = (Array.isArray(j.removed) ? j.removed : []).filter((/** @type {any} */ x) => x && typeof x.id === "string" && Number.isInteger(x.seq)).map((/** @type {any} */ x) => ({ id: x.id, seq: x.seq, ...(Number.isFinite(x.at) ? { at: x.at } : {}) }));
   return { v: VERSION, seq: Number.isInteger(j.seq) && j.seq >= 0 ? j.seq : 0, entries: /** @type {Entry[]} */ (entries), removed };
 }
 
@@ -62,18 +64,22 @@ export function serializeList(l) {
 export function mergeLists(a, b) {
   const [older, newer] = a.seq <= b.seq ? [a, b] : [b, a];
   /** @type {Map<string, number>} */ const dead = new Map();
-  for (const t of [...a.removed, ...b.removed]) dead.set(t.id, Math.max(dead.get(t.id) ?? 0, t.seq));
+  /** @type {Map<string, number | undefined>} */ const when = new Map();
+  for (const t of [...a.removed, ...b.removed]) { dead.set(t.id, Math.max(dead.get(t.id) ?? 0, t.seq)); if (t.at !== undefined) when.set(t.id, Math.max(when.get(t.id) ?? 0, t.at)); }
   /** @type {Map<string, { e: Entry, seq: number }>} */ const by = new Map();
   for (const [l, seq] of [[older, older.seq], [newer, newer.seq]]) for (const e of /** @type {List} */ (l).entries) by.set(e.id, { e, seq: /** @type {number} */ (seq) });
   const entries = [...by.values()].filter(({ e, seq }) => !(dead.has(e.id) && seq <= /** @type {number} */ (dead.get(e.id)))).map(({ e }) => e);
-  return { v: VERSION, seq: Math.max(a.seq, b.seq), entries, removed: [...dead].map(([id, seq]) => ({ id, seq })) };
+  return { v: VERSION, seq: Math.max(a.seq, b.seq), entries, removed: [...dead].map(([id, seq]) => ({ id, seq, ...(when.get(id) !== undefined ? { at: when.get(id) } : {}) })) };
 }
 
-/** The person removed a server or a team: it leaves the list and stays out on every device that merges (a tombstone at the new seq). @param {List} l @param {string} id @returns {List} */
-export function withRemoved(l, id) {
+/** The person removed a server or a team: it leaves the list and stays out on every device that merges (a tombstone at the new seq). @param {List} l @param {string} id @param {number} [now] @returns {List} */
+export function withRemoved(l, id, now = Date.now()) {
   const seq = l.seq + 1;
-  return { ...l, seq, entries: l.entries.filter((e) => e.id !== id), removed: [...l.removed.filter((t) => t.id !== id), { id, seq }] };
+  return { ...l, seq, entries: l.entries.filter((e) => e.id !== id), removed: [...l.removed.filter((t) => t.id !== id), { id, seq, at: now }] };
 }
+
+/** Forget removals older than TOMBSTONE_DAYS (one with no time is kept). @param {List} l @param {number} [now] @returns {List} */
+export const pruneTombstones = (l, now = Date.now()) => ({ ...l, removed: l.removed.filter((t) => t.at === undefined || now - t.at <= TOMBSTONE_DAYS * 86_400_000) });
 
 /** The person (re-)added a server or a team on purpose: it joins the list at a new seq above any tombstone, so it is back. @param {List} l @param {Entry} e @returns {List} */
 export function withAdded(l, e) {

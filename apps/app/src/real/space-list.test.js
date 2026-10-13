@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ITEM, FIELD, LIMIT, STEPS, entriesFromDevice, isPinned, mergeLists, notOlder, parseList, serializeList, toPair, unpinned, withAdded, withRemoved } from "./space-list.js";
+import { TOMBSTONE_DAYS, ITEM, FIELD, LIMIT, STEPS, pruneTombstones, entriesFromDevice, isPinned, mergeLists, notOlder, parseList, serializeList, toPair, unpinned, withAdded, withRemoved } from "./space-list.js";
 
 const KEY = "k".repeat(43);
 const srv = (/** @type {string} */ box, name = `server ${box}`) => ({ kind: "server", id: box, name, relay: "wss://relay.example.net", route: "r".repeat(26), box });
@@ -60,7 +60,8 @@ test("merge: entries from both sides are kept, the same id once, and the higher 
 test("tombstones: a removed server stays out of a stale writer's list; adding it again on purpose brings it back", () => {
   const removed = withRemoved(L(4, [srv("a"), srv("b")]), "a");
   assert.equal(removed.seq, 5);
-  assert.deepEqual(removed.removed, [{ id: "a", seq: 5 }]);
+  assert.equal(removed.removed[0].id, "a");
+  assert.equal(removed.removed[0].seq, 5);
   const stale = mergeLists(removed, L(4, [srv("a")]));
   assert.deepEqual(stale.entries.map((x) => x.id), ["b"], "a device still holding it at an older seq does not revive it");
   const sameSeq = mergeLists(removed, L(5, [srv("a")]));
@@ -86,4 +87,12 @@ test("pins: an entry with no box key is never connected to by itself; it is list
   assert.deepEqual(toPair(list, [pinned("a").box]).map((x) => x.id), [pinned("b").id], "the one it has, the unpinned one and the team are not to be paired");
   assert.deepEqual(unpinned(list, []).map((x) => x.id), ["nopin"]);
   assert.deepEqual(toPair(list, []).map((x) => x.id), [pinned("a").id, pinned("b").id]);
+});
+
+test("tombstones older than 90 days are dropped so the list does not grow without bound; a young one stays", () => {
+  const day = 86_400_000, now = 1_000 * day;
+  const l = { v: /** @type {const} */ (1), seq: 9, entries: [], removed: [{ id: "old", seq: 3, at: now - 91 * day }, { id: "young", seq: 4, at: now - 10 * day }, { id: "noat", seq: 2 }] };
+  assert.equal(TOMBSTONE_DAYS, 90);
+  assert.deepEqual(pruneTombstones(l, now).removed.map((t) => t.id).sort(), ["noat", "young"], "one with no time is kept, never guessed old");
+  assert.deepEqual(withRemoved(L(1, [srv("a")]), "a", 5_000).removed, [{ id: "a", seq: 2, at: 5_000 }], "a removal records when");
 });
